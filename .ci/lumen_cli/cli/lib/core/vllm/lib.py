@@ -212,10 +212,7 @@ def run_test_plan(
     if pkgs:
         logger.info("Installing packages: %s", pkgs)
         pip_install_packages(packages=pkgs, prefer_uv=True)
-    with (
-        working_directory(tests.get("working_directory", "tests")),
-        temp_environ(tests.get("env_vars", {})),
-    ):
+    with working_directory(tests.get("working_directory", "tests")), temp_environ(tests.get("env_vars", {})):
         failures = []
         for step in tests["steps"]:
             logger.info("Running step: %s", step)

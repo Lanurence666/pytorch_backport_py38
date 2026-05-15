@@ -1,8 +1,8 @@
+from __future__ import annotations
 """
 Environment Variables and Dataclasses Utility helpers for CLI tasks.
 """
 
-from __future__ import annotations
 
 import os
 from dataclasses import field, fields, is_dataclass, MISSING

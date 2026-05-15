@@ -55,6 +55,7 @@ extern "C" {
 
 #endif
 
+#if IS_PYTHON_3_9_PLUS
 inline _PyFrameEvalFunction _debug_set_eval_frame(
     PyThreadState* tstate,
     _PyFrameEvalFunction eval_frame) {
@@ -63,6 +64,13 @@ inline _PyFrameEvalFunction _debug_set_eval_frame(
   _PyInterpreterState_SetEvalFrameFunc(tstate->interp, eval_frame);
   return prev;
 }
+#else
+inline void* _debug_set_eval_frame(
+    PyThreadState* tstate,
+    void* eval_frame) {
+  return NULL;
+}
+#endif
 
 // Inspect PyObject*'s from C/C++ at the Python level, in pdb.
 // e.g.
@@ -82,8 +90,8 @@ inline _PyFrameEvalFunction _debug_set_eval_frame(
 #define INSPECT(...)                                                  \
   {                                                                   \
     PyThreadState* cur_tstate = PyThreadState_Get();                  \
-    _PyFrameEvalFunction prev_eval_frame =                            \
-        _debug_set_eval_frame(cur_tstate, &_PyEval_EvalFrameDefault); \
+    auto prev_eval_frame =                                            \
+        _debug_set_eval_frame(cur_tstate, nullptr);                   \
     PyObject* torch__dynamo_utils_module =                            \
         PyImport_ImportModule("torch._dynamo.utils");                 \
     NULL_CHECK(torch__dynamo_utils_module);                           \

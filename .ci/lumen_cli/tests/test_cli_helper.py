@@ -81,10 +81,7 @@ class TestRegisterTargets(unittest.TestCase):
         }
         parser = build_parser(specs)
 
-        with (
-            patch.object(FooRunner, "__init__", return_value=None) as mock_init,
-            patch.object(FooRunner, "run", return_value=None) as mock_run,
-        ):
+        with patch.object(FooRunner, "__init__", return_value=None) as mock_init, patch.object(FooRunner, "run", return_value=None) as mock_run:
             ns = parser.parse_args(["foo", "--x", "3", "--verbose"])
             ns.func(ns)  # set by register_targets
             # __init__ received the Namespace

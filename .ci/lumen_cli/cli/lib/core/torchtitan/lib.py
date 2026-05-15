@@ -1,6 +1,7 @@
-import logging
+from __future__ import annotations
 from pathlib import Path
 from typing import Any
+import logging
 
 import yaml
 from cli.lib.common.git_helper import clone_external_repo
@@ -48,10 +49,7 @@ def run_test_plan(
     title = tests.get("title", "unknown test")
     logger.info("Running tests: %s", title)
 
-    with (
-        working_directory(tests.get("working_directory", "")),
-        temp_environ(tests.get("env_vars", {})),
-    ):
+    with working_directory(tests.get("working_directory", "")), temp_environ(tests.get("env_vars", {})):
         failures = []
         for step in tests["steps"]:
             logger.info("Running step: %s", step)

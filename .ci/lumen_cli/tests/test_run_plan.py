@@ -460,10 +460,7 @@ def test_load_github_failure_returns_empty(vllm_module):
     def _raise(*args, **kwargs):
         raise OSError("network error")
 
-    with (
-        mock_patch.object(vllm_module, "_DISABLED_VLLM_TESTS_ISSUE", 175899),
-        mock_patch.object(vllm_module.urllib.request, "urlopen", _raise),
-    ):
+    with mock_patch.object(vllm_module, "_DISABLED_VLLM_TESTS_ISSUE", 175899), mock_patch.object(vllm_module.urllib.request, "urlopen", _raise):
         result = vllm_module._load_disabled_vllm_tests_from_github()
     if result != []:
         raise AssertionError(f"Expected [], got {result}")
@@ -477,12 +474,7 @@ def test_load_github_filters_malformed_entries(vllm_module):
             "html_url": "https://github.com/pytorch/pytorch/issues/175899",
         }
     )
-    with (
-        mock_patch.object(vllm_module, "_DISABLED_VLLM_TESTS_ISSUE", 175899),
-        mock_patch.object(
-            vllm_module.urllib.request, "urlopen", lambda *a, **kw: fake_resp
-        ),
-    ):
+    with mock_patch.object(vllm_module, "_DISABLED_VLLM_TESTS_ISSUE", 175899), mock_patch.object( vllm_module.urllib.request, "urlopen", lambda *a, **kw: fake_resp ):
         entries = vllm_module._load_disabled_vllm_tests_from_github()
 
     if len(entries) != 1:
@@ -500,18 +492,7 @@ def test_deduplication_yaml_wins(vllm_module):
         {"test": "a.py", "issue": "github-url"},
         {"test": "b.py::test_1", "issue": "github-url"},
     ]
-    with (
-        mock_patch.object(
-            vllm_module,
-            "_load_disabled_vllm_tests_from_yaml",
-            return_value=yaml_entries,
-        ),
-        mock_patch.object(
-            vllm_module,
-            "_load_disabled_vllm_tests_from_github",
-            return_value=github_entries,
-        ),
-    ):
+    with mock_patch.object( vllm_module, "_load_disabled_vllm_tests_from_yaml", return_value=yaml_entries, ), mock_patch.object( vllm_module, "_load_disabled_vllm_tests_from_github", return_value=github_entries, ):
         merged = vllm_module._load_disabled_vllm_tests()
 
     if len(merged) != 2:

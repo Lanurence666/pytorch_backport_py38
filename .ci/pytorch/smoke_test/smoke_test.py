@@ -215,7 +215,10 @@ def test_cuda_gds_errors_captured() -> None:
 
 
 def find_pypi_package_version(package: str) -> str | None:
-    from importlib import metadata
+    try:
+        from importlib import metadata
+    except ImportError:
+        import importlib_metadata as metadata
 
     dists = metadata.distributions()
     for dist in dists:

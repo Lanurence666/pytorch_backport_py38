@@ -593,6 +593,16 @@ static inline int PyWeakref_GetRef(PyObject *ref, PyObject **pobj)
 #  define PY_VECTORCALL_ARGUMENTS_OFFSET (_Py_CAST(size_t, 1) << (8 * sizeof(size_t) - 1))
 #endif
 
+// Py_TPFLAGS_HAVE_VECTORCALL was added in Python 3.12
+// In Python 3.8-3.11, the flag is _Py_TPFLAGS_HAVE_VECTORCALL
+#ifndef Py_TPFLAGS_HAVE_VECTORCALL
+#  ifdef _Py_TPFLAGS_HAVE_VECTORCALL
+#    define Py_TPFLAGS_HAVE_VECTORCALL _Py_TPFLAGS_HAVE_VECTORCALL
+#  else
+#    define Py_TPFLAGS_HAVE_VECTORCALL (1UL << 11)
+#  endif
+#endif
+
 // bpo-36974 added PyVectorcall_NARGS() to Python 3.8b1
 #if PY_VERSION_HEX < 0x030800B1
 static inline Py_ssize_t PyVectorcall_NARGS(size_t n)

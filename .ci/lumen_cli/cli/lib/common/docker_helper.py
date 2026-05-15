@@ -1,8 +1,8 @@
+from __future__ import annotations
 """
 Docker Utility helpers for CLI tasks.
 """
 
-from __future__ import annotations
 
 import logging
 

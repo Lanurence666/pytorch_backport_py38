@@ -6,7 +6,14 @@ import shlex
 import shutil
 import sys
 from collections.abc import Iterable  # noqa: TC003
-from importlib.metadata import PackageNotFoundError, version
+try:
+    from importlib.metadata import PackageNotFoundError
+except ImportError:
+    from importlib_metadata import PackageNotFoundError
+try:
+    from importlib.metadata import version
+except ImportError:
+    from importlib_metadata import version
 
 from cli.lib.common.utils import run_command
 

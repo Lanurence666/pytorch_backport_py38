@@ -1,6 +1,6 @@
+from __future__ import annotations
 """Path utility helpers for CLI tasks."""
 
-from __future__ import annotations
 
 import logging
 import shutil

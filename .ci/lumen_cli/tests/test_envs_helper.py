@@ -49,10 +49,7 @@ class TestEnvHelpers(unittest.TestCase):
         def fake_str2bool(s: str) -> bool:
             return s.lower() in {"1", "true", "yes", "on", "y"}
 
-        with (
-            patch.dict(os.environ, {"FLAG": "yEs"}, clear=True),
-            patch.object(m, "str2bool", fake_str2bool),
-        ):
+        with patch.dict(os.environ, {"FLAG": "yEs"}, clear=True), patch.object(m, "str2bool", fake_str2bool):
             self.assertTrue(m.env_bool("FLAG", default=False))
 
     # -------- env_path_optional / env_path --------

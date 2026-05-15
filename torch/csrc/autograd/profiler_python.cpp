@@ -989,11 +989,18 @@ void PythonTracer::setprofileAllThreads(Py_tracefunc func, PyObject* arg)
     const {
 #if IS_PYTHON_3_13_PLUS
   PyEval_SetProfileAllThreads(func, arg);
-#else
+#elif PY_VERSION_HEX >= 0x03090000
   for (const auto thread_state : interpreterThreads()) {
     if (_PyEval_SetProfile(thread_state, func, arg) < 0) {
       PyErr_WriteUnraisable(nullptr);
     }
+  }
+#else
+  for (const auto thread_state : interpreterThreads()) {
+    thread_state->c_profilefunc = func;
+    Py_XINCREF(arg);
+    Py_XDECREF(thread_state->c_profileobj);
+    thread_state->c_profileobj = arg;
   }
 #endif
 }

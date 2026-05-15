@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Validate wheel platform tags and macOS dylib minos.
 Supports two modes:
 1. Pre-install: reads .whl files from PYTORCH_FINAL_PACKAGE_DIR
@@ -20,7 +21,6 @@ EXPECTED_PLATFORM_TAGS: dict[str, str] = {
     "linux-aarch64": r"_aarch64$",
     "windows": r"^win_amd64$",
     "win32": r"^win_amd64$",
-    "windows-arm64": r"^win_arm64$",
     "macos-arm64": r"^macosx_\d+_\d+_arm64$",
     "darwin": r"^macosx_\d+_\d+_(arm64|x86_64)$",
 }
@@ -42,7 +42,10 @@ def _extract_wheel_tags(whl_path: Path) -> list[str]:
 
 def _extract_installed_wheel_tags(package: str = "torch") -> list[str]:
     """Extract Tag values from an installed package's WHEEL metadata."""
-    from importlib.metadata import distribution
+    try:
+        from importlib.metadata import distribution
+    except ImportError:
+        from importlib_metadata import distribution
 
     dist = distribution(package)
     wheel_text = dist.read_text("WHEEL")
@@ -66,8 +69,6 @@ def check_wheel_platform_tag() -> None:
     target_os = os.getenv("TARGET_OS", sys.platform)
     if target_os == "linux" and platform.machine() == "aarch64":
         target_os = "linux-aarch64"
-    elif target_os in ("win32", "windows") and platform.machine().lower() == "arm64":
-        target_os = "windows-arm64"
     expected_python = f"cp{sys.version_info.major}{sys.version_info.minor}"
     import sysconfig
 

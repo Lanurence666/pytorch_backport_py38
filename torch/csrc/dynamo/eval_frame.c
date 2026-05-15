@@ -1,5 +1,4 @@
 #define PY_SSIZE_T_CLEAN
-#include <opcode.h>
 #include <signal.h>
 #include <torch/csrc/dynamo/cache_entry.h>
 #include <torch/csrc/dynamo/cpp_shim.h>
@@ -9,6 +8,7 @@
 #include <torch/csrc/dynamo/eval_frame.h>
 #include <torch/csrc/dynamo/eval_frame_cpp.h>
 #include <torch/csrc/utils/python_compat.h>
+#include <opcode.h>
 
 #if IS_PYTHON_3_14_PLUS && defined(_WIN32)
 #define Py_BUILD_CORE
@@ -238,10 +238,15 @@ PyObject* dynamo_eval_frame_default(
   if (previous_eval_frame) {
     return previous_eval_frame(tstate, frame, throw_flag);
   } else {
+#if IS_PYTHON_3_9_PLUS
     return _PyEval_EvalFrameDefault(tstate, frame, throw_flag);
+#else
+    return PyEval_EvalFrameEx(frame, throw_flag);
+#endif
   }
 }
 
+#if IS_PYTHON_3_9_PLUS
 static void enable_eval_frame_shim(PyThreadState* tstate) {
   if (_PyInterpreterState_GetEvalFrameFunc(tstate->interp) !=
       &dynamo_custom_eval_frame_shim) {
@@ -260,6 +265,10 @@ static void enable_eval_frame_default(PyThreadState* tstate) {
     previous_eval_frame = NULL;
   }
 }
+#else
+static void enable_eval_frame_shim(PyThreadState* tstate) {}
+static void enable_eval_frame_default(PyThreadState* tstate) {}
+#endif
 
 const char* get_frame_name(THP_EVAL_API_FRAME_OBJECT* frame) {
   // Returns the C string name of the current frame.

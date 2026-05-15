@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import concurrent.futures
+try:
+    import distutils.sysconfig
+except ImportError:
+    import setuptools._distutils as distutils
 import functools
 import itertools
 import os
 import re
-import sysconfig
 from pathlib import Path
 from typing import Any
 
@@ -476,7 +479,7 @@ def main() -> None:
         if os.getenv("PACKAGE_TYPE") == "libtorch":
             install_root = Path(os.getcwd())
         else:
-            install_root = Path(sysconfig.get_path("purelib")) / "torch"
+            install_root = Path(distutils.sysconfig.get_python_lib()) / "torch"
 
     libtorch_cpu_path = str(install_root / "lib" / "libtorch_cpu.so")
     check_lib_symbols_for_abi_correctness(libtorch_cpu_path)

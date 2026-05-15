@@ -1,19 +1,4 @@
 
-#if PY_VERSION_HEX < 0x030900A0
-static inline void* PyType_GetSlot(PyTypeObject *type, int slot)
-{
-    PyErr_SetString(PyExc_RuntimeError, "PyType_GetSlot is not available in Python 3.8");
-    return NULL;
-}
-#endif
-
-#if PY_VERSION_HEX < 0x030900A0
-static inline void* PyType_GetSlot(PyTypeObject *type, int slot)
-{
-    PyErr_SetString(PyExc_RuntimeError, "PyType_GetSlot is not available in Python 3.8");
-    return NULL;
-}
-#endif
 #include <c10/util/Exception.h>
 #include <torch/csrc/dynamo/init.h>
 #include <torch/csrc/dynamo/utils.h>
@@ -31,6 +16,62 @@ static inline void* PyType_GetSlot(PyTypeObject *type, int slot)
 
 #include <Python.h>
 #include <torch/csrc/utils/pythoncapi_compat.h>
+
+#if PY_VERSION_HEX < 0x030900A0
+static inline void* PyType_GetSlot(PyTypeObject *type, int slot)
+{
+    PyNumberMethods *nb = type->tp_as_number;
+    PySequenceMethods *sq = type->tp_as_sequence;
+    PyMappingMethods *mp = type->tp_as_mapping;
+    switch (slot) {
+        case Py_nb_add: return (void*)(nb ? nb->nb_add : nullptr);
+        case Py_nb_subtract: return (void*)(nb ? nb->nb_subtract : nullptr);
+        case Py_nb_multiply: return (void*)(nb ? nb->nb_multiply : nullptr);
+        case Py_nb_remainder: return (void*)(nb ? nb->nb_remainder : nullptr);
+        case Py_nb_divmod: return (void*)(nb ? nb->nb_divmod : nullptr);
+        case Py_nb_power: return (void*)(nb ? nb->nb_power : nullptr);
+        case Py_nb_negative: return (void*)(nb ? nb->nb_negative : nullptr);
+        case Py_nb_positive: return (void*)(nb ? nb->nb_positive : nullptr);
+        case Py_nb_absolute: return (void*)(nb ? nb->nb_absolute : nullptr);
+        case Py_nb_bool: return (void*)(nb ? nb->nb_bool : nullptr);
+        case Py_nb_invert: return (void*)(nb ? nb->nb_invert : nullptr);
+        case Py_nb_lshift: return (void*)(nb ? nb->nb_lshift : nullptr);
+        case Py_nb_rshift: return (void*)(nb ? nb->nb_rshift : nullptr);
+        case Py_nb_and: return (void*)(nb ? nb->nb_and : nullptr);
+        case Py_nb_xor: return (void*)(nb ? nb->nb_xor : nullptr);
+        case Py_nb_or: return (void*)(nb ? nb->nb_or : nullptr);
+        case Py_nb_int: return (void*)(nb ? nb->nb_int : nullptr);
+        case Py_nb_float: return (void*)(nb ? nb->nb_float : nullptr);
+        case Py_nb_inplace_add: return (void*)(nb ? nb->nb_inplace_add : nullptr);
+        case Py_nb_inplace_subtract: return (void*)(nb ? nb->nb_inplace_subtract : nullptr);
+        case Py_nb_inplace_multiply: return (void*)(nb ? nb->nb_inplace_multiply : nullptr);
+        case Py_nb_inplace_remainder: return (void*)(nb ? nb->nb_inplace_remainder : nullptr);
+        case Py_nb_inplace_power: return (void*)(nb ? nb->nb_inplace_power : nullptr);
+        case Py_nb_inplace_lshift: return (void*)(nb ? nb->nb_inplace_lshift : nullptr);
+        case Py_nb_inplace_rshift: return (void*)(nb ? nb->nb_inplace_rshift : nullptr);
+        case Py_nb_inplace_and: return (void*)(nb ? nb->nb_inplace_and : nullptr);
+        case Py_nb_inplace_xor: return (void*)(nb ? nb->nb_inplace_xor : nullptr);
+        case Py_nb_inplace_or: return (void*)(nb ? nb->nb_inplace_or : nullptr);
+        case Py_nb_floor_divide: return (void*)(nb ? nb->nb_floor_divide : nullptr);
+        case Py_nb_true_divide: return (void*)(nb ? nb->nb_true_divide : nullptr);
+        case Py_nb_inplace_floor_divide: return (void*)(nb ? nb->nb_inplace_floor_divide : nullptr);
+        case Py_nb_inplace_true_divide: return (void*)(nb ? nb->nb_inplace_true_divide : nullptr);
+        case Py_nb_index: return (void*)(nb ? nb->nb_index : nullptr);
+        case Py_sq_length: return (void*)(sq ? sq->sq_length : nullptr);
+        case Py_sq_concat: return (void*)(sq ? sq->sq_concat : nullptr);
+        case Py_sq_repeat: return (void*)(sq ? sq->sq_repeat : nullptr);
+        case Py_sq_item: return (void*)(sq ? sq->sq_item : nullptr);
+        case Py_sq_ass_item: return (void*)(sq ? sq->sq_ass_item : nullptr);
+        case Py_sq_contains: return (void*)(sq ? sq->sq_contains : nullptr);
+        case Py_sq_inplace_concat: return (void*)(sq ? sq->sq_inplace_concat : nullptr);
+        case Py_sq_inplace_repeat: return (void*)(sq ? sq->sq_inplace_repeat : nullptr);
+        case Py_mp_length: return (void*)(mp ? mp->mp_length : nullptr);
+        case Py_mp_subscript: return (void*)(mp ? mp->mp_subscript : nullptr);
+        case Py_mp_ass_subscript: return (void*)(mp ? mp->mp_ass_subscript : nullptr);
+        default: return nullptr;
+    }
+}
+#endif
 
 static struct PyModuleDef _module =
     {PyModuleDef_HEAD_INIT, "torch._C._dynamo", "", -1, nullptr};

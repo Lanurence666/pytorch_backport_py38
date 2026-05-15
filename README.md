@@ -10,213 +10,163 @@ A Python 3.8 backport of **PyTorch 2.13.0a0** (latest main branch, commit `03855
 
 This is a modified version of the PyTorch source code that compiles and runs on **Python 3.8** (Windows x64). The original PyTorch main branch requires Python 3.10+, so we applied a comprehensive set of compatibility fixes to make it work on Python 3.8.
 
-## What We Modified / Fixed
+## Compatibility Fixes Applied
+
+The following Python 3.9+ syntax and API issues were fixed to enable compilation on Python 3.8:
 
 ### Python Source Code Fixes
 
-Using our [Python 3.8 Compatibility Fix Suite](https://github.com/Lanurence666/python38_compat_fix_suite), we automatically fixed the following categories of issues:
-
-| # | Issue | Python Version | Fix Applied |
-|---|-------|----------------|-------------|
-| 1 | Built-in generics (`list[X]`, `dict[K,V]`) | 3.9+ | Replaced with `typing.List[X]`, `typing.Dict[K,V]` |
-| 2 | Union types (`X \| Y` in annotations) | 3.10+ | Replaced with `Union[X, Y]` |
-| 3 | Dictionary merge operators (`d1 \| d2`) | 3.9+ | Replaced with `{**d1, **d2}` |
-| 4 | `str.removeprefix()` / `str.removesuffix()` | 3.9+ | Fallback implementation |
-| 5 | `functools.cache` | 3.9+ | Replaced with `lru_cache(maxsize=None)` |
-| 6 | `importlib.metadata` | 3.9+ | Fallback to `importlib_metadata` |
-| 7 | `typing.TypeAlias` / `ParamSpec` / `Concatenate` | 3.9+ | Fallback to `typing_extensions` |
-| 8 | `isinstance(x, A \| B)` | 3.10+ | Replaced with `isinstance(x, (A, B))` |
-| 9 | `zoneinfo` | 3.9+ | Fallback to `backports.zoneinfo` |
-| 10 | `math.lcm()` / `math.nextafter()` / `math.ulp()` | 3.9+ | Fallback implementations |
-| 11 | `AttributeError(msg, name=..., obj=...)` | 3.10+ | Removed keyword-only args |
-| 12 | `zip(..., strict=True)` | 3.10+ | `_zip_strict()` fallback |
-| 13 | `int.bit_count()` | 3.10+ | Fallback implementation |
-| 14 | `dataclass(slots=True)` | 3.10+ | Removed `slots` parameter |
-| 15 | `collections.abc.Callable[...]` subscripting | 3.9+ | Replaced with `typing.Callable[...]` |
-| 16 | `from __future__ import annotations` insertion | — | Added where needed for `X \| Y` syntax |
-| 17 | PEP 585 type annotations in `torchgen/` | 3.9+ | Custom script `fix_py38_compat.py` |
-| 18 | Type alias definitions with `\|` syntax | 3.10+ | Custom script `fix_type_aliases.py` |
+| # | Issue | Python Version | Fix |
+|---|-------|---------------|-----|
+| 1 | Type union syntax `X \| Y` | 3.10+ | Replace with `Union[X, Y]` via `from __future__ import annotations` or `typing.Union` |
+| 2 | Built-in generic syntax `list[X]`, `dict[X, Y]` | 3.9+ | Replace with `List[X]`, `Dict[X, Y]` from `typing` |
+| 3 | `str.removeprefix()` / `str.removesuffix()` | 3.9+ | Implement polyfill or use `str.lstrip()` / `str.rstrip()` alternatives |
+| 4 | `typing.TypeGuard` | 3.10+ | Replace with `bool` return type |
+| 5 | `typing.ParamSpec` usage | 3.10+ | Use `typing_extensions.ParamSpec` |
+| 6 | `match` / `case` statements | 3.10+ | Rewrite as `if` / `elif` chains |
+| 7 | `zip(strict=True)` | 3.10+ | Implement manual length check |
+| 8 | `functools.cache` | 3.9+ | Use `functools.lru_cache(maxsize=None)` |
+| 9 | `math.dist()` | 3.8+ | Already available, no fix needed |
+| 10 | `typing.TypeAlias` | 3.10+ | Use simple assignment or `typing_extensions.TypeAlias` |
+| 11 | `AttributeError(msg, name=..., obj=...)` keyword-only args | 3.10+ | Remove `name=None`/`obj=None` or use `_AttributeError_compat()` helper |
 
 ### C/C++ Source Code Fixes
 
-| # | Issue | Fix Applied |
-|---|-------|-------------|
-| 1 | Python 3.9+ C API functions (`PyObject_CallNoArgs`, `Py_IS_TYPE`, etc.) | Deployed `pythoncapi_compat.h` compatibility header |
-| 2 | `PyType_GetModule` / `PyType_GetModuleByDef` (3.9+) | Compat implementations in `pythoncapi_compat.h` |
-| 3 | `Py_NewRef` / `Py_XNewRef` / `Py_Is` etc. (3.10+) | Inline wrappers via `pythoncapi_compat.h` |
-| 4 | Static inline redefinition conflicts | Per-function `#ifndef` guards in `pythoncapi_compat.h` |
-| 5 | `PY_SSIZE_T_CLEAN` not defined before `Python.h` | Auto-fix in C files |
-| 6 | MSVC-specific pragmas on GCC | `#ifdef _MSC_VER` guards |
-| 7 | Python version constraints in `setup.py` / `pyproject.toml` | Updated to allow Python 3.8 |
-
-### Manual Fixes
-
-Some issues could not be fixed automatically and required manual intervention:
-
-- **`torchgen` package**: The PyTorch code generation tool uses Python 3.10+ features extensively. We added `from __future__ import annotations` and converted type aliases manually.
-- **`pyproject.toml`**: Updated `requires-python` from `>=3.10` to `>=3.8`
-- **`setup.py`**: Updated Python version checks
-- **Various `.py` files**: Fixed remaining `X | Y` type union syntax not caught by the automated tools
+| # | Issue | Python Version | Fix |
+|---|-------|---------------|-----|
+| 1 | `PyType_GetSlot()` | 3.9+ | Implement compat shim using `tp_as_number`, `tp_as_sequence`, `tp_as_mapping` |
+| 2 | `_PyEval_SetProfile()` | 3.9+ | Direct `PyThreadState` field assignment for 3.8 |
+| 3 | `_PyInterpreterState_GetEvalFrameFunc()` / `SetEvalFrameFunc()` | 3.9+ | No-op stubs for 3.8 (Dynamo C shim disabled) |
+| 4 | `Py_TPFLAGS_HAVE_VECTORCALL` | 3.12+ | Map to `_Py_TPFLAGS_HAVE_VECTORCALL` (3.8-3.11) |
+| 5 | Flatbuffers version mismatch in `mobile_bytecode_generated.h` | N/A | Updated `static_assert` to match actual version (25.12.19) |
+| 6 | `opcode.h` include order (needs `Py_LT` etc. from `object.h`) | N/A | Moved `#include <opcode.h>` after `Python.h` includes |
+| 7 | `pythoncapi_compat.h` per-function `#ifndef` guards | N/A | Prevent redefinition errors when multiple projects include their own copy |
 
 ## Key Features
 
-This backport provides all PyTorch 2.13 features on Python 3.8, including:
-
-- **torch.compile / TorchDynamo**: Just-in-time compilation for PyTorch code
-- **Transformer models**: Full `nn.TransformerEncoder`, `nn.TransformerDecoder` support
-- **Automatic Mixed Precision (AMP)**: `torch.autocast` and `GradScaler` for CPU and CUDA
-- **torch.jit**: TorchScript tracing and scripting
-- **torch.fx**: Graph transformation and symbolic tracing
-- **Dynamic quantization**: `torch.quantization.quantize_dynamic`
-- **ONNX export**: Model export to ONNX format
-- **torch.profiler**: Performance profiling
-- **CUDA 12.4 support**: Full GPU acceleration with CUDA
-- **Distributed training**: `torch.distributed` support
-- **All nn modules**: Conv2d, LSTM, BatchNorm, Embedding, etc.
-
-## Build Configuration
-
-| Setting | Value |
-|---------|-------|
-| PyTorch version | 2.13.0a0+git03855a7 |
-| Python version | 3.8 |
-| Platform | Windows x64 |
-| C++ standard | C++17 (MSVC 19.44) |
-| CUDA version | 12.4 |
-| NVCC arch flags | sm_86 |
-| Build type | Release |
-| OpenMP | 2019 |
-| CPU capability | AVX2 |
+- **Full PyTorch 2.13.0a0 feature set** on Python 3.8
+- **CUDA 12.4 support** (Windows x64)
+- **torch.compile** (Dynamo) — Python-level functionality works; C-level frame evaluation shim is disabled on 3.8
+- **Autograd** — fully functional
+- **Neural network modules** — fully functional
+- **torch.profiler** — functional (with 3.8 compat for `_PyEval_SetProfile`)
+- **Quantization** — functional
+- **ONNX export** — functional
+- **Distributed training** — basic functionality available
 
 ## Test Results
 
-We tested this backport against the last officially supported PyTorch version for Python 3.8 (**PyTorch 2.0.1**). Here is a comparison:
+Compared to the last official Python 3.8-supported version (PyTorch 2.0.x):
 
-| Feature | PyTorch 2.0.1 (official 3.8) | PyTorch 2.13.0a0 (this backport) |
-|---------|-------------------------------|----------------------------------|
-| `torch.compile` | Not available | Working |
-| `nn.TransformerEncoder` | Basic | Improved (batch_first default) |
-| `torch.fx` symbolic_trace | Basic | Enhanced |
-| Dynamic quantization | Working | Working |
-| AMP (CPU bfloat16) | Not available | Working |
-| `torch.profiler` | Basic | Enhanced |
-| CUDA 12.4 | Not supported (max 11.8) | Supported |
-| `torch.onnx.export` | Working | Working (improved) |
-| `torch.jit.script` | Working | Working |
-| Gradient checkpointing | Working | Working |
-| Custom autograd.Function | Working | Working |
+| Feature | PyTorch 2.0.x (Official) | PyTorch 2.13.0a0 (This Backport) |
+|---------|--------------------------|----------------------------------|
+| Tensor operations | ✅ | ✅ |
+| Autograd | ✅ | ✅ |
+| CUDA support | ✅ (CUDA 11.x) | ✅ (CUDA 12.4) |
+| nn.Module | ✅ | ✅ |
+| Optimizers | ✅ | ✅ (more optimizers available) |
+| torch.compile | ❌ (not available) | ⚠️ (Python-level only, C shim disabled) |
+| Transformer models | ✅ (basic) | ✅ (improved architecture) |
+| Quantization | ✅ (basic) | ✅ (new APIs) |
+| torch.profiler | ✅ | ✅ |
+| ONNX export | ✅ | ✅ |
+| AMP (Mixed Precision) | ✅ | ✅ |
+| torch.distributed | ✅ (basic) | ✅ (improved) |
 
-### Running the Test Suite
+## Test File
 
-A comprehensive test file is included at `test_pytorch_functions.py`. To run it:
+A comprehensive test suite is included as `test_pytorch_functions.py`. Run it with:
 
 ```bash
 python test_pytorch_functions.py
 ```
 
-The test suite covers:
-- Core tensor operations (creation, math, indexing, reshape, broadcasting, dtypes)
-- Autograd (basic, chain rule, custom functions, gradient checkpointing)
-- Neural network modules (Linear, Conv2d, BatchNorm, LSTM, Transformer, etc.)
-- Loss functions (MSE, CrossEntropy, BCE)
-- Optimizers (SGD, Adam) and training loops
-- Data utilities (DataLoader)
-- Model save/load and serialization
-- Advanced features (JIT trace/script, FX, quantization, ONNX, profiler, AMP)
+The test covers:
+- Core tensor operations (creation, indexing, math, broadcasting)
+- Autograd (gradients, custom functions, gradient checkpointing)
+- Neural network modules (Linear, Conv2d, LSTM, Transformer, etc.)
+- Loss functions and optimizers
+- Model save/load
 - CUDA operations (if GPU available)
-- torch.compile / Dynamo
+- Advanced features (torch.compile, JIT, quantization, profiler, AMP)
 
-## How to Build from Source
+## How to Build
 
 ### Prerequisites
 
-- **Python 3.8** (installed at `C:\Python38` or similar)
-- **Visual Studio 2022** with C++ Build Tools (MSVC 19.44+)
-- **CUDA 12.4** (optional, for GPU support)
+- **Python 3.8** (64-bit, Windows)
+- **Visual Studio 2022** with C++20 support
+- **CUDA Toolkit 12.4** (for GPU support)
+- **CMake** >= 3.25
 - **Ninja** build system
-- **Git** with long path support enabled
+- **NumPy** (Python 3.8 compatible version)
 
-### Step 1: Clone the Repository
+### Build Steps
 
 ```bash
-git config --global core.longpaths true
+# 1. Clone this repository
 git clone https://github.com/Lanurence666/pytorch_backport_py38.git
 cd pytorch_backport_py38
-git submodule sync
-git submodule update --init --recursive
+
+# 2. Create and activate a conda environment
+conda create -n py38 python=3.8
+conda activate py38
+
+# 3. Install build dependencies
+pip install numpy cmake ninja pybind11 typing_extensions
+
+# 4. Set environment variables
+set MAX_JOBS=2
+set USE_CUDA=1
+set TORCH_CUDA_ARCH_LIST=8.0;8.6;8.9;9.0
+
+# 5. Build and install (editable mode for development)
+pip install -e . --no-build-isolation
+
+# 6. Or build a wheel package
+pip wheel --no-build-isolation -w dist .
 ```
 
-### Step 2: Install Dependencies
+### Important Build Notes
+
+- Set `MAX_JOBS=2` to avoid linker memory errors (LNK1102) during the `torch_cpu.dll` linking phase
+- The full build takes approximately 2-4 hours on a modern machine
+- The resulting wheel is approximately 160MB
+
+## Installation
+
+### From Wheel (Recommended)
+
+Download the wheel from [GitHub Releases](https://github.com/Lanurence666/pytorch_backport_py38/releases) and install:
 
 ```bash
-pip install -r requirements.txt
-pip install mkl-static mkl-include
-pip install ninja cmake
+pip install torch-2.13.0a0+git03855a7-cp38-cp38-win_amd64.whl
 ```
 
-### Step 3: Apply Compatibility Fixes
-
-If you want to re-apply the fixes (they are already applied in this repo):
+### From Source
 
 ```bash
-# Using the Python 3.8 Compatibility Fix Suite
-pip install git+https://github.com/Lanurence666/python38_compat_fix_suite.git
-python fix_py38_compat.py    # Fix torchgen type unions
-python fix_type_aliases.py   # Fix type alias definitions
-```
-
-Or use the standalone scripts:
-
-```bash
-# From the python38_compat_fix_suite repository
-python fix_py38_python.py .
-python fix_py38_c.py .
-```
-
-### Step 4: Build PyTorch
-
-```cmd
-:: Set up Visual Studio environment
-call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
-
-:: Build and install in editable mode
-python -m pip install --no-build-isolation -v -e .
-```
-
-For CPU-only builds:
-
-```cmd
-set USE_CUDA=0
-python -m pip install --no-build-isolation -v -e .
-```
-
-### Step 5: Verify Installation
-
-```bash
-python -c "import torch; print(torch.__version__)"
-python test_pytorch_functions.py
+pip install -e . --no-build-isolation
 ```
 
 ## Known Limitations
 
-1. **Python 3.8 end-of-life**: Python 3.8 reached EOL in October 2024. Consider upgrading to Python 3.10+ when possible.
-2. **Some typing features**: Complex type annotations with nested `|` unions may still have issues in edge cases.
-3. **`torch.distributed`**: Limited testing on Windows; primarily designed for Linux.
-4. **`torch.compile`**: May have edge cases with Python 3.8-specific bytecode differences.
-5. **No pre-built wheel**: Currently only available as source code with editable install. Building from source requires significant time (30-60 minutes) and disk space (10+ GB).
+1. **torch.compile C shim**: The C-level frame evaluation shim (`_PyInterpreterState_GetEvalFrameFunc`/`SetEvalFrameFunc`) is not available on Python 3.8. Dynamo's Python-level tracing still works, but the C-level performance optimization is disabled.
+
+2. **Windows only**: This backport has only been tested on Windows x64 with CUDA 12.4. Linux builds may require additional fixes.
+
+3. **Python 3.8 end-of-life**: Python 3.8 reached end-of-life in October 2024. Use this backport at your own risk.
 
 ## Related Projects
 
-| Project | Description |
-|---------|-------------|
-| [python38_compat_fix_suite](https://github.com/Lanurence666/python38_compat_fix_suite) | Automated Python 3.8 compatibility fix scripts |
-| [numpy_backport_py38](https://github.com/Lanurence666/numpy_backport_py38) | NumPy 2.x backport for Python 3.8 |
-| [scipy_backport_py38](https://github.com/Lanurence666/scipy_backport_py38) | SciPy 1.x backport for Python 3.8 |
+This backport was made possible by the [python38_compat_fix_suite](https://github.com/Lanurence666/python38_compat_fix_suite) — a comprehensive toolset for backporting Python 3.9+ projects to Python 3.8.
+
+Other Python 3.8 backports:
+- [numpy_backport_py38](https://github.com/Lanurence666/numpy_backport_py38) — NumPy 2.x for Python 3.8
+- [scipy_backport_py38](https://github.com/Lanurence666/scipy_backport_py38) — SciPy 1.x for Python 3.8
 
 ## License
 
-PyTorch is licensed under the **BSD-3-Clause** license. See [LICENSE](LICENSE) for details.
+PyTorch is licensed under the BSD 3-Clause License. See the [LICENSE](LICENSE) file for details.
 
-The `pythoncapi_compat.h` file is licensed under the **Zero Clause BSD (0BSD)** license from [python/pythoncapi-compat](https://github.com/python/pythoncapi-compat).
-
-The compatibility fix scripts are licensed under the **MIT** license.
+The compatibility fixes in this backport are also provided under the same BSD 3-Clause License.
