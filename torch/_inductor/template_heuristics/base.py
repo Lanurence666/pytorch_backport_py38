@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Generator, TYPE_CHECKING
 
 from .params import DictKernelTemplateParams, KernelTemplateParams
 
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    
 
     from ..kernel_inputs import KernelInputs
 
@@ -48,7 +48,7 @@ class TemplateConfigHeuristics:
         self,
         kernel_inputs: KernelInputs,
         op_name: str,
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         """
         Get template configs for the given inputs.
         This is the main entry point for template-specific logic.
@@ -60,7 +60,7 @@ class TemplateConfigHeuristics:
         self,
         kernel_inputs: KernelInputs,
         op_name: str,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """
         Get extra kwargs for the given inputs/op for the template.
 

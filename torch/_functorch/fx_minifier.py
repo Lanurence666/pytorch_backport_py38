@@ -6,7 +6,7 @@ import os
 import sys
 from dataclasses import dataclass
 from functools import partial, wraps
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple
 
 import torch
 import torch.fx as fx
@@ -26,8 +26,8 @@ is_tuple = object()
 
 @dataclass
 class LoadTensorMeta:
-    size: tuple[int, ...]
-    stride: tuple[int, ...]
+    size: Tuple[int, ...]
+    stride: Tuple[int, ...]
     dtype: torch.dtype
     device: torch.device
 
@@ -37,13 +37,13 @@ class ConcreteProp(torch.fx.Interpreter):
         self,
         mod: fx.GraphModule,
         *,
-        writer: ContentStoreWriter | None = None,
+        writer: Optional[ContentStoreWriter] = None,
         skip_offload: bool = False,
     ) -> None:
         super().__init__(mod)
         self.writer = writer
         self.skip_offload = skip_offload
-        self.seen_storages: set[StorageWeakRef] = set()
+        self.seen_storages: Set[StorageWeakRef] = set()
         self.pbar: Any = None
 
     def run_node(self, n: fx.Node) -> Any:
@@ -98,7 +98,7 @@ def is_load_tensor_node(node: fx.Node) -> bool:
 
 # inplace modifies node/inps
 def _convert_node_to_placeholder(
-    graph: fx.Graph, node: fx.Node, inps: list[torch.Tensor]
+    graph: fx.Graph, node: fx.Node, inps: List[torch.Tensor]
 ) -> bool:
     if node.op == "output" or node.op == "placeholder":
         return False
@@ -198,12 +198,12 @@ def minifier(
     module_fails: Callable[[fx.GraphModule, Sequence[torch.Tensor]], bool],
     dump_state: Callable[[fx.GraphModule, Sequence[torch.Tensor]], None] = dump_state,
     *,
-    save_dir: str | None = None,
+    save_dir: Optional[str] = None,
     offload_to_disk: bool = False,
     skip_offload: bool = False,
     skip_sanity: bool = False,
-    max_granularity: int | None = None,
-) -> tuple[fx.GraphModule, Sequence[torch.Tensor]]:
+    max_granularity: Optional[int] = None,
+) -> Tuple[fx.GraphModule, Sequence[torch.Tensor]]:
     """
     Minimizes a FX graph with given inputs, such that the resulting FX graph still returns True for module_fails.
 
@@ -250,11 +250,11 @@ def minifier(
     print(f"Started off with {cur_size} nodes", file=sys.stderr)
 
     def _register_strategy(
-        strategy: Callable[[fx.Graph, Sequence[torch.Tensor], int], ReproState | None],
+        strategy: Callable[[fx.Graph, Sequence[torch.Tensor], int], Optional[ReproState]],
         name: str,
-    ) -> Callable[[ReproState, int], ReproState | None]:
+    ) -> Callable[[ReproState, int], Optional[ReproState]]:
         @wraps(strategy)
-        def new_func(old_state: ReproState, granularity: int = 1) -> ReproState | None:
+        def new_func(old_state: ReproState, granularity: int = 1) -> Optional[ReproState]:
             print(file=sys.stderr)
             print(
                 f"Strategy: {name} (G: {granularity}) "
@@ -310,18 +310,18 @@ def minifier(
     def register_strategy(
         name: str,
     ) -> Callable[
-        [Callable[[fx.Graph, Sequence[torch.Tensor], int], ReproState | None]],
-        Callable[[ReproState, int], ReproState | None],
+        [Callable[[fx.Graph, Sequence[torch.Tensor], int], Optional[ReproState]]],
+        Callable[[ReproState, int], Optional[ReproState]],
     ]:
         return partial(_register_strategy, name=name)
 
     @register_strategy("Truncate suffix")
     def remove_suffix(
         cur_graph: fx.Graph, cur_inps: Sequence[torch.Tensor], granularity: int
-    ) -> ReproState | None:
-        tested: set[int] = set()
+    ) -> Optional[ReproState]:
+        tested: Set[int] = set()
         new_graph = fx.Graph()
-        env: dict[fx.Node, fx.Node] = {}
+        env: Dict[fx.Node, fx.Node] = {}
         for idx, node in enumerate(cur_graph.nodes):
             new_node = new_graph.node_copy(node, lambda x: env[x])
             if node.op not in ["placeholder", "output"]:
@@ -345,9 +345,9 @@ def minifier(
     @register_strategy("Remove outputs")
     def remove_outputs(
         cur_graph: fx.Graph, cur_inps: Sequence[torch.Tensor], granularity: int
-    ) -> ReproState | None:
+    ) -> Optional[ReproState]:
         granularity = max(1, granularity // 2)
-        output: fx.Node | None = None
+        output: Optional[fx.Node] = None
         for idx, node in enumerate(cur_graph.nodes):
             node.idx = idx  # type: ignore[attr-defined]
             if node.op == "output":
@@ -379,7 +379,7 @@ def minifier(
                 return ReproState(cur_graph, cur_inps)
         return None
 
-    def remove_unused_inputs_unchecked(cur_state: ReproState) -> ReproState | None:
+    def remove_unused_inputs_unchecked(cur_state: ReproState) -> Optional[ReproState]:
         cur_graph = cur_state.graph
         cur_inps = cur_state.inps
         ph_nodes = list(get_placeholders(cur_graph))
@@ -388,7 +388,7 @@ def minifier(
                 f"len(ph_nodes)={len(ph_nodes)} != len(cur_inps)={len(cur_inps)}"
             )
 
-        new_inps: list[torch.Tensor] = []
+        new_inps: List[torch.Tensor] = []
         for idx in range(len(ph_nodes)):
             if len(ph_nodes[idx].users) == 0:
                 cur_graph.erase_node(ph_nodes[idx])
@@ -398,7 +398,7 @@ def minifier(
             return ReproState(cur_graph, new_inps)
         return None
 
-    def remove_unused_inputs_checked(cur_state: ReproState) -> ReproState | None:
+    def remove_unused_inputs_checked(cur_state: ReproState) -> Optional[ReproState]:
         new_state = remove_unused_inputs_unchecked(cur_state)
         if new_state is not None and graph_fails(new_state.graph, new_state.inps):
             return new_state
@@ -406,7 +406,7 @@ def minifier(
 
     def _remove_unused_wrapper(
         cur_graph: fx.Graph, cur_inps: Sequence[torch.Tensor], granularity: int
-    ) -> ReproState | None:
+    ) -> Optional[ReproState]:
         return remove_unused_inputs_checked(ReproState(cur_graph, cur_inps))
 
     remove_unused_inputs = register_strategy("Remove unused inputs")(
@@ -416,13 +416,13 @@ def minifier(
     @register_strategy("Eliminate dead code")
     def eliminate_dead_code(
         cur_graph: fx.Graph, cur_inps: Sequence[torch.Tensor], granularity: int
-    ) -> ReproState | None:
+    ) -> Optional[ReproState]:
         if cur_graph.eliminate_dead_code() and graph_fails(cur_graph, cur_inps):
             return ReproState(cur_graph, cur_inps)
         return None
 
     def _consolidate_placeholders(
-        cur_graph: fx.Graph, inps: list[torch.Tensor]
+        cur_graph: fx.Graph, inps: List[torch.Tensor]
     ) -> fx.Graph:
         new_graph = fx.Graph()
         env = {}
@@ -454,7 +454,7 @@ def minifier(
     @register_strategy("Delta Debugging")
     def delta_debugging(
         cur_graph: fx.Graph, cur_inps: Sequence[torch.Tensor], granularity: int
-    ) -> ReproState | None:
+    ) -> Optional[ReproState]:
         num_nodes = len(cur_graph.nodes)
         for start_range in range(0, num_nodes, granularity):
             is_removing = False
@@ -480,7 +480,7 @@ def minifier(
     @register_strategy("Consolidate Inputs")
     def consolidate_inputs(
         cur_graph: fx.Graph, cur_inps: Sequence[torch.Tensor], granularity: int
-    ) -> ReproState | None:
+    ) -> Optional[ReproState]:
         old_len = len(cur_inps)
         new_inps = list(cur_inps[:])
         cur_graph = _consolidate_placeholders(cur_graph, new_inps)
@@ -492,7 +492,7 @@ def minifier(
 
     def try_granularity(
         failing_state: ReproState, granularity: int, use_non_granular: bool
-    ) -> ReproState | None:
+    ) -> Optional[ReproState]:
         print(f"Trying granularity {granularity}", file=sys.stderr)
 
         strategies = []

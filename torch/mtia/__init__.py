@@ -1,12 +1,14 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 r"""
 This package enables an interface for accessing MTIA backend in python
 """
 
 import threading
 import traceback
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 import torch
 from torch import Tensor
@@ -22,12 +24,12 @@ Event = torch.Event
 Stream = torch.Stream
 
 # Default generators are initialized inside _mtia_init
-default_generators: tuple[torch._C.Generator, ...] = ()  # type: ignore[assignment]
+default_generators: Tuple[torch._C.Generator, ...] = ()  # type: ignore[assignment]
 
 
 _initialized = False
-_queued_calls: list[
-    tuple[Callable[[], None], list[str]]
+_queued_calls: List[
+    Tuple[Callable[[], None], List[str]]
 ] = []  # don't invoke these until initialization occurs
 _tls = threading.local()
 _initialization_lock = threading.Lock()
@@ -203,7 +205,7 @@ def default_stream(device: Device = None) -> Stream:
 
 
 def record_memory_history(
-    enabled: str | None = "all", stacks: str = "python", max_entries: int = 0
+    enabled: Optional[str]= "all", stacks: str = "python", max_entries: int = 0
 ) -> None:
     r"""Enable/Disable the memory profiler on MTIA allocator
 
@@ -221,7 +223,7 @@ def record_memory_history(
     torch._C._mtia_recordMemoryHistory(enabled, stacks, max_entries)
 
 
-def snapshot() -> dict[str, Any]:
+def snapshot() -> Dict[str, Any]:
     r"""Return a dictionary of MTIA memory allocator history"""
 
     return torch._C._mtia_memorySnapshot()
@@ -239,7 +241,7 @@ def is_bf16_supported(including_emulation: bool = True):
     return True
 
 
-def get_device_capability(device: Device = None) -> tuple[int, int]:
+def get_device_capability(device: Device = None) -> Tuple[int, int]:
     r"""Return capability of a given device as a tuple of (major version, minor version).
 
     Args:
@@ -282,7 +284,7 @@ def set_device(device: Device) -> None:
         torch._C._mtia_setDevice(device)
 
 
-def get_device_properties(device: Device = None) -> dict[str, Any]:
+def get_device_properties(device: Device = None) -> Dict[str, Any]:
     r"""Return a dictionary of MTIA device properties
 
     Args:
@@ -327,9 +329,9 @@ class StreamContext:
     .. note:: Streams are per-device.
     """
 
-    cur_stream: Stream | None
+    cur_stream: Optional[Stream]
 
-    def __init__(self, stream: Stream | None):
+    def __init__(self, stream: Optional[Stream]):
         self.cur_stream = None
         self.stream = stream
         self.idx = _get_device_index(None, True)
@@ -384,7 +386,7 @@ def _set_stream_by_id(stream_id, device_index, device_type):
     torch._C._mtia_setStream(stream_id, device_index, device_type)
 
 
-def stream(stream: Stream | None) -> StreamContext:
+def stream(stream: Optional[Stream]) -> StreamContext:
     r"""Wrap around the Context-manager StreamContext that selects a given stream.
 
     Arguments:
@@ -413,7 +415,7 @@ def get_rng_state(device: Device = "mtia") -> Tensor:
     return default_generator.get_state()
 
 
-def get_rng_state_all() -> list[Tensor]:
+def get_rng_state_all() -> List[Tensor]:
     r"""Returns a list of ByteTensor representing the random number states of all devices."""
     results = [get_rng_state(i) for i in range(device_count())]
     return results
@@ -444,7 +446,7 @@ def set_rng_state(new_state: Tensor, device: Device = "mtia") -> None:
     _lazy_call(cb)
 
 
-def set_rng_state_all(new_states: list[Tensor]) -> None:
+def set_rng_state_all(new_states: List[Tensor]) -> None:
     r"""Sets the random number generator state of all devices.
 
     Args:

@@ -1,3 +1,4 @@
+from typing import Type, cast
 # mypy: ignore-errors
 
 """Assorted utilities, which do not need anything other than torch and stdlib."""

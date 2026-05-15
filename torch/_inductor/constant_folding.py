@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import collections
 import typing_extensions
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, List, Optional, Set
 
 import torch
 import torch.utils._pytree as pytree
@@ -18,7 +20,7 @@ META_TAG = "MODULE_TYPE"
 MODULE_TAG = "_MAIN_MODULE"
 CONST_MODULE_TAG = "_CONST_MODULE"
 
-_dont_constant_fold: list[torch.fx.node.Target] = []
+_dont_constant_fold: List[torch.fx.node.Target] = []
 
 
 def add_dont_constant_fold(op: torch.fx.node.Target) -> None:
@@ -34,8 +36,8 @@ def clear_dont_constant_fold() -> None:
 def replace_node_with_constant(
     gm: torch.fx.GraphModule,
     node: torch.fx.Node,
-    constant: torch.Tensor | None = None,
-    name: str | None = None,
+    constant: Optional[torch.Tensor]= None,
+    name: Optional[str]= None,
 ) -> None:
     g = gm.graph
 
@@ -74,7 +76,7 @@ def replace_node_with_constant(
 
 
 def is_const_source(
-    node: torch.fx.Node, lifted_constant_names: list[str] | None
+    node: Optional[torch.fx.Node, lifted_constant_names: List[str]]
 ) -> bool:
     return node.op == "get_attr" or node.name in (lifted_constant_names or ())
 
@@ -84,12 +86,12 @@ class ConstantFolder(torch.fx.Interpreter):
         self,
         gm: torch.fx.GraphModule,
         skip_constructors: bool = False,
-        lifted_constant_names: list[str] | None = None,
-        skip_folding_node_fn: Callable[[torch.fx.Node], bool] | None = None,
+        lifted_constant_names: Optional[List[str]]= None,
+        skip_folding_node_fn: Optional[Callable[[torch.fx.Node], bool]]= None,
     ) -> None:
         super().__init__(gm)
-        self.node_replacements: dict[torch.fx.Node, Any] = {}
-        self.replaced_uses: dict[torch.fx.Node, int] = collections.Counter()
+        self.node_replacements: Dict[torch.fx.Node, Any] = {}
+        self.replaced_uses: Dict[torch.fx.Node, int] = collections.Counter()
         self.unknown_value = object()
         self.skip_constructors: bool = skip_constructors
 
@@ -165,7 +167,7 @@ class ConstantFolder(torch.fx.Interpreter):
             return True
         return False
 
-    def node_to_last_non_output_use(self) -> dict[torch.fx.Node, list[torch.fx.Node]]:
+    def node_to_last_non_output_use(self) -> Dict[torch.fx.Node, List[torch.fx.Node]]:
         last_non_output_use = collections.defaultdict(list)
         seen_uses = OrderedSet[torch.fx.Node]()
         output_node = next(iter(reversed(self.module.graph.nodes)))  # type: ignore[arg-type, union-attr]
@@ -304,11 +306,11 @@ class ConstantFolder(torch.fx.Interpreter):
         self.node_replacements[node] = tensor
 
     def run(self) -> Any:  # type: ignore[override]
-        env: dict[torch.fx.Node, Any] = {}
+        env: Dict[torch.fx.Node, Any] = {}
         self.insert_placerholder_values(env)
         return super().run(initial_env=env)
 
-    def insert_placerholder_values(self, env: dict[torch.fx.Node, Any]) -> None:
+    def insert_placerholder_values(self, env: Dict[torch.fx.Node, Any]) -> None:
         for n in self.module.graph.find_nodes(op="placeholder"):  # type: ignore[operator, union-attr]
             env[n] = self.unknown_value  # type: ignore[assignment]
         if self.lifted_constant_names is None:
@@ -320,7 +322,7 @@ class ConstantFolder(torch.fx.Interpreter):
 
 def constant_fold(
     gm: torch.fx.GraphModule,
-    constraint_fn: Callable[[torch.fx.Node], bool] | None = None,
+    constraint_fn: Optional[Callable[[torch.fx.Node], bool]]= None,
 ) -> None:
     with torch.utils._python_dispatch._disable_current_modes():
         cf = ConstantFolder(gm, skip_constructors=True)
@@ -349,8 +351,8 @@ def constant_fold(
 def constant_graph_tag(
     gm: torch.fx.GraphModule,
     skip_constructors: bool = True,
-    lifted_constant_names: list[str] | None = None,
-    skip_folding_node_fn: Callable[[torch.fx.Node], bool] | None = None,
+    lifted_constant_names: Optional[List[str]]= None,
+    skip_folding_node_fn: Optional[Callable[[torch.fx.Node], bool]]= None,
 ) -> None:
     with torch.utils._python_dispatch._disable_current_modes():
         cf = ConstantFolder(
@@ -378,8 +380,8 @@ def constant_graph_tag(
 def run_and_get_constant_graph(
     gm: torch.fx.GraphModule,
     skip_constructors: bool = True,
-    lifted_constant_names: list[str] | None = None,
-    skip_folding_node_fn: Callable[[torch.fx.Node], bool] | None = None,
+    lifted_constant_names: Optional[List[str]]= None,
+    skip_folding_node_fn: Optional[Callable[[torch.fx.Node], bool]]= None,
 ) -> torch.fx.GraphModule:
     """
     Construct a GraphModule which corresponds to the part which could be
@@ -408,7 +410,7 @@ def run_and_get_constant_graph(
 
     new_graph = torch.fx.Graph()
 
-    node_remapping: dict[torch.fx.Node, torch.fx.Node] = {}
+    node_remapping: Dict[torch.fx.Node, torch.fx.Node] = {}
     output_nodes = []
     for node in gm.graph.nodes:
         if node.meta[META_TAG] == MODULE_TAG:

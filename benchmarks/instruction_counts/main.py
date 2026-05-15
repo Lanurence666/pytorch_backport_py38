@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Basic runner for the instruction count microbenchmarks.
 
 The contents of this file are placeholders, and will be replaced by more

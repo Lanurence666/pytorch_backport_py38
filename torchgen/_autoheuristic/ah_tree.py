@@ -1,4 +1,5 @@
-from typing import Any, Optional
+from __future__ import annotations
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from sklearn.tree import _tree  # type: ignore[import-untyped]
@@ -7,8 +8,8 @@ from sklearn.tree import _tree  # type: ignore[import-untyped]
 class DecisionTreeNode:
     def __init__(
         self,
-        feature: str | None = None,
-        threshold: float | None = None,
+        feature: Union[str, None] = None,
+        threshold: Union[float, None] = None,
         left: Optional["DecisionTreeNode"] = None,
         right: Optional["DecisionTreeNode"] = None,
         class_probs: Any = None,
@@ -34,10 +35,10 @@ class DecisionTree:
     does not seem to be easy with sklearn.
     """
 
-    def __init__(self, sklearn_tree: Any, feature_names: list[str]) -> None:
+    def __init__(self, sklearn_tree: Any, feature_names: List[str]) -> None:
         self.feature_names = feature_names
         self.root = self._convert_sklearn_tree(sklearn_tree.tree_)
-        self.classes_: list[str] = sklearn_tree.classes_
+        self.classes_: List[str] = sklearn_tree.classes_
 
     def _convert_sklearn_tree(
         self, sklearn_tree: Any, node_id: int = 0
@@ -199,9 +200,9 @@ class DecisionTree:
 
     def codegen(
         self,
-        dummy_col_2_col_val: dict[str, tuple[str, Any]],
-        lines: list[str],
-        unsafe_leaves: list[int],
+        dummy_col_2_col_val: Dict[str, Tuple[str, Any]],
+        lines: List[str],
+        unsafe_leaves: List[int],
     ) -> None:
         # generates python code for the decision tree
         def codegen_node(node: DecisionTreeNode, depth: int) -> None:
@@ -232,7 +233,7 @@ class DecisionTree:
                 codegen_node(node.right, depth + 1)
 
         def handle_leaf(
-            node: DecisionTreeNode, indent: str, unsafe_leaves: list[int]
+            node: DecisionTreeNode, indent: str, unsafe_leaves: List[int]
         ) -> str:
             """
             This generates the code for a leaf node in the decision tree. If the leaf is unsafe, the learned heuristic

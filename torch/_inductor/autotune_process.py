@@ -17,10 +17,10 @@ import sys
 import threading
 import time
 import warnings
-from collections.abc import Callable, Iterable, Sequence
+
 from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from ctypes import byref, c_size_t, c_void_p, CDLL
-from typing import Any, IO, TYPE_CHECKING
+from typing import Any, Callable, Dict, IO, Iterable, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import torch
 import torch._inductor.async_compile
@@ -114,7 +114,7 @@ class TuningProcess:
 
     @staticmethod
     def send(
-        obj: Any, write_pipe: IO[bytes], extra_env: dict[str, str] | None = None
+        obj: Any, write_pipe: IO[bytes], extra_env: Optional[Dict[str, str]] = None
     ) -> None:
         pickle.dump((obj, extra_env), write_pipe)
         write_pipe.flush()
@@ -123,7 +123,7 @@ class TuningProcess:
     def recv(read_pipe: IO[bytes]) -> Any:
         return pickle.load(read_pipe)
 
-    def __init__(self, device: int | None):
+    def __init__(self, device: Optional[int]):
         self.device = device
         self.start()
 
@@ -178,7 +178,7 @@ class TuningProcess:
         """
         return self.running and self.process.poll() is None
 
-    def put(self, req: Any, extra_env: dict[str, str] | None = None) -> None:
+    def put(self, req: Any, extra_env: Optional[Dict[str, str]] = None) -> None:
         """
         Push a work item to the child process.
         """
@@ -286,7 +286,7 @@ class TuningProcessPool:
         self.executor = ThreadPoolExecutor(max_workers=len(devices))
 
     @staticmethod
-    def get_device_list() -> Sequence[int | None]:
+    def get_device_list() -> Sequence[Optional[int]]:
         """
         Gather the list of devices to be used in the pool.
         """
@@ -360,8 +360,8 @@ class TuningProcessPool:
 
     def benchmark(
         self,
-        choices: list[TritonTemplateCaller],
-    ) -> dict[TritonTemplateCaller, float]:
+        choices: List[TritonTemplateCaller],
+    ) -> Dict[TritonTemplateCaller, float]:
         """
         Benchmark each choice in a separate process.
         """
@@ -373,7 +373,7 @@ class TuningProcessPool:
         return results
 
 
-LayoutOrBuffer = ir.Layout | ir.Buffer
+LayoutOrBuffer = Union[ir.Layout, ir.Buffer]
 
 
 @dataclasses.dataclass
@@ -383,16 +383,16 @@ class TensorMeta:
     sizes: torch._prims_common.ShapeType
     strides: torch._prims_common.StrideType
     offset: int
-    name: str | None = None
+    name: Optional[str] = None
 
     @classmethod
     def from_irnodes(
-        cls, irnodes: LayoutOrBuffer | Sequence[LayoutOrBuffer]
-    ) -> TensorMeta | list[TensorMeta]:
+        cls, irnodes: Union[LayoutOrBuffer, Sequence[LayoutOrBuffer]]
+    ) -> Union[TensorMeta, List[TensorMeta]]:
         from torch._inductor.select_algorithm import get_strides_with_layout_constraints
 
         if isinstance(irnodes, Sequence):
-            result: list[Any] = [cls.from_irnodes(x) for x in irnodes]
+            result: List[Any] = [cls.from_irnodes(x) for x in irnodes]
             assert all(isinstance(x, TensorMeta) for x in result)
             return result
 
@@ -439,17 +439,17 @@ class BenchmarkRequest:
     def __init__(
         self,
         kernel_name: str,
-        input_tensor_meta: TensorMeta | list[TensorMeta],
-        output_tensor_meta: TensorMeta | list[TensorMeta],
+        input_tensor_meta: Union[TensorMeta, List[TensorMeta]],
+        output_tensor_meta: Union[TensorMeta, List[TensorMeta]],
         extra_args: Iterable[Any],
     ) -> None:
         # the kernel name defined in the module
         self.kernel_name = kernel_name
 
         if isinstance(input_tensor_meta, TensorMeta):
-            self.input_tensor_meta: list[TensorMeta] = [input_tensor_meta]
+            self.input_tensor_meta: List[TensorMeta] = [input_tensor_meta]
         else:
-            self.input_tensor_meta: list[TensorMeta] = input_tensor_meta
+            self.input_tensor_meta: List[TensorMeta] = input_tensor_meta
 
         if output_tensor_meta and isinstance(output_tensor_meta, (tuple, list)):
             if len(output_tensor_meta) > 1:
@@ -479,14 +479,14 @@ class BenchmarkRequest:
         self,
         fn,
         *input_tensors: torch.Tensor,
-        out: torch.Tensor | None = None,
+        out: Optional[torch.Tensor] = None,
     ) -> float:
         raise NotImplementedError
 
     def benchmark(
         self,
         *input_tensors: torch.Tensor,
-        out: torch.Tensor | None = None,
+        out: Optional[torch.Tensor] = None,
     ) -> float:
         debug = autotuning_log.isEnabledFor(logging.DEBUG)
         if debug:
@@ -542,9 +542,9 @@ class _TestBenchmarkRequest(BenchmarkRequest):
     def __init__(
         self,
         result: float = 0.0,
-        device: int | None = None,
-        sleep: float | None = None,
-        exc: Exception | None = None,
+        device: Optional[int] = None,
+        sleep: Optional[float] = None,
+        exc: Optional[Exception] = None,
         crash: bool = False,
     ):
         self.result = result
@@ -554,7 +554,7 @@ class _TestBenchmarkRequest(BenchmarkRequest):
         self.crash = crash
 
     def benchmark(
-        self, *input_tensors: torch.Tensor, out: torch.Tensor | None = None
+        self, *input_tensors: torch.Tensor, out: Optional[torch.Tensor] = None
     ) -> float:
         if self.device is not None:
             assert os.environ.get(CUDA_VISIBLE_DEVICES, None) == str(self.device)
@@ -572,7 +572,7 @@ class GPUDeviceBenchmarkMixin:
         self,
         fn,
         *input_tensors: torch.Tensor,
-        out: torch.Tensor | None = None,
+        out: Optional[torch.Tensor] = None,
     ) -> float:
         device_idx_set = OrderedSet(
             tensor.device.index
@@ -607,7 +607,7 @@ class CPUDeviceBenchmarkMixin:
         self,
         fn,
         *input_tensors: torch.Tensor,
-        out: torch.Tensor | None = None,
+        out: Optional[torch.Tensor] = None,
     ) -> float:
         return benchmarker.benchmark_cpu(fn)
 
@@ -623,8 +623,8 @@ class TritonBenchmarkRequest(BenchmarkRequest):
     def __init__(
         self,
         kernel_name: str,
-        input_tensor_meta: TensorMeta | list[TensorMeta],
-        output_tensor_meta: TensorMeta | list[TensorMeta],
+        input_tensor_meta: Union[TensorMeta, List[TensorMeta]],
+        output_tensor_meta: Union[TensorMeta, List[TensorMeta]],
         extra_args: Iterable[Any],
         module_path: str,  # the path of the module defining the triton kernel
         module_cache_key: str,
@@ -635,7 +635,7 @@ class TritonBenchmarkRequest(BenchmarkRequest):
         matrix_instr_nonkdim: int = 0,  # only used for hip to choose the shape of mfma instruction.
         waves_per_eu: int = 0,  # only used for hip to schedule waves per execution unit
         kpack: int = 0,  # ROCm specific gemm parameter
-        workspace_size: int | None = None,  # size of workspace buffer in bytes
+        workspace_size: Optional[int] = None,  # size of workspace buffer in bytes
         workspace_zero_fill: bool = False,  # whether to zero-fill workspace
     ) -> None:
         super().__init__(kernel_name, input_tensor_meta, output_tensor_meta, extra_args)
@@ -753,11 +753,11 @@ class ExternKernelBenchmarkRequest(BenchmarkRequest):
     def __init__(
         self,
         kernel_name: str,
-        input_tensor_meta: TensorMeta | list[TensorMeta],
-        output_tensor_meta: TensorMeta | list[TensorMeta],
+        input_tensor_meta: Union[TensorMeta, List[TensorMeta]],
+        output_tensor_meta: Union[TensorMeta, List[TensorMeta]],
         extra_args: Iterable[Any],
         callable_path: str,  # Module path to the callable (e.g., "extern_kernels.mm")
-        kwargs: dict[str, Any] | None = None,
+        kwargs: Optional[Dict[str, Any]] = None,
         has_out_variant: bool = True,
     ) -> None:
         super().__init__(kernel_name, input_tensor_meta, output_tensor_meta, extra_args)
@@ -776,7 +776,7 @@ class ExternKernelBenchmarkRequest(BenchmarkRequest):
             # For non-out variant, just call with inputs
             return functools.partial(fn, *input_tensors)
 
-    def benchmark(self, *input_tensors: torch.Tensor, out: torch.Tensor | None = None):
+    def benchmark(self, *input_tensors: torch.Tensor, out: Optional[torch.Tensor] = None):
         if out is not None and out.numel() == 0:
             # no need to run the kernel of do benchmarking
             return 0.0
@@ -841,12 +841,12 @@ class SubgraphBenchmarkRequest(BenchmarkRequest):
     def __init__(
         self,
         kernel_name: str,
-        input_tensor_meta: TensorMeta | list[TensorMeta],
-        output_tensor_meta: TensorMeta | list[TensorMeta],
+        input_tensor_meta: Union[TensorMeta, List[TensorMeta]],
+        output_tensor_meta: Union[TensorMeta, List[TensorMeta]],
         extra_args: Iterable[Any],
         module_path: str,
         module_cache_key: str,
-        sym_input_values: list[int],
+        sym_input_values: List[int],
     ) -> None:
         super().__init__(kernel_name, input_tensor_meta, output_tensor_meta, extra_args)
         self.module_path = module_path
@@ -890,8 +890,8 @@ class CUTLASSBenchmarkRequest(GPUDeviceBenchmarkMixin, BenchmarkRequest):
     def __init__(
         self,
         kernel_name: str,
-        input_tensor_meta: TensorMeta | list[TensorMeta],
-        output_tensor_meta: TensorMeta | list[TensorMeta],
+        input_tensor_meta: Union[TensorMeta, List[TensorMeta]],
+        output_tensor_meta: Union[TensorMeta, List[TensorMeta]],
         extra_args: Iterable[Any],
         source_code: str,
         device_type: str = "cuda",
@@ -899,8 +899,8 @@ class CUTLASSBenchmarkRequest(GPUDeviceBenchmarkMixin, BenchmarkRequest):
         super().__init__(kernel_name, input_tensor_meta, output_tensor_meta, extra_args)
         self.source_code = source_code
         self.workspace_size: int = 0
-        self.workspace: torch.Tensor | None = None
-        self.DLL: DLLWrapper | None = None
+        self.workspace: Optional[torch.Tensor] = None
+        self.DLL: Optional[DLLWrapper] = None
         self._workspace_size_updated = False
         self.hash_key: str = ""
         self.source_file: str = ""
@@ -1030,14 +1030,14 @@ class CUTLASSBenchmarkRequest(GPUDeviceBenchmarkMixin, BenchmarkRequest):
     def __str__(self) -> str:
         return f"{self.kernel_name=}, {self.source_file=}, {self.hash_key=}"
 
-    def __getstate__(self) -> dict[str, Any]:
+    def __getstate__(self) -> Dict[str, Any]:
         state = self.__dict__.copy()
         state["DLL"] = None
         state["workspace"] = None
         state["_workspace_size_updated"] = False
         return state
 
-    def __setstate__(self, state: dict[str, Any]) -> None:
+    def __setstate__(self, state: Dict[str, Any]) -> None:
         self.__dict__.update(state)
 
 
@@ -1048,15 +1048,15 @@ class CppBenchmarkRequest(CPUDeviceBenchmarkMixin, BenchmarkRequest):
     def __init__(
         self,
         kernel_name: str,
-        input_tensor_meta: TensorMeta | list[TensorMeta],
-        output_tensor_meta: TensorMeta | list[TensorMeta],
+        input_tensor_meta: Union[TensorMeta, List[TensorMeta]],
+        output_tensor_meta: Union[TensorMeta, List[TensorMeta]],
         extra_args: Iterable[Any],
         source_code: str,
     ) -> None:
         super().__init__(kernel_name, input_tensor_meta, output_tensor_meta, extra_args)
         self.source_code = source_code
         self.hash_key = get_hash(source_code)
-        self.DLL: CDLL | ModuleType | None = None
+        self.DLL: Optional[Union[CDLL, ModuleType]] = None
 
     def precompile(self):
         # Prepopulate CppCodeCache
@@ -1102,9 +1102,9 @@ class CuteDSLBenchmarkRequest(GPUDeviceBenchmarkMixin, BenchmarkRequest):
     def __init__(
         self,
         kernel_name: str,
-        input_tensor_meta: TensorMeta | list[TensorMeta],
-        output_tensor_meta: TensorMeta | list[TensorMeta],
-        extra_args: tuple[Any, ...],
+        input_tensor_meta: Union[TensorMeta, List[TensorMeta]],
+        output_tensor_meta: Union[TensorMeta, List[TensorMeta]],
+        extra_args: Tuple[Any, ...],
         source_code: PartialRender,
     ) -> None:
         super().__init__(kernel_name, input_tensor_meta, output_tensor_meta, extra_args)
@@ -1142,7 +1142,7 @@ class CuteDSLBenchmarkRequest(GPUDeviceBenchmarkMixin, BenchmarkRequest):
         return run_kernel
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def get_tuning_process_pool() -> TuningProcessPool:
     pool = TuningProcessPool()
     atexit.register(pool.shutdown)
@@ -1150,8 +1150,8 @@ def get_tuning_process_pool() -> TuningProcessPool:
 
 
 def benchmark_in_sub_process(
-    choices: list[TritonTemplateCaller],
-) -> dict[TritonTemplateCaller, float]:
+    choices: List[TritonTemplateCaller],
+) -> Dict[TritonTemplateCaller, float]:
     """
     Do benchmarking in a subprocess and return the perf number (latency).
     """
@@ -1164,15 +1164,15 @@ class AutotuneProcessPool:
     in a separate process.
     """
 
-    _instance: AutotuneProcessPool | None = None
+    _instance: Optional[AutotuneProcessPool] = None
     _lock: threading.Lock = threading.Lock()
     _shutdown_for_inactivity: bool = False
 
     def __init__(self):
-        self._pool: ProcessPoolExecutor | None = self._init_pool()
-        self._warmup_future: Future[Any] | None = None
-        self._warmup_start_time: float | None = None
-        self._timer: Timer | None = self._init_timer()
+        self._pool: Optional[ProcessPoolExecutor] = self._init_pool()
+        self._warmup_future: Optional[Future[Any]] = None
+        self._warmup_start_time: Optional[float] = None
+        self._timer: Optional[Timer] = self._init_timer()
 
     @classmethod
     def get_instance(cls):
@@ -1195,7 +1195,7 @@ class AutotuneProcessPool:
             self._timer = self._init_timer()
         return self._pool
 
-    def _init_timer(self) -> Timer | None:
+    def _init_timer(self) -> Optional[Timer]:
         if AUTOTUNE_POOL_INACTIVITY_TIMEOUT > 0:
             return Timer(AUTOTUNE_POOL_INACTIVITY_TIMEOUT, self._on_inactivity_timeout)
         return None
@@ -1370,7 +1370,7 @@ class PrecompileThreadPool:
     precompilation happens in background threads.
     """
 
-    _instance: PrecompileThreadPool | None = None
+    _instance: Optional[PrecompileThreadPool] = None
     _lock = threading.Lock()
 
     def __init__(self, max_workers: int = 4):
@@ -1426,7 +1426,7 @@ class AsyncAutotuner:
         return choice.hash_key() + inputs_key
 
     @classmethod
-    def start(cls, choices: list[ChoiceCaller], inputs_key: str):
+    def start(cls, choices: List[ChoiceCaller], inputs_key: str):
         """
         Start asynchronous autotuning in a subprocess.
 
@@ -1455,8 +1455,8 @@ class AsyncAutotuner:
 
     @classmethod
     def get_results(
-        cls, choices: list[ChoiceCaller], inputs_key: str
-    ) -> dict[ChoiceCaller, float]:
+        cls, choices: List[ChoiceCaller], inputs_key: str
+    ) -> Dict[ChoiceCaller, float]:
         """
         Get autotuning results, blocking until complete.
 

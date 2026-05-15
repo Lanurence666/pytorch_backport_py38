@@ -1,6 +1,7 @@
 # Owner(s): ["oncall: profiler"]
 # ruff: noqa: F841
 
+from __future__ import annotations
 from typing import Any
 
 import torch

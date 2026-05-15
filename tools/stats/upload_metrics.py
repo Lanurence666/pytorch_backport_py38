@@ -6,7 +6,7 @@ import os
 import time
 import uuid
 from datetime import timezone
-from typing import Any
+from typing import Any, Dict
 from warnings import warn
 
 
@@ -61,7 +61,7 @@ class EnvVarMetric:
         return value
 
 
-global_metrics: dict[str, Any] = {}
+global_metrics: Dict[str, Any] = {}
 
 
 def add_global_metric(metric_name: str, metric_value: Any) -> None:
@@ -75,7 +75,7 @@ def add_global_metric(metric_name: str, metric_value: Any) -> None:
 
 def emit_metric(
     metric_name: str,
-    metrics: dict[str, Any],
+    metrics: Dict[str, Any],
 ) -> None:
     """
     Upload a metric to DynamoDB (and from there, the HUD backend database).

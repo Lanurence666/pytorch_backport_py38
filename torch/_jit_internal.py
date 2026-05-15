@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 The weak_script annotation needs to be here instead of inside torch/jit/ so it
@@ -58,7 +59,7 @@ class HasGetattr(Protocol):
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
-BuiltinUnionType: type | tuple[type, ...] = types.UnionType
+BuiltinUnionType = getattr(types, 'UnionType', type(None))
 
 LockType: type
 try:
@@ -409,7 +410,7 @@ def createResolutionCallbackFromClosure(fn) -> Callable[[str], Any]:
     return createResolutionCallbackFromEnv(closure_lookup())
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def can_compile_class(cls) -> bool:
     # If any of the functions on a type don't have a code object, this type can't
     # be compiled and is probably a builtin / bound from C

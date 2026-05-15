@@ -1,6 +1,7 @@
 # Owner(s): ["oncall: quantization"]
 # ruff: noqa: F841
 
+from __future__ import annotations
 import torch
 import math
 from torch.ao.quantization import (

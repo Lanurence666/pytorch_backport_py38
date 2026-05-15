@@ -1,6 +1,7 @@
 #pragma once
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/cuda/Atomic.cuh>
+#include <ATen/AccumulateType.h>
 
 #include <c10/util/ArrayRef.h>
 #include <c10/util/SmallVector.h>
@@ -8,6 +9,7 @@
 
 #include <math.h>
 #include <optional>
+#include <ATen/OpMathType.h>
 
 namespace at::native {
 
@@ -35,12 +37,14 @@ inline std::optional<double> get_scale_value(std::optional<c10::ArrayRef<double>
 /* TODO: move this to a common place */
 template <typename scalar_t>
 __device__ inline scalar_t min(scalar_t a, scalar_t b) {
-  return a < b ? a : b;
+  using opmath_t = at::opmath_type<scalar_t>;
+  return static_cast<opmath_t>(a) < static_cast<opmath_t>(b) ? a : b;
 }
 
 template <typename scalar_t>
 __device__ inline scalar_t max(scalar_t a, scalar_t b) {
-  return a > b ? a : b;
+  using opmath_t = at::opmath_type<scalar_t>;
+  return static_cast<opmath_t>(a) > static_cast<opmath_t>(b) ? a : b;
 }
 
 // NOTE [ Nearest neighbor upsampling kernel implementation ]

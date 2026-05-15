@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 from collections.abc import Callable, Sequence
 from functools import partial
 
@@ -15,12 +17,13 @@ from torch.distributed.tensor._op_schema import (
     TupleStrategy,
 )
 from torch.distributed.tensor._ops.utils import expand_to_full_mesh_op_strategy
+from typing import Callable, List, Optional, Sequence, Tuple, Type, Union, overload
 
 
 __all__ = ["register_sharding"]
 
 
-def register_sharding(op: OpOverload | list[OpOverload]):
+def register_sharding(op: Union[OpOverload, List[OpOverload]]):
     """
     :meth:`register_sharding` is an experimental API that allows users to register sharding
     strategies for an operator when the tensor inputs and outputs are DTensor.
@@ -67,7 +70,7 @@ def register_sharding(op: OpOverload | list[OpOverload]):
 
     def custom_strategy(
         custom_sharding_fn: Callable[
-            ..., Sequence[tuple[PlacementList, PlacementList]]
+            ..., Sequence[Tuple[PlacementList, PlacementList]]
         ],
         op_schema: OpSchema,
     ) -> StrategyType:
@@ -89,7 +92,7 @@ def register_sharding(op: OpOverload | list[OpOverload]):
 
         acceptable_shardings = custom_sharding_fn(*args_schema, **kwargs_schema)
 
-        single_mesh_dim_strategies: list[PlacementList] = []
+        single_mesh_dim_strategies: List[PlacementList] = []
         for output_specs, input_specs in acceptable_shardings:
             single_mesh_dim_strategies.append(output_specs + input_specs)
 
@@ -110,7 +113,7 @@ def register_sharding(op: OpOverload | list[OpOverload]):
             #       2. let static_kwargkey include all the int type kwargs
             #       3. always set needs_pytree=True
             static_argnum = 100
-            static_kwargkey: list[str] = []
+            static_kwargkey: List[str] = []
             for i, arg in enumerate(op._schema.arguments):
                 if isinstance(arg.type, torch.IntType) or (
                     isinstance(arg.type, torch.OptionalType)

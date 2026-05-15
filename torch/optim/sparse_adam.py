@@ -1,10 +1,13 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch import Tensor
 
 from . import _functional as F
 from .optimizer import _maximize_doc, _params_doc, _to_scalar, Optimizer, ParamsT
+from typing import Callable, List, Tuple, Union
 
 
 __all__ = ["SparseAdam"]
@@ -14,8 +17,8 @@ class SparseAdam(Optimizer):
     def __init__(
         self,
         params: ParamsT,
-        lr: float | Tensor = 1e-3,
-        betas: tuple[float, float] = (0.9, 0.999),
+        lr: Union[float, Tensor]= 1e-3,
+        betas: Tuple[float, float] = (0.9, 0.999),
         eps: float = 1e-8,
         maximize: bool = False,
     ) -> None:
@@ -74,11 +77,11 @@ class SparseAdam(Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
-            params_with_grad: list[Tensor] = []
-            grads: list[Tensor] = []
-            exp_avgs: list[Tensor] = []
-            exp_avg_sqs: list[Tensor] = []
-            state_steps: list[int] = []
+            params_with_grad: List[Tensor] = []
+            grads: List[Tensor] = []
+            exp_avgs: List[Tensor] = []
+            exp_avg_sqs: List[Tensor] = []
+            state_steps: List[int] = []
             beta1, beta2 = group["betas"]
             maximize = group.get("maximize", False)
 
@@ -157,7 +160,7 @@ SparseAdam.__doc__ = rf"""SparseAdam implements a masked version of the Adam alg
     It is important to not conflate a semantically sparse tensor (a tensor where many
     of its values are zeros) with a sparse layout tensor (a tensor where ``.is_sparse``
     returns ``True``). The SparseAdam approximation is intended for `semantically` sparse
-    tensors and the sparse layout is only an implementation detail. A clearer implementation
+    tensors and the sparse layout is only a implementation detail. A clearer implementation
     would be to use MaskedTensors, but those are experimental.
 
 

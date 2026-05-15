@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Set
 import argparse
 import os
 
@@ -49,7 +50,7 @@ selected_mobile_ops_preamble = """#pragma once
 """
 
 
-def extract_root_operators(selective_builder: SelectiveBuilder) -> set[str]:
+def extract_root_operators(selective_builder: SelectiveBuilder) -> Set[str]:
     ops = []
     for op_name, op in selective_builder.operators.items():
         if op.is_root_operator:
@@ -128,7 +129,7 @@ def write_selected_mobile_ops(
 # 2. All kernel dtypes
 def write_selected_mobile_ops_with_all_dtypes(
     output_file_path: str,
-    root_ops: set[str],
+    root_ops: Set[str],
 ) -> None:
     with open(output_file_path, "wb") as out_file:
         body_parts = [selected_mobile_ops_preamble]

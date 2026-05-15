@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import weakref
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, List, Type, Union
 
 import torch
 import torch.distributed as dist
@@ -48,7 +50,7 @@ def _perform_local_step(
     # expects `None` in a list position to indicate that the corresponding
     # parameter should not be updated
     num_local_optim_params = len(zero.optim.param_groups[0]["params"])
-    gradients: list[torch.Tensor | None] = [
+    gradients: Union[List[torch.Tensor, None]]= [
         _NO_PARAM_UPDATE for _ in range(num_local_optim_params)
     ]
     if bucket_index not in overlap_info.offsets:

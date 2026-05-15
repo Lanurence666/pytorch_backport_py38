@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import ctypes
 import sys
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
 
@@ -156,7 +158,7 @@ def _get_gpu_rtc_library() -> ctypes.CDLL:
         return _get_nvrtc_library()
 
 
-def _get_gpu_rtc_compatible_flags() -> list[str]:
+def _get_gpu_rtc_compatible_flags() -> List[str]:
     """
     Get HIPCC/NVCC flags that are compatible with NVRTC compilation.
 
@@ -183,11 +185,11 @@ def _get_gpu_rtc_compatible_flags() -> list[str]:
 def _nvrtc_compile(
     kernel_source: str,
     kernel_name: str,
-    compute_capability: str | None = None,
-    cuda_include_dirs: list | None = None,
-    nvcc_options: list | None = None,
+    compute_capability: Optional[str]= None,
+    cuda_include_dirs: Optional[list]= None,
+    nvcc_options: Optional[list]= None,
     auto_pch: bool = False,
-) -> tuple[bytes, str]:
+) -> Tuple[bytes, str]:
     """
     Compiles a CUDA kernel using NVRTC and returns the PTX code.
 
@@ -329,7 +331,7 @@ def _nvrtc_compile(
 class _CudaModule:
     def __init__(self, module: ctypes.c_void_p) -> None:
         self._module = module
-        self._kernels: dict[str, _CudaKernel] = {}
+        self._kernels: Dict[str, _CudaKernel] = {}
 
     def __getattr__(self, name: str) -> "_CudaKernel":
         if name in self._kernels:
@@ -368,11 +370,11 @@ class _CudaKernel:
 
     def __call__(
         self,
-        grid: tuple[int, int, int] = (1, 1, 1),
-        block: tuple[int, int, int] = (1, 1, 1),
-        args: list | None = None,
+        grid: Tuple[int, int, int] = (1, 1, 1),
+        block: Tuple[int, int, int] = (1, 1, 1),
+        args: Optional[list]= None,
         shared_mem: int = 0,
-        stream: Any | None = None,
+        stream: Optional[Any]= None,
     ) -> None:
         """
         Call the compiled CUDA kernel
@@ -393,7 +395,7 @@ class _CudaKernel:
             args = []
 
         # Process arguments and convert tensors to pointers
-        processed_args: list[ctypes.c_void_p] = []
+        processed_args: List[ctypes.c_void_p] = []
         c_args = []
 
         for arg in args:
@@ -507,8 +509,8 @@ class _CudaKernel:
 
 
 def _cuda_load_module(
-    ptx: str | bytes, kernel_names: list[str] | None = None
-) -> _CudaModule | dict[str, "_CudaKernel"]:
+    ptx: Optional[Union[str, bytes, kernel_names: List[str]]]= None
+) -> Union[_CudaModule, Dict[str, "_CudaKernel"]]:
     """
     Loads a CUDA module from PTX code and returns a module object that can access kernels.
 

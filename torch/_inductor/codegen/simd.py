@@ -11,8 +11,8 @@ import math
 import operator
 import textwrap
 from collections import Counter
-from typing import Any, Generic, NamedTuple, TYPE_CHECKING
-from typing_extensions import TypeVar
+from typing import Any, Callable, Dict, Generic, Iterable, Iterator, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union, cast
+from typing_extensions import NamedTuple, TypeVar
 
 import sympy
 
@@ -40,7 +40,7 @@ from ..dependencies import MemoryDep, StarDep, WeakDep
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
 
     from ..ir import IRNode
 
@@ -75,7 +75,7 @@ from .simd_kernel_features import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Iterable, Iterator
 
     from torch._inductor.tiling_utils import CoalesceVarAnalysis
 
@@ -115,8 +115,8 @@ class IterationRanges:
     def __init__(
         self,
         name: str,
-        var_list: list[sympy.Symbol],
-        var_ranges: dict[sympy.Symbol, sympy.Expr],
+        var_list: List[sympy.Symbol],
+        var_ranges: Dict[sympy.Symbol, sympy.Expr],
         numel: sympy.Expr,
         prefix: str,
         *,
@@ -165,11 +165,11 @@ class IterationRangesRoot(IterationRanges):
         prefix: str,
         index: int,
         kernel: SIMDKernel,
-        pid_cache: dict[str, str] | None = None,
+        pid_cache: Optional[Dict[str, str]] = None,
         *,
         is_loop: bool,
-        tensor_dim: int | None,
-        grid_dim: int | None,
+        tensor_dim: Optional[int],
+        grid_dim: Optional[int],
         has_zdim: bool,
     ) -> None:
         if pid_cache is None:
@@ -185,10 +185,10 @@ class IterationRangesRoot(IterationRanges):
         )
         self.index = index
         # Store all the nodes in one flat list
-        self.nodes: dict[sympy.Expr, IterationRangesEntry] = {}
+        self.nodes: Dict[sympy.Expr, IterationRangesEntry] = {}
         # This is for re-ordering program ID in triton mm template
         # pid_cache["tl.program_id(0)"] = pid_m
-        self.pid_cache: dict[str, str] = pid_cache
+        self.pid_cache: Dict[str, str] = pid_cache
 
         # True if the dimension is implemented as a single program looping over
         # the full dimension (currently only used for non-persistent reduction)
@@ -235,8 +235,8 @@ class IterationRangesRoot(IterationRanges):
         return self.nodes[expr]
 
     def construct_entries(
-        self, lengths: list[sympy.Expr]
-    ) -> list[IterationRangesEntry]:
+        self, lengths: List[sympy.Expr]
+    ) -> List[IterationRangesEntry]:
         divisor = sympy.S.One
         itervars = []
         for length in reversed(lengths):
@@ -244,15 +244,15 @@ class IterationRangesRoot(IterationRanges):
             divisor = divisor * length
         return [*reversed(itervars)]
 
-    def construct(self, lengths: list[sympy.Expr]) -> list[sympy.Symbol]:
+    def construct(self, lengths: List[sympy.Expr]) -> List[sympy.Symbol]:
         return [e.symbol() for e in self.construct_entries(lengths)]
 
     def vars_and_sizes(
         self, index: sympy.Expr
-    ) -> tuple[list[sympy.Symbol], list[sympy.Expr]]:
+    ) -> Tuple[List[sympy.Symbol], List[sympy.Expr]]:
         """Figure out vars from this tree used in index"""
 
-        def get_sort_key(x: IterationRangesEntry) -> tuple[int, bool]:
+        def get_sort_key(x: IterationRangesEntry) -> Tuple[int, bool]:
             """
             Gets the key for sorting nodes. When two nodes have the
             same divisor, the node with length as 1 should be handled
@@ -329,9 +329,9 @@ class IterationRangesEntry(IterationRanges):
         V.kernel.codegen_iteration_ranges_entry(self)
         return self.name
 
-    def precomputed_args(self) -> list[sympy.Expr]:
+    def precomputed_args(self) -> List[sympy.Expr]:
         # for dynamic shapes, find parts of indexing expressions that have to be precomputed
-        precomputed_args: list[sympy.Expr] = []
+        precomputed_args: List[sympy.Expr] = []
         if isinstance(self.expr, sympy.Symbol):
             return precomputed_args
         assert isinstance(self.expr, (FloorDiv, ModularIndexing)), type(self.expr)
@@ -352,7 +352,7 @@ class IterationRangesEntry(IterationRanges):
         return self.name == other.name
 
 
-def constant_repr(value: int | float) -> str:
+def constant_repr(value: Union[int, float]) -> str:
     if value == float("inf"):
         return 'float("inf")'
     elif value == float("-inf"):
@@ -379,7 +379,7 @@ class NodeInfo(NamedTuple):
 
     node_schedule: list
     tiling: dict
-    tiling_scores: dict | None
+    tiling_scores: Optional[dict]
     numel: Any
     rnumel: Any
     features: SIMDKernelFeatures
@@ -399,12 +399,12 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
 
     def __init__(
         self,
-        tiling: dict[str, sympy.Expr],
+        tiling: Dict[str, sympy.Expr],
         features: SIMDKernelFeatures,
-        pid_cache: dict[str, str] | None = None,
-        override_persistent_reduction: bool | None = None,
-        override_cooperative_reduction: bool | None = None,
-        tiling_scores: dict[str, sympy.Expr] | None = None,
+        pid_cache: Optional[Dict[str, str]] = None,
+        override_persistent_reduction: Optional[bool] = None,
+        override_cooperative_reduction: Optional[bool] = None,
+        tiling_scores: Optional[Dict[str, sympy.Expr]] = None,
         mix_order_reduction: bool = False,
     ) -> None:
         if pid_cache is None:
@@ -417,8 +417,8 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
         self.numels = {
             prefix: V.graph.sizevars.simplify(val) for prefix, val in tiling.items()
         }
-        self.range_trees: list[IterationRangesRoot] = []
-        self.range_tree_nodes: dict[sympy.Symbol, IterationRangesEntry] = {}
+        self.range_trees: List[IterationRangesRoot] = []
+        self.range_tree_nodes: Dict[sympy.Symbol, IterationRangesEntry] = {}
         self.iter_vars_count = itertools.count()
         self.inside_reduction = features.is_reduction()
         self.cooperative_reduction: bool = (
@@ -426,8 +426,8 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
             if override_cooperative_reduction is not None
             else self.should_use_cooperative_reduction()
         )
-        self.tiling_scores: dict[str, sympy.Expr] | None = tiling_scores
-        self.tiling: dict[str, sympy.Expr] = tiling
+        self.tiling_scores: Optional[Dict[str, sympy.Expr]] = tiling_scores
+        self.tiling: Dict[str, sympy.Expr] = tiling
         self.persistent_reduction: bool = (
             override_persistent_reduction
             if override_persistent_reduction is not None
@@ -435,7 +435,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
         )
         self.mix_order_reduction: bool = mix_order_reduction
         self.no_x_dim = self.want_no_x_dim()
-        self.code_hash: str | None = None
+        self.code_hash: Optional[str] = None
         # Info to enable multiple store_output calls for epilogue subtiling
         self.store_output_ctr = itertools.count()
         self.is_native_matmul = False
@@ -450,7 +450,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
                     break
 
         # define this in a closure to make cache local to object
-        @functools.cache
+        @functools.lru_cache(maxsize=None)
         def simplify_indexing(index: sympy.Expr):
             index = V.graph.sizevars.simplify_with_ranges(index, self.var_ranges())
             for tree in self.range_trees:
@@ -462,7 +462,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
         self.initialize_range_tree(pid_cache)
 
         self.rsplit_size = 0
-        self.saved_partial_accumulate: list[PartialAccumulate] = []
+        self.saved_partial_accumulate: List[PartialAccumulate] = []
 
     def codegen_template_body(
         self,
@@ -482,7 +482,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
         """
         raise NotImplementedError
 
-    def get_unfused_epilogues(self) -> list[Any]:
+    def get_unfused_epilogues(self) -> List[Any]:
         """Return epilogue nodes that were not fused into the kernel.
 
         These nodes need separate codegen (via ``call_kernel``) and must
@@ -522,18 +522,18 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
 
     def construct_range_trees(
         self,
-        pid_cache: dict[str, str] | None,
+        pid_cache: Optional[Dict[str, str]],
         inside_reduction: bool,
         is_reduction: bool,
-        numels: dict[str, sympy.Expr],
+        numels: Dict[str, sympy.Expr],
         no_x_dim: bool,
-    ) -> list[IterationRangesRoot]:
+    ) -> List[IterationRangesRoot]:
         active_prefixes = OrderedSet(
             prefix for prefix in all_prefixes if prefix in numels
         )
         no_r_dim = not inside_reduction or not is_reduction
 
-        def filtered_index_map(seq, mask) -> dict[Any, int]:
+        def filtered_index_map(seq, mask) -> Dict[Any, int]:
             return {
                 val: idx for idx, val in enumerate(val for val in seq if val in mask)
             }
@@ -575,7 +575,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
             )
         return range_trees
 
-    def initialize_range_tree(self, pid_cache: dict[str, str]) -> None:
+    def initialize_range_tree(self, pid_cache: Dict[str, str]) -> None:
         range_trees = self.construct_range_trees(
             pid_cache,
             self.inside_reduction,
@@ -605,7 +605,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
     def should_use_persistent_reduction(self) -> bool:
         return False  # defined in subclass
 
-    def var_ranges(self) -> dict[sympy.Symbol, sympy.Expr]:
+    def var_ranges(self) -> Dict[sympy.Symbol, sympy.Expr]:
         return dict(
             itertools.chain.from_iterable(
                 tree.var_ranges.items() for tree in self.range_trees
@@ -620,7 +620,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
         sizes[i] = ":"
         return f"[{', '.join(sizes)}]"
 
-    def dense_size_list(self) -> list[str]:
+    def dense_size_list(self) -> List[str]:
         sizes = ["1"] * self.triton_tensor_ndim()
         for tree in self.range_trees:
             if tree.tensor_dim is None:
@@ -716,7 +716,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
 
         return ctx()
 
-    def set_ranges(self, *lengths: sympy.Expr) -> list[sympy.Symbol]:
+    def set_ranges(self, *lengths: sympy.Expr) -> List[sympy.Symbol]:
         assert len(lengths) == len(self.range_trees)
         return [
             ranges.construct(length)
@@ -726,15 +726,15 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
     @staticmethod
     def _split_iteration_ranges(
         groups: Iterable[sympy.Expr], lengths: Sequence[Sequence[sympy.Expr]]
-    ) -> tuple[
-        list[list[sympy.Expr]], list[list[Callable[[list[sympy.Expr]], sympy.Expr]]]
+    ) -> Tuple[
+        List[List[sympy.Expr]], List[List[Callable[[List[sympy.Expr]], sympy.Expr]]]
     ]:
         # Special case: if a node's sizes are ([], []), there's nothing to split.
         if all(len(length) == 0 for length in lengths):
             return [[] for group in groups], []
 
         sv = V.graph.sizevars
-        new_ranges: list[list[sympy.Expr]] = [[] for _ in groups]
+        new_ranges: List[List[sympy.Expr]] = [[] for _ in groups]
         remaining = [sv.simplify(g) for g in groups]
         var_count = itertools.count()
 
@@ -748,15 +748,15 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
             return next(var_count)
 
         def make_combined(
-            sizes: list[sympy.Expr], idxs: list[int]
-        ) -> Callable[[list[sympy.Expr]], sympy.Expr]:
+            sizes: List[sympy.Expr], idxs: List[int]
+        ) -> Callable[[List[sympy.Expr]], sympy.Expr]:
             """
             Builds the nested expression:
               ((...((s1*v[i1] + v[i2]) * s2 + v[i3]) ... ) * sk + v[i(k+1)])
             """
             assert len(idxs) == len(sizes) + 1
 
-            def getter(flat_vars: list[sympy.Expr]) -> sympy.Expr:
+            def getter(flat_vars: List[sympy.Expr]) -> sympy.Expr:
                 expr = flat_vars[idxs[0]]
                 for s, idx in zip(sizes, idxs[1:]):
                     expr = s * expr + flat_vars[idx]
@@ -911,7 +911,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
 
     def split_and_set_ranges(
         self, lengths: Sequence[Sequence[sympy.Expr]]
-    ) -> list[list[sympy.Expr]]:
+    ) -> List[List[sympy.Expr]]:
         """
         Split and set iteration ranges for the kernel based on the provided lengths.
 
@@ -949,7 +949,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
         groups: Sequence[sympy.Expr],
         lengths: Sequence[Sequence[sympy.Expr]],
         set_ranges,
-    ) -> list[list[sympy.Expr]]:
+    ) -> List[List[sympy.Expr]]:
         """
         We may want to fuse `for i0 in s0*s1` into a tiled kernel with groups (s0, s1).
 
@@ -1049,7 +1049,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
 
         return self.codegen_indexing(simp_index)
 
-    def active_range_trees(self) -> list[IterationRangesRoot]:
+    def active_range_trees(self) -> List[IterationRangesRoot]:
         return [
             t for t in self.range_trees if not t.is_reduction or self.inside_reduction
         ]
@@ -1080,12 +1080,12 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
             wrapper.generate_workspace_deallocation(ws)
 
     def call_kernel(
-        self, name: str, node: IRNode | None = None, deallocate_ws: bool = True
+        self, name: str, node: Optional[IRNode] = None, deallocate_ws: bool = True
     ) -> None:
         raise NotImplementedError("NYI: call_kernel")
 
     @contextlib.contextmanager
-    def mask_loads(self, mask: str | OpsWrapper, value: int | float) -> Iterator[str]:
+    def mask_loads(self, mask: Union[str, OpsWrapper], value: Union[int, float]) -> Iterator[str]:
         """Context manager to add an additional mask to tl.load/store"""
         prior = self._load_mask
         prior_val = self._load_other
@@ -1102,7 +1102,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
             self._load_mask = prior
             self._load_other = prior_val
 
-    def get_strides_of_load(self, index: sympy.Expr) -> dict[sympy.Symbol, sympy.Expr]:
+    def get_strides_of_load(self, index: sympy.Expr) -> Dict[sympy.Symbol, sympy.Expr]:
         """
         This gets the stride of the index for each of the tiling variables
         (technically, it does it at index 0)
@@ -1117,8 +1117,6 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
         {xindex: 512, rindex: 1024}
         """
         index_to_tile_indexes = {k: v.expr for k, v in self.range_tree_nodes.items()}
-        if isinstance(index, sympy.Expr):
-            index = index.expand(identity=True)
         index_in_tile_vars = sympy_subs(index, index_to_tile_indexes)  # type: ignore[arg-type]
         strides = {}
         for range_tree in self.range_trees:
@@ -1134,7 +1132,7 @@ class SIMDKernel(Kernel[CSEVariableType], Generic[CSEVariableType]):
             return tuple(map(fn, value))
         return fn(value)
 
-    def estimate_flops(self) -> int | None:
+    def estimate_flops(self) -> Optional[int]:
         flops = [
             node.estimate_flops()
             for node in NodeScheduleMarker.only_nodes(self.features.node_schedule)
@@ -1314,7 +1312,7 @@ class SIMDScheduling(BaseScheduling):
     multiple different backends.
     """
 
-    kernel_type: type[Any] = SIMDKernel  # override in subclass
+    kernel_type: Type[Any] = SIMDKernel  # override in subclass
 
     def group_fn(self, sizes):
         return tuple(V.graph.sizevars.simplify(sympy_product(s)) for s in sizes)
@@ -1485,13 +1483,13 @@ class SIMDScheduling(BaseScheduling):
     can_fuse_horizontal = can_fuse
 
     def generate_node_schedule(self, nodes, numel, rnumel):
-        node_schedule: list[Any] = []
+        node_schedule: List[Any] = []
         done = OrderedSet[scheduler.BaseSchedulerNode]()
         # Writes with a reduced shape, meaning they are only present once the
         # reduction loop has ended
         not_ready_yet_nodes: OrderedSet[str] = OrderedSet()
         current_loop_buffer_usage: OrderedSet[str] = OrderedSet()
-        maybe_split_index: int | None = None
+        maybe_split_index: Optional[int] = None
 
         def fits_in_main_body(n):
             _, (node_numel, node_rnumel) = n.group
@@ -1656,8 +1654,8 @@ class SIMDScheduling(BaseScheduling):
 
     # pyrefly: ignore [bad-override]
     def benchmark_codegened_module(
-        self, mod, n_spills_threshold=8, node_names: OrderedSet[str] | None = None
-    ) -> tuple[float, str]:
+        self, mod, n_spills_threshold=8, node_names: Optional[OrderedSet[str]] = None
+    ) -> Tuple[float, str]:
         raise NotImplementedError
 
     def _codegen_mix_order_reduction(self, node1, node2):
@@ -1829,7 +1827,7 @@ class SIMDScheduling(BaseScheduling):
     def _codegen_nodes(
         self,
         nodes: Sequence[scheduler.SchedulerNode],
-        coalesce_analysis: CoalesceVarAnalysis | None = None,
+        coalesce_analysis: Optional[CoalesceVarAnalysis] = None,
     ):
         assert self.scheduler
         nodes = [
@@ -1847,7 +1845,7 @@ class SIMDScheduling(BaseScheduling):
         )
 
     def codegen_node(
-        self, node: scheduler.FusedSchedulerNode | scheduler.SchedulerNode
+        self, node: Union[scheduler.FusedSchedulerNode, scheduler.SchedulerNode]
     ):
         """
         Given a set of pre-fused nodes, generate a Triton kernel.
@@ -1874,7 +1872,7 @@ class SIMDScheduling(BaseScheduling):
     @staticmethod
     def can_use_32bit_indexing(
         numel: sympy.Expr,
-        buffers: Iterable[ir.Buffer | ir.TensorBox | ir.TorchBindObject | ir.IRNode],
+        buffers: Union[Iterable[Union[ir.Buffer, ir.TensorBox], Union[ir.TorchBindObject, ir.IRNode]]],
     ) -> bool:
         int_max = torch.iinfo(torch.int32).max
 
@@ -1911,7 +1909,7 @@ class SIMDScheduling(BaseScheduling):
     def process_kernel(
         self,
         kernel: Any,
-        node_schedule: list[NodeScheduleEntry],
+        node_schedule: List[NodeScheduleEntry],
         only_gen_src_code: bool = False,
     ) -> None:
         """
@@ -1925,13 +1923,13 @@ class SIMDScheduling(BaseScheduling):
         V.graph.removed_buffers |= kernel.removed_buffers
         V.graph.inplaced_to_remove |= kernel.inplaced_to_remove
 
-    def _collect_config_patches(self, node_schedule: list[Any]) -> dict[str, Any]:
+    def _collect_config_patches(self, node_schedule: List[Any]) -> Dict[str, Any]:
         """Collect and merge config_patches from all operations in the node schedule.
 
         This enables scoped config (e.g., coordinate_descent_tuning) for kernels
         that contain decomposition operations.
         """
-        merged_patches: dict[str, Any] = {}
+        merged_patches: Dict[str, Any] = {}
         for node in node_schedule:
             if isinstance(node, BaseSchedulerNode) and node.node is not None:
                 patches = node.node.get_config_patches()
@@ -1973,7 +1971,7 @@ class SIMDScheduling(BaseScheduling):
             kernel.code_hash = code_hash(src_code)
         del kernel
 
-        final_kernel: SIMDKernel | MultiKernel
+        final_kernel: Union[SIMDKernel, MultiKernel]
         if len(kernels) > 1:
             final_kernel = MultiKernel(kernels)
         else:
@@ -2029,7 +2027,7 @@ class SIMDScheduling(BaseScheduling):
 
     def create_kernel_choices(
         self, kernel_features: SIMDKernelFeatures, kernel_args, kernel_kwargs
-    ) -> list[SIMDKernel]:
+    ) -> List[SIMDKernel]:
         return [
             self.kernel_type(
                 *kernel_args,
@@ -2148,7 +2146,7 @@ class SIMDScheduling(BaseScheduling):
 
     def _get_multikernel_shapes(
         self, node: MultiTemplateBuffer
-    ) -> tuple[tuple[int, ...], ...]:
+    ) -> Tuple[Tuple[int, ...], ...]:
         from ..ir import IRNode
 
         def get_size(arg):
@@ -2180,7 +2178,7 @@ class SIMDScheduling(BaseScheduling):
 
     def _make_shape_cache_key(
         self, node: MultiTemplateBuffer, hint: int
-    ) -> tuple[tuple[int, ...], ...]:
+    ) -> Tuple[Tuple[int, ...], ...]:
         """
         Returns cache key for hint-based multi-graph; key is tuple of shapes with hint filled in.
         """
@@ -2202,8 +2200,8 @@ class SIMDScheduling(BaseScheduling):
         prologue_nodes,
         *,
         only_gen_src_code=False,
-        hint_override: int | None = None,
-    ) -> str | None:
+        hint_override: Optional[int] = None,
+    ) -> Optional[str]:
         """
         Codegen a triton template with multi-kernel dispatch support
 
@@ -2312,12 +2310,12 @@ class SIMDScheduling(BaseScheduling):
 
     def generate_combo_kernel_code(
         self,
-        subkernel_nodes: list[BaseSchedulerNode],
+        subkernel_nodes: List[BaseSchedulerNode],
         custom_part_algorithm: bool,
         enable_autotune: bool,
         mixed_sizes: bool,
         only_gen_src_code: bool = False,
-    ) -> list[tuple[str | None, Any, Any]]:
+    ) -> List[Tuple[Optional[str], Any, Any]]:
         """
         Generate kernel code for combo kernel partitions.
 
@@ -2334,7 +2332,7 @@ class SIMDScheduling(BaseScheduling):
         assert issubclass(self.kernel_type, TritonKernel)
 
         fused_node_lists = [node.get_nodes() for node in subkernel_nodes]
-        node_schedule_map: dict[Any, NodeInfo] = {}
+        node_schedule_map: Dict[Any, NodeInfo] = {}
         for pn, nodes in zip(subkernel_nodes, fused_node_lists):
             _, (numel, rnumel) = max(nodes, key=lambda x: int(x.is_reduction())).group
             node_schedule = self.generate_node_schedule(nodes, numel, rnumel)
@@ -2460,10 +2458,10 @@ class SIMDScheduling(BaseScheduling):
 
     @classmethod
     @functools.lru_cache(32)
-    def candidate_tilings(cls, node, numel, reduction_numel) -> list[CandidateTiling]:
+    def candidate_tilings(cls, node, numel, reduction_numel) -> List[CandidateTiling]:
         is_pointwise = reduction_numel == 1
 
-        def tile_ranges(is_pointwise: bool, ranges, rw) -> list[CandidateTiling]:
+        def tile_ranges(is_pointwise: bool, ranges, rw) -> List[CandidateTiling]:
             """
             Compute tiling candidates by dividing up the iteration ranges.
             """
@@ -2590,7 +2588,7 @@ class SIMDScheduling(BaseScheduling):
     @classmethod
     def create_tiling(
         cls, pw_tiling: Sequence[sympy.Expr], reduction_tiling: Sequence[sympy.Expr]
-    ) -> immutable_dict[str, sympy.Expr]:
+    ) -> immutable_Dict[str, sympy.Expr]:
         """
         Create a tiling dict from pointwise and reduction splits.
         """
@@ -2602,7 +2600,7 @@ class SIMDScheduling(BaseScheduling):
         return immutable_dict(
             [
                 *zip(pw_prefixes[-len(pw_tiling) :], pw_tiling, strict=False),
-                *zip(reduction_prefixes, reduction_tiling, strict=False),
+                *zip(reduction_prefixes, reduction_tiling),
             ]
         )
 
@@ -2611,7 +2609,7 @@ class SIMDScheduling(BaseScheduling):
         cls,
         tiling: Sequence[sympy.Expr],
         is_pointwise: bool,
-    ) -> immutable_dict[str, sympy.Expr]:
+    ) -> immutable_Dict[str, sympy.Expr]:
         return cls.create_tiling(
             tiling if is_pointwise else [],
             tiling if not is_pointwise else [],
@@ -2620,10 +2618,10 @@ class SIMDScheduling(BaseScheduling):
     @classmethod
     def complete_partial_tiling(
         cls,
-        tiling: dict[str, sympy.Expr],
+        tiling: Dict[str, sympy.Expr],
         numel: sympy.Expr,
         reduction_numel: sympy.Expr,
-    ) -> immutable_dict[str, sympy.Expr]:
+    ) -> immutable_Dict[str, sympy.Expr]:
         """
         Given a tiling for only pointwise or reduction dimensions, adds the missing one.
         """
@@ -2644,7 +2642,7 @@ class SIMDScheduling(BaseScheduling):
         node_schedule,
         pointwise_numel,
         reduction_numel,
-    ) -> list[immutable_dict[str, sympy.Expr]]:
+    ) -> List[immutable_Dict[str, sympy.Expr]]:
         """
         Creates N-dimensional tiling candidates, attempting to simplify loads/stores
         by tiling the kernel into higher dimensions.
@@ -2654,7 +2652,7 @@ class SIMDScheduling(BaseScheduling):
 
         def collapse_dims(
             dims: Sequence[sympy.Expr], fallback_numel: sympy.Expr
-        ) -> tuple[sympy.Expr, ...]:
+        ) -> Tuple[sympy.Expr, ...]:
             """
             Collapse dimensions to the maximum allowed number of tiles.
             """
@@ -2674,7 +2672,7 @@ class SIMDScheduling(BaseScheduling):
 
         def tile_var_ranges(
             var_ranges, ranges_to_tile, total_numel
-        ) -> tuple[sympy.Expr, ...]:
+        ) -> Tuple[sympy.Expr, ...]:
             # Pattern match the subexpression pertaining to each index variable.
             tiling = []
             for var, numel in var_ranges:
@@ -2705,7 +2703,7 @@ class SIMDScheduling(BaseScheduling):
             return collapse_dims(tiling, total_numel)
 
         is_pointwise = reduction_numel == 1
-        tilings = OrderedSet[immutable_dict[str, sympy.Expr]]()
+        tilings = OrderedSet[immutable_Dict[str, sympy.Expr]]()
         for node in EnableReduction.filter(node_schedule):
             if not isinstance(node, scheduler.SchedulerNode):
                 continue
@@ -2791,15 +2789,15 @@ class SIMDScheduling(BaseScheduling):
     @classmethod
     def compute_tiling_strategy(
         cls,
-        node_schedule: list[NodeScheduleEntry],
+        node_schedule: List[NodeScheduleEntry],
         pointwise_numel: sympy.Expr,
         reduction_numel: sympy.Expr,
         coalesce_analysis: CoalesceVarAnalysis,
-    ) -> tuple[dict[str, sympy.Expr], dict[str, sympy.Expr] | None]:
+    ) -> Tuple[Dict[str, sympy.Expr], Dict[str, sympy.Expr] | None]:
         """
         Generates a tiling, and a score of each tile according to each tile's coalesced memory accesses.
         """
-        tiling_var: sympy.Expr | None = (
+        tiling_var: Optional[sympy.Expr] = (
             None
             if not coalesce_analysis.suggested_split
             else coalesce_analysis.suggested_split.var
@@ -2825,17 +2823,17 @@ class SIMDScheduling(BaseScheduling):
         )
 
         # score of a pointwise or reduction split
-        scored_sub_split: dict[Any, tuple[list[int], list[int]]] = {}
+        scored_sub_split: Dict[Any, Tuple[List[int], List[int]]] = {}
 
-        score_split: list[
-            tuple[tuple[list[int], list[int]], tuple[list[int], list[int]]]
+        score_split: List[
+            Tuple[Tuple[List[int], List[int]], Tuple[List[int], List[int]]]
         ] = []
 
         def process_node_vars(
-            vars_to_use: tuple[sympy.Expr, ...] = (),
+            vars_to_use: Tuple[sympy.Expr, ...] = (),
             use_split_var: bool = False,
             is_pointwise: bool = False,
-        ) -> tuple[list[int], list[int]]:
+        ) -> Tuple[List[int], List[int]]:
             """
             Generate a tiling, and a tiling score, given vars to use as splits.
             """
@@ -2948,7 +2946,7 @@ class SIMDScheduling(BaseScheduling):
                     )
                 )
 
-        tilings: list[tuple[CandidateTiling, immutable_dict[str, sympy.Expr]]] = []
+        tilings: List[Tuple[CandidateTiling, immutable_Dict[str, sympy.Expr]]] = []
         for (pw_split, pw_score), (red_split, red_score) in score_split:
             candidate = CandidateTiling(
                 cls.create_tiling(pw_split, red_split),
@@ -3011,10 +3009,10 @@ class SIMDScheduling(BaseScheduling):
     @classmethod
     def tiling_is_compatible(
         cls,
-        node_schedule: list[NodeScheduleEntry],
+        node_schedule: List[NodeScheduleEntry],
         numel: sympy.Expr,
         reduction_numel: sympy.Expr,
-        tiling: dict[str, sympy.Expr],
+        tiling: Dict[str, sympy.Expr],
     ):
         assert isinstance(tiling, dict)
         return all(
@@ -3028,10 +3026,10 @@ class SIMDScheduling(BaseScheduling):
     @classmethod
     def get_first_compatible_tiling(
         cls,
-        node_schedule: list[NodeScheduleEntry],
+        node_schedule: List[NodeScheduleEntry],
         numel: sympy.Expr,
         reduction_numel: sympy.Expr,
-        ranked_tilings: list[dict[str, sympy.Expr]],
+        ranked_tilings: List[Dict[str, sympy.Expr]],
     ):
         for tiling in ranked_tilings:
             if cls.tiling_is_compatible(node_schedule, numel, reduction_numel, tiling):
@@ -3045,8 +3043,8 @@ class SIMDScheduling(BaseScheduling):
         node_schedule,
         numel,
         reduction_numel=sympy.S.One,
-        coalesce_analysis: CoalesceVarAnalysis | None = None,
-    ) -> dict[str, sympy.Expr]:
+        coalesce_analysis: Optional[CoalesceVarAnalysis] = None,
+    ) -> Dict[str, sympy.Expr]:
         return cls.get_tiling_and_scores(
             node_schedule, numel, reduction_numel, coalesce_analysis
         )[0]
@@ -3057,8 +3055,8 @@ class SIMDScheduling(BaseScheduling):
         node_schedule,
         numel,
         reduction_numel=sympy.S.One,
-        coalesce_analysis: CoalesceVarAnalysis | None = None,
-    ) -> tuple[dict[str, sympy.Expr], dict[str, sympy.Expr] | None]:
+        coalesce_analysis: Optional[CoalesceVarAnalysis] = None,
+    ) -> Tuple[Dict[str, sympy.Expr], Dict[str, sympy.Expr] | None]:
         """
         Heuristics to decide how to tile kernels.
         Currently, we tile based on stride-1 dimensions.
@@ -3131,7 +3129,7 @@ class SIMDScheduling(BaseScheduling):
                     seen_names.add(candidate_tiling.name)
                 candidate_tiles[candidate_tiling] += candidate_tiling.score
 
-        ranked_tilings: list[dict[str, sympy.Expr]] = [
+        ranked_tilings: List[Dict[str, sympy.Expr]] = [
             candidate_tiling.tiling
             for candidate_tiling, score in candidate_tiles.most_common()
         ]
@@ -3144,8 +3142,8 @@ class SIMDScheduling(BaseScheduling):
             # NB: More than three max tiles is not enabled by default.
 
             def convert_tiling_to_3d(
-                tiling0: dict[str, sympy.Expr], tiling1: dict[str, sympy.Expr]
-            ) -> dict[str, sympy.Expr] | None:
+                tiling0: Dict[str, sympy.Expr], tiling1: Dict[str, sympy.Expr]
+            ) -> Dict[str, sympy.Expr] | None:
                 a0, a1 = tiling0["x"], tiling0.get("y", 1)
                 b0, b1 = tiling1["x"], tiling1.get("y", 1)
 
@@ -3208,7 +3206,7 @@ class SIMDScheduling(BaseScheduling):
         return False
 
     def generate_kernel_code_from_nodes(
-        self, nodes, benchmark_kernel=False, hint_override: int | None = None
+        self, nodes, benchmark_kernel=False, hint_override: Optional[int] = None
     ):
         if not any(n.is_template() for n in nodes):
             _, (numel, rnumel) = max(nodes, key=lambda x: int(x.is_reduction())).group
@@ -3222,10 +3220,7 @@ class SIMDScheduling(BaseScheduling):
             # Collect config_patches from operations
             config_patches = self._collect_config_patches(node_schedule)
             config_patches["benchmark_kernel"] = benchmark_kernel
-            with (
-                config.patch(**config_patches),
-                V.set_kernel_handler(kernel),
-            ):
+            with config.patch(**config_patches), V.set_kernel_handler(kernel):
                 src_code = kernel.codegen_kernel()
         else:
             prologue, template, epilogue = nodes[0].get_prologue_template_epilogue(
@@ -3250,9 +3245,9 @@ class SIMDScheduling(BaseScheduling):
 
 @dataclasses.dataclass(frozen=True)
 class CandidateTiling:
-    tiling: dict[str, sympy.Expr]
+    tiling: Dict[str, sympy.Expr]
     score: int  # higher is better
-    name: str | None = None
+    name: Optional[str] = None
 
     @staticmethod
     def is_good_size(s):

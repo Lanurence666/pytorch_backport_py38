@@ -1,25 +1,16 @@
+from __future__ import annotations
 """
 Shared utilities for stable-shim linters.
 
 Consumed by:
     - tools/linter/adapters/stable_shim_version_linter.py
     - tools/linter/adapters/stable_shim_usage_linter.py
-    - tools/linter/adapters/generated_shims_version_linter.py
 """
 
-from __future__ import annotations
 
 import re
-import sys
 from enum import Enum
-from pathlib import Path
-from typing import NamedTuple
-
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO_ROOT))
-
-from tools.setup_helpers.gen_version_header import parse_version
+from typing import List, NamedTuple, Tuple, Union
 
 
 class LintSeverity(str, Enum):
@@ -30,15 +21,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 class PreprocessorTracker:
@@ -54,10 +45,10 @@ class PreprocessorTracker:
         # Stack of (is_version_block, version_tuple) tuples
         # is_version_block: True if this is a TORCH_FEATURE_VERSION >= TORCH_VERSION_X_Y_0 block
         # version_tuple: (major, minor) if is_version_block is True, else None
-        self.preprocessor_stack: list[tuple[bool, tuple[int, int] | None]] = []
+        self.preprocessor_stack: List[Tuple[bool, Union[Tuple[int, int], None]]] = []
 
         # Current version requirement (if inside a version block)
-        self.version_of_block: tuple[int, int] | None = None
+        self.version_of_block: Union[Tuple[int, int], None] = None
 
         # Track if we're inside a block comment
         self.in_block_comment: bool = False
@@ -165,24 +156,6 @@ class PreprocessorTracker:
         """Check if currently inside any version block."""
         return self.version_of_block is not None
 
-    def get_version_of_block(self) -> tuple[int, int] | None:
+    def get_version_of_block(self) -> Union[Tuple[int, int], None]:
         """Get the current version requirement, or None if not in a version block."""
         return self.version_of_block
-
-
-def get_current_version() -> tuple[int, int, int]:
-    """
-    Get the current PyTorch version from version.txt. Returns (major, minor, patch) tuple.
-    """
-    version_file = REPO_ROOT / "version.txt"
-
-    if not version_file.exists():
-        raise RuntimeError(
-            "Could not find version.txt. This linter requires version.txt to run"
-        )
-
-    with open(version_file) as f:
-        version = f.read().strip()
-        major, minor, patch = parse_version(version)
-
-    return (major, minor, patch)

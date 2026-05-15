@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
 from tabulate import tabulate
 
@@ -77,13 +77,13 @@ FR_TRACE_TEMPLATE = """
 {% block content %}
     {% if fetch_summary %}<pre>{{ fetch_summary }}</pre>{% endif %}
     <h2>Groups</h2>
-    {{ groups | safe }}
+    {{ Union[groups, safe] }}
     <h2>Memberships</h2>
-    {{ memberships | safe }}
+    {{ Union[memberships, safe] }}
     <h2>Collectives</h2>
-    {{ collectives | safe }}
+    {{ Union[collectives, safe] }}
     <h2>NCCL Calls</h2>
-    {{ ncclcalls | safe }}
+    {{ Union[ncclcalls, safe] }}
 {% endblock %}
     """
 
@@ -141,7 +141,7 @@ PROFILE_TEMPLATE = """
         {% else %}
             <script>
             function run{{ i }}() {
-                var data = {{ resp.text | safe }};
+                var data = {{ Union[resp.text, safe] }};
                 openPerfetto(data);
             }
             </script>
@@ -160,7 +160,7 @@ TCPSTORE_TEMPLATE = """
 {% block content %}
     <pre>
     {% for k, v in zip(keys, values) -%}
-{{ k }}: {{ v | truncate(100) }}
+{{ k }}: {{ Union[v, truncate](100) }}
     {% endfor %}
     </pre>
 {% endblock %}
@@ -173,13 +173,13 @@ TCPSTORE_TEMPLATE = """
 
 
 class IndexHandler(DebugHandler):
-    def routes(self) -> list[Route]:
+    def routes(self) -> List[Route]:
         return [Route("/", self._handle)]
 
-    def nav_links(self) -> list[NavLink]:
+    def nav_links(self) -> List[NavLink]:
         return [NavLink("/", "Home")]
 
-    def templates(self) -> dict[str, str]:
+    def templates(self) -> Dict[str, str]:
         return {"index.html": INDEX_TEMPLATE}
 
     def _handle(self, req: HTTPRequestHandler) -> bytes:
@@ -187,10 +187,10 @@ class IndexHandler(DebugHandler):
 
 
 class StacksHandler(DebugHandler):
-    def routes(self) -> list[Route]:
+    def routes(self) -> List[Route]:
         return [Route("/stacks", self._handle)]
 
-    def nav_links(self) -> list[NavLink]:
+    def nav_links(self) -> List[NavLink]:
         return [NavLink("/stacks", "Python Stack Traces")]
 
     def _handle(self, req: HTTPRequestHandler) -> bytes:
@@ -199,9 +199,9 @@ class StacksHandler(DebugHandler):
             "raw_resp.html", title="Stacks", addrs=addrs, resps=resps
         )
 
-    def dump(self) -> str | None:
+    def dump(self) -> Optional[str]:
         addrs, resps = fetch_all("dump_traceback", timeout=self.fetch_timeout)
-        parts: list[str] = []
+        parts: List[str] = []
         summary = format_fetch_summary(addrs, resps)
         if summary:
             parts.append(summary)
@@ -218,13 +218,13 @@ class StacksHandler(DebugHandler):
 
 
 class PySpyHandler(DebugHandler):
-    def routes(self) -> list[Route]:
+    def routes(self) -> List[Route]:
         return [Route("/pyspy_dump", self._handle)]
 
-    def nav_links(self) -> list[NavLink]:
+    def nav_links(self) -> List[NavLink]:
         return [NavLink("/pyspy_dump", "py-spy Stacks")]
 
-    def templates(self) -> dict[str, str]:
+    def templates(self) -> Dict[str, str]:
         return {"pyspy_dump.html": PYSPY_DUMP_TEMPLATE}
 
     def _handle(self, req: HTTPRequestHandler) -> bytes:
@@ -238,11 +238,11 @@ class PySpyHandler(DebugHandler):
             resps=resps,
         )
 
-    def dump(self) -> str | None:
+    def dump(self) -> Optional[str]:
         addrs, resps = fetch_all(
             "pyspy_dump", "nonblocking=1", timeout=self.fetch_timeout
         )
-        parts: list[str] = []
+        parts: List[str] = []
         summary = format_fetch_summary(addrs, resps)
         if summary:
             parts.append(summary)
@@ -259,7 +259,7 @@ class PySpyHandler(DebugHandler):
 
 
 class FlightRecorderHandler(DebugHandler):
-    def routes(self) -> list[Route]:
+    def routes(self) -> List[Route]:
         return [
             Route("/fr_trace", self._handle_fr_trace),
             Route("/fr_trace_json", self._handle_fr_trace_json),
@@ -267,7 +267,7 @@ class FlightRecorderHandler(DebugHandler):
             Route("/fr_trace_nccl_json", self._handle_fr_trace_nccl_json),
         ]
 
-    def nav_links(self) -> list[NavLink]:
+    def nav_links(self) -> List[NavLink]:
         return [
             NavLink("/fr_trace", "FlightRecorder CPU"),
             NavLink("/fr_trace_json", "(JSON)"),
@@ -275,11 +275,11 @@ class FlightRecorderHandler(DebugHandler):
             NavLink("/fr_trace_nccl_json", "(JSON)"),
         ]
 
-    def templates(self) -> dict[str, str]:
+    def templates(self) -> Dict[str, str]:
         return {"fr_trace.html": FR_TRACE_TEMPLATE}
 
     @staticmethod
-    def _build_db(addrs: list[str], resps: list[Response]) -> Database:
+    def _build_db(addrs: List[str], resps: List[Response]) -> Database:
         config = JobConfig()
         args = config.parse_args(args=[])
         args.allow_incomplete_ranks = True
@@ -306,7 +306,7 @@ class FlightRecorderHandler(DebugHandler):
         return build_db(details, args, version)
 
     def _render_tables(
-        self, server: FrontendServer, addrs: list[str], resps: list[Response]
+        self, server: FrontendServer, addrs: List[str], resps: List[Response]
     ) -> bytes:
         db = self._build_db(addrs, resps)
         return server.render_template(
@@ -353,7 +353,7 @@ class FlightRecorderHandler(DebugHandler):
             resps=resps,
         )
 
-    def dump(self) -> str | None:
+    def dump(self) -> Optional[str]:
         parts = []
 
         addrs, resps = fetch_all("fr_trace_json", timeout=self.fetch_timeout)
@@ -417,13 +417,13 @@ class FlightRecorderHandler(DebugHandler):
 
 
 class ProfilerHandler(DebugHandler):
-    def routes(self) -> list[Route]:
+    def routes(self) -> List[Route]:
         return [Route("/profile", self._handle)]
 
-    def nav_links(self) -> list[NavLink]:
+    def nav_links(self) -> List[NavLink]:
         return [NavLink("/profile", "torch profiler")]
 
-    def templates(self) -> dict[str, str]:
+    def templates(self) -> Dict[str, str]:
         return {"profile.html": PROFILE_TEMPLATE}
 
     def _handle(self, req: HTTPRequestHandler) -> bytes:
@@ -435,10 +435,10 @@ class ProfilerHandler(DebugHandler):
 
 
 class WaitCountersHandler(DebugHandler):
-    def routes(self) -> list[Route]:
+    def routes(self) -> List[Route]:
         return [Route("/wait_counters", self._handle)]
 
-    def nav_links(self) -> list[NavLink]:
+    def nav_links(self) -> List[NavLink]:
         return [NavLink("/wait_counters", "Wait Counters")]
 
     def _handle(self, req: HTTPRequestHandler) -> bytes:
@@ -447,9 +447,9 @@ class WaitCountersHandler(DebugHandler):
             "json_resp.html", title="Wait Counters", addrs=addrs, resps=resps
         )
 
-    def dump(self) -> str | None:
+    def dump(self) -> Optional[str]:
         addrs, resps = fetch_all("wait_counter_values", timeout=self.fetch_timeout)
-        parts: list[str] = []
+        parts: List[str] = []
         summary = format_fetch_summary(addrs, resps)
         if summary:
             parts.append(summary)
@@ -467,13 +467,13 @@ class WaitCountersHandler(DebugHandler):
 
 
 class TCPStoreHandler(DebugHandler):
-    def routes(self) -> list[Route]:
+    def routes(self) -> List[Route]:
         return [Route("/tcpstore", self._handle)]
 
-    def nav_links(self) -> list[NavLink]:
+    def nav_links(self) -> List[NavLink]:
         return [NavLink("/tcpstore", "TCPStore")]
 
-    def templates(self) -> dict[str, str]:
+    def templates(self) -> Dict[str, str]:
         return {"tcpstore.html": TCPSTORE_TEMPLATE}
 
     def _handle(self, req: HTTPRequestHandler) -> bytes:
@@ -483,7 +483,7 @@ class TCPStoreHandler(DebugHandler):
         values = [repr(v) for v in store.multi_get(keys)]
         return req.frontend.render_template("tcpstore.html", keys=keys, values=values)
 
-    def dump(self) -> str | None:
+    def dump(self) -> Optional[str]:
         store = tcpstore_client(prefix="")
         keys = store.list_keys()
         keys.sort()
@@ -498,19 +498,19 @@ class TCPStoreHandler(DebugHandler):
 class TorchCommsFlightRecorderHandler(DebugHandler):
     """Handler for TorchComms FlightRecorder trace data."""
 
-    def routes(self) -> list[Route]:
+    def routes(self) -> List[Route]:
         return [
             Route("/torchcomms_fr_trace", self._handle_torchcomms_fr_trace),
             Route("/torchcomms_fr_trace_json", self._handle_torchcomms_fr_trace_json),
         ]
 
-    def nav_links(self) -> list[NavLink]:
+    def nav_links(self) -> List[NavLink]:
         return [
             NavLink("/torchcomms_fr_trace", "TorchComms FR"),
             NavLink("/torchcomms_fr_trace_json", "(JSON)"),
         ]
 
-    def templates(self) -> dict[str, str]:
+    def templates(self) -> Dict[str, str]:
         return {"fr_trace.html": FR_TRACE_TEMPLATE}
 
     def _handle_torchcomms_fr_trace(self, req: HTTPRequestHandler) -> bytes:
@@ -531,7 +531,7 @@ class TorchCommsFlightRecorderHandler(DebugHandler):
         )
 
     def _render_tables(
-        self, server: FrontendServer, addrs: list[str], resps: list[Response]
+        self, server: FrontendServer, addrs: List[str], resps: List[Response]
     ) -> bytes:
         db = FlightRecorderHandler._build_db(addrs, resps)
         return server.render_template(
@@ -548,9 +548,9 @@ class TorchCommsFlightRecorderHandler(DebugHandler):
             ncclcalls=tabulate(db.ncclcalls, headers=NCCLCall._fields, tablefmt="html"),
         )
 
-    def dump(self) -> str | None:
+    def dump(self) -> Optional[str]:
         addrs, resps = fetch_all("torchcomms_fr_trace_json", timeout=self.fetch_timeout)
-        parts: list[str] = []
+        parts: List[str] = []
         summary = format_fetch_summary(addrs, resps)
         if summary:
             parts.append(summary)
@@ -575,7 +575,7 @@ class TorchCommsFlightRecorderHandler(DebugHandler):
         return "torchcomms_fr_trace"
 
 
-def default_handlers() -> list[DebugHandler]:
+def default_handlers() -> List[DebugHandler]:
     return [
         IndexHandler(),
         StacksHandler(),

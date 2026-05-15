@@ -1,8 +1,14 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import hashlib
 import logging
-from collections.abc import Sequence
-from typing import cast, TypeGuard
+
+from typing import List, Sequence, Set, Type, cast
+try:
+    from typing import TypeGuard
+except ImportError:
+    from typing_extensions import TypeGuard
 
 from torch._inductor.codegen.cutlass.python_evt import (
     CutlassEVTCodegen,
@@ -139,7 +145,7 @@ class CUTLASSScheduling(BaseScheduling):
         _, (_numel, rnumel) = template_node.group
         assert rnumel == 1
         ctb: CUTLASSTemplateBuffer = cast(CUTLASSTemplateBuffer, template_node.node)
-        epilogue_ir_nodes: list[Buffer] = [n.node for n in epilogue_nodes]  # type: ignore[misc]
+        epilogue_ir_nodes: List[Buffer] = [n.node for n in epilogue_nodes]  # type: ignore[misc]
         assert all(isinstance(n, ComputedBuffer) for n in epilogue_ir_nodes), (
             "Epilogue nodes must all be instances of ir.ComputedBuffer"
         )
@@ -183,7 +189,7 @@ class CUTLASSScheduling(BaseScheduling):
     @staticmethod
     def _unwrap_epilogue_nodes(
         fused_node: FusedSchedulerNode,
-    ) -> list[BaseSchedulerNode]:
+    ) -> List[BaseSchedulerNode]:
         nodes = fused_node.get_nodes()
         template_node = fused_node.get_template_node()
         assert all(n.node is not None for n in nodes), (
@@ -191,13 +197,13 @@ class CUTLASSScheduling(BaseScheduling):
         )
         # pyrefly: ignore [redundant-cast]
         return cast(
-            list[BaseSchedulerNode], [n for n in nodes if n.node is not template_node]
+            List[BaseSchedulerNode], [n for n in nodes if n.node is not template_node]
         )
 
     def _can_fuse_epilogue_impl(
         self,
         cutlass_template_buffer: CUTLASSTemplateBuffer,
-        existing_epilogue_nodes: list[BaseSchedulerNode],
+        existing_epilogue_nodes: List[BaseSchedulerNode],
         node_to_fuse: BaseSchedulerNode,
     ) -> bool:
         """

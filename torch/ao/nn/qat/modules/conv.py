@@ -1,5 +1,9 @@
 # mypy: allow-untyped-defs
-from typing import ClassVar, Literal
+from __future__ import annotations
+
+from typing import ClassVar, Tuple, Type, Union
+from typing_extensions import Literal
+
 
 import torch
 import torch.nn as nn
@@ -12,18 +16,18 @@ __all__ = ["Conv1d", "Conv2d", "Conv3d"]
 
 
 class _ConvNd(nn.modules.conv._ConvNd):
-    _FLOAT_MODULE: ClassVar[type[nn.modules.conv._ConvNd]]
+    _FLOAT_MODULE: ClassVar[Type[nn.modules.conv._ConvNd]]
 
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: tuple[int, ...],
-        stride: tuple[int, ...],
-        padding: str | tuple[int, ...],
-        dilation: tuple[int, ...],
+        kernel_size: Tuple[int, ...],
+        stride: Tuple[int, ...],
+        padding: Union[str, Tuple[int, ...]],
+        dilation: Tuple[int, ...],
         transposed: bool,
-        output_padding: tuple[int, ...],
+        output_padding: Tuple[int, ...],
         groups: int,
         bias: bool,
         padding_mode: Literal["zeros", "reflect", "replicate", "circular"],
@@ -142,8 +146,8 @@ class Conv1d(_ConvNd, nn.Conv1d):
         weight_fake_quant: fake quant module for weight
     """
 
-    _FLOAT_MODULE: ClassVar[type[nn.Conv1d]] = nn.Conv1d
-    _FLOAT_CONV_MODULE: ClassVar[type[nn.Conv1d]] = nn.Conv1d
+    _FLOAT_MODULE: ClassVar[Type[nn.Conv1d]] = nn.Conv1d
+    _FLOAT_CONV_MODULE: ClassVar[Type[nn.Conv1d]] = nn.Conv1d
 
     def __init__(
         self,
@@ -151,7 +155,7 @@ class Conv1d(_ConvNd, nn.Conv1d):
         out_channels: int,
         kernel_size: _size_1_t,
         stride: _size_1_t = 1,
-        padding: str | _size_1_t = 0,
+        padding: Union[str, _size_1_t] = 0,
         dilation: _size_1_t = 1,
         groups: int = 1,
         bias: bool = True,
@@ -204,8 +208,8 @@ class Conv2d(_ConvNd, nn.Conv2d):
         weight_fake_quant: fake quant module for weight
     """
 
-    _FLOAT_MODULE: ClassVar[type[nn.Conv2d]] = nn.Conv2d
-    _FLOAT_CONV_MODULE: ClassVar[type[nn.Conv2d]] = nn.Conv2d
+    _FLOAT_MODULE: ClassVar[Type[nn.Conv2d]] = nn.Conv2d
+    _FLOAT_CONV_MODULE: ClassVar[Type[nn.Conv2d]] = nn.Conv2d
 
     def __init__(
         self,
@@ -213,7 +217,7 @@ class Conv2d(_ConvNd, nn.Conv2d):
         out_channels: int,
         kernel_size: _size_2_t,
         stride: _size_2_t = 1,
-        padding: str | _size_2_t = 0,
+        padding: Union[str, _size_2_t] = 0,
         dilation: _size_2_t = 1,
         groups: int = 1,
         bias: bool = True,
@@ -269,8 +273,8 @@ class Conv3d(_ConvNd, nn.Conv3d):
         weight_fake_quant: fake quant module for weight
     """
 
-    _FLOAT_MODULE: ClassVar[type[nn.Conv3d]] = nn.Conv3d
-    _FLOAT_CONV_MODULE: ClassVar[type[nn.Conv3d]] = nn.Conv3d
+    _FLOAT_MODULE: ClassVar[Type[nn.Conv3d]] = nn.Conv3d
+    _FLOAT_CONV_MODULE: ClassVar[Type[nn.Conv3d]] = nn.Conv3d
 
     def __init__(
         self,
@@ -278,7 +282,7 @@ class Conv3d(_ConvNd, nn.Conv3d):
         out_channels: int,
         kernel_size: _size_3_t,
         stride: _size_3_t = 1,
-        padding: str | _size_3_t = 0,
+        padding: Union[str, _size_3_t] = 0,
         dilation: _size_3_t = 1,
         groups: int = 1,
         bias: bool = True,

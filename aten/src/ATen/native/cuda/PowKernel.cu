@@ -8,6 +8,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/Pow.h>
 #include <c10/core/Scalar.h>
+#include <ATen/OpMathType.h>
 
 namespace at::native {
 

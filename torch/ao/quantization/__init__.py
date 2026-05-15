@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import sys
 from collections.abc import Callable
 from typing_extensions import TypeAliasType
@@ -18,11 +20,12 @@ from .quantization_mappings import *  # noqa: F403 # type: ignore[no-redef]
 from .quantize import *  # noqa: F403
 from .quantize_jit import *  # noqa: F403
 from .stubs import *  # noqa: F403
+from typing import Callable, List, Optional, Tuple, Type, Union
 
 
 # ensure __module__ is set correctly for public APIs
 ObserverOrFakeQuantize = TypeAliasType(
-    "ObserverOrFakeQuantize", ObserverBase | FakeQuantizeBase
+    "ObserverOrFakeQuantize", Union[ObserverBase, FakeQuantizeBase]
 )
 
 
@@ -181,14 +184,14 @@ class _DerivedObserverOrFakeQuantize(ObserverBase):
     def __init__(
         self,
         dtype: torch.dtype,
-        obs_or_fqs: list[ObserverOrFakeQuantize],
+        obs_or_fqs: List[ObserverOrFakeQuantize],
         derive_qparams_fn: Callable[
-            [list[ObserverOrFakeQuantize]], tuple[Tensor, Tensor]
+            [List[ObserverOrFakeQuantize]], Tuple[Tensor, Tensor]
         ],
-        quant_min: int | None = None,
-        quant_max: int | None = None,
-        qscheme: torch.qscheme | None = None,
-        ch_axis: int | None = None,
+        quant_min: Optional[int]= None,
+        quant_max: Optional[int]= None,
+        qscheme: Optional[torch.qscheme]= None,
+        ch_axis: Optional[int]= None,
     ):
         super().__init__(dtype)
         self.obs_or_fqs = obs_or_fqs

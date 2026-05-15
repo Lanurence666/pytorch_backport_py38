@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+from typing import Dict, List, Tuple, Union
 """
 STABLE_SHIM_USAGE: Ensures that calls to versioned shim functions from
 torch/csrc/stable/c/shim.h in torch/csrc/stable are properly wrapped in
@@ -6,7 +8,6 @@ TORCH_FEATURE_VERSION macros corresponding to the version when those
 functions were introduced.
 """
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -31,8 +32,8 @@ LINTER_CODE = "STABLE_SHIM_USAGE"
 
 
 def get_shim_functions(
-    shim_files: list[Path | str] | None = None,
-) -> dict[str, tuple[int, int]]:
+    shim_files: Union[List[None], None] = None,
+) -> Dict[str, Tuple[int, int]]:
     """
     Extract function names from shim header files and their required version.
     Returns a dict mapping function name to (major, minor) version tuple.
@@ -41,20 +42,15 @@ def get_shim_functions(
     Functions without version guards are ignored.
 
     Args:
-        shim_files: List of paths to shim header files. If None, will use the
-                    default set of shim headers under torch/csrc/stable and
-                    torch/csrc/inductor/aoti_torch (including generated shims)
+        shim_files: List of paths to shim header files. If None, will use the default
+                    paths to torch/csrc/stable/c/shim.h and
+                    torch/csrc/inductor/aoti_torch/c/shim.h based on the repository root.
     """
     if shim_files is None:
         repo_root = Path(__file__).resolve().parents[3]
         shim_files_to_check = [
             repo_root / "torch/csrc/stable/c/shim.h",
             repo_root / "torch/csrc/inductor/aoti_torch/c/shim.h",
-            repo_root / "torch/csrc/inductor/aoti_torch/generated/c_shim_aten.h",
-            repo_root / "torch/csrc/inductor/aoti_torch/generated/c_shim_cpu.h",
-            repo_root / "torch/csrc/inductor/aoti_torch/generated/c_shim_cuda.h",
-            repo_root / "torch/csrc/inductor/aoti_torch/generated/c_shim_mps.h",
-            repo_root / "torch/csrc/inductor/aoti_torch/generated/c_shim_xpu.h",
         ]
     else:
         shim_files_to_check = [Path(f) for f in shim_files]
@@ -67,7 +63,7 @@ def get_shim_functions(
             "Ensure all shim header files exist in the repository."
         )
 
-    functions: dict[str, tuple[int, int]] = {}
+    functions: Dict[str, Tuple[int, int]] = {}
 
     # Match function declarations like: AOTI_TORCH_EXPORT ... function_name(
     function_pattern = re.compile(r"AOTI_TORCH_EXPORT.+?(\w+)\s*\(")
@@ -126,8 +122,8 @@ def get_shim_functions(
 
 
 def write_shim_function_versions(
-    functions: dict[str, tuple[int, int]],
-    output_file: Path | str | None = None,
+    functions: Dict[str, Tuple[int, int]],
+    output_file: Union[Path, str, None] = None,
 ) -> None:
     """
     Write the shim function versions to a text file.
@@ -165,8 +161,8 @@ def write_shim_function_versions(
 
 
 def check_file(
-    filename: str, shim_functions: dict[str, tuple[int, int]]
-) -> list[LintMessage]:
+    filename: str, shim_functions: Dict[str, Tuple[int, int]]
+) -> List[LintMessage]:
     """
     Check the input file for proper usage of versioned shim functions.
 
@@ -174,7 +170,7 @@ def check_file(
         filename: File in torch/csrc/stable that calls functions from shim.
         shim_functions: Dictionary mapping function name to (major, minor) version tuple.
     """
-    lint_messages: list[LintMessage] = []
+    lint_messages: List[LintMessage] = []
 
     with open(filename) as f:
         lines = f.readlines()

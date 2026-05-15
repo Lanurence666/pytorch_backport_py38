@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import operator
 
 import torch
@@ -138,7 +140,7 @@ def get_relu_configs():
 
 
 def get_binary_op_configs():
-    binary_op_configs: list[BackendPatternConfig] = []
+    binary_op_configs: List[BackendPatternConfig] = []
     dtype_configs = [weighted_op_quint8_dtype_config]
     num_tensor_args_to_observation_type_mapping = {
         # TODO: this is not used right now since we have extra check in prepare

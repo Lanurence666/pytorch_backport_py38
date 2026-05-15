@@ -1,10 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import abc
 import copy
 import sys
 import warnings
 from collections import defaultdict
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 import torch
 from torch import nn
@@ -61,12 +63,12 @@ class BaseDataSparsifier(base_sparsifier.BaseSparsifier):
         >>> # tensor_1 and tensor_2 will have sparsity_level of 0.7 but tensor_3 will have sparsity_level=0.3
     """
 
-    def __init__(self, data_list: list[tuple[str, Any]] | None = None, **defaults):
+    def __init__(self, data_list: List[Tuple[str, Any]] | None = None, **defaults):
         super().__init__(defaults=defaults)
 
         self._container = _Container()
 
-        self.data_groups: dict[str, dict] = defaultdict(dict)  # name -> {**config}
+        self.data_groups: Dict[str, dict] = defaultdict(dict)  # name -> {**config}
         if data_list is not None:
             # add data with default config here
             [self.add_data(name, data, **self.defaults) for name, data in data_list]

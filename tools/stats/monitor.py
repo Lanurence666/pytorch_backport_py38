@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 A Python script that logging the system-level utilization usage in json format.
 Data collected: CPU, memory, GPU memory utilization, and GPU utilization if available.
@@ -17,7 +18,6 @@ Usage:
     kill <pid>
 """
 
-from __future__ import annotations
 
 import os
 import sys
@@ -33,7 +33,7 @@ import signal
 import threading
 import time
 from collections import defaultdict
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 import psutil  # type: ignore[import]
 
@@ -65,8 +65,8 @@ class UsageData:
 
     cpu_percent: float
     memory_percent: float
-    processes: list[dict[str, Any]]
-    gpu_list: list[GpuData]
+    processes: List[Dict[str, Any]]
+    gpu_list: List[GpuData]
 
 
 @dataclasses.dataclass
@@ -136,12 +136,12 @@ class SharedResource:
     """
 
     def __init__(self, is_debug_mode: bool = False) -> None:
-        self._data_list: list[UsageData] = []
-        self._data_errors: list[str] = []
-        self._data_logs: list[str] = []
+        self._data_list: List[UsageData] = []
+        self._data_errors: List[str] = []
+        self._data_logs: List[str] = []
         self._lock = threading.Lock()
 
-    def get_and_reset(self) -> tuple[list[UsageData], list[str], list[str]]:
+    def get_and_reset(self) -> Tuple[List[UsageData], List[str], List[str]]:
         """
         get deepcopy of list of usageData and list of string errors
         """
@@ -209,7 +209,7 @@ class UsageLogger:
 
         self._has_pynvml = pynvml_enabled
         self._has_amdsmi = amdsmi_enabled
-        self._gpu_handles: list[Any] = []
+        self._gpu_handles: List[Any] = []
         self._gpu_lib_detected: str = ""
         self._num_of_cpus = 0
         self._debug_mode = is_debug_mode
@@ -248,7 +248,7 @@ class UsageLogger:
             finally:
                 time.sleep(self._data_collect_interval)
 
-    def _generate_stats(self, data_list: list[float]) -> UtilizationStats:
+    def _generate_stats(self, data_list: List[float]) -> UtilizationStats:
         """
         Generate stats from the data list.
         """
@@ -335,7 +335,7 @@ class UsageLogger:
         # shut down gpu connections when exiting
         self._shutdown_gpu_connections()
 
-    def _calculate_gpu_utilization(self, data_list: list[UsageData]) -> list[GpuUsage]:
+    def _calculate_gpu_utilization(self, data_list: List[UsageData]) -> List[GpuUsage]:
         """
         Calculates the GPU utilization.
         """
@@ -391,7 +391,7 @@ class UsageLogger:
         """
         print(stats)
 
-    def _collect_gpu_data(self) -> list[GpuData]:
+    def _collect_gpu_data(self) -> List[GpuData]:
         gpu_data_list = []
         if self._has_pynvml:
             # Iterate over the available GPUs
@@ -484,7 +484,7 @@ class UsageLogger:
             except pynvml.NVMLError:
                 pass
 
-    def _pynvml_get_per_process_gpu_info(self, handle: Any) -> list[dict[str, Any]]:
+    def _pynvml_get_per_process_gpu_info(self, handle: Any) -> List[Dict[str, Any]]:
         processes = pynvml.nvmlDeviceGetComputeRunningProcesses(handle)
         per_process_info = []
 
@@ -502,7 +502,7 @@ class UsageLogger:
                 per_process_info.append(info)
         return per_process_info
 
-    def _rocm_get_per_process_gpu_info(self, handle: Any) -> list[dict[str, Any]]:
+    def _rocm_get_per_process_gpu_info(self, handle: Any) -> List[Dict[str, Any]]:
         processes = amdsmi.amdsmi_get_gpu_process_list(handle)
         per_process_info = []
         for p in processes:
@@ -527,8 +527,8 @@ class UsageLogger:
                 per_process_info.append(info)
         return per_process_info
 
-    def _get_process_info(self) -> list[dict[str, Any]]:
-        def get_processes_running_python_tests() -> list[Any]:
+    def _get_process_info(self) -> List[Dict[str, Any]]:
+        def get_processes_running_python_tests() -> List[Any]:
             python_test_processes = []
             for process in psutil.process_iter():
                 try:

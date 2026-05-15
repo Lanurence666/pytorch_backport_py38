@@ -1,6 +1,7 @@
 # Taken from https://github.com/pytorch/audio/blob/master/torchaudio/models/wav2letter.py
 # So that we don't need torchaudio to be installed
 
+from __future__ import annotations
 import math
 from collections import OrderedDict
 

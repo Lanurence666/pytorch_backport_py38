@@ -1,6 +1,7 @@
 # Owner(s): ["oncall: export"]
 # ruff: noqa: F841
 # flake8: noqa
+from __future__ import annotations
 import contextlib
 import copy
 import dataclasses
@@ -5628,12 +5629,7 @@ def forward(self, x):
                 global_storage.append(closure)
                 return x.sin()
 
-        with (
-            torch._export.config.patch(detect_non_strict_fake_tensor_leaks=True),
-            self.assertWarnsRegex(
-                UserWarning, "Detected 1 fake tensors that are still alive after export"
-            ),
-        ):
+        with torch._export.config.patch(detect_non_strict_fake_tensor_leaks=True), self.assertWarnsRegex(UserWarning, "Detected 1 fake tensors that are still alive after export"):
             export(FunctionClosureLeak(), (torch.randn(4, 4),), strict=False)
 
     def test_detect_leak_nonstrict(self):
@@ -5675,12 +5671,7 @@ def forward(self, x):
             isinstance(ref.bank[0], torch._subclasses.fake_tensor.FakeTensor)
         )
 
-        with (
-            torch._export.config.patch(detect_non_strict_fake_tensor_leaks=True),
-            self.assertWarnsRegex(
-                UserWarning, "Detected 3 fake tensors that are still alive after export"
-            ),
-        ):
+        with torch._export.config.patch(detect_non_strict_fake_tensor_leaks=True), self.assertWarnsRegex(UserWarning, "Detected 3 fake tensors that are still alive after export"):
             ref(torch.randn(4, 4), torch.randn(4, 4))
 
     def test_detect_leak_nonstrict_buffer_in_hook(self):
@@ -5719,10 +5710,7 @@ def forward(self, x):
             re.DOTALL,
         )
 
-        with (
-            torch._export.config.patch(detect_non_strict_fake_tensor_leaks=True),
-            self.assertWarnsRegex(UserWarning, pattern),
-        ):
+        with torch._export.config.patch(detect_non_strict_fake_tensor_leaks=True), self.assertWarnsRegex(UserWarning, pattern):
             p = Pipeline(model=Model())
             p(torch.randn(4, 4))
 
@@ -15286,14 +15274,7 @@ def forward(self, x, y):
             "y": [Dim("dy")],  # y & z incorrect, export is supposed to fail.
             "z": [Dim("dz")],  # suggested fix should be to match these up.
         }
-        with (
-            self.assertRaisesRegex(  # if disable=True, suggested fixes should not specialize.
-                torch._dynamo.exc.UserError,
-                r".*Constraints violated(.*\n)*"
-                r"Suggested fixes:(.*\n)*"
-                r".*dz = dy(.*\n)*",
-            ) as msg
-        ):
+        with self.assertRaisesRegex(torch._dynamo.exc.UserError, r".*Constraints violated(.*\n)*" r"Suggested fixes:(.*\n)*" r".*dz = dy(.*\n)*") as msg:  # if disable=True, suggested fixes should not specialize.
             export(
                 Foo(),
                 inputs,
@@ -17035,10 +17016,7 @@ class GraphModule(torch.nn.Module):
                 else:
                     return x.sum()
 
-        with (
-            torch._dynamo.config.patch(graph_break_on_nn_param_ctor=False),
-            torch._export.config.patch(use_legacy_dynamo_graph_capture=False),
-        ):
+        with torch._dynamo.config.patch(graph_break_on_nn_param_ctor=False), torch._export.config.patch(use_legacy_dynamo_graph_capture=False):
             torch.manual_seed(0)
             container = Container()
             container_eager = copy.deepcopy(container)
@@ -18328,14 +18306,7 @@ def forward(self, x):
         # because we call unflatten in the flat tracer, it creates a new JaggedTensor
         # and it gets pruned as it is not reachable. Not sure what the right way to fix
         # is but since it is just warning, probably ok to xfail it for now.
-        with (
-            self.assertWarnsRegex(
-                UserWarning,
-                "While exporting, we found certain side effects happened in the model.forward. "
-                "Here are the list of potential sources you can double check: \[\"L\['jt'\]\"\]",
-            ),
-            torch._export.config.patch(use_new_tracer_experimental=False),
-        ):
+        with self.assertWarnsRegex(UserWarning, "While exporting, we found certain side effects happened in the model.forward. " "Here are the list of potential sources you can double check: \[\"L\['jt'\]\"\]"), torch._export.config.patch(use_new_tracer_experimental=False):
             _ = torch.export.export(foo, (jt,), strict=True)
 
     def test_input_output_no_stacktrace(self):
@@ -18425,45 +18396,45 @@ def forward(self, x):
         The C++ Functionalize fallback kernel now handles nested list arguments
         (Tensor[][]) by recursively unwrapping/wrapping functional tensors.
         """
-        with torch.library._scoped_library("test_tll", "DEF") as lib:
-            lib.define(
-                "merge_op(Tensor[][] nested, Tensor[] flat, int[] weights)"
-                " -> (Tensor[], Tensor)",
-                tags=[torch.Tag.pt2_compliant_tag],
-            )
+        lib = torch.library.Library("test_tll", "DEF")
+        lib.define(
+            "merge_op(Tensor[][] nested, Tensor[] flat, int[] weights)"
+            " -> (Tensor[], Tensor)",
+            tags=[torch.Tag.pt2_compliant_tag],
+        )
 
-            @torch.library.impl("test_tll::merge_op", "cpu", lib=lib)
-            def merge_op_cpu(nested, flat, weights):
-                out = [nested[i][0] + flat[i] for i in range(len(flat))]
-                combined = torch.cat([f.unsqueeze(0) for f in flat], dim=0).sum(dim=0)
-                return out, combined
+        @torch.library.impl("test_tll::merge_op", "cpu", lib=lib)
+        def merge_op_cpu(nested, flat, weights):
+            out = [nested[i][0] + flat[i] for i in range(len(flat))]
+            combined = torch.cat([f.unsqueeze(0) for f in flat], dim=0).sum(dim=0)
+            return out, combined
 
-            @torch.library.register_fake("test_tll::merge_op")
-            def merge_op_fake(nested, flat, weights):
-                out = [torch.empty_like(flat[i]) for i in range(len(flat))]
-                combined = torch.empty_like(flat[0])
-                return out, combined
+        @torch.library.register_fake("test_tll::merge_op")
+        def merge_op_fake(nested, flat, weights):
+            out = [torch.empty_like(flat[i]) for i in range(len(flat))]
+            combined = torch.empty_like(flat[0])
+            return out, combined
 
-            class M(torch.nn.Module):
-                def forward(self, a, b, c, d):
-                    return torch.ops.test_tll.merge_op([[a, b], [c, d]], [a, c], [1, 2])
+        class M(torch.nn.Module):
+            def forward(self, a, b, c, d):
+                return torch.ops.test_tll.merge_op([[a, b], [c, d]], [a, c], [1, 2])
 
-            m = M()
-            a, b, c, d = (torch.randn(3, 4) for _ in range(4))
-            ep = export(m, (a, b, c, d))
-            ep2 = ep.run_decompositions({})
-            eager_out = m(a, b, c, d)
-            decomp_out = ep2.module()(a, b, c, d)
-            self.assertEqual(len(eager_out[0]), len(decomp_out[0]))
-            for e, d_ in zip(eager_out[0], decomp_out[0]):
-                self.assertEqual(e, d_)
-            self.assertEqual(eager_out[1], decomp_out[1])
+        m = M()
+        a, b, c, d = (torch.randn(3, 4) for _ in range(4))
+        ep = export(m, (a, b, c, d))
+        ep2 = ep.run_decompositions({})
+        eager_out = m(a, b, c, d)
+        decomp_out = ep2.module()(a, b, c, d)
+        self.assertEqual(len(eager_out[0]), len(decomp_out[0]))
+        for e, d_ in zip(eager_out[0], decomp_out[0]):
+            self.assertEqual(e, d_)
+        self.assertEqual(eager_out[1], decomp_out[1])
+        del lib
 
 
 @unittest.skipIf(not torchdynamo.is_dynamo_supported(), "dynamo doesn't support")
 class TestExportCustomClass(TorchTestCase):
     def setUp(self):
-        super().setUp()
         load_torchbind_test_lib()
 
     def test_lift_custom_obj(self):

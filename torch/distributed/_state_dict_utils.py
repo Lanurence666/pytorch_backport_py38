@@ -1,10 +1,14 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
 import io
 import math
 import weakref
-from collections.abc import Callable, Mapping, MutableMapping
-from typing import Any, cast, NamedTuple, TYPE_CHECKING
+from collections.abc import Mapping
+from typing import Any, Callable, Dict, List, Mapping, MutableMapping, Optional, Set, TYPE_CHECKING, Tuple, Union, cast
+from typing_extensions import NamedTuple
+
 
 import torch
 import torch.cuda._pin_memory_utils as pin_memory_utils
@@ -22,8 +26,8 @@ if dist.is_available() or TYPE_CHECKING:
 
 def _identity_func(
     obj: torch.Tensor,
-    pg: dist.ProcessGroup | None,
-    device: torch.device | None,
+    pg: Optional[dist.ProcessGroup],
+    device: Optional[torch.device],
     companion_obj: Any,
 ) -> torch.Tensor:
     return obj
@@ -31,8 +35,8 @@ def _identity_func(
 
 def _all_gather_sharded_tensor(
     sharded_tensor: "ShardedTensor",
-    pg: dist.ProcessGroup | None = None,
-    device: torch.device | None = None,
+    pg: Optional[dist.ProcessGroup] = None,
+    device: Optional[torch.device] = None,
 ) -> torch.Tensor:
     if pg is None:
         pg = distributed_c10d._get_default_group()
@@ -77,14 +81,14 @@ def _iterate_state_dict(
     dtensor_func: Callable,
     tensor_func: Callable,
     *,
-    pg: dist.ProcessGroup | None = None,
-    device: torch.device | None = None,
+    pg: Optional[dist.ProcessGroup] = None,
+    device: Optional[torch.device] = None,
     cpu_offload: bool = False,
     companion_obj: Any = None,
-    ranks_only: tuple[int, ...] = (),
+    ranks_only: Tuple[int, ...] = (),
     type_check: bool = True,
     non_blocking: bool = True,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Iterate through the state dict, applying the given functions to each tensor type.
 
     Args:
@@ -211,14 +215,14 @@ def _iterate_state_dict(
 
 
 def _gather_state_dict(
-    state_dict: dict[str, Any],
+    state_dict: Dict[str, Any],
     *,
-    pg: dist.ProcessGroup | None = None,
-    device: torch.device | None = None,
+    pg: Optional[dist.ProcessGroup] = None,
+    device: Optional[torch.device] = None,
     cpu_offload: bool = False,
-    ranks_only: tuple[int, ...] = (),
+    ranks_only: Tuple[int, ...] = (),
     type_check: bool = True,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Given a state_dict, this API gathers all the ShardedTensors or DTensors in
     the state_dict.
@@ -299,11 +303,11 @@ def _gather_state_dict(
 
 
 def _offload_state_dict_to_cpu(
-    state_dict: dict[str, Any],
+    state_dict: Dict[str, Any],
     *,
-    ranks_only: tuple[int, ...] = (),
+    ranks_only: Tuple[int, ...] = (),
     type_check: bool = True,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Given a state_dict, this API offload all the tensors to CPU memory.
 
@@ -340,11 +344,11 @@ def _offload_state_dict_to_cpu(
 
 @torch.no_grad()
 def _copy_state_dict(
-    state_dict: dict[str, Any],
-    copy_state_dict: dict[str, Any],
+    state_dict: Dict[str, Any],
+    copy_state_dict: Dict[str, Any],
     non_blocking: bool = False,
     type_check: bool = True,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Copies all tensors in a given state dict into a different state_dict with the
     same structure. Additionally, a copied state dict with the same value references
@@ -390,8 +394,8 @@ def _copy_state_dict(
 
 @torch.no_grad()
 def _create_cpu_state_dict(
-    state_dict: dict[str, Any], pin_memory: bool = False, share_memory: bool = False
-) -> dict[str, Any]:
+    state_dict: Dict[str, Any], pin_memory: bool = False, share_memory: bool = False
+) -> Dict[str, Any]:
     """
     Given a state_dict, create another state_dict with the same structure and elements.
     However, all tensors in the returned state_dict are new tensors on CPU. These
@@ -409,8 +413,8 @@ def _create_cpu_state_dict(
 
     def tensor_func(
         obj: torch.Tensor,
-        pg: dist.ProcessGroup | None,
-        device: torch.device | None,
+        pg: Optional[dist.ProcessGroup],
+        device: Optional[torch.device],
         _: Any,
     ) -> torch.Tensor:
         if len(obj.size()) == 0:
@@ -440,8 +444,8 @@ def _create_cpu_state_dict(
 
     def dtensor_func(
         obj: DTensor,
-        pg: dist.ProcessGroup | None,
-        device: torch.device | None,
+        pg: Optional[dist.ProcessGroup],
+        device: Optional[torch.device],
         _: Any,
     ) -> DTensor:
         if len(obj.size()) == 0:
@@ -456,8 +460,8 @@ def _create_cpu_state_dict(
 
     def sharded_tensor_func(
         obj: ShardedTensor,
-        pg: dist.ProcessGroup | None,
-        device: torch.device | None,
+        pg: Optional[dist.ProcessGroup],
+        device: Optional[torch.device],
         _: Any,
     ) -> ShardedTensor:
         if not obj.local_shards():
@@ -488,8 +492,8 @@ def _create_cpu_state_dict(
 
 
 def _check_state_dict_similarity(
-    state_dict: dict[str, Any],
-    compared_state_dict: dict[str, Any],
+    state_dict: Dict[str, Any],
+    compared_state_dict: Dict[str, Any],
 ) -> bool:
     """
     Given two state_dicts, check if the structures are the same. And
@@ -502,8 +506,8 @@ def _check_state_dict_similarity(
 
     def tensor_func(
         obj: torch.Tensor,
-        pg: dist.ProcessGroup | None,
-        device: torch.device | None,
+        pg: Optional[dist.ProcessGroup],
+        device: Optional[torch.device],
         companion_obj: Any,
     ) -> torch.Tensor:
         if companion_obj.dtype != obj.dtype or companion_obj.size() != obj.size():
@@ -535,11 +539,11 @@ class _TensorInfo(NamedTuple):
 
 
 def _broadcast_tensors(
-    full_state_dict: dict[str, Any],
-    local_state_dict: dict[str, Any],
-    keys: list[str],
+    full_state_dict: Dict[str, Any],
+    local_state_dict: Dict[str, Any],
+    keys: List[str],
     device: torch.device,
-    pg: dist.ProcessGroup | None = None,
+    pg: Optional[dist.ProcessGroup] = None,
 ) -> None:
     if pg is None:
         pg = dist.distributed_c10d._get_default_group()
@@ -549,7 +553,7 @@ def _broadcast_tensors(
         else pg._device_types[0]
     )
 
-    tensors: list[torch.Tensor] = []
+    tensors: List[torch.Tensor] = []
     for key in keys:
         if dist.get_rank() == 0:
             full_state = full_state_dict[key]
@@ -596,10 +600,10 @@ def _broadcast_tensors(
 
 
 def _distribute_tensors(
-    local_state_dict: dict[str, Any],
-    keys: list[str],
+    local_state_dict: Dict[str, Any],
+    keys: List[str],
     device: torch.device,
-    pg: dist.ProcessGroup | None = None,
+    pg: Optional[dist.ProcessGroup] = None,
 ) -> None:
     if pg is None:
         pg = dist.distributed_c10d._get_default_group()
@@ -638,10 +642,10 @@ def _distribute_tensors(
 
 
 def _broadcast_state_dict(
-    full_state_dict: dict[str, Any],
-    local_state_dict: dict[str, Any],
+    full_state_dict: Dict[str, Any],
+    local_state_dict: Dict[str, Any],
     device: torch.device,
-    pg: dist.ProcessGroup | None = None,
+    pg: Optional[dist.ProcessGroup] = None,
     strict: bool = False,
     cpu_offload: bool = False,
 ) -> None:
@@ -697,10 +701,10 @@ def _broadcast_state_dict(
 
 
 def _distribute_state_dict(
-    full_state_dict: dict[str, Any],
-    local_state_dict: dict[str, Any],
+    full_state_dict: Dict[str, Any],
+    local_state_dict: Dict[str, Any],
     device: torch.device,
-    pg: dist.ProcessGroup | None = None,
+    pg: Optional[dist.ProcessGroup] = None,
 ) -> None:
     # Full_state_dict = True, broadcast_from_rank0 = False here. Each rank has
     # full_state_dict. Skip the broadcast in ``_broadcast_state_dict`` and
@@ -731,10 +735,10 @@ def _distribute_state_dict(
 # These APIs are from torch.distributed.checkpoint.
 # TODO: We should consolidate the code here as some not all modules can depend on
 # DCP.
-PATH_ITEM = str | int
-OBJ_PATH = tuple[PATH_ITEM, ...]
-FLATTEN_MAPPING = dict[str, OBJ_PATH]
-STATE_DICT_TYPE = dict[str, Any]
+PATH_ITEM = Union[str, int]
+OBJ_PATH = Tuple[PATH_ITEM, ...]
+FLATTEN_MAPPING = Dict[str, OBJ_PATH]
+STATE_DICT_TYPE = Dict[str, Any]
 CONTAINER_TYPE = MutableMapping[PATH_ITEM, Any]
 
 
@@ -764,7 +768,7 @@ def _traverse_state_dict(
 
 def _flatten_state_dict(
     state_dict: STATE_DICT_TYPE,
-) -> tuple[STATE_DICT_TYPE, FLATTEN_MAPPING]:
+) -> Tuple[STATE_DICT_TYPE, FLATTEN_MAPPING]:
     """
     Flatten ``state_dict`` made of nested dicts and lists into a top level dictionary.
 
@@ -792,14 +796,14 @@ def _set_element(root_dict: STATE_DICT_TYPE, path: OBJ_PATH, value: Any) -> None
     """Set ``value`` in ``root_dict`` along the ``path`` object path."""
     cur_container = cast(CONTAINER_TYPE, root_dict)
 
-    def extend_list(lst: list[Any], idx: int) -> None:
+    def extend_list(lst: List[Any], idx: int) -> None:
         while len(lst) <= idx:
             lst.append(None)
 
     for i in range(1, len(path)):
         prev_key = path[i - 1]
         key = path[i]
-        def_val: CONTAINER_TYPE | list[Any] = {} if type(key) is str else []
+        def_val: Union[CONTAINER_TYPE, List[Any]] = {} if type(key) is str else []
 
         if isinstance(cur_container, Mapping):
             cur_container = cast(
@@ -814,7 +818,7 @@ def _set_element(root_dict: STATE_DICT_TYPE, path: OBJ_PATH, value: Any) -> None
 
     key = path[-1]
     if type(key) is int:
-        extend_list(cast(list[Any], cur_container), key)
+        extend_list(cast(List[Any], cur_container), key)
 
     cur_container[key] = value
 

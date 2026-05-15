@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Checkpoint reader functionality for machine learning models.
 
@@ -9,7 +10,7 @@ import logging
 import os
 from itertools import zip_longest
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch._subclasses.fake_tensor import FakeTensorMode
@@ -45,11 +46,11 @@ class CheckpointReader:
     def read(
         self,
         path: str,
-        state_dict: STATE_DICT | None = None,
+        state_dict: Optional[STATE_DICT]= None,
         *,
         map_location: Any = None,
-        **kwargs: dict[str, Any],
-    ) -> tuple[STATE_DICT, list[str]]:
+        **kwargs: Dict[str, Any],
+    ) -> Tuple[STATE_DICT, List[str]]:
         """
         Reads a state dictionary from storage.
 
@@ -60,7 +61,7 @@ class CheckpointReader:
 
         Returns:
             STATE_DICT: The loaded state dictionary.
-            list[str]: List of missing keys.
+            List[str]: List of missing keys.
         """
         logger.debug(
             "Reading checkpoint from %s for rank %s",
@@ -77,7 +78,7 @@ class CheckpointReader:
             raise FileNotFoundError(f"Checkpoint file not found at {file_path}")
 
         if state_dict is None:
-            result: tuple[STATE_DICT, list[str]] = (
+            result: Tuple[STATE_DICT, List[str]] = (
                 torch.load(file_path, map_location=map_location),
                 [],
             )
@@ -94,8 +95,8 @@ class CheckpointReader:
         state_dict: STATE_DICT,
         *,
         map_location: Any = None,
-        **kwargs: dict[str, Any],
-    ) -> tuple[STATE_DICT, list[str]]:
+        **kwargs: Dict[str, Any],
+    ) -> Tuple[STATE_DICT, List[str]]:
         """
         Reads only the keys present in state_dict from the checkpoint file.
 
@@ -111,7 +112,7 @@ class CheckpointReader:
             **kwargs: Additional keyword arguments passed to torch.load.
 
         Returns:
-            tuple[STATE_DICT, list[str]]: The updated state dictionary with loaded values and a list of missing keys.
+            Tuple[STATE_DICT, List[str]]: The updated state dictionary with loaded values and a list of missing keys.
         """
 
         with FakeTensorMode():
@@ -122,7 +123,7 @@ class CheckpointReader:
         with open(file_path, "rb") as file:
             # Helper function to load tensor data from file
             def load_tensor(
-                target: torch.Tensor | None, source: torch.Tensor, full_key: str
+                target: Union[torch.Tensor, None, source: torch.Tensor, full_key: str]
             ) -> torch.Tensor:
                 if target is not None and (
                     target.size() != source.size() or target.dtype != source.dtype

@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Unit tests for the ONNXProgram class."""
 
-from __future__ import annotations
 
 import torch
 from torch.onnx._internal._lazy_import import onnx_ir as ir

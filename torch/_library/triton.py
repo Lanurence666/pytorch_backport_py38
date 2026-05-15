@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import ast
 import contextlib
 import inspect
 import logging
 import threading
-from collections.abc import Callable, Generator, Iterable
-from typing import Any
+
+from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Set, Type, Union
 
 from torch.utils._exposed_in import exposed_in
 
@@ -14,14 +16,14 @@ from .infer_schema import infer_schema
 
 logger = logging.getLogger(__name__)
 
-triton_ops_to_kernels: dict[str, list[object]] = {}
+triton_ops_to_kernels: Dict[str, List[object]] = {}
 
 
-def get_triton_kernels_for_op(name: str) -> list[object]:
+def get_triton_kernels_for_op(name: str) -> List[object]:
     return triton_ops_to_kernels.get(name, [])
 
 
-def get_inner_triton_kernels(fn: Callable[..., Any]) -> list[object]:
+def get_inner_triton_kernels(fn: Callable[..., Any]) -> List[object]:
     """
     Inspect the source of an arbitrary callable passed to torch._library.triton_op,
     and grab all of the triton kernels that are wrapped inside of it.
@@ -43,9 +45,9 @@ def get_inner_triton_kernels(fn: Callable[..., Any]) -> list[object]:
 
     def find_triton_kernels(
         fn: Callable[..., Any],
-        visited_fns: set[int] | None = None,
+        visited_fns: Optional[Set[int]] = None,
         depth: int = 0,
-    ) -> list[object]:
+    ) -> List[object]:
         try:
             from triton.runtime.autotuner import Autotuner
             from triton.runtime.jit import JITFunction
@@ -86,13 +88,13 @@ def get_inner_triton_kernels(fn: Callable[..., Any]) -> list[object]:
         # Visitor to collect function calls, assignments, and triton kernels
         class Visitor(ast.NodeVisitor):
             def __init__(self) -> None:
-                self.triton_kernels: list[Any] = []
+                self.triton_kernels: List[Any] = []
                 # track local variable assignments: var_name -> list of RHS expressions
-                self.assignments: dict[str, list[ast.expr]] = {}
+                self.assignments: Dict[str, List[ast.expr]] = {}
                 # track function calls
-                self.called_functions: list[str] = []
+                self.called_functions: List[str] = []
                 # track return statement expressions
-                self.return_exprs: list[ast.expr] = []
+                self.return_exprs: List[ast.expr] = []
 
             def visit_Assign(self, node: ast.Assign) -> None:
                 for target in node.targets:
@@ -142,9 +144,9 @@ def get_inner_triton_kernels(fn: Callable[..., Any]) -> list[object]:
         collector = Visitor()
         collector.visit(tree)
 
-        def extract_names_from_expr(expr: ast.expr) -> list[str]:
+        def extract_names_from_expr(expr: ast.expr) -> List[str]:
             """Extract all Name references from an AST expression."""
-            names: list[str] = []
+            names: List[str] = []
 
             class NameExtractor(ast.NodeVisitor):
                 def visit_Name(self, node: ast.Name) -> None:
@@ -157,7 +159,7 @@ def get_inner_triton_kernels(fn: Callable[..., Any]) -> list[object]:
             NameExtractor().visit(expr)
             return names
 
-        def resolve_to_kernel(obj: object) -> object | None:
+        def resolve_to_kernel(obj: object) -> Optional[object]:
             """Check if obj is a triton kernel or wrapper and return the kernel."""
             if isinstance(obj, (JITFunction, Autotuner)):
                 return obj
@@ -168,7 +170,7 @@ def get_inner_triton_kernels(fn: Callable[..., Any]) -> list[object]:
                     return inner
             return None
 
-        def build_namespace(func_obj: object) -> dict[str, Any]:
+        def build_namespace(func_obj: object) -> Dict[str, Any]:
             """Build a combined namespace from a function's globals and closures."""
             # unwrap decorated fns (e.g., @lru_cache)
             if callable(func_obj):
@@ -179,7 +181,7 @@ def get_inner_triton_kernels(fn: Callable[..., Any]) -> list[object]:
             if not callable(func_obj) or not hasattr(func_obj, "__code__"):
                 return {}
             func_closure_vars = inspect.getclosurevars(func_obj)
-            namespace: dict[str, Any] = {}
+            namespace: Dict[str, Any] = {}
             namespace.update(func_closure_vars.builtins)
             namespace.update(func_closure_vars.globals)
             namespace.update(func_closure_vars.nonlocals)
@@ -190,18 +192,18 @@ def get_inner_triton_kernels(fn: Callable[..., Any]) -> list[object]:
         all_names = build_namespace(fn)
 
         def resolve_names_to_kernels(
-            names: list[str],
-            namespace: dict[str, Any],
-            assignments: dict[str, list[ast.expr]] | None = None,
-            visited: set[str] | None = None,
-        ) -> list[object]:
+            names: List[str],
+            namespace: Dict[str, Any],
+            assignments: Dict[str, List[ast.expr]] | None = None,
+            visited: Optional[Set[str]] = None,
+        ) -> List[object]:
             """
             Resolve a list of names to triton kernels using the given namespace.
             """
             if visited is None:
                 visited = set()
 
-            results: list[object] = []
+            results: List[object] = []
             for name in names:
                 if name in visited:
                     continue
@@ -242,10 +244,10 @@ def get_inner_triton_kernels(fn: Callable[..., Any]) -> list[object]:
             return results
 
         # resolve kernel names, tracing through local variables if needed
-        resolved: list[object] = []
-        seen_ids: set[int] = set()
+        resolved: List[object] = []
+        seen_ids: Set[int] = set()
 
-        names_to_resolve: list[str] = list(collector.triton_kernels)
+        names_to_resolve: List[str] = list(collector.triton_kernels)
         for expr in collector.return_exprs:
             names_to_resolve.extend(extract_names_from_expr(expr))
 
@@ -296,11 +298,11 @@ def get_inner_triton_kernels(fn: Callable[..., Any]) -> list[object]:
 @exposed_in("torch.library")
 def triton_op(
     name: str,
-    fn: Callable | None = None,
+    fn: Optional[Callable] = None,
     /,
     *,
-    mutates_args: str | Iterable[str],
-    schema: str | None = None,
+    mutates_args: Union[str, Iterable[str]],
+    schema: Optional[str] = None,
 ) -> Callable:
     """Create a custom operator whose implementation is backed by 1+ triton kernels.
 
@@ -335,7 +337,7 @@ def triton_op(
         mutates_args (Iterable[str] or "unknown"): The names of args that the function mutates.
             This MUST be accurate, otherwise, the behavior is undefined. If "unknown",
             it pessimistically assumes that all inputs to the operator are being mutated.
-        schema (str | None): A schema string for the operator. If None
+        schema (Optional[str]): A schema string for the operator. If None
             (recommended) we'll infer a schema for the operator from its type
             annotations. We recommend letting us infer a schema unless you
             have a specific reason not to.

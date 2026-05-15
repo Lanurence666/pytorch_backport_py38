@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Copyright (c) Facebook, Inc. and its affiliates.
 # All rights reserved.
 #
@@ -9,9 +10,8 @@ This module contains pre-dispatch wrappers for functorch operations
 that enable proper tracing in PT2 non-strict export/compile fx graph.
 """
 
-from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Tuple
 
 import torch
 from torch._C import (
@@ -112,8 +112,8 @@ def _vmap_decrement_nesting() -> int:
 
 # Global variables for lazy_load_decompositions
 DECOMPOSITIONS_LOADED: bool = False
-DECOMPOSITIONS_LOCK: threading.Lock | None = None
-VMAP_DECOMPOSITIONS_LIB: torch.library.Library | None = None
+DECOMPOSITIONS_LOCK: Optional[threading.Lock]= None
+VMAP_DECOMPOSITIONS_LIB: Optional[torch.library.Library]= None
 
 
 def lazy_load_decompositions() -> None:
@@ -201,7 +201,7 @@ def _make_dual(
 
 def _unpack_dual(
     tensor: torch.Tensor, *, level: int = 0
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Thin wrapper around torch._VF._unpack_dual that is used to proxy in
     PT2 export/compile fx graph for forward-mode AD.

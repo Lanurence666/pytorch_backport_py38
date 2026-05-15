@@ -1,7 +1,7 @@
 # torch.ao is a package with a lot of interdependencies.
 # We will use lazy import to avoid cyclic dependencies here.
 
-from typing import TYPE_CHECKING as _TYPE_CHECKING
+from typing import TYPE_CHECKING, TYPE_CHECKING as _TYPE_CHECKING, Type
 
 
 if _TYPE_CHECKING:

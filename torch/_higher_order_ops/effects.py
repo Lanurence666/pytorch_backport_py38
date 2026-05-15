@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
-from typing import Any, Union
+from __future__ import annotations
+
+from typing import Any, Dict, Optional, Tuple, Type, Union
 
 import torch
 import torch.utils._pytree as pytree
@@ -46,7 +48,7 @@ def _get_op_qualname(op: _op_identifier) -> str:
 
 
 def _register_effectful_op(
-    op: _op_identifier, effect: EffectType | None
+    op: _op_identifier, effect: Optional[EffectType]
 ) -> RegistrationHandle:
     qualname = _get_op_qualname(op)
     entry = torch._library.simple_registry.singleton.find(qualname)
@@ -54,7 +56,7 @@ def _register_effectful_op(
     return handle
 
 
-def _get_effect(op: _op_identifier) -> _EffectType | None:
+def _get_effect(op: _op_identifier) -> Optional[_EffectType]:
     qualname = _get_op_qualname(op)
     entry = torch._library.simple_registry.singleton.find(qualname)
     return entry.effect.effect
@@ -88,9 +90,9 @@ class WithEffects(HigherOrderOperator):
         self,
         token,
         op: OpType,
-        *args: tuple[Any, ...],
-        **kwargs: dict[str, Any],
-    ) -> tuple[Any, ...]:
+        *args: Tuple[Any, ...],
+        **kwargs: Dict[str, Any],
+    ) -> Tuple[Any, ...]:
         if not isinstance(op, (torch._ops.HigherOrderOperator, torch._ops.OpOverload)):
             raise AssertionError(
                 f"op must be HigherOrderOperator or OpOverload, got {type(op)}"
@@ -136,9 +138,9 @@ def new_token_tensor() -> torch.Tensor:
 def with_effects_dense(
     token: torch.Tensor,
     op: torch._ops.OpOverload,
-    *args: tuple[Any, ...],
-    **kwargs: dict[str, Any],
-) -> tuple[torch.Tensor, ...]:
+    *args: Tuple[Any, ...],
+    **kwargs: Dict[str, Any],
+) -> Tuple[torch.Tensor, ...]:
     out = op(*args, **kwargs)
     new_token = new_token_tensor()
     # [NOTE: with_effects return type]
@@ -157,9 +159,9 @@ def with_effects_fake(
     mode,
     token: torch.Tensor,
     op: torch._ops.OpOverload,
-    *args: tuple[Any, ...],
-    **kwargs: dict[str, Any],
-) -> tuple[torch.Tensor, ...]:
+    *args: Tuple[Any, ...],
+    **kwargs: Dict[str, Any],
+) -> Tuple[torch.Tensor, ...]:
     with mode:
         result = with_effects_dense(token, op, *args, **kwargs)
         return result
@@ -170,9 +172,9 @@ def with_effects_proxy(
     mode,
     token: torch.Tensor,
     op: torch._ops.OpOverload,
-    *args: tuple[Any, ...],
-    **kwargs: dict[str, Any],
-) -> tuple[torch.Tensor, ...]:
+    *args: Tuple[Any, ...],
+    **kwargs: Dict[str, Any],
+) -> Tuple[torch.Tensor, ...]:
     with disable_proxy_modes_tracing():
         out = with_effects(token, op, *args, **kwargs)
 
@@ -205,9 +207,9 @@ def with_effects_functional(
     ctx,
     token: torch.Tensor,
     op: torch._ops.OpOverload,
-    *args: tuple[Any, ...],
-    **kwargs: dict[str, Any],
-) -> tuple[torch.Tensor, ...]:
+    *args: Tuple[Any, ...],
+    **kwargs: Dict[str, Any],
+) -> Tuple[torch.Tensor, ...]:
     # with_effects is already functional, so just re-emit it.
     unwrapped_token, unwrapped_args, unwrapped_kwargs = ctx.unwrap_tensors(
         [token, args, kwargs]
@@ -220,7 +222,7 @@ def with_effects_functional(
 _EFFECTFUL_HOPS_WITH_SCHEMA = {hop_print, invoke_leaf_function}
 
 
-def _get_schema(op, args, kwargs: dict | None = None) -> torch.FunctionSchema:
+def _get_schema(op, args, kwargs: Optional[dict] = None) -> torch.FunctionSchema:
     if isinstance(op, torch._ops.OpOverload):
         return op._schema
     elif op == call_torchbind:
@@ -234,10 +236,10 @@ def _get_schema(op, args, kwargs: dict | None = None) -> torch.FunctionSchema:
 
 def handle_effects(
     allow_token_discovery: bool,
-    tokens: dict[_EffectType, torch.Tensor],
+    tokens: Dict[_EffectType, torch.Tensor],
     op: OpType,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
 ) -> Any:
     """
     Args:

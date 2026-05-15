@@ -1,11 +1,14 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Locally Optimal Block Preconditioned Conjugate Gradient methods."""
+
 # Author: Pearu Peterson
 # Created: February 2020
 
 import torch
 from torch import _linalg_utils as _utils, Tensor
 from torch.overrides import handle_torch_function, has_torch_function
+from typing import Callable, Dict, Optional, Set, Tuple
 
 
 __all__ = ["lobpcg"]
@@ -256,20 +259,20 @@ class LOBPCGAutogradFunction(torch.autograd.Function):
     def forward(  # type: ignore[override]
         ctx,
         A: Tensor,
-        k: int | None = None,
-        B: Tensor | None = None,
-        X: Tensor | None = None,
-        n: int | None = None,
-        iK: Tensor | None = None,
-        niter: int | None = None,
-        tol: float | None = None,
-        largest: bool | None = None,
-        method: str | None = None,
+        k: Optional[int] = None,
+        B: Optional[Tensor] = None,
+        X: Optional[Tensor] = None,
+        n: Optional[int] = None,
+        iK: Optional[Tensor] = None,
+        niter: Optional[int] = None,
+        tol: Optional[float] = None,
+        largest: Optional[bool] = None,
+        method: Optional[str] = None,
         tracker: None = None,
-        ortho_iparams: dict[str, int] | None = None,
-        ortho_fparams: dict[str, float] | None = None,
-        ortho_bparams: dict[str, bool] | None = None,
-    ) -> tuple[Tensor, Tensor]:
+        ortho_iparams: Optional[Dict[str, int]] = None,
+        ortho_fparams: Optional[Dict[str, float]] = None,
+        ortho_bparams: Optional[Dict[str, bool]] = None,
+    ) -> Tuple[Tensor, Tensor]:
         # makes sure that input is contiguous for efficiency.
         # Note: autograd does not support dense gradients for sparse input yet.
         A = A.contiguous() if (not A.is_sparse) else A
@@ -342,20 +345,20 @@ class LOBPCGAutogradFunction(torch.autograd.Function):
 
 def lobpcg(
     A: Tensor,
-    k: int | None = None,
-    B: Tensor | None = None,
-    X: Tensor | None = None,
-    n: int | None = None,
-    iK: Tensor | None = None,
-    niter: int | None = None,
-    tol: float | None = None,
-    largest: bool | None = None,
-    method: str | None = None,
+    k: Optional[int] = None,
+    B: Optional[Tensor] = None,
+    X: Optional[Tensor] = None,
+    n: Optional[int] = None,
+    iK: Optional[Tensor] = None,
+    niter: Optional[int] = None,
+    tol: Optional[float] = None,
+    largest: Optional[bool] = None,
+    method: Optional[str] = None,
     tracker: None = None,
-    ortho_iparams: dict[str, int] | None = None,
-    ortho_fparams: dict[str, float] | None = None,
-    ortho_bparams: dict[str, bool] | None = None,
-) -> tuple[Tensor, Tensor]:
+    ortho_iparams: Optional[Dict[str, int]] = None,
+    ortho_fparams: Optional[Dict[str, float]] = None,
+    ortho_bparams: Optional[Dict[str, bool]] = None,
+) -> Tuple[Tensor, Tensor]:
     """Find the k largest (or smallest) eigenvalues and the corresponding
     eigenvectors of a symmetric positive definite generalized
     eigenvalue problem using matrix-free LOBPCG methods.
@@ -582,20 +585,20 @@ def lobpcg(
 
 def _lobpcg(
     A: Tensor,
-    k: int | None = None,
-    B: Tensor | None = None,
-    X: Tensor | None = None,
-    n: int | None = None,
-    iK: Tensor | None = None,
-    niter: int | None = None,
-    tol: float | None = None,
-    largest: bool | None = None,
-    method: str | None = None,
+    k: Optional[int] = None,
+    B: Optional[Tensor] = None,
+    X: Optional[Tensor] = None,
+    n: Optional[int] = None,
+    iK: Optional[Tensor] = None,
+    niter: Optional[int] = None,
+    tol: Optional[float] = None,
+    largest: Optional[bool] = None,
+    method: Optional[str] = None,
     tracker: None = None,
-    ortho_iparams: dict[str, int] | None = None,
-    ortho_fparams: dict[str, float] | None = None,
-    ortho_bparams: dict[str, bool] | None = None,
-) -> tuple[Tensor, Tensor]:
+    ortho_iparams: Optional[Dict[str, int]] = None,
+    ortho_fparams: Optional[Dict[str, float]] = None,
+    ortho_bparams: Optional[Dict[str, bool]] = None,
+) -> Tuple[Tensor, Tensor]:
     # A must be square:
     if A.shape[-2] != A.shape[-1]:
         raise AssertionError(f"A must be square, got shape {A.shape}")
@@ -702,13 +705,13 @@ class LOBPCG:
 
     def __init__(
         self,
-        A: Tensor | None,
-        B: Tensor | None,
+        A: Optional[Tensor],
+        B: Optional[Tensor],
         X: Tensor,
-        iK: Tensor | None,
-        iparams: dict[str, int],
-        fparams: dict[str, float],
-        bparams: dict[str, bool],
+        iK: Optional[Tensor],
+        iparams: Dict[str, int],
+        fparams: Dict[str, float],
+        bparams: Dict[str, bool],
         method: str,
         tracker: None,
     ) -> None:
@@ -729,10 +732,10 @@ class LOBPCG:
         self.E = torch.zeros((n,), dtype=X.dtype, device=X.device)
         self.R = torch.zeros((m, n), dtype=X.dtype, device=X.device)
         self.S = torch.zeros((m, 3 * n), dtype=X.dtype, device=X.device)
-        self.tvars: dict[str, Tensor] = {}
-        self.ivars: dict[str, int] = {"istep": 0}
-        self.fvars: dict[str, float] = {"_": 0.0}
-        self.bvars: dict[str, bool] = {"_": False}
+        self.tvars: Dict[str, Tensor] = {}
+        self.ivars: Dict[str, int] = {"istep": 0}
+        self.fvars: Dict[str, float] = {"_": 0.0}
+        self.bvars: Dict[str, bool] = {"_": False}
 
     def __str__(self):
         lines = ["LOPBCG:"]

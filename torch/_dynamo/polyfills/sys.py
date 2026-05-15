@@ -1,8 +1,8 @@
+from __future__ import annotations
 """
 Python polyfills for sys
 """
 
-from __future__ import annotations
 
 import sys
 

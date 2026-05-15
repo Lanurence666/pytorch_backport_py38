@@ -1,9 +1,10 @@
 # mypy: ignore-errors
+from __future__ import annotations
+from typing import Dict, List, Tuple, Type, Union
 import hashlib
 import importlib
 import os
 import random
-from collections.abc import Callable
 from dataclasses import dataclass
 
 import torch
@@ -42,7 +43,7 @@ class DeviceInfo:
     """
 
     device_name: str
-    select_runtime_env: Callable[..., dict[str, str]] | None = None
+    select_runtime_env: Union[Callable[Ellipsis, Dict[str, str]], None] = None
 
 
 class FuzzTemplate:
@@ -159,8 +160,8 @@ class FuzzTemplate:
         return False
 
     def wrap_body(
-        self, generated_code_lines: list[str], graph: OperationGraph
-    ) -> list[str]:
+        self, generated_code_lines: List[str], graph: OperationGraph
+    ) -> List[str]:
         """Optionally rewrite the per-node body lines.
 
         Default is a passthrough.  Used by ``StreamFuzzTemplate`` to partition
@@ -168,7 +169,7 @@ class FuzzTemplate:
         """
         return generated_code_lines
 
-    def return_codegen(self, final_var_name: str) -> list[str]:
+    def return_codegen(self, final_var_name: str) -> List[str]:
         """Return the lines that emit the ``return`` statement.
 
         Default uses ``.real`` to drop imaginary parts of complex outputs.
@@ -292,8 +293,8 @@ class FuzzTemplate:
 # ---------------------------------------------------------------------------
 
 
-_TEMPLATE_REGISTRY: dict[str, type[FuzzTemplate]] | None = None
-_DEVICE_INFO: DeviceInfo | None = None
+_TEMPLATE_REGISTRY: Union[Dict[str, Type[FuzzTemplate]], None] = None
+_DEVICE_INFO: Union[DeviceInfo, None] = None
 
 
 def initialize_codegen() -> None:
@@ -315,7 +316,7 @@ def initialize_codegen() -> None:
     _DEVICE_INFO = plugin.get_device_info()
 
 
-def get_template_names() -> list[str]:
+def get_template_names() -> List[str]:
     """Return the list of template names registered by the active plugin."""
     initialize_codegen()
     return list(_TEMPLATE_REGISTRY.keys())
@@ -340,7 +341,7 @@ def get_device_info() -> DeviceInfo:
 
 def convert_graph_to_python_code(
     operation_graph: OperationGraph,
-    seed: int | None = None,
+    seed: Union[int, None] = None,
     template: str = "default",
 ) -> str:
     """
@@ -377,12 +378,12 @@ def convert_graph_to_python_code(
 
     # Track generated variables, arg operations, and constant operations
     generated_code_lines = []
-    node_variables: dict[str, tuple[str, Spec]] = {}  # Maps node_id to (var_name, spec)
-    arg_operations: list[
-        tuple[str, Spec]
+    node_variables: Dict[str, Tuple[str, Spec]] = {}  # Maps node_id to (var_name, spec)
+    arg_operations: List[
+        Tuple[str, Spec]
     ] = []  # List of (node_id, spec) for arg operations
-    constant_operations: list[
-        tuple[str, str, Spec]
+    constant_operations: List[
+        Tuple[str, str, Spec]
     ] = []  # List of (node_id, var_name, spec) for templates that lift constants out
 
     # Process nodes in topological order

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import hashlib
 from itertools import chain
 from types import ModuleType
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING, Tuple, Type, Union
 
 import torch
 import torch.fx
@@ -17,7 +19,7 @@ if TYPE_CHECKING:
 
     HAS_PYDOT = True
 else:
-    pydot: ModuleType | None
+    pydot: Optional[ModuleType]
     try:
         import pydot
 
@@ -81,7 +83,7 @@ if HAS_PYDOT:
             ignore_parameters_and_buffers: bool = False,
             skip_node_names_in_args: bool = True,
             parse_stack_trace: bool = False,
-            dot_graph_shape: str | None = None,
+            dot_graph_shape: Optional[str]= None,
             normalize_args: bool = False,
         ) -> None:
             self._name = name
@@ -120,7 +122,7 @@ if HAS_PYDOT:
                     parse_stack_trace,
                 )
 
-        def get_dot_graph(self, submod_name: str | None = None) -> pydot.Dot:
+        def get_dot_graph(self, submod_name: Optional[str] = None) -> pydot.Dot:
             """
             Visualize a torch.fx.Graph with graphviz
             Example:
@@ -155,10 +157,10 @@ if HAS_PYDOT:
         def get_submod_dot_graph(self, submod_name: str) -> pydot.Dot:
             return self._dot_graphs[f"{self._name}_{submod_name}"]
 
-        def get_all_dot_graphs(self) -> dict[str, pydot.Dot]:
+        def get_all_dot_graphs(self) -> Dict[str, pydot.Dot]:
             return self._dot_graphs
 
-        def _get_node_style(self, node: torch.fx.Node) -> dict[str, str]:
+        def _get_node_style(self, node: torch.fx.Node) -> Dict[str, str]:
             template = {
                 "shape": self.dot_graph_shape,
                 "fillcolor": "#CAFFE3",
@@ -196,7 +198,7 @@ if HAS_PYDOT:
                 py_obj = getattr(py_obj, atom)
             return py_obj
 
-        def _typename(self, target: torch.fx.node.Target | torch.nn.Module) -> str:
+        def _typename(self, target: Union[torch.fx.node.Target, torch.nn.Module]) -> str:
             if isinstance(target, torch.nn.Module):
                 ret = torch.typename(target)
             elif isinstance(target, str):
@@ -229,7 +231,7 @@ if HAS_PYDOT:
             skip_node_names_in_args: bool,
             parse_stack_trace: bool,
         ) -> str:
-            def _get_str_for_args_kwargs(arg: tuple[Any, ...] | dict[str, Any]) -> str:
+            def _get_str_for_args_kwargs(arg: Union[Tuple[Any, ...], Dict[str, Any]]) -> str:
                 if isinstance(arg, tuple):
                     prefix, suffix = r"|args=(\l", r",\n)\l"
                     arg_strs_list = [_format_arg(a, max_list_len=8) for a in arg]
@@ -413,7 +415,7 @@ if HAS_PYDOT:
             # "TB" means top-to-bottom rank direction in layout
             dot_graph = pydot.Dot(name, rankdir="TB")
 
-            buf_name_to_subgraph: dict[str, pydot.Cluster] = {}
+            buf_name_to_subgraph: Dict[str, pydot.Cluster] = {}
 
             for node in graph_module.graph.nodes:
                 if ignore_getattr and node.op == "get_attr":
@@ -497,7 +499,7 @@ else:
                 ignore_parameters_and_buffers: bool = False,
                 skip_node_names_in_args: bool = True,
                 parse_stack_trace: bool = False,
-                dot_graph_shape: str | None = None,
+                dot_graph_shape: Optional[str]= None,
                 normalize_args: bool = False,
             ):
                 raise RuntimeError(

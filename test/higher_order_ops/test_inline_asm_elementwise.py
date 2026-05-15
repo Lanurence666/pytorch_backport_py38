@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: higher order operators"]
 """
 Tests for inline_asm_elementwise higher-order operator.

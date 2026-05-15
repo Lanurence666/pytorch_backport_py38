@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import inspect
 from abc import ABC, abstractmethod
 
@@ -11,10 +13,11 @@ from torch.distributed.fsdp import FullyShardedDataParallel
 from torch.distributed.optim import as_functional_optim
 from torch.nn.parallel import DistributedDataParallel
 from torch.optim import Optimizer
+from typing import Dict
 
 
 # Contains the mappings between the regular and overlapped optimizer types.
-_registered_overlapped_optims: dict[type, type] = {}
+_registered_overlapped_optims: Dict[type, type] = {}
 
 
 def register_overlapped(optim_cls):

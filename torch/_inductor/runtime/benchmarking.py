@@ -1,11 +1,25 @@
+from __future__ import annotations
+
 import functools
 import inspect
 import time
-from collections.abc import Callable
-from functools import cached_property, wraps
+
+try:
+    from functools import lru_cached_property
+except ImportError:
+    from functools import cached_property as lru_cached_property, wraps
+
+try:
+    from functools import cached_property
+except ImportError:
+    from functools import lru_cached_property as cached_property
 from itertools import chain
 from statistics import median
-from typing import Any, Concatenate
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+try:
+    from typing import Concatenate
+except ImportError:
+    from typing_extensions import Concatenate
 from typing_extensions import ParamSpec, Self, TypeVar
 
 import torch
@@ -31,7 +45,7 @@ T = TypeVar("T")
 # Keys must match torch.device.type (e.g., "cpu", "cuda", "mps", "xpu", ...).
 # Values are callables with signature:
 #   fn(self: Benchmarker, _callable: Callable[..., Any], *, warmup: int, rep: int, **kwargs) -> Any
-_BENCHMARK_DISPATCH: dict[str, Callable[..., Any]] = {}
+_BENCHMARK_DISPATCH: Dict[str, Callable[..., Any]] = {}
 
 
 def register_benchmarker(
@@ -68,8 +82,8 @@ def may_distort_benchmarking_result(fn: Callable[..., Any]) -> Callable[..., Any
         return fn
 
     def distort(
-        ms: list[float] | tuple[float, ...] | float,
-    ) -> list[float] | tuple[float, ...] | float:
+        ms: Union[List[float], Tuple[float, ...], float,]
+    ) -> Union[List[float], Tuple[float, ...], float]:
         if isinstance(ms, (list, tuple)):
             return type(ms)(distort(val) for val in ms)  # type: ignore[misc]
 
@@ -86,8 +100,8 @@ def may_distort_benchmarking_result(fn: Callable[..., Any]) -> Callable[..., Any
 
     @functools.wraps(fn)
     def wrapper(
-        *args: list[Any], **kwargs: dict[str, Any]
-    ) -> list[float] | tuple[float, ...] | float:
+        *args: List[Any], **kwargs: Dict[str, Any]
+    ) -> Union[List[float], Tuple[float, ...], float]:
         ms = fn(*args, **kwargs)
 
         return distort(ms)
@@ -141,7 +155,7 @@ class Benchmarker:
         pass
 
     def infer_device(self, *fn_args: Any, **fn_kwargs: Any) -> torch.device:
-        inferred_device: torch.device | None = None
+        inferred_device: Optional[torch.device]= None
         for arg_or_kwarg in chain(fn_args, fn_kwargs.values()):
             # Some callables take nested structures as arguments so use the
             # flattened form to find any tensors
@@ -168,9 +182,9 @@ class Benchmarker:
     def benchmark(
         self: Self,
         fn: Callable[..., Any],
-        fn_args: tuple[Any, ...] | None = None,
-        fn_kwargs: dict[str, Any] | None = None,
-        device: str | torch.device | None = None,
+        fn_args: Optional[Tuple[Any, ...]]= None,
+        fn_kwargs: Optional[Dict[str, Any]]= None,
+        device: Optional[Union[str, torch.device]]= None,
         **kwargs: Any,
     ) -> float:
         """Benchmark `fn(*fn_args, *fn_kwargs)` and return the runtime, in milliseconds (the
@@ -201,7 +215,7 @@ class Benchmarker:
         Returns:
         - The runtime of `fn(*fn_args, **fn_kwargs)`, in milliseconds.
         """
-        inferred_device: torch.device | None = None
+        inferred_device: Optional[torch.device]= None
         if device is not None:
             inferred_device = (
                 torch.device(device) if isinstance(device, str) else device
@@ -239,7 +253,7 @@ class Benchmarker:
         # Surfacing all kernels during autotuning is super noisy; filtering these out.
         with DebugMode._benchmarking_inductor():
             # First, try a registered device-specific benchmarker
-            benchmark_fn: Callable[..., Any] | None = _BENCHMARK_DISPATCH.get(
+            benchmark_fn: Optional[Callable[..., Any]]= _BENCHMARK_DISPATCH.get(
                 inferred_device.type
             )
             if benchmark_fn is not None:
@@ -272,7 +286,7 @@ class Benchmarker:
         - The median runtime of `_callable`, in milliseconds.
         """
 
-        def run_for(ms: int) -> list[float]:
+        def run_for(ms: int) -> List[float]:
             timings = []
             run_start_t = time.perf_counter()
             while True:
@@ -405,7 +419,7 @@ class InductorBenchmarker(TritonBenchmarker):  # noqa: docstring_linter
 
     def get_event_pairs(
         self: Self, iters: int
-    ) -> list[tuple[torch.cuda.Event, torch.cuda.Event]]:
+    ) -> List[Tuple[torch.cuda.Event, torch.cuda.Event]]:
         """Get `iters` pairs of CUDA events."""
         return [
             (
@@ -416,7 +430,7 @@ class InductorBenchmarker(TritonBenchmarker):  # noqa: docstring_linter
         ]
 
     def get_event_pairs_min_timing(
-        self: Self, event_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]]
+        self: Self, event_pairs: List[Tuple[torch.cuda.Event, torch.cuda.Event]]
     ) -> float:
         """Get the minimum timing, in milliseconds, for a group of CUDA event pairs."""
         return min(
@@ -436,10 +450,10 @@ class InductorBenchmarker(TritonBenchmarker):  # noqa: docstring_linter
         benchmark_iters: int = 100,
         max_benchmark_duration: int = 25,
         return_mode: str = "min",
-        grad_to_none: list[torch.Tensor] | None = None,
+        grad_to_none: Optional[List[torch.Tensor]]= None,
         is_vetted_benchmarking: bool = False,
         **kwargs: Any,
-    ) -> float | list[float]:
+    ) -> Union[float, List[float]]:
         """Benchmark a GPU callable using a custom benchmarking implementation.
 
         Arguments:

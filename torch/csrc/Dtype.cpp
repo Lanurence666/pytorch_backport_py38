@@ -7,6 +7,7 @@
 #include <torch/csrc/utils/python_numbers.h>
 #include <torch/csrc/utils/python_strings.h>
 #include <cstring>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 PyObject* THPDtype_New(at::ScalarType scalar_type, const std::string& name) {
   AT_ASSERT(name.length() < DTYPE_NAME_LEN);

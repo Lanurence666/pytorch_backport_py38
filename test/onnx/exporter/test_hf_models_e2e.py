@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Unit LLM tests for the onnx dynamo exporter."""
 
-from __future__ import annotations
 
 from typing import Any
 

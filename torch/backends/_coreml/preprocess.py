@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import hashlib
 import json
 
@@ -8,6 +10,7 @@ from coremltools.converters.mil.mil import types  # type: ignore[import]
 from coremltools.models.neural_network import quantization_utils  # type: ignore[import]
 
 import torch
+from typing import Dict, Type
 
 
 CT_METADATA_VERSION = "com.github.apple.coremltools.version"
@@ -84,7 +87,7 @@ def _convert_to_mil_type(shape, dtype, name: str):
     return ml_type
 
 
-def preprocess(script_module: torch._C.ScriptObject, compile_spec: dict[str, tuple]):
+def preprocess(script_module: torch._C.ScriptObject, compile_spec: Dict[str, tuple]):
     spec = compile_spec["forward"]
     (
         input_specs,

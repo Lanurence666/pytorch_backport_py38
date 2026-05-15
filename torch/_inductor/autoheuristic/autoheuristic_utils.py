@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import functools
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, List, Tuple
 
 import torch
 
@@ -52,8 +54,8 @@ class AHContext:
     information that will help to learn a heuristic.
     """
 
-    features: list[AHFeature]
-    context_dict: dict[str, Value]
+    features: List[AHFeature]
+    context_dict: Dict[str, Value]
 
     def __init__(self) -> None:
         self.features = []
@@ -65,7 +67,7 @@ class AHContext:
         self.features.append(AHFeature(name, value, is_categorical=is_categorical))
         self.context_dict[name] = value
 
-    def get_numerical_and_categorical_features(self) -> tuple[list[str], list[str]]:
+    def get_numerical_and_categorical_features(self) -> Tuple[List[str], List[str]]:
         numerical_features = []
         categorical_features = []
         for feature in self.features:
@@ -85,7 +87,7 @@ class AHContext:
     def get_value(self, name: str) -> Value:
         return self.context_dict[name]
 
-    def apply_operations(self, operations: list[AHOperation]) -> None:
+    def apply_operations(self, operations: List[AHOperation]) -> None:
         for op in operations:
             op.apply_operation(self.context_dict)
 
@@ -94,8 +96,8 @@ class AHMetadata:
     def __init__(
         self,
         shared_memory: Any,
-        device_capa: tuple[int, int],
-        choices: list[Choice],
+        device_capa: Tuple[int, int],
+        choices: List[Choice],
         name: str,
     ) -> None:
         # use amount of shared_memory and device_capability to identify GPU
@@ -105,7 +107,7 @@ class AHMetadata:
         self.choices = choices
         self.name = name
 
-    def to_dict(self) -> dict[str, Value]:
+    def to_dict(self) -> Dict[str, Value]:
         return {
             "shared_memory": self.shared_memory,
             "device_capa": self.device_capa,
@@ -148,7 +150,7 @@ def get_mixedmm_precondition(metadata: AHMetadata, context: AHContext) -> bool:
     return mat1_iscontig and not mat2_iscontig
 
 
-def get_mult_dims_ops() -> list[AHOperation]:
+def get_mult_dims_ops() -> List[AHOperation]:
     m_times_k_op = AHOperation("m*k", lambda data: data["m"] * data["k"])
     m_times_n_op = AHOperation("m*n", lambda data: data["m"] * data["n"])
     k_times_n_op = AHOperation("k*n", lambda data: data["k"] * data["n"])
@@ -164,7 +166,7 @@ def get_arith_intensity(data: Any) -> float:
     return m * k * n / (m * k + k * n + m * n)
 
 
-def pad_mm_operations() -> list[AHOperation]:
+def pad_mm_operations() -> List[AHOperation]:
     mult_dims_ops = get_mult_dims_ops()
     k_div_m_times_n_op = AHOperation(
         "k/(m*n)", lambda data: data["k"] / (data["m"] * data["n"])
@@ -201,7 +203,7 @@ def between_op(data: Any, dim: str, lower: int, upper: int) -> bool:
     return data[dim] >= lower and data[dim] <= upper
 
 
-def between_ops() -> list[AHOperation]:
+def between_ops() -> List[AHOperation]:
     dims = ["m", "k", "n"]
     limits = [(1, 16), (17, 32), (33, 64), (65, 128), (129, 256)]
     ah_operations = []
@@ -222,13 +224,13 @@ def pow2_op(data: Any, dim: str, exponent: int) -> bool:
     return data[dim] == 2**exponent
 
 
-def mm_operations() -> list[AHOperation]:
+def mm_operations() -> List[AHOperation]:
     mult_dims_ops = get_mult_dims_ops()
     arith_intensity_op = AHOperation("arith_intensity", get_arith_intensity)
     return mult_dims_ops + [arith_intensity_op]
 
 
-def mixed_mm_operations() -> list[AHOperation]:
+def mixed_mm_operations() -> List[AHOperation]:
     return mm_operations() + between_ops()
 
 
@@ -236,7 +238,7 @@ def is_multiple(data: Any, dim: str, mult: int) -> bool:
     return data[dim] % mult == 0
 
 
-def get_dims_multiple_ops() -> list[AHOperation]:
+def get_dims_multiple_ops() -> List[AHOperation]:
     multiples = [2, 4, 8, 16, 32]
     dims = ["m", "k", "n"]
     dims_multiple_ops = []
@@ -250,7 +252,7 @@ def get_dims_multiple_ops() -> list[AHOperation]:
     return dims_multiple_ops
 
 
-def get_dims_need_padding_ops() -> list[AHOperation]:
+def get_dims_need_padding_ops() -> List[AHOperation]:
     def mat1_innermost_needs_padding_fn(data: Any) -> bool:
         mat1_stride_0 = data["mat1_stride_0"]
         mat1_stride_1 = data["mat1_stride_1"]
@@ -304,7 +306,7 @@ def get_dims_need_padding_ops() -> list[AHOperation]:
     return [mat1_innermost_op, mat2_innermost_op, num_dims_op]
 
 
-def get_is_contig_ops() -> list[AHOperation]:
+def get_is_contig_ops() -> List[AHOperation]:
     def mat1_is_contig_fn(data: Any) -> bool:
         stride_0 = data["mat1_stride_0"]
         stride_1 = data["mat1_stride_1"]
@@ -328,7 +330,7 @@ def get_is_contig_ops() -> list[AHOperation]:
     return [mat1_is_contig_op, mat2_is_contig_op]
 
 
-def context_add_strides(context: AHContext, name: str, stride: tuple[int, ...]) -> None:
+def context_add_strides(context: AHContext, name: str, stride: Tuple[int, ...]) -> None:
     for i, s in enumerate(stride):
         context.add_feature(f"{name}_stride_{i}", s)
 

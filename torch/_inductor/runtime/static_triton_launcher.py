@@ -1,7 +1,17 @@
+from __future__ import annotations
+
 import functools
 import os
-from functools import cached_property
-from typing import Any
+try:
+    from functools import lru_cached_property
+except ImportError:
+    from functools import cached_property as lru_cached_property
+
+try:
+    from functools import cached_property
+except ImportError:
+    from functools import lru_cached_property as cached_property
+from typing import Any, Dict, Optional, Tuple
 from typing_extensions import Unpack
 
 from ..utils import is_rocm
@@ -110,7 +120,7 @@ class StaticallyLaunchedTritonKernel:
 
         # pyrefly: ignore [missing-attribute]
         self.arg_tys = self.arg_ty_from_signature(kernel.src)
-        self.function: int | None = None  # Loaded by load_kernel(on the parent process)
+        self.function: Optional[int] = None  # Loaded by load_kernel(on the parent process)
         num_ctas = 1
         if hasattr(kernel, "num_ctas"):
             num_ctas = kernel.num_ctas
@@ -150,7 +160,7 @@ class StaticallyLaunchedTritonKernel:
 
     @staticmethod
     @functools.lru_cache
-    def type_mappings() -> dict[str, str]:
+    def type_mappings() -> Dict[str, str]:
         return {
             "i1": "i",
             "i8": "b",
@@ -220,7 +230,7 @@ class StaticallyLaunchedTritonKernel:
                 params.append(self.extract_type(ty))
         return "".join(params)
 
-    def __getstate__(self) -> dict[str, Any]:
+    def __getstate__(self) -> Dict[str, Any]:
         # Remove objects that are no longer valid for pickling
         state = self.__dict__.copy()
         state["function"] = None
@@ -235,7 +245,7 @@ class StaticallyLaunchedTritonKernel:
         grid_y: int,
         grid_z: int,
         stream: int,
-        *args: Unpack[tuple[object, ...]],
+        *args: Unpack[Tuple[object, ...]],
     ) -> None:
         """Actually run the kernel at runtime. This function is the hot codepath."""
 

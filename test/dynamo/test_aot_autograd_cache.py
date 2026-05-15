@@ -1,5 +1,6 @@
 # Owner(s): ["module: dynamo"]
 
+from __future__ import annotations
 import contextlib
 import copy
 import dataclasses
@@ -31,7 +32,7 @@ from torch._functorch._aot_autograd.autograd_cache import (
     BypassAOTAutogradCache,
     sanitize_gm_for_cache,
 )
-from torch._functorch._aot_autograd.schemas import AOTConfig, CacheableAOTConfig
+from torch._functorch._aot_autograd.schemas import AOTConfig
 from torch._guards import TracingContext
 from torch._inductor import config as inductor_config
 from torch._inductor.custom_graph_pass import (
@@ -253,16 +254,7 @@ class CacheKeyEquivalenceMixin:
                 return result
 
             # Invoke the inner compile_fx function with capture patches.
-            with (
-                patch(
-                    "torch._functorch._aot_autograd.autograd_cache.autograd_cache_key",
-                    side_effect=capturing_cache_key,
-                ),
-                patch(
-                    "torch._inductor.compile_fx.run_pre_grad_passes",
-                    side_effect=capturing_run_pre_grad_passes,
-                ),
-            ):
+            with patch( "torch._functorch._aot_autograd.autograd_cache.autograd_cache_key", side_effect=capturing_cache_key, ), patch( "torch._inductor.compile_fx.run_pre_grad_passes", side_effect=capturing_run_pre_grad_passes, ):
                 result = real_compile_fx(mod, example_inputs_, **kwargs)
 
             # Verify standalone key matches the one produced during compilation.
@@ -310,39 +302,6 @@ class AOTAutogradCacheTests(CacheKeyEquivalenceMixin, InductorTestCase):
         """
         torch._dynamo.reset()
         torch._inductor.codecache.PyCodeCache.cache_clear(purge=True)
-
-    @functorch_config.patch({"enable_autograd_cache": True})
-    @inductor_config.patch(
-        {
-            "fx_graph_cache": True,
-            "fx_graph_remote_cache": False,
-            "compile_threads": 1,
-        }
-    )
-    def test_local_cache_stats(self):
-        from torch._inductor.remote_cache import cache_stats
-
-        cache_stats._stats.clear()
-
-        def fn(x, y):
-            return x * 2 + y
-
-        compiled_fn = torch.compile(fn)
-        a = torch.rand(25)
-        b = torch.rand(25)
-        compiled_fn(a, b)
-
-        stats = cache_stats._stats.get("LocalAOTAutogradCache")
-        self.assertIsNotNone(stats)
-        self.assertEqual(stats.miss, 1)
-        self.assertEqual(stats.put, 1)
-        self.assertEqual(stats.hit, 0)
-
-        self._clear_dynamo_and_codecache()
-        compiled_fn(a, b)
-
-        self.assertEqual(stats.hit, 1)
-        cache_stats._stats.clear()
 
     @requires_triton()
     @functorch_config.patch({"enable_autograd_cache": True})
@@ -2873,22 +2832,10 @@ class AOTAutogradCacheTests(CacheKeyEquivalenceMixin, InductorTestCase):
             target = fn
             inputs = (torch.randn(10), torch.randn(10))
 
-        with (
-            unittest.mock.patch(
-                "torch._inductor.compile_fx.run_pre_grad_passes",
-                wrap_run_pre_grad_passes,
-            ),
-            unittest.mock.patch(
-                "torch._inductor.compile_fx.compile_fx_forward",
-                wrap_compile_fx_forward,
-            ),
-            inductor_config.patch("pre_grad_pass_timing", pre_grad_pass_timing),
-            inductor_config.patch("pre_grad_custom_pass", pre_grad_custom_pass),
             # Autograd cache doesn't save entries for modules with trainable
             # parameters, so disable grad to get consistent cache hit counts
             # across the function and module variants.
-            torch.no_grad(),
-        ):
+        with unittest.mock.patch( "torch._inductor.compile_fx.run_pre_grad_passes", wrap_run_pre_grad_passes, ), unittest.mock.patch( "torch._inductor.compile_fx.compile_fx_forward", wrap_compile_fx_forward, ), inductor_config.patch("pre_grad_pass_timing", pre_grad_pass_timing), inductor_config.patch("pre_grad_custom_pass", pre_grad_custom_pass), torch.no_grad():
             self._clear_all_caches()
 
             # First compilation - expect cache miss.
@@ -2950,7 +2897,7 @@ class AOTAutogradCacheTests(CacheKeyEquivalenceMixin, InductorTestCase):
             self._clear_all_caches()
             compiled_fn = torch.compile(fn)
             with self.assertRaisesRegex(
-                RuntimeError, "pre_grad_custom_pass.*NoUuidPass must implement uuid"
+                RuntimeError, "pre_grad_custom_pass must implement uuid"
             ):
                 compiled_fn(x, y)
 
@@ -2976,10 +2923,7 @@ class AOTAutogradCacheTests(CacheKeyEquivalenceMixin, InductorTestCase):
         x = torch.randn(10)
         y = torch.randn(10)
 
-        with (
-            inductor_config.patch("pre_grad_custom_pass", NoUuidPass()),
-            inductor_config.patch("pre_grad_pass_timing", "default"),
-        ):
+        with inductor_config.patch("pre_grad_custom_pass", NoUuidPass()), inductor_config.patch("pre_grad_pass_timing", "default"):
             _warned_pre_grad_pass_missing_uuid.clear()
             self._clear_all_caches()
 
@@ -2990,7 +2934,7 @@ class AOTAutogradCacheTests(CacheKeyEquivalenceMixin, InductorTestCase):
             ) as log_cm:
                 compiled_fn(x, y)
             uuid_warnings = [
-                m for m in log_cm.output if "NoUuidPass does not implement uuid()" in m
+                m for m in log_cm.output if "does not implement uuid()" in m
             ]
             self.assertEqual(len(uuid_warnings), 1)
 
@@ -3198,68 +3142,6 @@ class AOTAutogradCacheTests(CacheKeyEquivalenceMixin, InductorTestCase):
             )
         compile_fx.compile_fx(gm, [[fake_x, fake_y]])
 
-    @unittest.skipIf(not HAS_GPU, "requires accelerator")
-    @functorch_config.patch({"enable_autograd_cache": True})
-    @inductor_config.patch("fx_graph_cache", True)
-    @inductor_config.patch("fx_graph_remote_cache", False)
-    def test_autocast_cache_distinguishes_dtype(self):
-        """
-        Ensure AOTAutograd cache key includes autocast dtype so that
-        graphs compiled under different autocast dtypes are not reused.
-        """
-
-        class TwoLinear(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.fc1 = torch.nn.Linear(64, 64)
-                self.fc2 = torch.nn.Linear(64, 64)
-
-            def forward(self, x):
-                return self.fc2(torch.nn.functional.gelu(self.fc1(x)))
-
-        with fresh_cache():
-            model = TwoLinear().to(GPU_TYPE).eval()
-            x = torch.randn(2, 64, device=GPU_TYPE)
-
-            # Run 1: compile under bfloat16 autocast
-            torch._dynamo.reset()
-            compiled1 = torch.compile(model, backend="inductor")
-            with torch.no_grad(), torch.amp.autocast(GPU_TYPE, dtype=torch.bfloat16):
-                out_bf16 = compiled1(x)
-            self.assertEqual(out_bf16.dtype, torch.bfloat16)
-            self.assertEqual(counters["aot_autograd"]["autograd_cache_miss"], 1)
-            self.assertEqual(counters["aot_autograd"]["autograd_cache_hit"], 0)
-
-            # Run 2: compile under float16 autocast
-            counters.clear()
-            torch._dynamo.reset()
-            compiled2 = torch.compile(model, backend="inductor")
-            with torch.no_grad(), torch.amp.autocast(GPU_TYPE, dtype=torch.float16):
-                out_fp16 = compiled2(x)
-            self.assertEqual(out_fp16.dtype, torch.float16)
-            self.assertEqual(counters["aot_autograd"]["autograd_cache_miss"], 1)
-            self.assertEqual(counters["aot_autograd"]["autograd_cache_hit"], 0)
-
-            # Run 3: compile under bfloat16 again
-            counters.clear()
-            torch._dynamo.reset()
-            compiled3 = torch.compile(model, backend="inductor")
-            with torch.no_grad(), torch.amp.autocast(GPU_TYPE, dtype=torch.bfloat16):
-                out_bf16_2 = compiled3(x)
-            self.assertEqual(out_bf16_2.dtype, torch.bfloat16)
-            self.assertEqual(counters["aot_autograd"]["autograd_cache_miss"], 0)
-            self.assertEqual(counters["aot_autograd"]["autograd_cache_hit"], 1)
-
-            # Run 4: compile under float16 again
-            counters.clear()
-            torch._dynamo.reset()
-            compiled4 = torch.compile(model, backend="inductor")
-            with torch.no_grad(), torch.amp.autocast(GPU_TYPE, dtype=torch.float16):
-                out_fp16_2 = compiled4(x)
-            self.assertEqual(out_fp16_2.dtype, torch.float16)
-            self.assertEqual(counters["aot_autograd"]["autograd_cache_miss"], 0)
-            self.assertEqual(counters["aot_autograd"]["autograd_cache_hit"], 1)
-
 
 @functorch_config.patch({"bundled_autograd_cache": True})
 class AOTAutogradCacheBundledTests(AOTAutogradCacheTests):
@@ -3340,53 +3222,23 @@ class AOTAutogradCachePicklerTests(torch._dynamo.test_case.TestCase):
         c2 = self.gen_cache_key(fn, config)
         self.assertEqual(c1, c2)
 
-    def test_runtime_only_configs_do_not_change_key(self):
+    def test_identical_graphs_and_configs(self):
         def fn(x):
             return x.sin().cos()
 
+        def fn2(x):
+            y = x.sin()
+            z = y.cos()
+            return z
+
+        # Make the id different, but otherwise identical
         config = self.default_config()
         config2 = self.default_config()
         config2.aot_id = 1
-        config3 = self.default_config()
-        config3.fw_compiler = lambda gm, inputs: gm
 
         c1 = self.gen_cache_key(fn, config)
         c2 = self.gen_cache_key(fn, config2)
-        c3 = self.gen_cache_key(fn, config3)
         self.assertEqual(c1, c2)
-        self.assertEqual(c1, c3)
-
-    def test_to_cacheable_strips_runtime_only_fields(self):
-        config = self.default_config()
-        config.fw_compiler = lambda gm, inputs: gm
-        config.bw_compiler = lambda gm, inputs: gm
-        config.partition_fn = lambda *args: args
-        config.decompositions = None
-        config.inference_compiler = lambda gm, inputs: gm
-        config.static_input_indices = [0]
-        config.precompile_backend_id = "backend"
-
-        cacheable = config.to_cacheable()
-
-        self.assertIsInstance(cacheable, CacheableAOTConfig)
-        self.assertEqual(cacheable.static_input_indices, [0])
-        self.assertEqual(cacheable.precompile_backend_id, "backend")
-        self.assertFalse(hasattr(cacheable, "fw_compiler"))
-
-    def test_different_cacheable_configs(self):
-        def fn(x):
-            return x.sin().cos()
-
-        base_config = self.default_config()
-        base = self.gen_cache_key(fn, base_config)
-
-        config_with_static_inputs = self.default_config()
-        config_with_static_inputs.static_input_indices = [0]
-        self.assertNotEqual(base, self.gen_cache_key(fn, config_with_static_inputs))
-
-        config_with_backend = self.default_config()
-        config_with_backend.precompile_backend_id = "backend"
-        self.assertNotEqual(base, self.gen_cache_key(fn, config_with_backend))
 
     def test_different_graphs(self):
         def fn(x):
@@ -3646,12 +3498,7 @@ class AOTAutogradCachePicklerTests(torch._dynamo.test_case.TestCase):
             unpicklable_field=lambda x: x,  # lambdas are unpicklable
         )
 
-        with (
-            patch("torch._logging.trace_structured") as mock_trace,
-            self.assertLogs(
-                "torch._functorch._aot_autograd.autograd_cache", level="WARNING"
-            ) as log_context,
-        ):
+        with patch("torch._logging.trace_structured") as mock_trace, self.assertLogs( "torch._functorch._aot_autograd.autograd_cache", level="WARNING" ) as log_context:
             result = AOTAutogradCache._pickle_entry(entry, remote=False)
 
         self.assertIsNone(result)
@@ -3843,39 +3690,6 @@ class AOTAutogradCachePicklerTests(torch._dynamo.test_case.TestCase):
                 cache_key_shard,
                 "DTensor with Replicate() should have different cache key than Shard(0)",
             )
-
-    def test_reducer_override_fallthrough_for_unpicklable_types(self):
-        """
-        Test that AOTAutogradCachePickler falls through to the parent class
-        reducer_override for types that are not tensor subclasses but are
-        unpicklable (e.g. pybind11 enums).
-        """
-
-        class FakeReduceOp:
-            """Simulates a pybind11 enum that cannot be pickled."""
-
-            def __init__(self, name):
-                self.name = name
-
-            def __reduce_ex__(self, protocol):
-                raise TypeError("cannot pickle 'FakeReduceOp' object")
-
-        gm = torch.fx.GraphModule({}, torch.fx.Graph())
-        pickler = AOTAutogradCachePickler(gm)
-
-        obj_a = FakeReduceOp("SUM")
-        obj_b = FakeReduceOp("SUM")
-        obj_c = FakeReduceOp("PRODUCT")
-
-        # Should not raise — parent's reducer_override handles it
-        data_a = pickler.dumps(obj_a)
-        data_b = pickler.dumps(obj_b)
-        data_c = pickler.dumps(obj_c)
-
-        # Same value -> same hash
-        self.assertEqual(data_a, data_b)
-        # Different value -> different hash
-        self.assertNotEqual(data_a, data_c)
 
 
 def _subprocess_gen_dtensor_cache_key(queue):
@@ -4204,16 +4018,7 @@ class CacheKeyAPITests(torch._dynamo.test_case.TestCase):
             return result
 
         with fresh_cache():
-            with (
-                patch(
-                    "torch._inductor.compile_fx.compile_fx",
-                    side_effect=capturing_compile_fx,
-                ),
-                patch(
-                    "torch._functorch._aot_autograd.autograd_cache.autograd_cache_key",
-                    side_effect=capturing_cache_key,
-                ),
-            ):
+            with patch( "torch._inductor.compile_fx.compile_fx", side_effect=capturing_compile_fx, ), patch( "torch._functorch._aot_autograd.autograd_cache.autograd_cache_key", side_effect=capturing_cache_key, ):
                 torch.compile(fn, fullgraph=True)(*args)
 
         self.assertIsNotNone(captured_key)
@@ -4236,13 +4041,7 @@ class CacheKeyAPITests(torch._dynamo.test_case.TestCase):
 
         # Match the config patches that compile_fx applies during compilation
         # so that the autograd_config snapshot is identical.
-        with (
-            self._tracing_context(),
-            functorch_config.patch(
-                unlift_effect_tokens=True,
-                selective_decompose=inductor_config.selective_decompose,
-            ),
-        ):
+        with self._tracing_context(), functorch_config.patch( unlift_effect_tokens=True, selective_decompose=inductor_config.selective_decompose, ):
             return aot_autograd.autograd_cache_key(
                 fx_graph,
                 example_inputs,

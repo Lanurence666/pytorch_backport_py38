@@ -17,7 +17,7 @@ import re
 import sys
 from enum import Enum
 from pathlib import Path
-from typing import NamedTuple
+from typing import List, NamedTuple, Union
 
 from packaging.requirements import Requirement
 from packaging.version import Version
@@ -50,23 +50,23 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 def format_error_message(
     filename: str,
-    error: Exception | None = None,
+    error: Union[Exception, None] = None,
     *,
-    line: int | None = None,
-    message: str | None = None,
+    line: Union[int, None] = None,
+    message: Union[str, None] = None,
 ) -> LintMessage:
     if message is None and error is not None:
         message = f"Failed due to {error.__class__.__name__}:\n{error}"
@@ -89,7 +89,7 @@ CMAKE_MINIMUM_REQUIRED_PATTERN = re.compile(
 )
 
 
-def check_cmake(path: Path) -> list[LintMessage]:
+def check_cmake(path: Path) -> List[LintMessage]:
     with path.open(encoding="utf-8") as f:
         for i, line in enumerate(f, start=1):
             if match := CMAKE_MINIMUM_REQUIRED_PATTERN.search(line):
@@ -124,15 +124,15 @@ def check_requirement(
     requirement: Requirement,
     path: Path,
     *,
-    line: int | None = None,
-) -> LintMessage | None:
+    line: Union[int, None] = None,
+) -> Union[LintMessage, None]:
     if requirement.name.lower() != "cmake":
         return None
 
     for spec in requirement.specifier:
         if (
             spec.operator in ("==", ">=")
-            and Version(spec.version.removesuffix(".*")) < CMAKE_MINIMUM_VERSION
+            and Version(spec.version[:-len(".*")] if spec.version.endswith(".*") else spec.version) < CMAKE_MINIMUM_VERSION
         ):
             return format_error_message(
                 str(path),
@@ -146,7 +146,7 @@ def check_requirement(
     return None
 
 
-def check_pyproject(path: Path) -> list[LintMessage]:
+def check_pyproject(path: Path) -> List[LintMessage]:
     try:
         pyproject = tomllib.loads(path.read_text(encoding="utf-8"))
     except (tomllib.TOMLDecodeError, OSError) as err:
@@ -169,7 +169,7 @@ def check_pyproject(path: Path) -> list[LintMessage]:
     )
 
 
-def check_requirements(path: Path) -> list[LintMessage]:
+def check_requirements(path: Path) -> List[LintMessage]:
     try:
         with path.open(encoding="utf-8") as f:
             lines = f.readlines()
@@ -192,7 +192,7 @@ def check_requirements(path: Path) -> list[LintMessage]:
     return lint_messages
 
 
-def check_file(filename: str) -> list[LintMessage]:
+def check_file(filename: str) -> List[LintMessage]:
     path = Path(filename).absolute()
     basename = path.name.lower()
     if basename in ("cmakelists.txt", "cmakelists.txt.in") or basename.endswith(

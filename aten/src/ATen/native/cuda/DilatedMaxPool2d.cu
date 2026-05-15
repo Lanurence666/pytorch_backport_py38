@@ -1,6 +1,7 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/core/Tensor.h>
 #include <ATen/AccumulateType.h>
+#include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NamedTensorUtils.h>
@@ -107,6 +108,7 @@ __global__ void max_pool_forward_nchw(
     scalar_t* top_data,
     int64_t* top_mask) {
   CUDA_KERNEL_LOOP_TYPE(index, nthreads, index_t) {
+    using opmath_t = at::opmath_type<scalar_t>;
     index_t pw = index % pooled_width;
     index_t ph = (index / pooled_width) % pooled_height;
     index_t c = (index / pooled_width / pooled_height) % channels;
@@ -125,7 +127,7 @@ __global__ void max_pool_forward_nchw(
     for (int h = hstart; h < hend; h += dilation_h) {
       for (int w = wstart; w < wend; w += dilation_w) {
         scalar_t val = btm_data[h * width + w];
-        if ((val > maxval) || at::_isnan(val)) {
+        if ((static_cast<opmath_t>(val) > static_cast<opmath_t>(maxval)) || at::_isnan(val)) {
           maxidx = h * width + w;
           maxval = val;
         }
@@ -152,6 +154,7 @@ __global__ void max_pool_forward_nhwc(
     scalar_t* top_data, int64_t* top_mask) {
 
   extern __shared__ unsigned char smem_raw[];
+  using opmath_t = at::opmath_type<scalar_t>;
   index_t *out_mask_cached = reinterpret_cast<index_t*>(smem_raw);
   scalar_t *out_cached = reinterpret_cast<scalar_t*>(
       out_mask_cached + kernel_size_C*blockDim.x*blockDim.y*blockDim.z);
@@ -246,7 +249,7 @@ __global__ void max_pool_forward_nhwc(
           const scalar_t *ptr_input = bottom_data + ih * in_stride_h + iw * in_stride_w;
           for (index_t c = channel_offset; c < channels; c += static_cast<index_t>(blockDim.x) * kernel_stride_C) {
             scalar_t val = ptr_input[c * in_stride_c];
-            if ((val > out_cached[cached_index]) || at::_isnan(val)) {
+            if ((static_cast<opmath_t>(val) > static_cast<opmath_t>(out_cached[cached_index])) || at::_isnan(val)) {
               out_cached[cached_index] = val;
               out_mask_cached[cached_index] = ih * width + iw;
             }
@@ -468,18 +471,18 @@ const Tensor& indices) {
     return;
   }
 
-  const int kH = c10::checked_convert<int>(kernel_size[0], "int");
-  const int kW = kernel_size.size() == 1 ? kH : c10::checked_convert<int>(kernel_size[1], "int");
+  const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
+  const int kW = kernel_size.size() == 1 ? kH : safe_downcast<int, int64_t>(kernel_size[1]);
 
-  const int dH = stride.empty() ? kH : c10::checked_convert<int>(stride[0], "int");
+  const int dH = stride.empty() ? kH : safe_downcast<int, int64_t>(stride[0]);
   const int dW = stride.empty() ? kW :
-                 stride.size() == 1 ? dH : c10::checked_convert<int>(stride[1], "int");
+                 stride.size() == 1 ? dH : safe_downcast<int, int64_t>(stride[1]);
 
-  const int padH = c10::checked_convert<int>(padding[0], "int");
-  const int padW = padding.size() == 1 ? padH : c10::checked_convert<int>(padding[1], "int");
+  const int padH = safe_downcast<int, int64_t>(padding[0]);
+  const int padW = padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
 
-  const int dilationH = c10::checked_convert<int>(dilation[0], "int");
-  const int dilationW = dilation.size() == 1 ? dilationH : c10::checked_convert<int>(dilation[1], "int");
+  const int dilationH = safe_downcast<int, int64_t>(dilation[0]);
+  const int dilationW = dilation.size() == 1 ? dilationH : safe_downcast<int, int64_t>(dilation[1]);
 
   const auto memory_format = input_.suggest_memory_format();
 
@@ -528,17 +531,17 @@ const Tensor& indices) {
               in_stride_n, in_stride_c, in_stride_h, in_stride_w);
 
           int kernel_stride_C = ceil_div(
-              c10::checked_convert<int>(nInputPlane, "int"), block_x * 4);
+              safe_downcast<int, int64_t>(nInputPlane), block_x * 4);
           int kernel_size_C = ceil_div(
-              c10::checked_convert<int>(nInputPlane, "int"), block_x * kernel_stride_C);
+              safe_downcast<int, int64_t>(nInputPlane), block_x * kernel_stride_C);
 
           int grid_x = nbatch*kernel_stride_C;
           int grid_y = std::min<int>(
               at::cuda::getCurrentDeviceProperties()->maxGridSize[1],
-              ceil_div(c10::checked_convert<int>(outputWidth, "int"), block_y*BLOCK_STRIDE_FWD));
+              ceil_div(safe_downcast<int, int64_t>(outputWidth), block_y*BLOCK_STRIDE_FWD));
           int grid_z = std::min<int>(
               at::cuda::getCurrentDeviceProperties()->maxGridSize[2],
-              ceil_div(c10::checked_convert<int>(outputHeight, "int"), block_z*BLOCK_STRIDE_FWD));
+              ceil_div(safe_downcast<int, int64_t>(outputHeight), block_z*BLOCK_STRIDE_FWD));
           const dim3 grid(grid_x, grid_y, grid_z);
 
           size_t shmem_size;
@@ -648,18 +651,18 @@ const Tensor& gradInput) {
     return;
   }
 
-  const int kH = c10::checked_convert<int>(kernel_size[0], "int");
-  const int kW = kernel_size.size() == 1 ? kH : c10::checked_convert<int>(kernel_size[1], "int");
+  const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
+  const int kW = kernel_size.size() == 1 ? kH : safe_downcast<int, int64_t>(kernel_size[1]);
 
-  const int dH = stride.empty() ? kH : c10::checked_convert<int>(stride[0], "int");
+  const int dH = stride.empty() ? kH : safe_downcast<int, int64_t>(stride[0]);
   const int dW = stride.empty() ? kW :
-                 stride.size() == 1 ? dH : c10::checked_convert<int>(stride[1], "int");
+                 stride.size() == 1 ? dH : safe_downcast<int, int64_t>(stride[1]);
 
-  const int padH = c10::checked_convert<int>(padding[0], "int");
-  const int padW = padding.size() == 1 ? padH : c10::checked_convert<int>(padding[1], "int");
+  const int padH = safe_downcast<int, int64_t>(padding[0]);
+  const int padW = padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
 
-  const int dilationH = c10::checked_convert<int>(dilation[0], "int");
-  const int dilationW = dilation.size() == 1 ? dilationH : c10::checked_convert<int>(dilation[1], "int");
+  const int dilationH = safe_downcast<int, int64_t>(dilation[0]);
+  const int dilationW = dilation.size() == 1 ? dilationH : safe_downcast<int, int64_t>(dilation[1]);
 
   const auto memory_format = input_.suggest_memory_format();
 
@@ -712,17 +715,17 @@ const Tensor& gradInput) {
           const dim3 block(block_x, block_y, block_z);
 
           int kernel_stride_C = ceil_div(
-              c10::checked_convert<int>(nInputPlane, "int"), block_x * 4);
+              safe_downcast<int, int64_t>(nInputPlane), block_x * 4);
           int kernel_size_C = ceil_div(
-              c10::checked_convert<int>(nInputPlane, "int"), block_x * kernel_stride_C);
+              safe_downcast<int, int64_t>(nInputPlane), block_x * kernel_stride_C);
 
           int grid_x = nbatch*kernel_stride_C;
           int grid_y = std::min<int>(
               at::cuda::getCurrentDeviceProperties()->maxGridSize[1],
-              ceil_div(c10::checked_convert<int>(inputWidth, "int"), block_y*BLOCK_STRIDE_BWD));
+              ceil_div(safe_downcast<int, int64_t>(inputWidth), block_y*BLOCK_STRIDE_BWD));
           int grid_z = std::min<int>(
               at::cuda::getCurrentDeviceProperties()->maxGridSize[2],
-              ceil_div(c10::checked_convert<int>(inputHeight, "int"), block_z*BLOCK_STRIDE_BWD));
+              ceil_div(safe_downcast<int, int64_t>(inputHeight), block_z*BLOCK_STRIDE_BWD));
           const dim3 grid(grid_x, grid_y, grid_z);
 
           size_t shmem_size = (kernel_size_C * block_x*block_y*block_z) * sizeof(accscalar_t);

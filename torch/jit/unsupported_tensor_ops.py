@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from textwrap import dedent
-from typing import Any
+from typing import Any, Dict
 
 import torch.jit
 
@@ -37,7 +39,7 @@ def _gen_unsupported_methods_properties():
     sorted_tensor_attrs = sorted(tensor_attrs, key=lambda x: x.lower())
     for attr in sorted_tensor_attrs:
         funcs_str = funcs_template.format(op=attr)
-        scope: dict[str, Any] = {}
+        scope: Dict[str, Any] = {}
         execWrapper(funcs_str, globals(), scope)
         try:
             torch.jit.CompilationUnit(funcs_str)

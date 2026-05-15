@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from collections.abc import Callable
 
 import torch
 from torch.ao.nn.intrinsic import _FusedModule
 from torch.fx._symbolic_trace import Tracer
 from torch.fx.proxy import Scope
+from typing import Callable, List
 
 
 __all__ = [
@@ -20,7 +23,7 @@ class ScopeContextManager(torch.fx.proxy.ScopeContextManager):
 
 class QuantizationTracer(Tracer):
     def __init__(
-        self, skipped_module_names: list[str], skipped_module_classes: list[Callable]
+        self, skipped_module_names: List[str], skipped_module_classes: List[Callable]
     ):
         super().__init__()
         self.skipped_module_names = skipped_module_names

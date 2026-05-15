@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """JIT-related state.
 
@@ -9,7 +10,7 @@ functionalities in `torch.jit`.
 
 import os
 import weakref
-from typing import Any
+from typing import Any, Dict, Type
 
 import torch
 
@@ -63,8 +64,8 @@ _python_cu = torch._C.CompilationUnit()
 
 
 # python class => ScriptClass mapping
-_script_classes: dict[type[Any], type[Any]] = {}
-_name_to_pyclass: dict[str, type[Any]] = {}
+_script_classes: Dict[Type[Any], Type[Any]] = {}
+_name_to_pyclass: Dict[str, Type[Any]] = {}
 
 
 def _add_script_class(python_class, script_class) -> None:

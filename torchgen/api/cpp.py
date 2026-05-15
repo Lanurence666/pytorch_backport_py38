@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import List, Set, TYPE_CHECKING, Union
 from typing_extensions import assert_never
 
 from torchgen import local
@@ -100,7 +100,7 @@ def valuetype_type(
     binds: ArgName,
     mutable: bool = True,
     symint: bool = False,
-) -> NamedCType | None:
+) -> Union[NamedCType, None]:
     if isinstance(t, BaseType):
         if t.name in (BaseTy.Tensor, BaseTy.Scalar):
             return None
@@ -284,7 +284,7 @@ def returns_type(rs: Sequence[Return], *, symint: bool = False) -> CType:
 
 
 def return_names(f: NativeFunction, *, fallback_name: str = "result") -> Sequence[str]:
-    returns: list[str] = []
+    returns: List[str] = []
     for i, r in enumerate(f.func.returns):
         # If we have an inplace function, the return argument is
         # implicitly named self.
@@ -374,17 +374,17 @@ def default_expr(d: str, t: Type, *, symint: bool) -> str:
 
 
 def argument(
-    a: Argument | TensorOptionsArguments | SelfArgument,
+    a: Union[Argument, TensorOptionsArguments, SelfArgument],
     *,
-    cpp_no_default_args: set[str],
+    cpp_no_default_args: Set[str],
     method: bool,
     faithful: bool,
     symint: bool = False,
     has_tensor_options: bool,
-) -> list[Binding]:
+) -> List[Binding]:
     def sub_argument(
-        a: Argument | TensorOptionsArguments | SelfArgument,
-    ) -> list[Binding]:
+        a: Union[Argument, TensorOptionsArguments, SelfArgument],
+    ) -> List[Binding]:
         return argument(
             a,
             cpp_no_default_args=cpp_no_default_args,
@@ -400,7 +400,7 @@ def argument(
             binds = SpecialArgName.possibly_redundant_memory_format
         else:
             binds = a.name
-        default: str | None = None
+        default: Union[str, None] = None
         if a.name not in cpp_no_default_args and a.default is not None:
             default = default_expr(a.default, a.type, symint=symint)
         return [
@@ -452,9 +452,9 @@ def arguments(
     faithful: bool,
     symint: bool = False,
     method: bool,
-    cpp_no_default_args: set[str],
-) -> list[Binding]:
-    args: list[Argument | TensorOptionsArguments | SelfArgument] = []
+    cpp_no_default_args: Set[str],
+) -> List[Binding]:
+    args: List[Union[Argument, TensorOptionsArguments, SelfArgument]] = []
     if faithful:
         args.extend(arguments.non_out)
         args.extend(arguments.out)

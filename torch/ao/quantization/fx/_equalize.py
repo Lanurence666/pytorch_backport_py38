@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import operator
 import warnings
 from collections import namedtuple
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 from typing_extensions import TypeIs
 
 import torch
@@ -26,7 +28,7 @@ from .utils import (
 )
 
 
-CUSTOM_MODULE_SUPP_LIST: list[Any] = []
+CUSTOM_MODULE_SUPP_LIST: List[Any] = []
 
 
 def reshape_scale(scale: torch.Tensor, axis: int, input: torch.Tensor) -> torch.Tensor:
@@ -88,7 +90,7 @@ class _InputEqualizationObserver(nn.Module):
         )
 
         self.equalization_scale = torch.tensor(1)
-        self.equalization_shape: list[int] = []
+        self.equalization_shape: List[int] = []
 
     def forward(self, x_orig):
         if x_orig.ndim < 2 or x_orig.ndim > 5:
@@ -330,7 +332,7 @@ def node_supports_equalization(node: Node, modules) -> bool:
 
 def is_equalization_observer(
     observer: nn.Module,
-) -> TypeIs[_InputEqualizationObserver | _WeightEqualizationObserver]:
+) -> Union[TypeIs[_InputEqualizationObserver, _WeightEqualizationObserver]]:
     return isinstance(
         observer, (_InputEqualizationObserver, _WeightEqualizationObserver)
     )
@@ -342,8 +344,8 @@ def is_equalization_observer(
 
 
 def get_op_node_and_weight_eq_obs(
-    input_eq_obs_node: Node, model: GraphModule, modules: dict[str, nn.Module]
-) -> tuple[Node | None, _WeightEqualizationObserver | None]:
+    input_eq_obs_node: Node, model: GraphModule, modules: Dict[str, nn.Module]
+) -> Union[Tuple[Node, None, _WeightEqualizationObserver, None]]:
     """Gets the following weight equalization observer. There should always
     exist a weight equalization observer after an input equalization observer.
 
@@ -372,7 +374,7 @@ def get_op_node_and_weight_eq_obs(
             raise AssertionError(
                 "Expected 'equalization_node_name_to_qconfig' attribute in observed graph module"
             )
-        equalization_node_name_to_qconfig: dict[str, Any] = (
+        equalization_node_name_to_qconfig: Dict[str, Any] = (
             maybe_equalization_node_name_to_config  # type: ignore[assignment]
         )
         if equalization_node_name_to_qconfig.get(op_node.name) is None:
@@ -401,8 +403,8 @@ def get_op_node_and_weight_eq_obs(
 
 
 def maybe_get_weight_eq_obs_node(
-    op_node: Node, modules: dict[str, nn.Module]
-) -> Node | None:
+    op_node: Node, modules: Dict[str, nn.Module]
+) -> Optional[Node]:
     """Gets the weight equalization observer node if it exists."""
     if op_node.op != "call_function":
         raise AssertionError(
@@ -422,8 +424,8 @@ def maybe_get_weight_eq_obs_node(
 
 
 def maybe_get_next_input_eq_obs(
-    node: Node, modules: dict[str, nn.Module]
-) -> _InputEqualizationObserver | None:
+    node: Node, modules: Dict[str, nn.Module]
+) -> Optional[_InputEqualizationObserver]:
     """Gets the following input equalization observer if it exists.
 
     For example, in the case of connecting linear layers:
@@ -476,8 +478,8 @@ def maybe_get_next_input_eq_obs(
 
 
 def maybe_get_next_equalization_scale(
-    node: Node, modules: dict[str, nn.Module]
-) -> torch.Tensor | None:
+    node: Node, modules: Dict[str, nn.Module]
+) -> Optional[torch.Tensor]:
     """If the next next node is an InputEqualizationObserver then we want to
     return its equalization scale, else we return 1
 
@@ -497,7 +499,7 @@ def maybe_get_next_equalization_scale(
     return None
 
 
-def scale_input_observer(node: Node, modules: dict[str, nn.Module]) -> None:
+def scale_input_observer(node: Node, modules: Dict[str, nn.Module]) -> None:
     """Scales the following input quantization observer's min/max values by
     updating the values with the scaled min/max values calculated by the input
     equalization observer
@@ -527,9 +529,9 @@ def scale_input_observer(node: Node, modules: dict[str, nn.Module]) -> None:
 
 def scale_weight_node(
     node: Node,
-    modules: dict[str, nn.Module],
+    modules: Dict[str, nn.Module],
     equalization_scale: torch.Tensor,
-    next_equalization_scale: torch.Tensor | None,
+    next_equalization_scale: Union[torch.Tensor, None,]
 ) -> None:
     """Scale the weights for input-weight equalization by multiplying the
     weight by 1/equalization_scale and next_equalization_scale
@@ -593,9 +595,9 @@ def scale_weight_node(
 def scale_weight_functional(
     op_node: Node,
     model: GraphModule,
-    modules: dict[str, nn.Module],
+    modules: Dict[str, nn.Module],
     equalization_scale: torch.Tensor,
-    next_equalization_scale: torch.Tensor | None,
+    next_equalization_scale: Union[torch.Tensor, None,]
 ) -> None:
     """Scales the weight value for functional layers"""
     if equalization_scale is None:
@@ -674,7 +676,7 @@ def scale_weight_functional(
     setattr(modules[bias_parent_name], bias_name, scaled_bias)
 
 
-def clear_weight_quant_obs_node(op_node: Node, modules: dict[str, nn.Module]) -> None:
+def clear_weight_quant_obs_node(op_node: Node, modules: Dict[str, nn.Module]) -> None:
     """Given the operation node, we want find the corresponding quantization
     observer and reset its min/max values
     """
@@ -711,8 +713,8 @@ def remove_node(model: GraphModule, node: Node, prev_node: Node):
 
 
 def update_obs_for_equalization(
-    model: GraphModule, modules: dict[str, nn.Module]
-) -> dict[str, _WeightEqualizationObserver]:
+    model: GraphModule, modules: Dict[str, nn.Module]
+) -> Dict[str, _WeightEqualizationObserver]:
     """Update all of the observer's equalization scale. For each
     InputEqualizationObserver, we will find the location of the next
     WeightEqualizationObserver, create it, and calculate the equalization scale
@@ -763,8 +765,8 @@ def update_obs_for_equalization(
 
 def convert_eq_obs(
     model: GraphModule,
-    modules: dict[str, nn.Module],
-    weight_eq_obs_dict: dict[str, _WeightEqualizationObserver],
+    modules: Dict[str, nn.Module],
+    weight_eq_obs_dict: Dict[str, _WeightEqualizationObserver],
 ) -> None:
     """Converts the equalization operations and updates the other nodes in the
     following way:
@@ -940,7 +942,7 @@ def _convert_equalization_ref(model: GraphModule):
 
 def get_layer_sqnr_dict(
     model_a: nn.Module, model_b: nn.Module, x: torch.Tensor
-) -> dict[str, float]:
+) -> Dict[str, float]:
     """Runs the Numeric Suite on model_a and model_b and returns a dictionary
     containing the SQNR between layers in model_a and model_b.
 
@@ -994,7 +996,7 @@ def get_layer_sqnr_dict(
 
 
 def get_equalization_qconfig_dict(
-    layer_sqnr_dict: dict[str, float], num_layers_to_equalize: int
+    layer_sqnr_dict: Dict[str, float], num_layers_to_equalize: int
 ) -> Any:
     """Given the layer to SQNR dictionary, find the layers with the highest
     quantization errors, and return an equalization_qconfig_dict

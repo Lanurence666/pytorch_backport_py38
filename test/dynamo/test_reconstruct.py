@@ -1,5 +1,6 @@
 # Owner(s): ["module: dynamo"]
 
+from __future__ import annotations
 import collections
 import contextlib
 import dis

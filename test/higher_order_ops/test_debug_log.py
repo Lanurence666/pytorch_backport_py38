@@ -1,4 +1,5 @@
 # Owner(s): ["module: higher order operators"]
+from __future__ import annotations
 """Tests for torch.utils.debug_log.debug_grad_log."""
 
 import logging

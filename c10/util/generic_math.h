@@ -34,22 +34,23 @@ namespace c10 {
 template <typename scalar_t>
 inline C10_HOST_DEVICE scalar_t div_floor_floating(scalar_t a, scalar_t b)
     __ubsan_ignore_float_divide_by_zero__ {
-  if (C10_UNLIKELY(b == 0)) {
-    // Divide by zero: return standard IEEE result
+  float fa = static_cast<float>(a);
+  float fb = static_cast<float>(b);
+  if (C10_UNLIKELY(fb == 0)) {
     return a / b;
   }
 
-  auto mod = std::fmod(a, b);
-  auto div = (a - mod) / b;
-  if ((mod != 0) && (b < 0) != (mod < 0)) {
-    div -= scalar_t(1);
+  auto mod = std::fmod(fa, fb);
+  auto div = (fa - mod) / fb;
+  if ((mod != 0) && (fb < 0) != (mod < 0)) {
+    div -= float(1);
   }
 
   scalar_t floordiv;
   if (div != 0) {
-    floordiv = std::floor(div);
-    if (div - floordiv > scalar_t(0.5)) {
-      floordiv += scalar_t(1.0);
+    floordiv = static_cast<scalar_t>(std::floor(div));
+    if (div - static_cast<float>(floordiv) > float(0.5)) {
+      floordiv = static_cast<scalar_t>(static_cast<float>(floordiv) + float(1.0));
     }
   } else {
     floordiv = C10_COMPAT_COPYSIGN(scalar_t(0), a / b);

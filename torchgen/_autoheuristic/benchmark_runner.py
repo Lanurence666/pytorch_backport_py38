@@ -1,8 +1,9 @@
+from __future__ import annotations
 import argparse
 import random
 import time
 from abc import abstractmethod
-from typing import Any
+from typing import Any, Tuple
 
 from tqdm import tqdm  # type: ignore[import-untyped]
 
@@ -74,7 +75,7 @@ class BenchmarkRunner:
     def run_benchmark(self, *args: Any) -> None: ...
 
     @abstractmethod
-    def create_input(self) -> tuple[Any, ...]: ...
+    def create_input(self) -> Tuple[Any, ...]: ...
 
     def main(self, num_samples: int, num_reps: int) -> None:
         for _ in tqdm(range(num_samples)):

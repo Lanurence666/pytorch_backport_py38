@@ -18,6 +18,8 @@
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+from __future__ import annotations
+
 # DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
 # FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 # DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -27,7 +29,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import argparse
-from typing import Tuple, Type, Union
+from typing import Optional, Set, Tuple, Type, Union
 
 import cuda.bindings.driver as cuda
 
@@ -1756,19 +1758,19 @@ class Sm100BlockScaledPersistentDenseGemmKernel:
         :param tiled_mma: The tiled MMA object defining the core computation.
         :type tiled_mma: cute.TiledMma
         :param mma_tiler_mnk: The shape (M, N, K) of the MMA tiler.
-        :type mma_tiler_mnk: tuple[int, int, int]
+        :type mma_tiler_mnk: Tuple[int, int, int]
         :param a_dtype: Data type of operand A.
-        :type a_dtype: type[cutlass.Numeric]
+        :type a_dtype: Type[cutlass.Numeric]
         :param b_dtype: Data type of operand B.
-        :type b_dtype: type[cutlass.Numeric]
+        :type b_dtype: Type[cutlass.Numeric]
         :param epi_tile: The epilogue tile shape.
         :type epi_tile: cute.Tile
         :param c_dtype: Data type of operand C (output).
-        :type c_dtype: type[cutlass.Numeric]
+        :type c_dtype: Type[cutlass.Numeric]
         :param c_layout: Layout enum of operand C.
         :type c_layout: utils.LayoutEnum
         :param sf_dtype: Data type of Scale factor.
-        :type sf_dtype: type[cutlass.Numeric]
+        :type sf_dtype: Type[cutlass.Numeric]
         :param sf_vec_size: Scale factor vector size.
         :type sf_vec_size: int
         :param smem_capacity: Total available shared memory capacity in bytes.
@@ -1778,7 +1780,7 @@ class Sm100BlockScaledPersistentDenseGemmKernel:
 
         :return: A tuple containing the computed number of stages for:
                  (ACC stages, A/B operand stages, C stages)
-        :rtype: tuple[int, int, int]
+        :rtype: Tuple[int, int, int]
         """
         # ACC stages
         num_acc_stage = 1 if mma_tiler_mnk[1] == 256 else 2
@@ -1860,16 +1862,16 @@ class Sm100BlockScaledPersistentDenseGemmKernel:
         :param c: The output tensor C
         :type c: cute.Tensor
         :param cta_tile_shape_mnk: The shape (M, N, K) of the CTA tile.
-        :type cta_tile_shape_mnk: tuple[int, int, int]
+        :type cta_tile_shape_mnk: Tuple[int, int, int]
         :param cluster_shape_mn: Shape of each cluster in M, N dimensions.
-        :type cluster_shape_mn: tuple[int, int]
+        :type cluster_shape_mn: Tuple[int, int]
         :param max_active_clusters: Maximum number of active clusters.
         :type max_active_clusters: cutlass.Constexpr
 
         :return: A tuple containing:
             - tile_sched_params: Parameters for the persistent tile scheduler.
             - grid: Grid shape for kernel launch.
-        :rtype: Tuple[utils.PersistentTileSchedulerParams, tuple[int, int, int]]
+        :rtype: Tuple[utils.PersistentTileSchedulerParams, Tuple[int, int, int]]
         """
         c_shape = cute.slice_(cta_tile_shape_mnk, (None, None, 0))
         gc = cute.zipped_divide(c, tiler=c_shape)

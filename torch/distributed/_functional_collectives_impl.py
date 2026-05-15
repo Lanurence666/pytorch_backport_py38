@@ -1,7 +1,10 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 import torch.distributed.distributed_c10d as c10d
+from typing import List, Optional
 
 
 """
@@ -59,7 +62,7 @@ def _reduce_scatter_tensor(
     input: torch.Tensor,
     reduce_op: str,
     tag: str,
-    ranks: list[int],
+    ranks: List[int],
     group_size: int,
 ):
     group_name = c10d._resolve_group_name_by_ranks_and_tag(ranks, tag)
@@ -72,10 +75,10 @@ def _reduce_scatter_tensor(
 
 
 def _reduce_scatter_tensor_coalesced(
-    inputs: list[torch.Tensor],
+    inputs: List[torch.Tensor],
     reduce_op: str,
     tag: str,
-    ranks: list[int],
+    ranks: List[int],
     group_size: int,
 ):
     group_name = c10d._resolve_group_name_by_ranks_and_tag(ranks, tag)
@@ -89,10 +92,10 @@ def _reduce_scatter_tensor_coalesced(
 
 def _all_to_all_single(
     input: torch.Tensor,
-    output_split_sizes: list[int] | None,
-    input_split_sizes: list[int] | None,
+    output_split_sizes: Optional[List[int]],
+    input_split_sizes: Optional[List[int]],
     tag: str,
-    ranks: list[int],
+    ranks: List[int],
     group_size: int,
 ):
     if output_split_sizes is None or input_split_sizes is None:
@@ -126,10 +129,10 @@ def _irecv(tensor: torch.Tensor, src: int, tag: str, group_name):
 
 
 def _batch_p2p_ops(
-    op_list: list[str],
-    peer_list: list[int],
-    tag_list: list[int],
-    tensors: list[torch.Tensor],
+    op_list: List[str],
+    peer_list: List[int],
+    tag_list: List[int],
+    tensors: List[torch.Tensor],
     group_name: str,
 ):
     return torch.ops._c10d_functional.batch_p2p_ops(

@@ -1,11 +1,13 @@
+from __future__ import annotations
 """Test utilities for ONNX export."""
 
-from __future__ import annotations
 
 
 __all__ = ["assert_onnx_program"]
 
-from typing import Any, Literal, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING, Tuple
+from typing_extensions import Literal
+
 
 import torch
 from torch.utils import _pytree
@@ -18,11 +20,11 @@ if TYPE_CHECKING:
 def assert_onnx_program(
     program: _onnx_program.ONNXProgram,
     *,
-    rtol: float | None = None,
-    atol: float | None = None,
-    args: tuple[Any, ...] | None = None,
-    kwargs: dict[str, Any] | None = None,
-    strategy: str | None = "TorchExportNonStrictStrategy",
+    rtol: Optional[float]= None,
+    atol: Optional[float]= None,
+    args: Optional[Tuple[Any, ...]]= None,
+    kwargs: Optional[Dict[str, Any]]= None,
+    strategy: Optional[str]= "TorchExportNonStrictStrategy",
     backend: Literal["onnxruntime", "reference"] = "onnxruntime",
 ) -> None:
     """Assert that the ONNX model produces the same output as the PyTorch ExportedProgram.

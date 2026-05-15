@@ -27,6 +27,7 @@ from torch.testing._internal.common_dtype import (
     integral_types_and,
 )
 from torch.testing._internal.common_utils import torch_to_numpy_dtype_dict
+from typing import Sequence
 
 
 COMPLETE_DTYPES_DISPATCH = (

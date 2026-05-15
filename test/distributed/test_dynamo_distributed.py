@@ -1,4 +1,5 @@
 # Owner(s): ["module: dynamo"]
+from __future__ import annotations
 import contextlib
 import copy
 import functools
@@ -58,7 +59,9 @@ from torch.testing._internal.triton_utils import requires_cuda_and_triton
 
 
 try:
-    from importlib.metadata import version as pkg_version
+    from importlib.metadata import version
+except ImportError:
+    from importlib_metadata import version as pkg_version
 
     _transformers_version = tuple(
         int(x) for x in pkg_version("transformers").split(".")[:2]
@@ -1872,10 +1875,7 @@ class TestSingleProc(DynamoDistributedSingleProcTestCase):
         cudagraphs_by_frame.clear()
 
         override = f">{frame_ids[0]}:triton.cudagraphs=False"
-        with (
-            torch._dynamo.config.patch(debug_inductor_config_override=override),
-            patch.object(compile_fx_mod, "compile_fx", tracking_compile_fx),
-        ):
+        with torch._dynamo.config.patch(debug_inductor_config_override=override), patch.object(compile_fx_mod, "compile_fx", tracking_compile_fx):
             opt_fn = torch.compile(ddp_m, mode="reduce-overhead")
             opt_outputs = opt_fn(inputs)
 

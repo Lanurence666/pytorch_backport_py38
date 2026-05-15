@@ -6,7 +6,6 @@ import enum
 import functools
 import logging
 import re
-import sys
 import threading
 import traceback
 import unittest.mock
@@ -15,8 +14,8 @@ from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Generic, NamedTuple, overload, TYPE_CHECKING, TypeVar
-from typing_extensions import dataclass_transform
+from typing import Any, Callable, Dict, Generator, Generic, Iterator, List, Optional, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union, overload
+from typing_extensions import NamedTuple, dataclass_transform
 
 import torch
 from torch.utils import _pytree as pytree
@@ -30,8 +29,7 @@ log = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
-    import dis
-    from collections.abc import Callable, Generator, Iterator
+    
     from types import CodeType
 
     import sympy
@@ -69,17 +67,17 @@ CA_COMPILE_ID_PATTERN = re.compile(
 # 3. Compact: The string form is directly displayed by some tools. Special symbols are okay.
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
+@dataclass(frozen=True)
 class CompileId:
-    frame_id: int | None
+    frame_id: Optional[int]
     # This id is per-frame, and counts how many times we've compiled this
     # frame.  This could have been a global id but having this be per-frame
     # gives you a better intuitive sense for how many recompiles have occurred
     # so far.
-    frame_compile_id: int | None
+    frame_compile_id: Optional[int]
 
     # torch.compiling a compiled autograd graph
-    compiled_autograd_id: int | None = None
+    compiled_autograd_id: Optional[int] = None
 
     # TODO: consider also tracking the recompilation count
     # See Note: Updating CompileId
@@ -106,7 +104,7 @@ class CompileId:
             return f"{self.frame_id}/{self.frame_compile_id}"
 
     @classmethod
-    def from_string(cls, compile_id: str | None) -> CompileId | None:
+    def from_string(cls, compile_id: Optional[str]) -> Optional[CompileId]:
         """
         Factory method that creates a CompileId from its string representation.
         Keep this in sync with the __str__ method.
@@ -225,15 +223,13 @@ class GuardBuilderBase:
 
 @dataclasses.dataclass(frozen=True)
 class SLoc:
-    framework_loc: traceback.FrameSummary | str | None
-    maybe_user_loc: str | None
+    framework_loc: Union[traceback.FrameSummary, Optional[str]]
+    maybe_user_loc: Optional[str]
 
     def __str__(self) -> str:
         floc = (
             self.framework_loc
             if isinstance(self.framework_loc, str)
-            else ""
-            if self.framework_loc is None
             else format_frame(self.framework_loc)
         )
         if self.maybe_user_loc is not None:
@@ -248,7 +244,7 @@ class ShapeGuard(NamedTuple):
     size_oblivious: bool
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass()
 class Guard:
     # originating_source is the source that called the make_guard method to
     # construct this guard object. The property name specifies what exactly it
@@ -271,14 +267,14 @@ class Guard:
     create_fn: Callable[[GuardBuilderBase, Guard], None]
 
     # Export only. These values are written to at time of guard check_fn creation.
-    guard_types: list[str] | None = None
-    code_list: list[str] | None = None
-    obj_weakref: object | None = None
-    guarded_class_weakref: weakref.ReferenceType[Any] | None = None
+    guard_types: Optional[List[str]] = None
+    code_list: Optional[List[str]] = None
+    obj_weakref: Optional[object] = None
+    guarded_class_weakref: Optional[weakref.ReferenceType[Any]] = None
 
-    stack: CapturedTraceback | None = None
-    user_stack: traceback.StackSummary | None = None
-    _hash: int | None = None
+    stack: Optional[CapturedTraceback] = None
+    user_stack: Optional[traceback.StackSummary] = None
+    _hash: Optional[int] = None
     _unserializable: bool = False
 
     def __hash__(self) -> int:
@@ -286,7 +282,7 @@ class Guard:
             self._hash = hash((self.name, self.source, id(self.create_fn)))
         return self._hash
 
-    def sort_key(self) -> tuple[bool, int, int, str, int]:
+    def sort_key(self) -> Tuple[bool, int, int, str, int]:
         # Put the duplicate input guards at the end. The duplicate guards have
         # two sources while guard.name only considers one source.
 
@@ -395,8 +391,8 @@ class Guard:
     def set_export_info(
         self,
         guard_type: str,
-        guarded_class: weakref.ReferenceType[Any] | None,
-        code_list: list[str],
+        guarded_class: Optional[weakref.ReferenceType[Any]],
+        code_list: List[str],
         obj_weakref: object,
     ) -> None:
         if not self.guard_types:
@@ -416,7 +412,7 @@ class Guard:
         else:
             self.code_list.extend(code_list)
 
-        # Some objects are ephemeral, e.g., list[slice(1, 2)]. If we have
+        # Some objects are ephemeral, e.g., List[slice(1, 2)]. If we have
         # multiple guards on the same object, the weakref can die between the
         # invocation of set_export_info calls. So a dead weakref is also
         # acceptable.
@@ -483,8 +479,8 @@ overlapping with any other input, overlapping_sources represent tensors that eit
 
 @dataclasses.dataclass(frozen=True)
 class StorageOverlap(GuardEnvExpr):
-    overlapping_sources: list[Source]
-    non_overlapping_sources: list[Source]
+    overlapping_sources: List[Source]
+    non_overlapping_sources: List[Source]
 
 
 """
@@ -518,7 +514,7 @@ class GuardsCheckpointState:
     def __init__(self, dynamo_guards: OrderedSet[Guard]) -> None:
         self.dynamo_guards = dynamo_guards
 
-    def diff(self, other: GuardsCheckpointState) -> OrderedSet[Guard] | None:
+    def diff(self, other: GuardsCheckpointState) -> Optional[OrderedSet[Guard]]:
         """
         Produces a delta against another GuardsCheckpointState.
 
@@ -537,12 +533,12 @@ class GuardsCheckpointState:
 
 
 class ModuleContextCheckpointState:
-    nn_modules: dict[str, torch.nn.Module] = {}
+    nn_modules: Dict[str, torch.nn.Module] = {}
 
-    def __init__(self, nn_modules: dict[str, torch.nn.Module]) -> None:
+    def __init__(self, nn_modules: Dict[str, torch.nn.Module]) -> None:
         self.nn_modules = nn_modules
 
-    def diff(self, other: ModuleContextCheckpointState) -> set[str] | None:
+    def diff(self, other: ModuleContextCheckpointState) -> Optional[Set[str]]:
         """
         Produces a delta against another ModuleContextCheckpointState.
 
@@ -562,7 +558,7 @@ class ModuleContextCheckpointState:
 
 class ModuleContext(Checkpointable[ModuleContextCheckpointState]):
     def __init__(self) -> None:
-        self.nn_modules: dict[str, Any] = {}
+        self.nn_modules: Dict[str, Any] = {}
 
     def copy_graphstate(self) -> ModuleContextCheckpointState:
         return ModuleContextCheckpointState(dict(self.nn_modules))
@@ -576,12 +572,12 @@ class ModuleContext(Checkpointable[ModuleContextCheckpointState]):
 
 
 class GlobalContextCheckpointState:
-    global_state: dict[str, tuple[Callable, Any]] = {}
+    global_state: Dict[str, Tuple[Callable, Any]] = {}
 
-    def __init__(self, global_states: dict[str, tuple[Callable, Any]]) -> None:
+    def __init__(self, global_states: Dict[str, Tuple[Callable, Any]]) -> None:
         self.global_state = global_states
 
-    def diff(self, other: GlobalContextCheckpointState) -> set[str] | None:
+    def diff(self, other: GlobalContextCheckpointState) -> Optional[Set[str]]:
         """
         Produces a delta against another GlobalContextCheckpointState.
 
@@ -615,7 +611,7 @@ class GlobalContext(Checkpointable[GlobalContextCheckpointState]):
     }
 
     def __init__(self) -> None:
-        self.global_state: dict[str, tuple[Callable, Any]] = {}
+        self.global_state: Dict[str, Tuple[Callable, Any]] = {}
 
     def copy_graphstate(self) -> GlobalContextCheckpointState:
         return GlobalContextCheckpointState(self.global_state)
@@ -641,14 +637,14 @@ class GlobalContext(Checkpointable[GlobalContextCheckpointState]):
 # Like a Set[Guard] but will record the user stack on all guards at the
 # time they were installed at their destination
 class GuardsSet:
-    def __init__(self, inner: OrderedSet[Guard] | None = None) -> None:
+    def __init__(self, inner: Optional[OrderedSet[Guard]] = None) -> None:
         if inner is None:
             self.inner: OrderedSet[Guard] = OrderedSet()
         else:
             self.inner = inner
         # Map from source to list of guards with that source. Incrementally
         # built in `add` method.
-        self.source_to_guards: defaultdict[Source, list[Guard]] = defaultdict(list)
+        self.source_to_guards: defaultDict[Source, List[Guard]] = defaultdict(list)
         for guard in self.inner:
             self.track_guard_by_source(guard)
 
@@ -687,12 +683,12 @@ class GuardsSet:
         self.inner.add(guard)
         self.track_guard_by_source(guard)
 
-    def update(self, *others: set[Guard]) -> None:
+    def update(self, *others: Set[Guard]) -> None:
         for o in others:
             for g in o:
                 self.add(g, skip=1)
 
-    def get_guards_for_source(self, source: Source) -> list[Guard]:
+    def get_guards_for_source(self, source: Source) -> List[Guard]:
         """Return all guards with the given originating_source."""
         return list(self.source_to_guards[source])
 
@@ -721,7 +717,7 @@ prefer to extract them with copy_graphstate to produce a GuardsCheckpointState.
 class GuardsContext(Checkpointable[GuardsCheckpointState]):
     def __init__(self) -> None:
         self.dynamo_guards: GuardsSet = GuardsSet()
-        self.aotautograd_guards: list[GuardEnvExpr] = []
+        self.aotautograd_guards: List[GuardEnvExpr] = []
         self.skip_install: bool = False
 
     @contextlib.contextmanager
@@ -750,54 +746,54 @@ class HopSubgraphCache:
     ) -> None: ...
 
     @abstractmethod
-    def get_dynamo_installed_submodules(self, fn_code: CodeType) -> list[str]: ...
+    def get_dynamo_installed_submodules(self, fn_code: CodeType) -> List[str]: ...
 
     @abstractmethod
     def add_autograd_key_entry(self, identifier: str, key: Callable) -> None: ...
 
     @abstractmethod
-    def get_autograd_key_entry(self, identifier: str) -> Callable | None: ...
+    def get_autograd_key_entry(self, identifier: str) -> Optional[Callable]: ...
 
     @abstractmethod
     def add_proxy_dispatch_entry(self, identifier: str, key: Callable) -> None: ...
 
     @abstractmethod
-    def get_proxy_dispatch_entry(self, identifier: str) -> Callable | None: ...
+    def get_proxy_dispatch_entry(self, identifier: str) -> Optional[Callable]: ...
 
     @abstractmethod
     def add_lazy_bwd_entry(
         self,
         identifier: str,
-        tangent_metadata: tuple[object],
+        tangent_metadata: Tuple[object],
         gmod: torch.fx.GraphModule,
     ) -> int: ...
 
     @abstractmethod
     def get_lazy_bwd_entry(
-        self, identifier: str, tangent_metadata: tuple[object]
-    ) -> tuple[torch.fx.GraphModule | None, int | None]: ...
+        self, identifier: str, tangent_metadata: Tuple[object]
+    ) -> Tuple[Optional[torch.fx.GraphModule], Optional[int]]: ...
 
 
 @dataclass
 class InvokeSubgraphReuseEntry:
     body_name: str
     body_gmod: torch.fx.GraphModule
-    config: NestedCompileRegionOptions | None
-    subgraph_input_mapping: list[
+    config: Optional[NestedCompileRegionOptions]
+    subgraph_input_mapping: List[
         Any
-    ]  # list[LiftedArgOrigin] - defined in invoke_subgraph.py
+    ]  # List[LiftedArgOrigin] - defined in invoke_subgraph.py
     single_tensor_output: bool
     # Per-output tensor metadata (shape, stride, dtype, device, requires_grad)
     # cached from the first trace so we can construct fresh FakeTensors on
     # cache hit without re-running body_gmod.
-    output_metadata: list[
-        tuple[torch.Size, tuple[int, ...], torch.dtype, torch.device, bool]
+    output_metadata: List[
+        Tuple[torch.Size, Tuple[int, ...], torch.dtype, torch.device, bool]
     ]
     # 1-1 mapping to flat_vts: source for each flattened arg/kwarg, or None if
     # the VT has no source. On cache hit, we build a source replacement mapping
     # (old arg sources → new arg sources) to rewrite captured variable sources
     # for the current invocation.
-    arg_sources: list[Source | None]
+    arg_sources: List[Optional[Source]]
     # Number of user-visible outputs (from the function return value).
     # The graph may have additional outputs from side-effect intermediates;
     # stamp_out_subgraph uses this to return only the user-visible slice.
@@ -814,16 +810,16 @@ class InvokeSubgraphReuseCondition:
     # Tensor metadata is checked here because TENSOR_MATCH guards for
     # subgraph inputs may already exist before tracing and thus won't
     # appear in the guard delta.
-    input_checks: list[tuple[Any, object]]  # list[tuple[InputTag, object]]
+    input_checks: List[Tuple[Any, object]]  # List[Tuple[InputTag, object]]
 
     # Guards captured during the trace (delta + source-mapped).
     # Each entry: (source, handler, expected_value, guard)
     # handler is a pre-resolved GuardCheckSpec from GUARD_VALUE_DISPATCH.
-    guards: list[tuple[Source, GuardCheckSpec, object, Guard]]
+    guards: List[Tuple[Source, GuardCheckSpec, object, Guard]]
 
     # TreeSpec from pytree.tree_flatten of the (args, kwargs) structure.
     # On cache hit, we verify the new call has the same treespec.
-    treespec: pytree.TreeSpec | None = None
+    treespec: Optional[pytree.TreeSpec] = None
 
     # All sources accessed via VariableBuilder during the subgraph trace.
     # On cache hit, we check if any modified VT's source is a base of one
@@ -833,25 +829,25 @@ class InvokeSubgraphReuseCondition:
 
 class InvokeSubgraphCache(HopSubgraphCache):
     def __init__(self) -> None:
-        self.autograd_cache: dict[str, Callable] = {}
-        self.proxy_dispatch_cache: dict[str, Callable] = {}
-        self.dynamo_installed_submodules: dict[CodeType, list[str]] = defaultdict(list)
-        self.lazy_bwd_cache: dict[
-            str, dict[tuple[object], tuple[torch.fx.GraphModule, int]]
+        self.autograd_cache: Dict[str, Callable] = {}
+        self.proxy_dispatch_cache: Dict[str, Callable] = {}
+        self.dynamo_installed_submodules: Dict[CodeType, List[str]] = defaultdict(list)
+        self.lazy_bwd_cache: Dict[
+            str, Dict[Tuple[object], Tuple[torch.fx.GraphModule, int]]
         ] = defaultdict(dict)
-        self.effects_cache: dict[
+        self.effects_cache: Dict[
             str, set
         ] = {}  # Maps identifier -> set of effect types
         # fn.__code__ → list of (condition, cache_entry) pairs. Walked linearly
         # on lookup; first matching condition wins.
-        self.subgraph_reuse_cache: dict[
+        self.subgraph_reuse_cache: Dict[
             CodeType,
-            list[tuple[InvokeSubgraphReuseCondition, InvokeSubgraphReuseEntry]],
+            List[Tuple[InvokeSubgraphReuseCondition, InvokeSubgraphReuseEntry]],
         ] = defaultdict(list)
         # fn_code → {hash_key → cache_entry}. Used by user-provided
         # reuse_hash_fn for O(1) subgraph reuse lookup.
-        self.subgraph_reuse_key_cache: dict[
-            CodeType, dict[int, InvokeSubgraphReuseEntry]
+        self.subgraph_reuse_key_cache: Dict[
+            CodeType, Dict[int, InvokeSubgraphReuseEntry]
         ] = defaultdict(dict)
 
     def add_dynamo_installed_submodule(
@@ -859,25 +855,25 @@ class InvokeSubgraphCache(HopSubgraphCache):
     ) -> None:
         self.dynamo_installed_submodules[fn_code].append(identifier)
 
-    def get_dynamo_installed_submodules(self, fn_code: CodeType) -> list[str]:
+    def get_dynamo_installed_submodules(self, fn_code: CodeType) -> List[str]:
         return self.dynamo_installed_submodules.get(fn_code, [])
 
     def add_autograd_key_entry(self, identifier: str, key: Callable) -> None:
         self.autograd_cache[identifier] = key
 
-    def get_autograd_key_entry(self, identifier: str) -> Callable | None:
+    def get_autograd_key_entry(self, identifier: str) -> Optional[Callable]:
         return self.autograd_cache.get(identifier, None)
 
     def add_proxy_dispatch_entry(self, identifier: str, key: Callable) -> None:
         self.proxy_dispatch_cache[identifier] = key
 
-    def get_proxy_dispatch_entry(self, identifier: str) -> Callable | None:
+    def get_proxy_dispatch_entry(self, identifier: str) -> Optional[Callable]:
         return self.proxy_dispatch_cache.get(identifier, None)
 
     def add_lazy_bwd_entry(
         self,
         identifier: str,
-        tangent_metadata: tuple[object],
+        tangent_metadata: Tuple[object],
         gmod: torch.fx.GraphModule,
     ) -> int:
         # Save the number of existing graph modules in the dictionary to get the suffix
@@ -886,8 +882,8 @@ class InvokeSubgraphCache(HopSubgraphCache):
         return num_gmods
 
     def get_lazy_bwd_entry(
-        self, identifier: str, tangent_metadata: tuple[object]
-    ) -> tuple[torch.fx.GraphModule | None, int | None]:
+        self, identifier: str, tangent_metadata: Tuple[object]
+    ) -> Tuple[Optional[torch.fx.GraphModule], Optional[int]]:
         if identifier not in self.lazy_bwd_cache:
             return (None, None)
 
@@ -905,7 +901,7 @@ class InvokeSubgraphCache(HopSubgraphCache):
                 )
         self.effects_cache[identifier] = effects
 
-    def get_effects(self, identifier: str) -> set | None:
+    def get_effects(self, identifier: str) -> Optional[set]:
         """Retrieve the effect types for a given invoke_subgraph identifier."""
         return self.effects_cache.get(identifier, None)
 
@@ -936,7 +932,7 @@ class InvokeSubgraphCache(HopSubgraphCache):
         evaluator: Callable[
             [InvokeSubgraphReuseCondition, InvokeSubgraphReuseEntry], bool
         ],
-    ) -> InvokeSubgraphReuseEntry | None:
+    ) -> Optional[InvokeSubgraphReuseEntry]:
         entries = self.subgraph_reuse_cache.get(fn_code, [])
         for i, (condition, entry) in enumerate(entries):
             if evaluator(condition, entry):
@@ -948,7 +944,7 @@ class InvokeSubgraphCache(HopSubgraphCache):
 
     def find_reuse_entry_by_key(
         self, fn_code: CodeType, hash_key: int
-    ) -> InvokeSubgraphReuseEntry | None:
+    ) -> Optional[InvokeSubgraphReuseEntry]:
         return self.subgraph_reuse_key_cache.get(fn_code, {}).get(hash_key)
 
     def add_reuse_entry_by_key(
@@ -976,7 +972,7 @@ class HopDispatchSetCache:
 
         self.hop_cache_map = {invoke_subgraph: InvokeSubgraphCache()}
 
-    def get_cache(self, op: torch._ops.HigherOrderOperator) -> HopSubgraphCache | None:
+    def get_cache(self, op: torch._ops.HigherOrderOperator) -> Optional[HopSubgraphCache]:
         if op not in self.hop_cache_map:
             return None
         return self.hop_cache_map[op]  # type: ignore[index]
@@ -1011,28 +1007,28 @@ class CompileContext:
         return _TLS.compile_context
 
     @staticmethod
-    def try_get() -> CompileContext | None:
+    def try_get() -> Optional[CompileContext]:
         return getattr(_TLS, "compile_context", None)
 
-    def __init__(self, compile_id: CompileId | None) -> None:
+    def __init__(self, compile_id: Optional[CompileId]) -> None:
         if compile_id is not None and not isinstance(compile_id, CompileId):
             raise AssertionError(
                 f"compile_id must be None or CompileId, got {type(compile_id)}"
             )
-        self.compile_id: CompileId | None = compile_id
+        self.compile_id: Optional[CompileId] = compile_id
         self.attempt = 0
         # Verbose ShapeEnv guards produced.
-        self.shape_env_guards: list[str] = []
+        self.shape_env_guards: List[str] = []
 
     @staticmethod
-    def current_compile_id() -> CompileId | None:
+    def current_compile_id() -> Optional[CompileId]:
         self = CompileContext.try_get()
         if self is None:
             return None
         return self.compile_id
 
     @staticmethod
-    def current_trace_id() -> TraceId | None:
+    def current_trace_id() -> Optional[TraceId]:
         self = CompileContext.try_get()
         if self is None:
             return None
@@ -1045,9 +1041,9 @@ class CompileContext:
 class InlinedCodeCache:
     """Cache for code-object-derived data used during inlining."""
 
-    instructions: list[Any]
-    indexof: dict[Any, int]
-    code_options: dict[str, Any]
+    instructions: List[Any]
+    indexof: Dict[Any, int]
+    code_options: Dict[str, Any]
 
 
 class TracingContext:
@@ -1059,7 +1055,7 @@ class TracingContext:
     """
 
     @staticmethod
-    def try_get() -> TracingContext | None:
+    def try_get() -> Optional[TracingContext]:
         return getattr(_TLS, "tracing_context", None)
 
     @staticmethod
@@ -1070,33 +1066,32 @@ class TracingContext:
             "TracingContext.get() must be called within an ongoing trace."
         )
 
-    def __init__(self, fake_mode: FakeTensorMode | None) -> None:
+    def __init__(self, fake_mode: Optional[FakeTensorMode]) -> None:
         self.guards_context = GuardsContext()
         self.module_context = ModuleContext()
         self.global_context = GlobalContext()
-        self.previously_inlined_functions: dict[Any, Any] = dict()
-        self.previously_cleaned_instructions: dict[Any, Any] = dict()
+        self.previously_inlined_functions: Dict[Any, Any] = dict()
+        self.previously_cleaned_instructions: Dict[Any, Any] = dict()
         # Combined cache for inlined code data (instructions, indexof, code_options)
-        self.inlined_code_cache: dict[Any, InlinedCodeCache] = dict()
-        self.fake_mode: FakeTensorMode | None = fake_mode
-        self.frame_summary_stack: list[traceback.FrameSummary] = []
+        self.inlined_code_cache: Dict[Any, InlinedCodeCache] = dict()
+        self.fake_mode: Optional[FakeTensorMode] = fake_mode
+        self.frame_summary_stack: List[traceback.FrameSummary] = []
         # This is morally part of frame_summary_stack, but it is kept separate
         # for clarity.  As we process a frame, this variable gets updated
         # to keep track of what line we are in the function.  We make a
         # function call, this gets cleared and the frame location is pushed
         # to frame_summary_stack (prepping this variable for the inner frame's
         # progress)
-        self.loc_in_frame: tuple[str, int, str] | None = None
-        self.loc_in_frame_positions: dis.Positions | None = None
+        self.loc_in_frame: Optional[Tuple[str, int, str]] = None
         # this is only set after aot_autograd
-        self.fw_metadata: ViewAndMutationMeta | None = None
+        self.fw_metadata: Optional[ViewAndMutationMeta] = None
         # this is only set when the DDPOptimizer is used
-        self.ddp_optimizer_ctx: DDPOptimizerContext | None = None
+        self.ddp_optimizer_ctx: Optional[DDPOptimizerContext] = None
         # this is only set after aot_autograd
-        self.aot_graph_name: list[str] | None = None
-        self.params_flat: list[Any] | None = None
-        self.params_flat_unwrap_subclasses: list[Any] | None = None
-        self.params_unwrapped_to_flat_index: list[Any] | None = None
+        self.aot_graph_name: Optional[List[str]] = None
+        self.params_flat: Optional[List[Any]] = None
+        self.params_flat_unwrap_subclasses: Optional[List[Any]] = None
+        self.params_unwrapped_to_flat_index: Optional[List[Any]] = None
         # this is for extended return calling convention from backend
         # compiler to aot_autograd
         # Per output, what the compiler specified stride of the output is,
@@ -1106,7 +1101,7 @@ class TracingContext:
         # careful not to accidentally induce guards on the SymInt if
         # you ever do change this in aot_autograd.py; you should check
         # on permutations preferentially.)
-        self.output_strides: list[tuple[int, ...] | None] | None = None
+        self.output_strides: Optional[List[Tuple[int, ...]]] | None = None
         # When this is True, whenever we encounter an int in Dynamo tracing,
         # we will (1) force unspec it and (2) force it as a size-like unbacked
         # integer.  This is currently used when processing certain lists of
@@ -1122,7 +1117,7 @@ class TracingContext:
         self.fakify_first_call = False
         self.hop_dispatch_set_cache = HopDispatchSetCache()
         # list of code objects for inlined functions
-        self.traced_code: list[CodeType] = []
+        self.traced_code: List[CodeType] = []
         self.cudagraph_annotation: Any = None
 
     def clear(self) -> None:
@@ -1164,18 +1159,7 @@ class TracingContext:
         if self.loc_in_frame is None:
             raise AssertionError("loc_in_frame must not be None")
         filename, lineno, frame_name = self.loc_in_frame
-        # colno/end_colno kwargs were added to FrameSummary in 3.11
-        kwargs: dict[str, Any] = {}
-        if sys.version_info >= (3, 11) and self.loc_in_frame_positions is not None:
-            kwargs["colno"] = self.loc_in_frame_positions.col_offset
-            kwargs["end_colno"] = self.loc_in_frame_positions.end_col_offset
-        return traceback.FrameSummary(
-            filename,
-            lineno,
-            frame_name,
-            lookup_line=False,
-            **kwargs,
-        )
+        return traceback.FrameSummary(filename, lineno, frame_name, lookup_line=False)
 
     # Call this when you want to call into some code that isn't necessarily
     # associated with the current frame state
@@ -1183,11 +1167,7 @@ class TracingContext:
     @contextlib.contextmanager
     def clear_frame() -> Generator[None, None, None]:
         tc = TracingContext.get()
-        with (
-            unittest.mock.patch.object(tc, "frame_summary_stack", []),
-            unittest.mock.patch.object(tc, "loc_in_frame", None),
-            unittest.mock.patch.object(tc, "loc_in_frame_positions", None),
-        ):
+        with unittest.mock.patch.object(tc, "frame_summary_stack", []), unittest.mock.patch.object(tc, "loc_in_frame", None):
             try:
                 yield
             except Exception as e:
@@ -1215,7 +1195,7 @@ class TracingContext:
     @staticmethod
     @contextlib.contextmanager
     def current_frame(
-        frame_summary: traceback.FrameSummary | None,
+        frame_summary: Optional[traceback.FrameSummary],
     ) -> Generator[None, None, None]:
         # frame_summary can be None to solely take advantage of real_stack
         # attachment to thrown exceptions
@@ -1223,9 +1203,7 @@ class TracingContext:
         if frame_summary is not None:
             tc.frame_summary_stack.append(frame_summary)
         old = tc.loc_in_frame
-        old_positions = tc.loc_in_frame_positions
         tc.loc_in_frame = None
-        tc.loc_in_frame_positions = None
         try:
             yield
         except Exception as e:
@@ -1236,12 +1214,11 @@ class TracingContext:
             if frame_summary is not None:
                 tc.frame_summary_stack.pop()
             tc.loc_in_frame = old
-            tc.loc_in_frame_positions = old_positions
 
     @staticmethod
     @contextlib.contextmanager
     def report_output_strides() -> Generator[
-        list[tuple[int, ...] | None] | None, None, None
+        Optional[List[Tuple[int, ...]]] | None, None, None
     ]:
         tc = TracingContext.try_get()
         if tc is None:
@@ -1255,20 +1232,13 @@ class TracingContext:
             tc.output_strides = old_output_strides
 
     @staticmethod
-    def set_current_loc(
-        filename: str,
-        lineno: int,
-        frame_name: str,
-        positions: dis.Positions | None = None,
-    ) -> None:
+    def set_current_loc(filename: str, lineno: int, frame_name: str) -> None:
         # Save the current location in the frame. Lazily generate the
         # framesummary.
-        tc = TracingContext.get()
-        tc.loc_in_frame = (filename, lineno, frame_name)
-        tc.loc_in_frame_positions = positions
+        TracingContext.get().loc_in_frame = (filename, lineno, frame_name)
 
     @staticmethod
-    def get_traced_code() -> list[CodeType] | None:
+    def get_traced_code() -> Optional[List[CodeType]]:
         tc = TracingContext.try_get()
         if tc is None:
             return None
@@ -1277,8 +1247,8 @@ class TracingContext:
 
 @contextmanager
 def compile_context(
-    context: CompileContext | None,
-) -> Generator[CompileContext | None, None, None]:
+    context: Optional[CompileContext],
+) -> Generator[Optional[CompileContext], None, None]:
     old_context = getattr(_TLS, "compile_context", None)
     _TLS.compile_context = context
     try:
@@ -1289,8 +1259,8 @@ def compile_context(
 
 @contextmanager
 def tracing(
-    context: TracingContext | None,
-) -> Generator[TracingContext | None, None, None]:
+    context: Optional[TracingContext],
+) -> Generator[Optional[TracingContext], None, None]:
     """
     This function installs the passed in tracing context as a dynamic scoped
     global variable.
@@ -1317,20 +1287,20 @@ def tracing(
 
 
 @overload
-def dataclass_with_cached_hash(cls: type[T], **kwargs: Any) -> type[T]: ...
+def dataclass_with_cached_hash(cls: Type[T], **kwargs: Any) -> Type[T]: ...
 
 
 @overload
 def dataclass_with_cached_hash(
     cls: None = None, **kwargs: Any
-) -> Callable[[type[T]], type[T]]: ...
+) -> Callable[[Type[T]], Type[T]]: ...
 
 
 @dataclass_transform()
 def dataclass_with_cached_hash(
-    cls: type[T] | None = None, **kwargs: Any
-) -> type[T] | Callable[[type[T]], type[T]]:
-    def wrap(cls_inner: type[T]) -> type[T]:
+    cls: Optional[Type[T]] = None, **kwargs: Any
+) -> Union[Type[T], Callable[[Type[T]]], Type[T]]:
+    def wrap(cls_inner: Type[T]) -> Type[T]:
         new_cls = dataclasses.dataclass(cls_inner, **kwargs)
         old_hash = cls_inner.__hash__
 
@@ -1370,14 +1340,6 @@ class Source:
     def reconstruct(self, codegen: PyCodegen) -> None:
         raise NotImplementedError
 
-    def reconstruct_pycode(self, codegen: PyCodegen) -> str:
-        """
-        Reconstructs the source into a string of Python code. This method should
-        be eventually implemented for all subclasses of Source to achieve full
-        coverage of python wrapper code generation.
-        """
-        raise NotImplementedError
-
     @functools.cached_property
     def guard_source(self) -> GuardSource:
         raise NotImplementedError
@@ -1402,9 +1364,9 @@ class Source:
 
     def get_value(
         self,
-        globals: dict[str, Any],
-        locals: dict[str, Any],
-        cache: dict[Source, Any],
+        globals: Dict[str, Any],
+        locals: Dict[str, Any],
+        cache: Dict[Source, Any],
     ) -> Any:
         if self in cache:
             return cache[self]
@@ -1460,9 +1422,9 @@ class ChainedSource(Source):
 
     def get_value(
         self,
-        globals: dict[str, Any],
-        locals: dict[str, Any],
-        cache: dict[Source, Any],
+        globals: Dict[str, Any],
+        locals: Dict[str, Any],
+        cache: Dict[Source, Any],
     ) -> Any:
         if self in cache:
             return cache[self]
@@ -1478,7 +1440,7 @@ class ChainedSource(Source):
         return value
 
     def clone(self, transform_fn: Callable[[Source], Source] | None = None) -> Source:
-        cloned_fields: dict[str, Any] = {"base": self.base.clone(transform_fn)}
+        cloned_fields: Dict[str, Any] = {"base": self.base.clone(transform_fn)}
         for f in dataclasses.fields(self):
             if f.name == "base":
                 continue
@@ -1491,7 +1453,7 @@ class ChainedSource(Source):
         return result
 
 
-def detect_fake_mode(inputs: Any = None) -> FakeTensorMode | None:
+def detect_fake_mode(inputs: Any = None) -> Optional[FakeTensorMode]:
     """
     Attempts to "detect" what the current fake mode is.  If there is one ambiently
     available from TracingContext, we preferentially use that.  Otherwise, we
@@ -1529,9 +1491,9 @@ def detect_fake_mode(inputs: Any = None) -> FakeTensorMode | None:
         if isinstance(flat_input, FakeTensor):
             fake_modes.append((flat_input.fake_mode, "fake tensor input", i))
         if is_traceable_wrapper_subclass(flat_input):
-            out: list[torch.Tensor | int | torch.SymInt] = []
+            out: Union[List[Union[torch.Tensor, int], torch.SymInt]] = []
             get_plain_tensors(flat_input, out=out)  # type: ignore[arg-type]
-            fake_tensors: list[FakeTensor] = [
+            fake_tensors: List[FakeTensor] = [
                 x for x in out if isinstance(x, FakeTensor)
             ]
             fake_modes.extend(
@@ -1556,7 +1518,7 @@ def detect_fake_mode(inputs: Any = None) -> FakeTensorMode | None:
         return None
 
 
-def active_fake_mode() -> FakeTensorMode | None:
+def active_fake_mode() -> Optional[FakeTensorMode]:
     """
     Inspects the dispatch mode stack for an active fake mode and returns it.
     Returns None if no fake mode is active.

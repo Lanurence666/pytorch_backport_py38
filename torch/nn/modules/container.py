@@ -4,7 +4,7 @@ from __future__ import annotations
 import operator
 from collections import abc as container_abcs, OrderedDict
 from itertools import chain, islice
-from typing import Any, overload, TYPE_CHECKING, TypeVar
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union, overload
 from typing_extensions import deprecated, Self
 
 import torch
@@ -46,7 +46,7 @@ def _addindent(s_, numSpaces):
 
 @deprecated(
     "`nn.Container` is deprecated. "
-    "All of its functionality is now implemented in `nn.Module`. Subclass that instead.",
+    "All of it's functionality is now implemented in `nn.Module`. Subclass that instead.",
     category=FutureWarning,
 )
 class Container(Module):
@@ -103,7 +103,7 @@ class Sequential(Module):
         )
     """
 
-    _modules: dict[str, Module]  # type: ignore[assignment]
+    _modules: Dict[str, Module]  # type: ignore[assignment]
 
     @overload
     def __init__(self, *args: Module) -> None: ...
@@ -131,7 +131,7 @@ class Sequential(Module):
         return next(islice(iterator, idx, None))
 
     @_copy_to_script_wrapper
-    def __getitem__(self, idx: slice | int) -> Sequential | Module:
+    def __getitem__(self, idx: Union[slice, int]) -> Union[Sequential, Module]:
         if isinstance(idx, slice):
             return self.__class__(OrderedDict(list(self._modules.items())[idx]))
         else:
@@ -141,7 +141,7 @@ class Sequential(Module):
         key: str = self._get_item_by_idx(self._modules.keys(), idx)
         return setattr(self, key, module)
 
-    def __delitem__(self, idx: slice | int) -> None:
+    def __delitem__(self, idx: Union[slice, int]) -> None:
         if isinstance(idx, slice):
             for key in list(self._modules.keys())[idx]:
                 delattr(self, key)
@@ -172,7 +172,7 @@ class Sequential(Module):
                 f"of Sequential class, but {str(type(other))} is given."
             )
 
-    def pop(self, key: int | slice) -> Module:
+    def pop(self, key: Union[int, slice]) -> Module:
         """
         Pop ``key`` from self.
         """
@@ -232,7 +232,7 @@ class Sequential(Module):
             return self
 
     @_copy_to_script_wrapper
-    def __dir__(self) -> list[str]:
+    def __dir__(self) -> List[str]:
         keys = super().__dir__()
         keys = [key for key in keys if not key.isdigit()]
         return keys
@@ -356,9 +356,9 @@ class ModuleList(Module):
                 return x
     """
 
-    _modules: dict[str, Module]  # type: ignore[assignment]
+    _modules: Dict[str, Module]  # type: ignore[assignment]
 
-    def __init__(self, modules: Iterable[Module] | None = None) -> None:
+    def __init__(self, modules: Optional[Iterable[Module]] = None) -> None:
         super().__init__()
         if modules is not None:
             self += modules
@@ -379,7 +379,7 @@ class ModuleList(Module):
     def __getitem__(self, idx: int) -> Module: ...
 
     @_copy_to_script_wrapper
-    def __getitem__(self, idx: int | slice) -> Module | ModuleList:
+    def __getitem__(self, idx: Union[int, slice]) -> Union[Module, ModuleList]:
         if isinstance(idx, slice):
             return self.__class__(list(self._modules.values())[idx])
         else:
@@ -389,7 +389,7 @@ class ModuleList(Module):
         idx = self._get_abs_string_index(idx)
         return setattr(self, str(idx), module)
 
-    def __delitem__(self, idx: int | slice) -> None:
+    def __delitem__(self, idx: Union[int, slice]) -> None:
         if isinstance(idx, slice):
             for k in range(len(self._modules))[idx]:
                 delattr(self, str(k))
@@ -436,9 +436,8 @@ class ModuleList(Module):
 
         lines = []
         main_str = self._get_name() + "("
-        for (start_id, end_id), b in zip(
-            start_end_indices, repeated_blocks, strict=True
-        ):
+        for (start_id, end_id), b in _zip_strict(
+            start_end_indices, repeated_blocks):
             local_repr = f"({start_id}): {b}"  # default repr
 
             if start_id != end_id:
@@ -453,7 +452,7 @@ class ModuleList(Module):
         return main_str
 
     @_copy_to_script_wrapper
-    def __dir__(self) -> list[str]:
+    def __dir__(self) -> List[str]:
         keys = super().__dir__()
         keys = [key for key in keys if not key.isdigit()]
         return keys
@@ -478,7 +477,7 @@ class ModuleList(Module):
         self.add_module(str(len(self)), module)
         return self
 
-    def pop(self, key: int | slice) -> Module:
+    def pop(self, key: Union[int, slice]) -> Module:
         v = self[key]
         del self[key]
         return v
@@ -543,9 +542,9 @@ class ModuleDict(Module):
                 return x
     """
 
-    _modules: dict[str, Module]  # type: ignore[assignment]
+    _modules: Dict[str, Module]  # type: ignore[assignment]
 
-    def __init__(self, modules: Mapping[str, Module] | None = None) -> None:
+    def __init__(self, modules: Optional[Mapping[str, Module]] = None) -> None:
         super().__init__()
         if modules is not None:
             self.update(modules)
@@ -673,7 +672,7 @@ class ParameterList(Module):
                 return x
     """
 
-    def __init__(self, values: Iterable[Any] | None = None) -> None:
+    def __init__(self, values: Optional[Iterable[Any]] = None) -> None:
         super().__init__()
         self._size = 0
         if values is not None:
@@ -726,7 +725,7 @@ class ParameterList(Module):
     def __iadd__(self, parameters: Iterable[Any]) -> Self:
         return self.extend(parameters)
 
-    def __dir__(self) -> list[str]:
+    def __dir__(self) -> List[str]:
         keys = super().__dir__()
         keys = [key for key in keys if not key.isdigit()]
         return keys
@@ -832,7 +831,7 @@ class ParameterDict(Module):
 
     def __init__(self, parameters: Any = None) -> None:
         super().__init__()
-        self._keys: dict[str, None] = {}
+        self._keys: Dict[str, None] = {}
         if parameters is not None:
             self.update(parameters)
 
@@ -886,7 +885,7 @@ class ParameterDict(Module):
     def __contains__(self, key: str) -> bool:
         return key in self._keys
 
-    def setdefault(self, key: str, default: Any | None = None) -> Any:
+    def setdefault(self, key: str, default: Optional[Any] = None) -> Any:
         """Set the default for a key in the Parameterdict.
 
         If key is in the ParameterDict, return its value.
@@ -916,7 +915,7 @@ class ParameterDict(Module):
         del self[key]
         return v
 
-    def popitem(self) -> tuple[str, Any]:
+    def popitem(self) -> Tuple[str, Any]:
         """Remove and return the last inserted `(key, parameter)` pair from the ParameterDict."""
         k, _ = self._keys.popitem()
         # We need the key in the _keys to be able to access/del
@@ -925,7 +924,7 @@ class ParameterDict(Module):
         del self[k]
         return k, val
 
-    def get(self, key: str, default: Any | None = None) -> Any:
+    def get(self, key: str, default: Optional[Any] = None) -> Any:
         r"""Return the parameter associated with key if present. Otherwise return default if provided, None if not.
 
         Args:
@@ -935,7 +934,7 @@ class ParameterDict(Module):
         return self[key] if key in self else default  # noqa: SIM401
 
     def fromkeys(
-        self, keys: Iterable[str], default: Any | None = None
+        self, keys: Iterable[str], default: Optional[Any] = None
     ) -> ParameterDict:
         r"""Return a new ParameterDict with the keys provided.
 
@@ -949,7 +948,7 @@ class ParameterDict(Module):
         r"""Return an iterable of the ParameterDict keys."""
         return self._keys.keys()
 
-    def items(self) -> Iterable[tuple[str, Any]]:
+    def items(self) -> Iterable[Tuple[str, Any]]:
         r"""Return an iterable of the ParameterDict key/value pairs."""
         return ((k, self[k]) for k in self._keys)
 
@@ -957,7 +956,7 @@ class ParameterDict(Module):
         r"""Return an iterable of the ParameterDict values."""
         return (self[k] for k in self._keys)
 
-    def update(self, parameters: Mapping[str, Any] | ParameterDict) -> None:
+    def update(self, parameters: Union[Mapping[str, Any], ParameterDict]) -> None:
         r"""Update the :class:`~torch.nn.ParameterDict` with key-value pairs from ``parameters``, overwriting existing keys.
 
         .. note::

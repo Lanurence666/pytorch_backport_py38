@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type
 from typing_extensions import final, override
 
 import torch._inductor.async_compile  # noqa: F401 required to warm up AsyncCompile pools
@@ -21,7 +21,7 @@ BUG_CACHES_DONT_WORK_WITH_ASYNC = True
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    
     from concurrent.futures import Future
 
     from torch._inductor.utils import InputType
@@ -41,7 +41,7 @@ class _PostCompileData:
 class ProgressiveCompilationState:
     progression_futures: deque[Future[_WireProtocolPickledOutput]]
     callback: Callable[[_WireProtocolPickledOutput], OutputCode]
-    post_compile_data: _PostCompileData | None
+    post_compile_data: Optional[_PostCompileData]
 
     def check_and_get_ready_stage(self) -> int:
         """Check if any progression stage is ready and return its index, or -1 if none are ready."""
@@ -56,7 +56,7 @@ class ProgressiveCompilationState:
 
         return stage_index
 
-    def switch_to_progression_stage(self, stage_index: int) -> tuple[OutputCode, bool]:
+    def switch_to_progression_stage(self, stage_index: int) -> Tuple[OutputCode, bool]:
         """
         Switch to the specified progression stage and return the optimized output code.
         Returns a tuple of (optimized_output_code, should_clear_compilation_state).
@@ -83,11 +83,11 @@ class ProgressiveCompilationState:
 # out-of-process compile to finish and then switching over to it.
 @final
 class _AsyncOutputCode(OutputCode):
-    _eager_fn: Callable[..., Any] | None
-    _output_code: OutputCode | None
-    _future: Future[_WireProtocolPickledOutput] | None
+    _eager_fn: Optional[Callable[..., Any]]
+    _output_code: Optional[OutputCode]
+    _future: Optional[Future[_WireProtocolPickledOutput]]
     _callback: Callable[[_WireProtocolPickledOutput], OutputCode]
-    _post_compile_data: _PostCompileData | None = None
+    _post_compile_data: Optional[_PostCompileData]= None
     _boxed_call: bool  # Copied from the forward/output_code
 
     def __init__(
@@ -122,7 +122,7 @@ class _AsyncOutputCode(OutputCode):
             return self._output_code.__call__(*args)
 
     # Takes and returns the args (converted to the "right" boxed mode)
-    def _switch_to_compiled_fn(self, args: tuple[Any, ...]) -> tuple[Any, ...]:
+    def _switch_to_compiled_fn(self, args: Tuple[Any, ...]) -> Tuple[Any, ...]:
         assert self._future is not None
 
         # TODO: If the future ended in an exception do we want to continue
@@ -240,9 +240,9 @@ class _AsyncFxCompile(FxCompile):
 # to a more optimized version when the expensive compile finishes.
 @final
 class _ProgressiveOutputCode(OutputCode):
-    _fast_output_code: OutputCode | None
-    _optimized_output_code: OutputCode | None
-    _compilation_state: ProgressiveCompilationState | None
+    _fast_output_code: Optional[OutputCode]
+    _optimized_output_code: Optional[OutputCode]
+    _compilation_state: Optional[ProgressiveCompilationState]
     # _boxed_call state is effectively cached (we sometimes wrap unboxed w/
     # lambdas to box them) so we can't change it mid-way. Since _boxed_call=True
     # is more common let's default to that and we'll convert if necessary.
@@ -332,7 +332,7 @@ class _ProgressiveOutputCode(OutputCode):
 class _ProgressiveFxCompile(FxCompile):
     _fast_compile: FxCompile
     _optimized_compile: _OutOfProcessFxCompile
-    _progression_configs: list[dict[str, Any]]
+    _progression_configs: List[Dict[str, Any]]
 
     # Debugging stats
     _stat_bg_started: int = 0
@@ -344,7 +344,7 @@ class _ProgressiveFxCompile(FxCompile):
         self,
         fast_compile: FxCompile,
         optimized_compile: _OutOfProcessFxCompile,
-        progression_configs: list[dict[str, Any]],
+        progression_configs: List[Dict[str, Any]],
     ) -> None:
         self._fast_compile = fast_compile
         self._optimized_compile = optimized_compile
@@ -367,7 +367,7 @@ class _ProgressiveFxCompile(FxCompile):
     ) -> OutputCode:
         import torch._inductor.config as inductor_config
 
-        progression_futures: list[Future[_WireProtocolPickledOutput]] = []
+        progression_futures: List[Future[_WireProtocolPickledOutput]] = []
 
         for config in self._progression_configs:
             with inductor_config.patch(config):

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import logging
-import operator
 import os
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Set, TYPE_CHECKING, Union
 
 from sympy import Integer, Number, Symbol
 from sympy.logic.boolalg import BooleanAtom
@@ -36,7 +35,7 @@ if TYPE_CHECKING:
     from torch.fx.graph_module import GraphModule
 
 
-__all__: list[str] = []
+__all__: List[str] = []
 
 log = logging.getLogger(__name__)
 graph_code_log = torch._logging.getArtifactLogger(__name__, "graph_code_verbose")
@@ -86,31 +85,12 @@ SUPPORTED_OPS = {
     torch.ops.aten.add.Tensor: torch.ops.aten.add.Tensor,
     torch.ops.aten.sub.Tensor: torch.ops.aten.sub.Tensor,
     torch.ops.aten.div.Tensor: torch.ops.aten.div.Tensor,
-    torch.ops.aten.pow.Tensor_Tensor: torch.ops.aten.pow.Tensor_Tensor,
-    operator.mul: torch.ops.aten.mul.Tensor,
-    operator.add: torch.ops.aten.add.Tensor,
-    operator.sub: torch.ops.aten.sub.Tensor,
-    operator.truediv: torch.ops.aten.div.Tensor,
-    operator.pow: torch.ops.aten.pow.Tensor_Tensor,
     torch.ops.aten.gt.Scalar: torch.ops.aten.gt.Tensor,
     torch.ops.aten.lt.Scalar: torch.ops.aten.lt.Tensor,
     torch.ops.aten.ge.Scalar: torch.ops.aten.ge.Tensor,
     torch.ops.aten.le.Scalar: torch.ops.aten.le.Tensor,
     torch.ops.aten.eq.Scalar: torch.ops.aten.eq.Tensor,
     torch.ops.aten.ne.Scalar: torch.ops.aten.ne.Tensor,
-    operator.gt: torch.ops.aten.gt.Tensor,
-    operator.lt: torch.ops.aten.lt.Tensor,
-    operator.ge: torch.ops.aten.ge.Tensor,
-    operator.le: torch.ops.aten.le.Tensor,
-    operator.eq: torch.ops.aten.eq.Tensor,
-    operator.ne: torch.ops.aten.ne.Tensor,
-}
-
-SUPPORTED_METHOD_OPS = {
-    "mul_": torch.ops.aten.mul_.Tensor,
-    "add_": torch.ops.aten.add_.Tensor,
-    "sub_": torch.ops.aten.sub_.Tensor,
-    "div_": torch.ops.aten.div_.Tensor,
 }
 
 
@@ -160,9 +140,9 @@ def _tensorify_impl(
 
     graph = gm.graph
     tracer = fx.proxy.GraphAppendingTracer(graph)
-    expr_to_sym_proxy: dict[sympy.Expr, MetaProxy] = {}
-    expr_to_tensor_proxy: dict[sympy.Expr, MetaProxy] = {}
-    tensorified_symbols: set[sympy.Symbol] = set()
+    expr_to_sym_proxy: Dict[sympy.Expr, MetaProxy] = {}
+    expr_to_tensor_proxy: Dict[sympy.Expr, MetaProxy] = {}
+    tensorified_symbols: Set[sympy.Symbol] = set()
     should_restart = False
 
     first_non_placeholder = None
@@ -191,7 +171,7 @@ def _tensorify_impl(
         # cache constants, why not
         if isinstance(expr, (Integer, Number, BooleanAtom)):
             dtype = None
-            c: bool | int | float
+            c: Union[bool, int, float]
             if isinstance(expr, BooleanAtom):
                 dtype = torch.bool
                 c = bool(expr)
@@ -233,7 +213,7 @@ def _tensorify_impl(
 
         return expr_to_tensor_proxy[expr]
 
-    failed_tensorify_ops: set[str] = set()
+    failed_tensorify_ops: Set[str] = set()
     nodes = list(graph.nodes)
     for i, node in enumerate(nodes[:-1]):
         with graph.inserting_before(
@@ -313,23 +293,10 @@ def _tensorify_impl(
 
             # Look for functions to convert
 
-            replacement_op = None
-            is_inplace_method = False
-            if node.op == "call_function":
-                replacement_op = SUPPORTED_OPS.get(node.target)
-            elif node.op == "call_method":
-                replacement_op = SUPPORTED_METHOD_OPS.get(node.target)
-                is_inplace_method = replacement_op is not None
-
-            if replacement_op is not None:
-                # Pure SymFloat/SymBool expression nodes are scalar intermediates,
-                # not tensor-valued ops. Let later tensor uses consume their
-                # symbolic expression instead of treating them as a tensorify
-                # failure here.
-                if not hasattr(node.meta.get("val"), "dtype"):
-                    continue
-
-                args: list[Any] = []
+            if node.op == "call_function" and (
+                replacement_op := SUPPORTED_OPS.get(node.target)
+            ):
+                args: List[Any] = []
                 transform = False
 
                 compute_dtype = get_computation_dtype(node.meta["val"].dtype)
@@ -347,14 +314,8 @@ def _tensorify_impl(
                             transform = False
                             break
 
-                        # Track the original backed float symbols that flowed into
-                        # this tensorified expression so the later specialization
-                        # sweep does not incorrectly restart analysis for them.
-                        tensorified_symbols.update(
-                            s
-                            for s in a.meta["val"].node._expr.free_symbols
-                            if symbol_is_type(s, SymT.FLOAT)
-                        )
+                        # We use _expr instead of expr b/c we want the symbol not the replacement
+                        tensorified_symbols.add(a.meta["val"].node._expr)
 
                         # The upcasting is irrelevant when the compute dtype is bool. This happens
                         # in cases where we are tensorifying a comparison operator such as
@@ -376,10 +337,7 @@ def _tensorify_impl(
                 if transform:
                     replacement_proxy = replacement_op(*args)
 
-                    if (
-                        compute_dtype != node.meta["val"].dtype
-                        and not is_inplace_method
-                    ):
+                    if compute_dtype != node.meta["val"].dtype:
                         replacement_proxy = (
                             torch.ops.prims.convert_element_type.default(
                                 replacement_proxy,

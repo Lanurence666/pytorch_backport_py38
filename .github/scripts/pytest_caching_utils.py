@@ -1,3 +1,4 @@
+from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
@@ -33,7 +34,7 @@ class PRIdentifier(str):
     __slots__ = ()
 
     def __new__(cls, value: str) -> "PRIdentifier":
-        md5 = hashlib.md5(value.encode("utf-8"), usedforsecurity=False).hexdigest()
+        md5 = hashlib.md5(value.encode("utf-8")).hexdigest()
         return super().__new__(cls, md5)
 
 

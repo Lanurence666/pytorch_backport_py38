@@ -5,7 +5,7 @@ import os
 import re
 import textwrap
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Dict, List, Set, TYPE_CHECKING, Tuple
 
 from torchgen.aoti.fallback_ops import aten_shimified_ops, inductor_fallback_ops
 from torchgen.api.types import DispatcherSignature
@@ -85,7 +85,7 @@ def convert_arg_type_and_name(
     typ: Type,
     name: str,
     is_write: bool = False,
-) -> tuple[list[str], list[str], list[str], list[str]]:
+) -> Tuple[List[str], List[str], List[str], List[str]]:
     if isinstance(typ, BaseType):
         if typ.name in base_type_to_c_type:
             if typ.name == BaseTy.Tensor and is_write:
@@ -202,17 +202,17 @@ def convert_arg_type_and_name(
     raise NotImplementedError(f"Argument type {repr(typ)} not supported!")
 
 
-def zip_type_and_name(types: list[str], names: list[str]) -> list[str]:
+def zip_type_and_name(types: List[str], names: List[str]) -> List[str]:
     return [typ + " " + name for typ, name in zip(types, names)]
 
 
 # Generate argument declarations and callsite expressions
 def gen_arguments(
-    flat_arguments: Sequence[Argument], skipped_args: set[str]
-) -> tuple[list[str], list[str]]:
-    types: list[str] = []
-    new_names: list[str] = []
-    callsite_exprs: list[str] = []
+    flat_arguments: Sequence[Argument], skipped_args: Set[str]
+) -> Tuple[List[str], List[str]]:
+    types: List[str] = []
+    new_names: List[str] = []
+    callsite_exprs: List[str] = []
     for arg in flat_arguments:
         if arg.name in skipped_args:
             # Pass the arg's schema default when available (e.g. "false" for
@@ -238,7 +238,7 @@ def gen_arguments(
 # Return values are passed out as pointer arguments because all the C shim functions
 # are expected to return AOTITorchError.
 # Generate returns as declarations and callsite expressions
-def gen_returns(schema: FunctionSchema) -> tuple[list[str], list[str]]:
+def gen_returns(schema: FunctionSchema) -> Tuple[List[str], List[str]]:
     types = []
     names = []
     for idx, ret in enumerate(schema.returns):
@@ -279,7 +279,7 @@ def gen_returns(schema: FunctionSchema) -> tuple[list[str], list[str]]:
             ret_pointer_can_be_null = True
             break
 
-    callsite_exprs: list[str] = []
+    callsite_exprs: List[str] = []
     for idx, ret in enumerate(schema.returns):
         tmp = "tmp_result" if len(names) == 1 else f"std::get<{idx}>(tmp_result)"
         if not isinstance(ret.type, BaseType):
@@ -294,14 +294,14 @@ def gen_returns(schema: FunctionSchema) -> tuple[list[str], list[str]]:
 
 
 # gen.py generates header first and then src, so caching the result here to avoid duplicate work
-declaration_definition_cache: dict[tuple[str, str, str], tuple[str, str]] = {}
+declaration_definition_cache: Dict[Tuple[str, str, str], Tuple[str, str]] = {}
 
 
 _TORCH_VERSION_PATTERN = re.compile(r"^TORCH_VERSION_\d+_\d+_\d+$")
 
 
 def _get_earliest_torch_version_for_op_variant(
-    op_metadata: dict[str, str | dict[str, list[str] | str]],
+    op_metadata: Dict[str, str | Dict[str, List[str] | str]],
     op_version: int,
 ) -> str | None:
     """
@@ -333,8 +333,8 @@ def gen_declaration_and_definition(
     schema: FunctionSchema,
     device: str,
     backend_call: str,
-    op_metadata: dict[str, str | dict[str, list[str] | str]],
-) -> tuple[str, str]:
+    op_metadata: Dict[str, str | Dict[str, List[str] | str]],
+) -> Tuple[str, str]:
     base_name = schema.name.unambiguous_name()
 
     global declaration_definition_cache
@@ -344,7 +344,7 @@ def gen_declaration_and_definition(
     # Check the validity of op_metadata. Each "vN" entry is a dict
     # {"new_args": [...], "since": "TORCH_VERSION_X_Y_Z"} where "since" is optional;
     # op_metadata may also carry a top-level "since" key that would version-gate v1.
-    indexed_op_metadata: dict[int, list[str]] = {1: []}
+    indexed_op_metadata: Dict[int, List[str]] = {1: []}
     for ver_str, payload in sorted(op_metadata.items()):
         # since will get processed later per op
         if ver_str == "since":
@@ -374,9 +374,9 @@ def gen_declaration_and_definition(
             )
         indexed_op_metadata[ver_id] = new_args
 
-    declarations: list[str] = []
-    definitions: list[str] = []
-    skipped_args: set[str] = set()
+    declarations: List[str] = []
+    definitions: List[str] = []
+    skipped_args: Set[str] = set()
 
     for ver_id, new_args in sorted(indexed_op_metadata.items(), reverse=True):
         # Iterate in the reverse order, so the latest version of an op will get generated first
@@ -389,7 +389,7 @@ def gen_declaration_and_definition(
             args, callsite_exprs = gen_arguments(
                 [*schema.arguments.out, *schema.arguments.flat_non_out], skipped_args
             )
-            ret_assignments: list[str] = []
+            ret_assignments: List[str] = []
         else:
             args, callsite_exprs = gen_arguments(
                 schema.arguments.flat_all, skipped_args
@@ -478,7 +478,7 @@ def gen_static_dispatch_backend_call(
                 # Remove the _symint suffix since at::symint:: namespace uses the base name
                 # (e.g., new_empty -> at::symint::new_empty<c10::SymInt>)
                 base_name = cpp_sig.name()
-                base_name = base_name.removesuffix("_symint")  # Remove "_symint" suffix
+                base_name = (base_name[:-len("_symint")] if "_symint" and base_name.endswith("_symint") else base_name)  # Remove "_symint" suffix
                 return f"at::symint::{base_name}<c10::SymInt>"
 
         return f"at::{cpp_sig.name()}"
@@ -488,9 +488,9 @@ def gen_static_dispatch_backend_call(
 
 def get_backend_index_for_aoti(
     func: NativeFunction,
-    func_group_mapping: dict[OperatorName, NativeFunctionsGroup],
+    func_group_mapping: Dict[OperatorName, NativeFunctionsGroup],
     dispatch_key: DispatchKey | None,
-    backend_indices: dict[DispatchKey, BackendIndex],
+    backend_indices: Dict[DispatchKey, BackendIndex],
     extend_aoti_c_shim: bool,
 ) -> BackendIndex | None:
     backend_index = None
@@ -530,9 +530,9 @@ def get_backend_index_for_aoti(
 
 def get_header_for_aoti(
     func: NativeFunction,
-    func_group_mapping: dict[OperatorName, NativeFunctionsGroup],
+    func_group_mapping: Dict[OperatorName, NativeFunctionsGroup],
     dispatch_key: DispatchKey | None,
-    backend_indices: dict[DispatchKey, BackendIndex],
+    backend_indices: Dict[DispatchKey, BackendIndex],
     extend_aoti_c_shim: bool,
 ) -> str | None:
     backend_index = get_backend_index_for_aoti(
@@ -556,10 +556,10 @@ def get_fallback_op_name(func: NativeFunction) -> str:
 
 def gen_c_shim(
     func: NativeFunction,
-    version_info: dict[str, str | dict[str, list[str] | str]],
-    func_group_mapping: dict[OperatorName, NativeFunctionsGroup],
+    version_info: Dict[str, str | Dict[str, List[str] | str]],
+    func_group_mapping: Dict[OperatorName, NativeFunctionsGroup],
     dispatch_key: DispatchKey | None,
-    backend_indices: dict[DispatchKey, BackendIndex],
+    backend_indices: Dict[DispatchKey, BackendIndex],
     header: bool,
     extend_aoti_c_shim: bool,
 ) -> str | None:
@@ -594,10 +594,10 @@ def gen_c_shim(
 
 @dataclass(frozen=True)
 class ShimGenerator:
-    inductor_fallback_ops: dict[str, dict[str, str | dict[str, list[str] | str]]]
-    func_group_mapping: dict[OperatorName, NativeFunctionsGroup]
+    inductor_fallback_ops: Dict[str, Dict[str, str | Dict[str, List[str] | str]]]
+    func_group_mapping: Dict[OperatorName, NativeFunctionsGroup]
     dispatch_key: DispatchKey | None
-    backend_indices: dict[DispatchKey, BackendIndex]
+    backend_indices: Dict[DispatchKey, BackendIndex]
     header: bool  # True to generate .h and False to generate .cpp
     extend_aoti_c_shim: bool
 
@@ -621,10 +621,10 @@ class ShimGenerator:
 
 def gen_aoti_c_shim(
     native_functions: Sequence[NativeFunction],
-    inductor_fallback_ops: dict[str, dict[str, str | dict[str, list[str] | str]]],
-    func_group_mapping: dict[OperatorName, NativeFunctionsGroup],
+    inductor_fallback_ops: Dict[str, Dict[str, str | Dict[str, List[str] | str]]],
+    func_group_mapping: Dict[OperatorName, NativeFunctionsGroup],
     dispatch_key: DispatchKey | None,
-    backend_indices: dict[DispatchKey, BackendIndex],
+    backend_indices: Dict[DispatchKey, BackendIndex],
     header: bool,
     extend_aoti_c_shim: bool,
     includes: str = "",
@@ -714,9 +714,9 @@ def gen_aoti_c_shim(
 
 def gen_aoti_c_shim_files(
     aoti_fm: FileManager,
-    aoti_backends: set[DispatchKey | None],
+    aoti_backends: Set[DispatchKey | None],
     native_functions: Sequence[NativeFunction],
-    backend_indices: dict[DispatchKey, BackendIndex],
+    backend_indices: Dict[DispatchKey, BackendIndex],
     structured_native_functions: Sequence[NativeFunctionsGroup],
     extra_cuda_headers: str,
     extend_aoti_c_shim: bool,

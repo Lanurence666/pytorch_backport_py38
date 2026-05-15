@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: inductor"]
 """
 Test the FX IR backend.
@@ -716,12 +717,7 @@ class FxirTestCase(InductorTestCase):
         args = [torch.randn(5, device=device) for _ in range(2)]
 
         cpp_backend = common.DeviceCodegen(CppScheduling, WrapperFxCodegen, None)
-        with (
-            unittest.mock.patch.dict(
-                common.device_codegens, {device.type: cpp_backend}
-            ),
-            self.assertRaisesRegex(BackendCompilerFailed, "Triton"),
-        ):
+        with unittest.mock.patch.dict( common.device_codegens, {device.type: cpp_backend} ), self.assertRaisesRegex(BackendCompilerFailed, "Triton"):
             self._compile_and_check(foo, args)
 
     @parametrize("enable_tuning", (False, True))
@@ -737,12 +733,7 @@ class FxirTestCase(InductorTestCase):
 
         args = [torch.randn(8, device=self.device) for _ in range(2)]
 
-        with (
-            config.patch("triton.autotune_at_compile_time", enable_tuning),
-            unittest.mock.patch.object(
-                torch._inductor.runtime.triton_heuristics.CachingAutotuner, "run", run
-            ),
-        ):
+        with config.patch("triton.autotune_at_compile_time", enable_tuning), unittest.mock.patch.object( torch._inductor.runtime.triton_heuristics.CachingAutotuner, "run", run ):
             # Compile and check that the tuner was called.
             self.assertFalse(called)
             (gm,) = self._compile_and_check(

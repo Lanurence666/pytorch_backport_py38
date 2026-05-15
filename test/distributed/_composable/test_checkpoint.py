@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import unittest
 from collections import deque, OrderedDict
 from contextlib import ContextDecorator, contextmanager, nullcontext

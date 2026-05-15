@@ -1,5 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 # Owner(s): ["oncall: distributed"]
+from __future__ import annotations
 import copy
 import logging
 from dataclasses import dataclass
@@ -121,7 +122,7 @@ def create_multi_stage_pipeline(
     stage_modules = [mod.get_submodule(submod_name) for submod_name in submod_names]
     stages = [
         PipelineStage(stage_module, stage_idx, n_stages, config.device)
-        for stage_module, stage_idx in zip(stage_modules, stage_indices, strict=True)
+        for stage_module, stage_idx in _zip_strict(stage_modules, stage_indices)
     ]
     return stages, stage_modules, submod_names
 

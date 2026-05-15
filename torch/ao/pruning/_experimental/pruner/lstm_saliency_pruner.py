@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any, Union, cast
 
 import torch
 from torch import nn
@@ -16,7 +16,7 @@ class LSTMSaliencyPruner(BaseStructuredSparsifier):
 
     These tensors pack the weights for the 4 linear layers together for efficiency.
 
-    [W_ii | W_if | W_ig | W_io]
+    Union[[Union[W_ii, W_if], Union[W_ig, W_io]]]
 
     Pruning this tensor directly will lead to weights being misassigned when unpacked.
     To ensure that each packed linear layer is pruned the same amount:

@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Optional
+
 """
 To run the example, use the following command:
 torchrun --standalone --nnodes=1 --nproc-per-node=4 flex_attention_cp.py
@@ -26,8 +29,8 @@ def get_device_type() -> str:
 @lru_cache
 def create_block_mask_cached(
     score_mod: _mask_mod_signature,
-    B: int | None,
-    H: int | None,
+    B: Optional[int],
+    H: Optional[int],
     M: int,
     N: int,
     device: str = "cuda",

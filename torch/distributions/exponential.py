@@ -1,11 +1,14 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch import Tensor
 from torch.distributions import constraints
 from torch.distributions.exp_family import ExponentialFamily
 from torch.distributions.utils import broadcast_all
 from torch.types import _Number, _size
+from typing import Optional, Tuple, Union
 
 
 __all__ = ["Exponential"]
@@ -50,8 +53,8 @@ class Exponential(ExponentialFamily):
 
     def __init__(
         self,
-        rate: Tensor | float,
-        validate_args: bool | None = None,
+        rate: Union[Tensor, float],
+        validate_args: Optional[bool] = None,
     ) -> None:
         (self.rate,) = broadcast_all(rate)
         batch_shape = torch.Size() if isinstance(rate, _Number) else self.rate.size()
@@ -86,7 +89,7 @@ class Exponential(ExponentialFamily):
         return 1.0 - torch.log(self.rate)
 
     @property
-    def _natural_params(self) -> tuple[Tensor]:
+    def _natural_params(self) -> Tuple[Tensor]:
         return (-self.rate,)
 
     # pyrefly: ignore [bad-override]

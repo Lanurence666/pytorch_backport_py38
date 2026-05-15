@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Any, Optional, Set, Tuple, Type
+
 r"""
 This module exposes a TunableOp interface.
 
@@ -294,17 +297,17 @@ def get_filename() -> str:
     return torch._C._cuda_tunableop_get_filename()  # type: ignore[attr-defined]
 
 
-def get_results() -> tuple[str, str, str, float]:
+def get_results() -> Tuple[str, str, str, float]:
     r"""Return all TunableOp results."""
     return torch._C._cuda_tunableop_get_results()  # type: ignore[attr-defined]
 
 
-def get_validators() -> tuple[str, str]:
+def get_validators() -> Tuple[str, str]:
     r"""Return the TunableOp validators."""
     return torch._C._cuda_tunableop_get_validators()  # type: ignore[attr-defined]
 
 
-def read_file(filename: str | None = None) -> bool:
+def read_file(filename: Optional[str] = None) -> bool:
     r"""Read results from a TunableOp CSV file.
 
     If :attr:`filename` is not given, ``get_filename()`` is called.
@@ -350,7 +353,7 @@ def tune_gemm_in_file(filename: str) -> None:
                 _process_single_offline_gemm(line, deviceid)
 
 
-def _gather_unique_untuned_gemm_from_files(filename_pattern: str) -> set[str]:
+def _gather_unique_untuned_gemm_from_files(filename_pattern: str) -> Set[str]:
     r"""Process multiple untuned results file and return a set with duplicates removed."""
     unique_gemm_entries = set()  # set will avoid duplicates
 
@@ -440,10 +443,10 @@ def _create_matrices(
     transB: bool,
     dtypeA: torch.dtype,
     deviceid: str,
-    dtypeB: torch.dtype | None = None,
+    dtypeB: Optional[torch.dtype]= None,
     randn: bool = True,
     subMatrix: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Helper function for _process_single_offline_gemm.
     Creates matrices that are then consumed by one of the Torch GEMM APIs.
     """
@@ -511,7 +514,7 @@ def _create_batch_matrices(
     dtype: torch.dtype,
     deviceid: str,
     subMatrix: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Helper function for _process_single_offline_gemm.
     Creates batch matrices that are then consumed by one of the Torch GEMM APIs.
     Similar to _create_matrices but for 3D batch matrices.

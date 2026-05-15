@@ -1,4 +1,6 @@
-from typing import Any, TYPE_CHECKING
+from __future__ import annotations
+
+from typing import Any, TYPE_CHECKING, Tuple
 
 import torch
 from torch._C import DispatchKey
@@ -18,7 +20,7 @@ class RunConstGraph(HigherOrderOperator):
     def __init__(self) -> None:
         super().__init__("run_const_graph")
 
-    def __call__(self, graph: torch.fx.GraphModule, args: tuple[object, ...]) -> object:
+    def __call__(self, graph: torch.fx.GraphModule, args: Tuple[object, ...]) -> object:
         # pyrefly: ignore [missing-attribute]
         return super().__call__(graph, args)
 
@@ -28,7 +30,7 @@ run_const_graph = RunConstGraph()
 
 @run_const_graph.py_impl(ProxyTorchDispatchMode)
 def run_const_graph_dispatch_mode(
-    mode: ProxyTorchDispatchMode, graph: torch.fx.GraphModule, args: tuple[object, ...]
+    mode: ProxyTorchDispatchMode, graph: torch.fx.GraphModule, args: Tuple[object, ...]
 ) -> object:
     const_gm, weights = graph, args
     p_args = pytree.tree_map(mode.tracer.unwrap_proxy, (graph, args))  # type: ignore[union-attr]
@@ -48,7 +50,7 @@ def run_const_graph_dispatch_mode(
 
 @run_const_graph.py_functionalize_impl
 def run_const_graph_functional(
-    ctx: "BaseFunctionalizeAPI", graph: torch.fx.GraphModule, args: tuple[Any, ...]
+    ctx: "BaseFunctionalizeAPI", graph: torch.fx.GraphModule, args: Tuple[Any, ...]
 ) -> Any:
     unwrapped_args = ctx.unwrap_tensors(args)
 
@@ -64,7 +66,7 @@ run_const_graph.py_autograd_impl(
 
 @run_const_graph.py_impl(FakeTensorMode)
 def run_const_graph_fake_tensor_mode(
-    mode: FakeTensorMode, graph: torch.fx.GraphModule, args: tuple[object, ...]
+    mode: FakeTensorMode, graph: torch.fx.GraphModule, args: Tuple[object, ...]
 ) -> object:
     if not isinstance(graph, torch.fx.GraphModule):
         raise AssertionError(
@@ -76,7 +78,7 @@ def run_const_graph_fake_tensor_mode(
 
 @run_const_graph.py_impl(DispatchKey.CPU)
 def run_const_graph_cpu(
-    graph: torch.fx.GraphModule, args: tuple[object, ...]
+    graph: torch.fx.GraphModule, args: Tuple[object, ...]
 ) -> object:
     if not isinstance(graph, torch.fx.GraphModule):
         raise AssertionError(

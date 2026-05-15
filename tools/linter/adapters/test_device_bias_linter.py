@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 This lint verifies that every Python test file (file that matches test_*.py or
 *_test.py in the test folder) has a cuda hard code in `requires_gpu()` or
@@ -6,14 +7,13 @@ This lint verifies that every Python test file (file that matches test_*.py or
 to ensure that the test not fail on other GPU devices.
 """
 
-from __future__ import annotations
 
 import argparse
 import ast
 import json
 import multiprocessing as mp
 from enum import Enum
-from typing import NamedTuple
+from typing import List, NamedTuple, Union
 
 
 LINTER_CODE = "TEST_DEVICE_BIAS"
@@ -27,15 +27,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 DEVICE_BIAS = ["cuda", "xpu", "mps"]
@@ -81,7 +81,7 @@ def is_main_has_gpu(tree: ast.AST) -> bool:
 class DeviceBiasVisitor(ast.NodeVisitor):
     def __init__(self, filename: str, is_gpu_test_suite: bool) -> None:
         self.filename = filename
-        self.lint_messages: list[LintMessage] = []
+        self.lint_messages: List[LintMessage] = []
         self.is_gpu_test_suite = is_gpu_test_suite
 
     def _has_proper_decorator(self, node: ast.FunctionDef) -> bool:
@@ -206,7 +206,7 @@ class DeviceBiasVisitor(ast.NodeVisitor):
         )
 
 
-def check_file(filename: str) -> list[LintMessage]:
+def check_file(filename: str) -> List[LintMessage]:
     with open(filename) as f:
         source = f.read()
         tree = ast.parse(source, filename=filename)

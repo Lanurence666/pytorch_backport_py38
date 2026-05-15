@@ -1,5 +1,6 @@
 # Owner(s): ["module: dynamo"]
 
+from __future__ import annotations
 import dataclasses
 import itertools
 import pickle
@@ -418,15 +419,7 @@ class TestGuardSerializationBase(torch._inductor.test_case.TestCase):
                 distributed_state=None,
                 package=None,
             )
-            with (
-                compile_context(
-                    CompileContext(CompileId(frame_id=0, frame_compile_id=0))
-                ),
-                tracing(tracer.output.tracing_context),
-                tracer.set_current_tx(),
-                get_metrics_context(),
-                dynamo_timed(""),
-            ):
+            with compile_context( CompileContext(CompileId(frame_id=0, frame_compile_id=0)) ), tracing(tracer.output.tracing_context), tracer.set_current_tx(), get_metrics_context(), dynamo_timed(""):
                 tracer.run()
 
                 ref_gm = CheckFunctionManager(

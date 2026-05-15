@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import functools
 from contextlib import nullcontext
-from typing import Any, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Set, TYPE_CHECKING, Type, TypeVar
 from typing_extensions import ParamSpec
 
 
@@ -24,8 +24,8 @@ _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 
-@functools.cache
-def torch_to_refs_map() -> dict[Any, Any]:
+@functools.lru_cache(maxsize=None)
+def torch_to_refs_map() -> Dict[Any, Any]:
     """
     Mapping of torch API functions to torch._refs functions.
     E.g. torch_to_refs_map()[torch.add] == torch._refs.add
@@ -38,7 +38,7 @@ def torch_to_refs_map() -> dict[Any, Any]:
         (torch.fft, torch._refs.fft),
         (torch.linalg, torch._refs.linalg),
     ]
-    r: dict[Any, Any] = {
+    r: Dict[Any, Any] = {
         torch.Tensor.__invert__: torch._refs.bitwise_not,
         torch.Tensor.__xor__: torch._refs.bitwise_xor,
         torch.Tensor.__and__: torch._refs.bitwise_and,
@@ -79,8 +79,8 @@ def torch_to_refs_map() -> dict[Any, Any]:
     return r
 
 
-@functools.cache
-def all_prims() -> set[Any]:
+@functools.lru_cache(maxsize=None)
+def all_prims() -> Set[Any]:
     """
     Set of all prim functions, e.g., torch._prims.add in all_prims()
     """
@@ -117,7 +117,7 @@ class TorchRefsMode(torch.overrides.TorchFunctionMode):
         orig_func: Callable[_P, _R],
         types: Sequence[type],
         args: Sequence[Any] = (),
-        kwargs: dict[str, Any] | None = None,
+        kwargs: Optional[Dict[str, Any]]= None,
     ) -> Any:
         if kwargs is None:
             kwargs = {}

@@ -1,5 +1,11 @@
-from collections.abc import Callable
-from typing import TypeAlias
+from __future__ import annotations
+
+
+
+try:
+    from typing import Callable, List, Type, TypeAlias, Union
+except ImportError:
+    TypeAlias = None
 
 
 try:
@@ -7,9 +13,9 @@ try:
         make_scribe_logger,
     )
 except ImportError:
-    TAtom: TypeAlias = int | float | bool | str
-    TField: TypeAlias = TAtom | list[TAtom]
-    TLazyField: TypeAlias = TField | Callable[[], TField]
+    TAtom: TypeAlias = Union[int, float, bool, str]
+    TField: TypeAlias = Union[TAtom, List[TAtom]]
+    TLazyField: TypeAlias = Union[TField, Callable[[], TField]]
 
     def make_scribe_logger(name: str, thrift_src: str) -> Callable[..., None]:
         def inner(**kwargs: TLazyField) -> None:

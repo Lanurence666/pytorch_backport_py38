@@ -1,15 +1,17 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import cProfile
 import inspect
 import io
 import itertools
 import os
 import warnings
-from collections.abc import Callable, Sequence
+
 from contextlib import contextmanager
 from functools import wraps
 from pstats import Stats
-from typing import Any, cast, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Type, TypeVar, Union, cast
 
 import torch
 import torch.distributed as dist
@@ -32,27 +34,27 @@ R = TypeVar("R")
 
 
 def _get_failure_dict(
-    results: list[T | WRAPPED_EXCEPTION],
-) -> dict[int, WRAPPED_EXCEPTION]:
+    results: List[Union[T, WRAPPED_EXCEPTION]],
+) -> Dict[int, WRAPPED_EXCEPTION]:
     return cast(
-        dict[int, WRAPPED_EXCEPTION],
+        Dict[int, WRAPPED_EXCEPTION],
         {i: err for i, err in enumerate(results) if _is_wrapped_exception(err)},
     )
 
 
 def _all_gather_keys(
-    local_dict: dict[str, Any], group: dist.ProcessGroup | None = None
-) -> set[str]:
+    local_dict: Dict[str, Any], group: Optional[dist.ProcessGroup] = None
+) -> Set[str]:
     """Gathers all keys, and returns them sorted."""
     keys = list(local_dict.keys())
-    gathered_keys: list[list[str]] = [None] * dist.get_world_size(group)  # type: ignore[list-item]
+    gathered_keys: List[List[str]] = [None] * dist.get_world_size(group)  # type: ignore[list-item]
 
     dist.all_gather_object(gathered_keys, keys, group=group)
     return set(itertools.chain.from_iterable(gathered_keys))
 
 
 def _assert_same_keys(
-    state_dict: dict[str, Any], process_group: dist.ProcessGroup | None = None
+    state_dict: Dict[str, Any], process_group: Optional[dist.ProcessGroup] = None
 ) -> None:
     """
     Asserts that all ranks have the same keys in their state dict.
@@ -84,7 +86,7 @@ class _DistWrapper:
 
     def __init__(
         self,
-        group: dist.ProcessGroup | None,
+        group: Optional[dist.ProcessGroup],
         use_dist: bool,
         coordinator_rank: int,
     ):
@@ -112,7 +114,7 @@ class _DistWrapper:
             return dist.get_world_size(self.group)
         return 1
 
-    def broadcast_object(self, object: T | None) -> T:
+    def broadcast_object(self, object: Optional[T]) -> T:
         """Implement functionality similar to c10d::broadcast_object_list but without distributed enabled."""
         object_list = [object]
         if self.use_dist:
@@ -123,11 +125,11 @@ class _DistWrapper:
             )
         return cast(T, object_list[0])
 
-    def gather_object(self, object: T) -> list[T] | None:
+    def gather_object(self, object: T) -> Optional[List[T]]:
         """Implement functionality similar to c10d::gather_object but without distributed enabled."""
         if self.use_dist:
             gather_objs = (
-                cast(list[T], [None] * dist.get_world_size(self.group))
+                cast(List[T], [None] * dist.get_world_size(self.group))
                 if self.is_coordinator
                 else None
             )
@@ -143,10 +145,10 @@ class _DistWrapper:
             result = [object]
         return result
 
-    def all_gather_object(self, object: T) -> list[T]:
+    def all_gather_object(self, object: T) -> List[T]:
         """Implement functionality similar to c10d::all_gather_object but without distributed enabled."""
         if self.use_dist:
-            gather_objs = cast(list[T], [None] * dist.get_world_size(self.group))
+            gather_objs = cast(List[T], [None] * dist.get_world_size(self.group))
 
             dist.all_gather_object(
                 object_list=gather_objs, obj=object, group=self.group
@@ -155,10 +157,10 @@ class _DistWrapper:
             gather_objs = [object]
         return gather_objs
 
-    def scatter_object(self, object_list: list[T] | None) -> T:
+    def scatter_object(self, object_list: Optional[List[T]]) -> T:
         """Implement functionality similar to c10d::scatter_object but without distributed enabled."""
         if self.use_dist:
-            gather_result = cast(list[T], [None])
+            gather_result = cast(List[T], [None])
             dist.scatter_object_list(
                 scatter_object_output_list=gather_result,
                 scatter_object_input_list=object_list if self.is_coordinator else None,
@@ -177,7 +179,7 @@ class _DistWrapper:
         self,
         step: str,
         map_fun: Callable[[], T],
-        reduce_fun: Callable[[list[T]], list[R]],
+        reduce_fun: Callable[[List[T]], List[R]],
     ) -> R:
         """
         Compute a value on each rank, then do centralized reduce on a single rank, followed by a scatter.
@@ -188,14 +190,14 @@ class _DistWrapper:
             Call ``reduce_fun`` on all those values
             Scatter to each rank part of the result.
         """
-        local_data: WRAPPED_EXCEPTION | T
+        local_data: Union[WRAPPED_EXCEPTION, T]
         try:
             local_data = map_fun()
         except BaseException as e:
             local_data = _wrap_exception(e)
 
         all_data = self.gather_object(local_data)
-        all_results: list[R | CheckpointException] | None = None
+        all_results: Union[List[R, CheckpointException], None] = None
         if self.is_coordinator:
             if all_data is None:
                 raise AssertionError("all_data is None")
@@ -205,8 +207,8 @@ class _DistWrapper:
                 try:
                     # N.B. why can't mypy cast List[R] to List[Union[R, WRAPPED_EXCEPTION]]?
                     all_results = cast(
-                        list[R | CheckpointException],
-                        reduce_fun(cast(list[T], all_data)),
+                        List[Union[R, CheckpointException]],
+                        reduce_fun(cast(List[T], all_data)),
                     )
                 except BaseException as e:
                     node_failures[self.rank] = _wrap_exception(e)
@@ -225,7 +227,7 @@ class _DistWrapper:
         self,
         step: str,
         map_fun: Callable[[], T],
-        reduce_fun: Callable[[list[T]], R],
+        reduce_fun: Callable[[List[T]], R],
     ) -> R:
         """
         Compute a value on each rank, then do centralized reduce on a single rank, followed by a broadcast.
@@ -236,21 +238,21 @@ class _DistWrapper:
             Call ``reduce_fun`` on all those values
             Broadcast the reduced value to all ranks.
         """
-        local_data: T | WRAPPED_EXCEPTION
+        local_data: Union[T, WRAPPED_EXCEPTION]
         try:
             local_data = map_fun()
         except BaseException as e:
             local_data = _wrap_exception(e)
 
         all_data = self.gather_object(local_data)
-        result: R | CheckpointException | None = None
+        result: Optional[Union[R, CheckpointException]] = None
         if self.is_coordinator:
             if all_data is None:
                 raise AssertionError("all_data is None")
             node_failures = _get_failure_dict(all_data)
             if len(node_failures) == 0:
                 try:
-                    result = reduce_fun(cast(list[T], all_data))
+                    result = reduce_fun(cast(List[T], all_data))
                 except BaseException as e:
                     node_failures[self.rank] = _wrap_exception(e)
 
@@ -268,7 +270,7 @@ class _DistWrapper:
         self,
         step: str,
         map_fun: Callable[[], T],
-    ) -> list[T]:
+    ) -> List[T]:
         """
         Compute a value on each rank, then all_gather them.
 
@@ -276,7 +278,7 @@ class _DistWrapper:
             Run ``map_cp`` on all ranks
             all_gather the values to all ranks
         """
-        result: T | WRAPPED_EXCEPTION
+        result: Union[T, WRAPPED_EXCEPTION]
         try:
             result = map_fun()
         except BaseException as e:
@@ -287,7 +289,7 @@ class _DistWrapper:
         node_failures = _get_failure_dict(all_results)
         if len(node_failures) > 0:
             raise CheckpointException(step, node_failures)
-        return cast(list[T], all_results)
+        return cast(List[T], all_results)
 
     def broadcast(
         self,
@@ -301,7 +303,7 @@ class _DistWrapper:
             Run ``map_cp`` on rank 0
             broadcast the value
         """
-        result: T | CheckpointException | None = None
+        result: Optional[Union[T, CheckpointException]] = None
         if self.is_coordinator:
             try:
                 result = map_fun()
@@ -376,11 +378,11 @@ def find_state_dict_object(state_dict: STATE_DICT_TYPE, index: MetadataIndex) ->
     return obj
 
 
-def _element_wise_add(a: Sequence[int], b: Sequence[int]) -> list[int]:
+def _element_wise_add(a: Sequence[int], b: Sequence[int]) -> List[int]:
     return [i_a + i_b for i_a, i_b in zip(a, b)]
 
 
-def _element_wise_sub(a: Sequence[int], b: Sequence[int]) -> list[int]:
+def _element_wise_sub(a: Sequence[int], b: Sequence[int]) -> List[int]:
     return [i_a - i_b for i_a, i_b in zip(a, b)]
 
 

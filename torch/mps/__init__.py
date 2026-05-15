@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 r"""
 This package enables an interface for accessing MPS (Metal Performance Shaders) backend in Python.
 Metal is Apple's API for programming metal GPU (graphics processor unit). Using MPS means that increased
@@ -8,6 +10,7 @@ See https://developer.apple.com/documentation/metalperformanceshaders for more d
 
 import torch
 from torch import Tensor
+from typing import Set, Type, Union
 
 
 _is_in_bad_fork = getattr(torch._C, "_mps_is_in_bad_fork", lambda: False)
@@ -32,7 +35,7 @@ def synchronize() -> None:
     return torch._C._mps_deviceSynchronize()
 
 
-def get_rng_state(device: int | str | torch.device = "mps") -> Tensor:
+def get_rng_state(device: Union[Union[int, str], torch.device] = "mps") -> Tensor:
     r"""Returns the random number generator state as a ByteTensor.
 
     Args:
@@ -42,7 +45,7 @@ def get_rng_state(device: int | str | torch.device = "mps") -> Tensor:
     return _get_default_mps_generator().get_state()
 
 
-def set_rng_state(new_state: Tensor, device: int | str | torch.device = "mps") -> None:
+def set_rng_state(new_state: Tensor, device: Union[Union[int, str], torch.device] = "mps") -> None:
     r"""Sets the random number generator state.
 
     Args:

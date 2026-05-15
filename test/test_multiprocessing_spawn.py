@@ -1,5 +1,6 @@
 # Owner(s): ["module: multiprocessing"]
 
+from __future__ import annotations
 import os
 import pickle
 import random

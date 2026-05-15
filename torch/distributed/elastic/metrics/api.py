@@ -7,11 +7,14 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import abc
 import time
 from collections import namedtuple
 from functools import wraps
 from typing_extensions import deprecated
+from typing import Dict, Optional
 
 
 __all__ = [
@@ -36,7 +39,7 @@ MetricData = namedtuple("MetricData", ["timestamp", "group_name", "name", "value
 class MetricsConfig:
     __slots__ = ["params"]
 
-    def __init__(self, params: dict[str, str] | None = None):
+    def __init__(self, params: Optional[Dict[str, str]] = None):
         self.params = params
         if self.params is None:
             self.params = {}
@@ -71,12 +74,12 @@ class MetricStream:
         )
 
 
-_metrics_map: dict[str, MetricHandler] = {}
+_metrics_map: Dict[str, MetricHandler] = {}
 _default_metrics_handler: MetricHandler = NullMetricHandler()
 
 
 # pyre-fixme[9]: group has type `str`; used as `None`.
-def configure(handler: MetricHandler, group: str | None = None):
+def configure(handler: MetricHandler, group: Optional[str] = None):
     if group is None:
         global _default_metrics_handler
         # pyre-fixme[9]: _default_metrics_handler has type `NullMetricHandler`; used

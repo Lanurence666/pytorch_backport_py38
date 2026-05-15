@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import torch
 import torch._dynamo.test_case
 import torch.utils._pytree as pytree
+from typing import List
 
 
 class PytreeRegisteringTestCase(torch._dynamo.test_case.TestCase):
@@ -8,8 +11,8 @@ class PytreeRegisteringTestCase(torch._dynamo.test_case.TestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        self._registered_pytree_nodes: list[type] = []
-        self._registered_constant_nodes: list[type] = []
+        self._registered_pytree_nodes: List[type] = []
+        self._registered_constant_nodes: List[type] = []
 
     def tearDown(self) -> None:
         for cls in reversed(self._registered_pytree_nodes):

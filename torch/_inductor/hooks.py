@@ -1,14 +1,16 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import contextlib
-from collections.abc import Callable
-from typing import TYPE_CHECKING
+
+from typing import Callable, List, TYPE_CHECKING
 
 
 if TYPE_CHECKING:
     import torch
 
 # Executed in the order they're registered
-INTERMEDIATE_HOOKS: list[Callable[[str, "torch.Tensor"], None]] = []
+INTERMEDIATE_HOOKS: List[Callable[[str, "torch.Tensor"], None]] = []
 
 
 @contextlib.contextmanager

@@ -257,7 +257,8 @@ if __name__ == "__main__":
     test_multi_process(model, input)
     print(torch.xpu.device_count())
 """
-        rc = check_output(test_script)
+        # XPU have extra lines, so get the last line, refer https://github.com/intel/torch-xpu-ops/issues/2261
+        rc = check_output(test_script).splitlines()[-1]
         self.assertEqual(rc, str(torch.xpu.device_count()))
 
     def test_parse_visible_devices(self):
@@ -2687,10 +2688,7 @@ class TestCachingHostAllocatorXpuGraph(TestCase):
     def test_two_graphs(
         self, use_background_threads, use_xpu_host_register, use_memory, delete_memory
     ):
-        with (
-            caching_host_allocator_use_background_threads(use_background_threads),
-            caching_host_allocator_use_host_register(use_xpu_host_register),
-        ):
+        with caching_host_allocator_use_background_threads(use_background_threads), caching_host_allocator_use_host_register(use_xpu_host_register):
             shared_pool = torch.xpu.graph_pool_handle()
             graph1 = torch.xpu.XPUGraph()
             graph2 = torch.xpu.XPUGraph()
@@ -3148,7 +3146,6 @@ class TestXpuAutocast(TestAutocast):
 @unittest.skipIf(not TEST_XPU, "XPU not available, skipping tests")
 class TestXpuTrace(TestCase):
     def setUp(self):
-        super().setUp()
         torch._C._activate_gpu_trace()
         self.mock = unittest.mock.MagicMock()
 

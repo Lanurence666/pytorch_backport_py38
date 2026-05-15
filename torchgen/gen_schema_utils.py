@@ -1,4 +1,5 @@
-from typing import Any
+from __future__ import annotations
+from typing import Any, Tuple, Union
 
 from torchgen.model import (
     Annotation,
@@ -29,7 +30,7 @@ class TypeGen:
     }
 
     @staticmethod
-    def from_example(obj: Any) -> BaseType | ListType | CustomClassType:
+    def from_example(obj: Any) -> Union[BaseType, ListType, CustomClassType]:
         import torch
 
         if isinstance(obj, torch.fx.GraphModule):
@@ -62,7 +63,7 @@ class TypeGen:
 class ReturnGen:
     @staticmethod
     def from_example(
-        name: str | None, obj: Any, annotation: Annotation | None
+        name: Union[str, None], obj: Any, annotation: Union[Annotation, None]
     ) -> Return:
         return Return(name, TypeGen.from_example(obj), annotation)
 
@@ -70,7 +71,7 @@ class ReturnGen:
 class ArgumentGen:
     @staticmethod
     def from_example(
-        name: str, obj: Any, default: str | None, annotation: Annotation | None
+        name: str, obj: Any, default: Union[str, None], annotation: Union[Annotation, None]
     ) -> Argument:
         return Argument(
             name, TypeGen.from_example(obj), default=default, annotation=annotation
@@ -81,8 +82,8 @@ class FunctionSchemaGen:
     @staticmethod
     def from_example(
         op_name: str,
-        example_inputs: tuple[tuple[str, Any], ...],
-        example_outputs: tuple[Any, ...],
+        example_inputs: Tuple[Tuple[str, Any], ...],
+        example_outputs: Tuple[Any, ...],
     ) -> FunctionSchema:
         args = []
         for name, inp in example_inputs:

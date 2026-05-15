@@ -1,9 +1,9 @@
+from __future__ import annotations
 """Abstract interface for ONNX exportable modules."""
 
-from __future__ import annotations
 
 import abc
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Optional, Sequence, TYPE_CHECKING, Tuple, Union
 
 import torch
 
@@ -53,7 +53,7 @@ class ExportableModule(torch.nn.Module, abc.ABC):
     """
 
     @abc.abstractmethod
-    def example_arguments(self) -> tuple[tuple[Any], dict[str, Any] | None]:
+    def example_arguments(self) -> Union[Tuple[Tuple[Any], Dict[str, Any], None]]:
         """Return example arguments for the model's forward method.
 
         This method must be implemented by subclasses to provide sample inputs
@@ -116,7 +116,7 @@ class ExportableModule(torch.nn.Module, abc.ABC):
         """
         return None
 
-    def input_names(self) -> Sequence[str] | None:
+    def input_names(self) -> Optional[Sequence[str]]:
         """Return names for the model's input tensors.
 
         Override this method to provide custom names for the input tensors in the
@@ -143,7 +143,7 @@ class ExportableModule(torch.nn.Module, abc.ABC):
         """
         return None
 
-    def output_names(self) -> Sequence[str] | None:
+    def output_names(self) -> Optional[Sequence[str]]:
         """Return names for the model's output tensors.
 
         Override this method to provide custom names for the output tensors in the

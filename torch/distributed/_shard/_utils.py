@@ -1,5 +1,6 @@
-from collections.abc import Sequence
 
+
+from typing import Sequence
 import torch
 from torch.distributed._shard.metadata import ShardMetadata
 

@@ -1,6 +1,7 @@
 # Owner(s): ["oncall: quantization"]
 # ruff: noqa: F841
 
+from __future__ import annotations
 from collections import OrderedDict
 import contextlib
 import torch

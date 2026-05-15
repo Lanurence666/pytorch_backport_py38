@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import dataclasses
 import itertools
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING, Tuple, Type
 
 import sympy
 
@@ -29,7 +31,7 @@ class PreservesZeros(SymPyOps, DefaultHandler):
 
     def __init__(self) -> None:
         self.count = itertools.count(0)
-        self.store_preserves_zeros: bool | None = None
+        self.store_preserves_zeros: Optional[bool] = None
         self.dtype_prop = DtypePropagationOpsHandler()
 
     def load(self, name: str, index: sympy.Expr) -> TypedExpr:
@@ -50,7 +52,7 @@ class PreservesZeros(SymPyOps, DefaultHandler):
     def indirect_indexing(self, *args: Any, **kwargs: Any) -> sympy.Expr:
         return construct_symbol(next(self.count), torch.int32)
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         from torch._inductor.codegen.common import OpDecompositions
 
         if hasattr(OpDecompositions, name):
@@ -110,7 +112,7 @@ class RecordLowPrecisionOps(DefaultHandler):
     def indirect_indexing(*args: Any, **kwargs: Any) -> sympy.Expr:
         return sympy.S.Zero
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         out_dtype = getattr(self.dtype_prop, name)(*args, **kwargs)
         out = DTypeContainer(out_dtype, is_scalar=(name == "constant"))
         if name == "constant":
@@ -157,10 +159,7 @@ def can_codegen_without_upcasts(
     low_prec_analysis = RecordLowPrecisionOps(disallow_fp32_ops)
 
     # Need to turn off upcasting to do analysis of whether we can turn it off
-    with (
-        config.patch("triton.codegen_upcast_to_fp32", False),
-        V.set_ops_handler(low_prec_analysis),
-    ):
+    with config.patch("triton.codegen_upcast_to_fp32", False), V.set_ops_handler(low_prec_analysis):
         prologue._body(*prologue.get_ranges())
 
     return not low_prec_analysis.low_precision_numeric_op

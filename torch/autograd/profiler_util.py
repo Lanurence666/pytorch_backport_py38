@@ -1,13 +1,15 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import bisect
 import itertools
 import json
 import math
 from collections import defaultdict, namedtuple
-from collections.abc import Callable
+
 from operator import attrgetter
-from typing import Any, NamedTuple
-from typing_extensions import deprecated
+from typing import Any, Callable, Dict, IO, List, Optional, Sequence, Set, Tuple, Type, Union, overload
+from typing_extensions import NamedTuple, deprecated
 
 import torch
 from torch.autograd import DeviceType
@@ -188,7 +190,7 @@ class EventList(list):
                 thread_events,
                 key=lambda event: [event.time_range.start, -event.time_range.end],
             )
-            current_events: list[FunctionEvent] = []
+            current_events: List[FunctionEvent] = []
             for event in thread_events_:
                 while len(current_events) > 0:
                     parent = current_events[-1]
@@ -400,11 +402,11 @@ class EventList(list):
             raise AssertionError(
                 "Expected tree to be built before calling key_averages"
             )
-        stats: dict[tuple[str, ...], FunctionEventAvg] = defaultdict(FunctionEventAvg)
+        stats: Dict[Tuple[str, ...], FunctionEventAvg] = defaultdict(FunctionEventAvg)
 
         def get_key(
             event, group_by_input_shapes, group_by_stack_n, group_by_overload_name
-        ) -> tuple[str, ...]:
+        ) -> Tuple[str, ...]:
             key = [
                 str(event.key),
                 str(event.node_id),
@@ -554,41 +556,41 @@ Kernel = namedtuple("Kernel", ["name", "device", "duration"])
 
 class EventMetadata(NamedTuple):
     # Kernel fields
-    registers_per_thread: int | None
-    shared_memory: int | None
-    grid: list[int] | None
-    block: list[int] | None
-    priority: int | None
-    blocks_per_sm: float | None
-    warps_per_sm: float | None
-    occupancy: dict[str, Any] | None
-    est_occupancy_pct: float | None
-    queued: int | None
-    graph_id: int | None
-    graph_node_id: int | None
-    stream: int | None
-    context: int | None
+    registers_per_thread: Optional[int]
+    shared_memory: Optional[int]
+    grid: Optional[List[int]]
+    block: Optional[List[int]]
+    priority: Optional[int]
+    blocks_per_sm: Optional[float]
+    warps_per_sm: Optional[float]
+    occupancy: Optional[Dict[str, Any]]
+    est_occupancy_pct: Optional[float]
+    queued: Optional[int]
+    graph_id: Optional[int]
+    graph_node_id: Optional[int]
+    stream: Optional[int]
+    context: Optional[int]
     # Memory fields
-    bytes: int | None
-    bandwidth_gb_s: float | None
+    bytes: Optional[int]
+    bandwidth_gb_s: Optional[float]
     # NCCL fields
-    collective_name: str | None
-    dtype: str | None
-    in_msg_nelems: int | None
-    out_msg_nelems: int | None
-    in_split_size: str | None
-    out_split_size: str | None
-    global_rank_start: int | None
-    global_rank_stride: int | None
-    group_size: int | None
-    process_group_name: str | None
-    process_group_desc: str | None
-    group_ranks: str | None
-    rank: int | None
-    src_rank: int | None
-    dst_rank: int | None
-    seq: int | None
-    is_async: bool | None
+    collective_name: Optional[str]
+    dtype: Optional[str]
+    in_msg_nelems: Optional[int]
+    out_msg_nelems: Optional[int]
+    in_split_size: Optional[str]
+    out_split_size: Optional[str]
+    global_rank_start: Optional[int]
+    global_rank_stride: Optional[int]
+    group_size: Optional[int]
+    process_group_name: Optional[str]
+    process_group_desc: Optional[str]
+    group_ranks: Optional[str]
+    rank: Optional[int]
+    src_rank: Optional[int]
+    dst_rank: Optional[int]
+    seq: Optional[int]
+    is_async: Optional[bool]
 
 
 def _to_str(v: str) -> str:
@@ -600,16 +602,16 @@ def _to_bool(v: str) -> bool:
 
 
 # Kineto key → (EventMetadata field name, converter from string)
-_EVENT_METADATA_KEYS: dict[str, tuple[str, Callable[[str], Any]]] = {
+_EVENT_METADATA_KEYS: Dict[str, Tuple[str, Callable[[str], Any]]] = {
     "registers per thread": ("registers_per_thread", int),
     "shared memory": ("shared_memory", int),
-    "grid": ("grid", json.loads),  # list[int]
-    "block": ("block", json.loads),  # list[int]
+    "grid": ("grid", json.loads),  # List[int]
+    "block": ("block", json.loads),  # List[int]
     "priority": ("priority", int),
     "blocks per SM": ("blocks_per_sm", float),
     "warps per SM": ("warps_per_sm", float),
     "est. achieved occupancy %": ("est_occupancy_pct", float),
-    "occupancy": ("occupancy", json.loads),  # dict[str, Any]
+    "occupancy": ("occupancy", json.loads),  # Dict[str, Any]
     "queued": ("queued", int),
     "graph id": ("graph_id", int),
     "graph node id": ("graph_node_id", int),
@@ -638,7 +640,7 @@ _EVENT_METADATA_KEYS: dict[str, tuple[str, Callable[[str], Any]]] = {
 
 
 def _build_metadata(extra_meta):
-    fields: dict[str, Any] = {}
+    fields: Dict[str, Any] = {}
     any_populated = False
     for kineto_key, (field_name, convert) in _EVENT_METADATA_KEYS.items():
         v = extra_meta.get(kineto_key)
@@ -696,11 +698,11 @@ class FunctionEvent(FormattedTimesMixin):
         is_user_annotation (bool): Whether this is a user-annotated region.
         metadata_json (str): Deprecated. Use event_metadata instead.
         event_metadata (EventMetadata): Additional metadata in structured format.
-        structured_input_shapes (List[List[int] | List[List[int]]]): Like ``input_shapes``
+        structured_input_shapes (Union[List[List[int], List[List[int]]]]): Like ``input_shapes``
             but distinguishes TensorList inputs.  Plain tensor inputs are ``List[int]``;
             TensorList inputs are ``List[List[int]]`` containing one shape per tensor in the list.
             Matches the ``"Input Dims"`` field in the Chrome trace JSON.
-        structured_input_strides (List[List[int] | List[List[int]]]): Strides of input
+        structured_input_strides (Union[List[List[int], List[List[int]]]]): Strides of input
             tensors in the same format as ``structured_input_shapes`` (requires
             record_shapes=True).
 
@@ -774,21 +776,21 @@ class FunctionEvent(FormattedTimesMixin):
         self.trace_name: str = trace_name
         self.time_range: Interval = Interval(start_us, end_us)
         self.thread: int = thread
-        self.fwd_thread: int | None = fwd_thread
-        self.kernels: list[Kernel] = []
+        self.fwd_thread: Optional[int] = fwd_thread
+        self.kernels: List[Kernel] = []
         self.count: int = 1
-        self.cpu_children: list[FunctionEvent] = []
-        self.cpu_parent: FunctionEvent | None = None
+        self.cpu_children: List[FunctionEvent] = []
+        self.cpu_parent: Optional[FunctionEvent] = None
         # pyrefly: ignore [bad-assignment]
-        self.input_shapes: tuple[int, ...] = input_shapes
+        self.input_shapes: Tuple[int, ...] = input_shapes
         # pyrefly: ignore [bad-assignment]
-        self.concrete_inputs: list[Any] = concrete_inputs
+        self.concrete_inputs: List[Any] = concrete_inputs
         # pyrefly: ignore [bad-assignment]
-        self.kwinputs: dict[str, Any] = kwinputs
+        self.kwinputs: Dict[str, Any] = kwinputs
         # pyrefly: ignore [bad-assignment]
         self.stack: list = stack
         self.scope: int = scope
-        self.use_device: str | None = use_device
+        self.use_device: Optional[str] = use_device
         self.cpu_memory_usage: int = cpu_memory_usage
         self.device_memory_usage: int = device_memory_usage
         self.is_async: bool = is_async
@@ -800,20 +802,20 @@ class FunctionEvent(FormattedTimesMixin):
             thread if device_resource_id is None else device_resource_id
         )
         self.is_legacy: bool = is_legacy
-        self.flops: int | None = flops
-        self.is_user_annotation: bool | None = is_user_annotation
+        self.flops: Optional[int] = flops
+        self.is_user_annotation: Optional[bool] = is_user_annotation
         self.is_python_function: bool = is_python_function
-        self.activity_type: str | None = activity_type
+        self.activity_type: Optional[str] = activity_type
         self.self_cpu_percent = -1
         self.total_cpu_percent = -1
         self.total_device_percent = -1
         self._metadata_json = metadata_json
-        self.flow_id: int | None = flow_id
-        self.flow_type: int | None = flow_type
-        self.flow_start: bool | None = flow_start
+        self.flow_id: Optional[int] = flow_id
+        self.flow_type: Optional[int] = flow_type
+        self.flow_start: Optional[bool] = flow_start
         self.external_id: int = external_id
         self.linked_correlation_id: int = linked_correlation_id
-        self.event_metadata: EventMetadata | None = (
+        self.event_metadata: Optional[EventMetadata] = (
             _build_metadata(extra_meta) if extra_meta else None
         )
         # pyrefly: ignore [bad-assignment]
@@ -821,7 +823,7 @@ class FunctionEvent(FormattedTimesMixin):
         # pyrefly: ignore [bad-assignment]
         self.structured_input_strides: list = structured_input_strides
         # pyrefly: ignore [bad-assignment]
-        self.input_dtypes: list[str] = input_dtypes
+        self.input_dtypes: List[str] = input_dtypes
         self.python_id: int = python_id
         self.python_parent_id: int = python_parent_id
         self.python_module_id: int = python_module_id
@@ -1038,26 +1040,26 @@ class FunctionEventAvg(FormattedTimesMixin):
     """
 
     def __init__(self) -> None:
-        self.key: str | None = None
+        self.key: Optional[str] = None
         self.count: int = 0
         self.node_id: int = 0
         self.is_async: bool = False
         self.is_remote: bool = False
-        self.use_device: str | None = None
+        self.use_device: Optional[str] = None
         self.cpu_time_total: int = 0
         self.device_time_total: int = 0
         self.self_cpu_time_total: int = 0
         self.self_device_time_total: int = 0
-        self.input_shapes: list[list[int]] | None = None
-        self.overload_name: str | None = None
-        self.stack: list | None = None
-        self.scope: int | None = None
+        self.input_shapes: List[List[int]] | None = None
+        self.overload_name: Optional[str] = None
+        self.stack: Optional[list] = None
+        self.scope: Optional[int] = None
         self.cpu_memory_usage: int = 0
         self.device_memory_usage: int = 0
         self.self_cpu_memory_usage: int = 0
         self.self_device_memory_usage: int = 0
-        self.cpu_children: list[FunctionEvent] | None = None
-        self.cpu_parent: FunctionEvent | None = None
+        self.cpu_children: Optional[List[FunctionEvent]] = None
+        self.cpu_parent: Optional[FunctionEvent] = None
         self.device_type: DeviceType = DeviceType.CPU
         self.is_legacy: bool = False
         self.flops: int = 0
@@ -1136,8 +1138,8 @@ class MemRecordsAcc:
 
     def __init__(self, mem_records):
         self._mem_records = mem_records
-        self._start_nses: list[int] = []
-        self._indices: list[int] = []
+        self._start_nses: List[int] = []
+        self._indices: List[int] = []
         if len(mem_records) > 0:
             tmp = sorted([(r[0].start_ns(), i) for i, r in enumerate(mem_records)])
             self._start_nses, self._indices = zip(*tmp)  # type: ignore[assignment]
@@ -1589,7 +1591,7 @@ def _canonicalize_profiler_events(events):
     events_with_traces.sort(key=lambda x: x["start_time"])
 
     # Format as a string
-    lines: list[str] = []
+    lines: List[str] = []
     for evt in events_with_traces:
         lines.append(
             f"event={evt['event_name']} node={evt['node_name']} stack_trace={evt['stack_trace']}"

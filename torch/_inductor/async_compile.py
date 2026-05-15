@@ -17,7 +17,7 @@ from concurrent.futures import (
 from concurrent.futures.process import BrokenProcessPool
 from functools import partial
 from time import time, time_ns
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple
 
 import torch
 from torch._dynamo.device_interface import get_registered_device_interfaces
@@ -65,20 +65,20 @@ from torch.utils._triton import has_triton_package
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
 
     from torch._inductor.runtime.hints import HalideMeta
     from torch._inductor.runtime.triton_heuristics import CachingAutotuner
 
 # timing metrics for time spent in the compilation
 _cumulative_compile_time = 0.0
-_t0: float | None = None
+_t0: Optional[float]= None
 
 kernel_code_log = torch._logging.getArtifactLogger(__name__, "kernel_code")
 
 log = logging.getLogger(__name__)
 
-_triton_kernel_metrics: dict[str, dict[str, Any]] | None = None
+_triton_kernel_metrics: Optional[Dict[str, Dict[str, Any]]]= None
 
 size_hints_regex = re.compile(
     r"size_hints=(\{.*?\})",
@@ -136,32 +136,11 @@ def _compile_end() -> None:
         _triton_kernel_metrics = None
 
 
-def _add_triton_kernel_info(kernel_name: str, info: dict[str, Any]):
+def _add_triton_kernel_info(kernel_name: str, info: Dict[str, Any]):
     global _triton_kernel_metrics
     # Must be called between _compile_start and _compile_end
     if _triton_kernel_metrics is not None:
         _triton_kernel_metrics[kernel_name] = info
-
-
-def _emit_triton_kernel_compile_metric(
-    kernel: CachingAutotuner,
-    kernel_name: str,
-    elapsed_us: int,
-) -> None:
-    """Emit per-kernel ``compile_time_us`` to both the dynamo
-    ``_triton_kernel_metrics`` map and the ``MetricsContext`` top-N.
-
-    Note: ``kernel.autotune_cache_info`` is only mutated in place when
-    non-empty; when ``None`` or ``{}`` the metric still reaches
-    ``_triton_kernel_metrics`` via a throwaway dict, but the kernel
-    attribute stays untouched.
-    """
-    info = kernel.autotune_cache_info or {}
-    info["compile_time_us"] = elapsed_us
-    _add_triton_kernel_info(kernel_name, info)
-    get_metrics_context().add_top_n(
-        "triton_kernel_compile_times_us", kernel_name, elapsed_us
-    )
 
 
 _IS_WINDOWS = sys.platform == "win32"
@@ -213,7 +192,7 @@ class CompiledTritonKernels:
     Currently, the cache stores Future objects, but it should be generalizable for any kernels.
     """
 
-    _cache: dict[str, CodeCacheFuture] = {}
+    _cache: Dict[str, CodeCacheFuture] = {}
 
     @staticmethod
     def key(kernel_src: str):
@@ -239,7 +218,7 @@ class CompiledTritonKernels:
         CompiledTritonKernels._cache[key] = future
 
     @staticmethod
-    def get(kernel_src: str) -> CodeCacheFuture | None:
+    def get(kernel_src: str) -> Optional[CodeCacheFuture]:
         key = CompiledTritonKernels.key(kernel_src)
         return CompiledTritonKernels._cache.get(key, None)
 
@@ -261,8 +240,8 @@ class AsyncCompile:
     Utilities to compile in thread pools or subprocess pools (in the case of Triton).
     """
 
-    _ready_future: Future[Any] | None = None
-    _metal_sources: list[tuple[str, str, list[str]]] | None = None
+    _ready_future: Optional[Future[Any]]= None
+    _metal_sources: Optional[List[Tuple[str, str, List[str]]]]= None
 
     def __init__(self) -> None:
         pass
@@ -489,7 +468,12 @@ class AsyncCompile:
                     reload_kernel=reload_kernel_in_parent,
                     static_triton_bundle_key=CompiledTritonKernels.key(source_code),
                 )
-                _emit_triton_kernel_compile_metric(kernel, kernel_name, elapsed_us)
+                info = kernel.autotune_cache_info or {}
+                info["compile_time_us"] = elapsed_us
+                _add_triton_kernel_info(kernel_name, info)
+                get_metrics_context().add_top_n(
+                    "triton_kernel_compile_times_us", kernel_name, elapsed_us
+                )
                 return kernel
 
             future = LambdaFuture(get_result, future=task)
@@ -515,7 +499,12 @@ class AsyncCompile:
                         static_triton_bundle_key=CompiledTritonKernels.key(source_code),
                     )
                     elapsed_us = (time_ns() - start_ns) // 1000
-                    _emit_triton_kernel_compile_metric(kernel, kernel_name, elapsed_us)
+                    get_metrics_context().add_top_n(
+                        "triton_kernel_compile_times_us", kernel_name, elapsed_us
+                    )
+                    info = kernel.autotune_cache_info or {}
+                    info["compile_time_us"] = elapsed_us
+                    _add_triton_kernel_info(kernel_name, info)
                     return kernel
                 except Exception as e:
                     fail = str(e)
@@ -542,7 +531,7 @@ class AsyncCompile:
             get_result = CppCodeCache.load_async(source_code, submit_fn=self.submit)
             return LambdaFuture(lambda: get_result().kernel)
 
-    def cpp_pybinding(self, argtypes: list[str], source_code: str):
+    def cpp_pybinding(self, argtypes: List[str], source_code: str):
         kernel_code_log.info("CPP+Bindings Kernel:\n%s", source_code)
         if get_compile_threads() <= 1:
             return CppPythonBindingsCodeCache.load_pybinding(argtypes, source_code)
@@ -718,13 +707,13 @@ class AsyncCompile:
             future = self.submit(task)
             return LambdaFuture(lambda: future.result())
 
-    def metal(self, kernel_name: str, source: str, headers: list[str]) -> None:
+    def metal(self, kernel_name: str, source: str, headers: List[str]) -> None:
         """Register a Metal kernel body; wait() compiles all registered kernels into one library."""
         if self._metal_sources is None:
             self._metal_sources = []
         self._metal_sources.append((kernel_name, source, headers))
 
-    def wait(self, scope: dict[str, Any]) -> None:
+    def wait(self, scope: Dict[str, Any]) -> None:
         if get_compile_threads() > 1:
             with dynamo_timed(
                 "async_compile.wait",
@@ -743,7 +732,7 @@ class AsyncCompile:
 
         _compile_end()
 
-    def _wait_futures(self, scope: dict[str, Any]) -> None:
+    def _wait_futures(self, scope: Dict[str, Any]) -> None:
         kernels = {
             key: value
             for key, value in scope.items()

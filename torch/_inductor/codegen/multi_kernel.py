@@ -1,10 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import logging
 import math
 import os
 import pathlib
-from typing import Any
+from typing import Any, Dict, IO, List, Optional, Set, Tuple, Union
 
 from torch._inductor.ir import MultiTemplateBuffer
 from torch._inductor.metrics import get_metric_table, is_metric_table_enabled
@@ -35,8 +37,8 @@ class MultiKernelState:
 
     def define_kernel(
         self,
-        kernels: list[Any],
-        kernel_shape_keys: list[None | tuple[tuple[int, ...], ...]] | None = None,
+        kernels: List[Any],
+        kernel_shape_keys: Optional[Union[List[None, Tuple[Tuple[int, ...], ...]]]]= None,
     ) -> str:
         """
         Previously we name the multi kernel as "multi_kernel_{kernel_names[0]}".
@@ -74,7 +76,7 @@ class MultiKernelState:
             # the second pass of cpp-wrapper.
             return multi_kernel_name
 
-        arg_index: dict[int, list[slice]] = {}
+        arg_index: Dict[int, List[slice]] = {}
         _, call_args, _, arg_types = kernels[0].args.python_argdefs()
         if isinstance(kernels[0], TritonTemplateKernel) and isinstance(
             kernels[0].output_node, MultiTemplateBuffer
@@ -112,7 +114,7 @@ class MultiKernelState:
                 for name in kernel_names:
                     buf.writeline(f"{name},")
             buf.writeline("], arg_index=arg_index)")
-        else:  # call with dict[size hint key, kernel]
+        else:  # call with Dict[size hint key, kernel]
             assert isinstance(kernels[0], TritonTemplateKernel)
             assert isinstance(kernel_shape_keys, list)
             assert len(kernels) == len(kernel_shape_keys)
@@ -160,7 +162,7 @@ class MultiKernel:
         self.args = object()
 
     @staticmethod
-    def _merge_workspace_args(left: list[WorkspaceArg], right: list[WorkspaceArg]):
+    def _merge_workspace_args(left: List[WorkspaceArg], right: List[WorkspaceArg]):
         if left == right:
             return left
         result = {x.inner_name: x for x in left}

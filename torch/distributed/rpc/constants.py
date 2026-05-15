@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import timedelta
 
 from torch._C._distributed_rpc import (
@@ -21,4 +23,4 @@ DEFAULT_PROCESS_GROUP_TIMEOUT: timedelta = timedelta(milliseconds=2**31 - 1)
 # Value indicating that timeout is not set for RPC call, and the default should be used.
 UNSET_RPC_TIMEOUT: float = _UNSET_RPC_TIMEOUT
 
-__all__: list[str] = []
+__all__: List[str] = []

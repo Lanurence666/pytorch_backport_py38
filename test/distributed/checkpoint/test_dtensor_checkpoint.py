@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import torch
 import torch.distributed as dist
 import torch.distributed.checkpoint as dist_cp

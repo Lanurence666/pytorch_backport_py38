@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import contextlib
-from typing import Any
+from typing import Any, Optional, Set, Tuple, Type, Union
 from typing_extensions import deprecated
 
 import torch
@@ -131,7 +133,7 @@ class cuFFTPlanCacheManager:
 
 class cuBLASModule:
     @staticmethod
-    def _parse_reduction_setting(value: Any, attr_name: str) -> tuple[bool, bool]:
+    def _parse_reduction_setting(value: Any, attr_name: str) -> Tuple[bool, bool]:
         def _ensure_bool(obj: Any, which: str) -> bool:
             if isinstance(obj, bool):
                 return obj
@@ -219,7 +221,7 @@ _LinalgBackends_str = ", ".join(_LinalgBackends.keys())
 
 
 def preferred_linalg_library(
-    backend: None | str | torch._C._LinalgBackend = None,
+    backend: Optional[Union[str, torch._C._LinalgBackend]]= None,
 ) -> torch._C._LinalgBackend:
     r"""
     Override the heuristic PyTorch uses to choose between cuSOLVER and MAGMA for CUDA linear algebra operations.
@@ -290,7 +292,7 @@ _BlasBackends_str = ", ".join(_BlasBackends.keys())
 
 
 def preferred_blas_library(
-    backend: None | str | torch._C._BlasBackend = None,
+    backend: Optional[Union[str, torch._C._BlasBackend]]= None,
 ) -> torch._C._BlasBackend:
     r"""
     Override the library PyTorch uses for BLAS operations. Choose between cuBLAS, cuBLASLt, and CK [ROCm-only].
@@ -333,7 +335,7 @@ def preferred_blas_library(
     return torch._C._get_blas_preferred_backend()
 
 
-def cublas_workspace_size(size: None | int = None) -> int:
+def cublas_workspace_size(size: Optional[int]= None) -> int:
     r"""Query or set the cuBLAS workspace size in bytes.
 
     When called with no arguments, returns the current workspace size.
@@ -352,7 +354,7 @@ def cublas_workspace_size(size: None | int = None) -> int:
     return torch._C._cuda_getCublasWorkspaceSize()
 
 
-def cublaslt_workspace_size(size: None | int = None) -> int:
+def cublaslt_workspace_size(size: Optional[int]= None) -> int:
     r"""Query or set the cuBLASLt workspace size in bytes.
 
     When called with no arguments, returns the current workspace size.
@@ -372,8 +374,8 @@ def cublaslt_workspace_size(size: None | int = None) -> int:
 
 
 def blas_workspace_size(
-    size: None | int = None,
-    backend: None | str | torch._C._BlasBackend = None,
+    size: Optional[int]= None,
+    backend: Optional[Union[str, torch._C._BlasBackend]]= None,
 ) -> int:
     r"""Query or set the BLAS workspace size for a given backend.
 
@@ -402,7 +404,7 @@ def blas_workspace_size(
     Args:
         size (int, optional): workspace size in bytes.  Must be non-negative.
             When omitted the current size is returned without modification.
-        backend (str | torch._C._BlasBackend, optional): which backend's
+        backend (Union[str, torch._C._BlasBackend], optional): which backend's
             workspace to query/set.  Accepts the same strings as
             :func:`preferred_blas_library` (e.g. ``"cublas"``, ``"cublaslt"``).
 
@@ -448,7 +450,7 @@ from torch._C import _SDPAParams as SDPAParams, _SDPBackend as SDPBackend
 
 
 def preferred_rocm_fa_library(
-    backend: None | str | torch._C._ROCmFABackend = None,
+    backend: Optional[Union[str, torch._C._ROCmFABackend]]= None,
 ) -> torch._C._ROCmFABackend:
     r"""
     [ROCm-only]

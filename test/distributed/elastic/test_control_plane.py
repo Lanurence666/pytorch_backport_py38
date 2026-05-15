@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import json
 import os
 import pickle

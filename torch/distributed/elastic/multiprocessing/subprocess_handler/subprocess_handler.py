@@ -5,11 +5,13 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+from __future__ import annotations
+
 import os
 import signal
 import sys
 from subprocess import Popen
-from typing import Any
+from typing import Any, Dict, Optional, Tuple, Union
 
 from torch.numa.binding import _maybe_wrap_command_args_with_numa_binding, NumaOptions
 
@@ -37,11 +39,11 @@ class SubprocessHandler:
         self,
         entrypoint: str,
         args: tuple,
-        env: dict[str, str],
-        stdout: str | None,
-        stderr: str | None,
+        env: Dict[str, str],
+        stdout: Optional[str],
+        stderr: Optional[str],
         local_rank_id: int,
-        numa_options: NumaOptions | None,
+        numa_options: Optional[NumaOptions],
     ):
         self._stdout = open(stdout, "w") if stdout else None  # noqa: SIM115
         self._stderr = open(stderr, "w") if stderr else None  # noqa: SIM115
@@ -60,8 +62,8 @@ class SubprocessHandler:
 
         self.proc: Popen = self._popen(args_str, env_vars)
 
-    def _popen(self, args: tuple, env: dict[str, str]) -> Popen:
-        kwargs: dict[str, Any] = {}
+    def _popen(self, args: tuple, env: Dict[str, str]) -> Popen:
+        kwargs: Dict[str, Any] = {}
         if not IS_WINDOWS:
             kwargs["start_new_session"] = True
 
@@ -76,7 +78,7 @@ class SubprocessHandler:
             **kwargs,
         )
 
-    def close(self, death_sig: signal.Signals | None = None) -> None:
+    def close(self, death_sig: Optional[signal.Signals] = None) -> None:
         if not death_sig:
             death_sig = _get_default_signal()
         if IS_WINDOWS:

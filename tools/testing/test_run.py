@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import copy
 from functools import total_ordering
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, FrozenSet, List, TYPE_CHECKING, Union
 
 
 if TYPE_CHECKING:
@@ -21,8 +21,8 @@ class TestRun:
     """
 
     test_file: str
-    _excluded: frozenset[str]  # Tests that should be excluded from this test run
-    _included: frozenset[
+    _excluded: FrozenSet[str]  # Tests that should be excluded from this test run
+    _included: FrozenSet[
         str
     ]  # If non-empy, only these tests should be run in this test run
 
@@ -33,8 +33,8 @@ class TestRun:
     def __init__(
         self,
         name: str,
-        excluded: Iterable[str] | None = None,
-        included: Iterable[str] | None = None,
+        excluded: Union[Iterable[str], None] = None,
+        included: Union[Iterable[str], None] = None,
     ) -> None:
         if excluded and included:
             raise ValueError("Can't specify both included and excluded")
@@ -67,10 +67,10 @@ class TestRun:
     def is_full_file(self) -> bool:
         return not self._included and not self._excluded
 
-    def included(self) -> frozenset[str]:
+    def included(self) -> FrozenSet[str]:
         return self._included
 
-    def excluded(self) -> frozenset[str]:
+    def excluded(self) -> FrozenSet[str]:
         return self._excluded
 
     def get_pytest_filter(self) -> str:
@@ -198,7 +198,7 @@ class TestRun:
         if other.is_full_file():
             return TestRun.empty()
 
-        def return_inclusions_or_empty(inclusions: frozenset[str]) -> TestRun:
+        def return_inclusions_or_empty(inclusions: FrozenSet[str]) -> TestRun:
             if inclusions:
                 return TestRun(self.test_file, included=inclusions)
             return TestRun.empty()
@@ -208,7 +208,7 @@ class TestRun:
                 return return_inclusions_or_empty(self._included - other._included)
             else:
                 return TestRun(
-                    self.test_file, excluded=self._excluded | other._included
+                    self.test_file, excluded=Union[self._excluded, other._included]
                 )
         else:
             if self._included:
@@ -220,10 +220,10 @@ class TestRun:
         if self.test_file != other.test_file:
             return TestRun.empty()
 
-        return (self | other) - (self - other) - (other - self)
+        return (Union[self, other]) - (self - other) - (other - self)
 
-    def to_json(self) -> dict[str, Any]:
-        r: dict[str, Any] = {
+    def to_json(self) -> Dict[str, Any]:
+        r: Dict[str, Any] = {
             "test_file": self.test_file,
         }
         if self._included:
@@ -233,7 +233,7 @@ class TestRun:
         return r
 
     @staticmethod
-    def from_json(json: dict[str, Any]) -> TestRun:
+    def from_json(json: Dict[str, Any]) -> TestRun:
         return TestRun(
             json["test_file"],
             included=json.get("included", []),
@@ -246,14 +246,14 @@ class ShardedTest:
     test: TestRun
     shard: int
     num_shards: int
-    time: float | None  # In seconds
+    time: Union[float, None]  # In seconds
 
     def __init__(
         self,
-        test: TestRun | str,
+        test: Union[TestRun, str],
         shard: int,
         num_shards: int,
-        time: float | None = None,
+        time: Union[float, None] = None,
     ) -> None:
         if isinstance(test, str):
             test = TestRun(test)
@@ -308,7 +308,7 @@ class ShardedTest:
     def get_time(self, default: float = 0) -> float:
         return self.time if self.time is not None else default
 
-    def get_pytest_args(self) -> list[str]:
+    def get_pytest_args(self) -> List[str]:
         filter = self.test.get_pytest_filter()
         if filter:
             return ["-k", self.test.get_pytest_filter()]

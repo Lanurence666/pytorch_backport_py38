@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import logging
 import os
 import subprocess
 import sysconfig
-from typing import Any
+from typing import Any, Callable, Dict, Mapping, Optional, Type
 
 import torch.distributed as dist
 from torch.utils._triton import has_triton
@@ -24,7 +26,7 @@ class NvshmemLibFinder:
     """
 
     # Class variable to store the found library path for reuse
-    found_device_lib_path: str | None = None
+    found_device_lib_path: Optional[str]= None
 
     @classmethod
     def find_device_library(cls) -> str:
@@ -99,7 +101,7 @@ class NvshmemLibFinder:
         raise RuntimeError(f"NVSHMEM device library not found. Searched: {paths}")
 
 
-def enable_triton(lib_dir: str | None = None) -> dict[str, str]:
+def enable_triton(lib_dir: Optional[str] = None) -> Dict[str, str]:
     raise NotImplementedError(
         "`enable_triton` is deprecated. "
         "If you need NVSHMEM device function support for Triton, "
@@ -113,7 +115,7 @@ class NvshmemKernelRegistry:
     """
 
     # Class variable to store the functions to be initialized
-    _to_init: dict[str, Any] = {}
+    _to_init: Dict[str, Any] = {}
 
     @classmethod
     def register(cls, name: str) -> None:
@@ -189,7 +191,7 @@ if has_triton():
         with added extern_libs kwarg, so that users don't have to pass it
         """
 
-        def __init__(self, jit_func: JITFunction, extern_libs: dict[str, str]) -> None:
+        def __init__(self, jit_func: JITFunction, extern_libs: Dict[str, str]) -> None:
             self.jit_func = jit_func
             self.extern_libs = extern_libs
 

@@ -1,8 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import contextlib
 import warnings
 
 import torch
+from typing import List, Set, Tuple
 
 
 @contextlib.contextmanager
@@ -107,7 +110,7 @@ def _script_method_graph_for(self, parent, *args, **kwargs):
 
         # graph_executor_states for differentiable node
         fw_states = eps[0].code.differentiable_op_executor_states()
-        diff_nodes: list[torch._C.Node] = []
+        diff_nodes: List[torch._C.Node] = []
         for n in graph.nodes():
             _get_differentiable_graph_node(n, diff_nodes)
 
@@ -133,7 +136,7 @@ def _script_method_graph_for(self, parent, *args, **kwargs):
         return last_executed_optimized_graph()
 
 
-def set_fusion_strategy(strategy: list[tuple[str, int]]):
+def set_fusion_strategy(strategy: List[Tuple[str, int]]):
     """Set the type and number of specializations that can occur during fusion.
 
     .. deprecated:: 2.5

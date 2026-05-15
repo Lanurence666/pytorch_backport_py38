@@ -4,16 +4,18 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import logging
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Optional
 
 
 __all__ = ["FlightRecorderLogger"]
 
 
 class FlightRecorderLogger:
-    _instance: Any | None = None
+    _instance: Optional[Any]= None
     logger: logging.Logger
 
     def __init__(self) -> None:

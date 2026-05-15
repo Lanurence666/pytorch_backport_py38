@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Python polyfills for common builtins.
 """
@@ -8,10 +9,14 @@ Python polyfills for common builtins.
 
 import types
 from collections import OrderedDict
-from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Hashable
 from itertools import repeat as _repeat
 from operator import eq, ne
-from typing import Any, TYPE_CHECKING, TypeGuard, TypeVar
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union
+try:
+    from typing import TypeGuard
+except ImportError:
+    from typing_extensions import TypeGuard
 from typing_extensions import TypeIs
 
 import torch
@@ -74,7 +79,7 @@ def _fn_with_ctx(ctx: Any, fn: Callable[..., T], *args: Any, **kwargs: Any) -> T
 
 
 def index(
-    iterator: Iterator[T], item: T, start: int = 0, end: int | None = None
+    iterator: Iterator[T], item: T, start: int = 0, end: Optional[int] = None
 ) -> int:
     from itertools import islice
 
@@ -104,7 +109,7 @@ def impl_MATCH_SEQUENCE(a: object) -> TypeGuard[Sequence[Any]]:
     return isinstance(a, Sequence) and not isinstance(a, (str, bytes, bytearray))
 
 
-def _match_class_attr(obj: object, name: str, seen: set[str]) -> object:
+def _match_class_attr(obj: object, name: str, seen: Set[str]) -> object:
     if name in seen:
         raise TypeError(f"{type(obj)} got multiple sub-patterns for attribute {name}")
 
@@ -114,8 +119,8 @@ def _match_class_attr(obj: object, name: str, seen: set[str]) -> object:
 
 
 def impl_MATCH_CLASS(
-    subject: object, cls: type, nargs: int, kwargs: tuple[str, ...]
-) -> tuple[object, ...] | None:
+    subject: object, cls: type, nargs: int, kwargs: Tuple[str, ...]
+) -> Optional[Tuple[object, ...]]:
     if not isinstance(cls, type):
         raise TypeError("called match pattern must be a class")
 
@@ -164,9 +169,8 @@ def impl_MATCH_CLASS(
     return tuple(attrs)
 
 
-def impl_MATCH_KEYS(obj: Mapping[T, U], keys: tuple[T, ...]) -> tuple[U, ...] | None:
-    if not isinstance(obj, Mapping):
-        raise AssertionError(f"Expected a Mapping, got {type(obj)}")
+def impl_MATCH_KEYS(obj: Mapping[T, U], keys: Tuple[T, ...]) -> Optional[Tuple[U, ...]]:
+    assert isinstance(obj, Mapping)
     if all(key in obj for key in keys):
         return tuple(obj[key] for key in keys)
     else:
@@ -194,7 +198,7 @@ def impl_CONTAINS_OP_fallback(a: T, b: Iterable[T]) -> bool:
     raise TypeError(f"argument of type {type(b)} is not iterable")
 
 
-def accumulate_grad(x: torch.Tensor, new_grad: torch.Tensor | None) -> None:
+def accumulate_grad(x: torch.Tensor, new_grad: Optional[torch.Tensor]) -> None:
     # polyfills according to the Gradient Layout Contract
     if new_grad is None:
         return
@@ -234,7 +238,7 @@ def list_cmp(
     return op(left_len, right_len)
 
 
-def dict___eq__(d: dict[T, U], other: dict[T, U]) -> bool:
+def dict___eq__(d: Dict[T, U], other: Dict[T, U]) -> bool:
     if (len(d) != len(other)) or (d.keys() != other.keys()):
         return False
 
@@ -251,9 +255,9 @@ def dict___eq__(d: dict[T, U], other: dict[T, U]) -> bool:
 def set_symmetric_difference(
     set1: Iterable[T],
     set2: Iterable[T],
-    cls: type[Any] = set,
+    cls: Type[Any] = set,
 ) -> Any:
-    symmetric_difference_set: set[T] = set()
+    symmetric_difference_set: Set[T] = set()
     for x in set1:
         if x not in set2:
             symmetric_difference_set.add(x)
@@ -263,13 +267,13 @@ def set_symmetric_difference(
     return cls(symmetric_difference_set)
 
 
-def set_symmetric_difference_update(set1: set[T], set2: set[T]) -> None:
+def set_symmetric_difference_update(set1: Set[T], set2: Set[T]) -> None:
     result = set1.symmetric_difference(set2)
     set1.clear()
     set1.update(result)
 
 
-def set_isdisjoint(set1: set[T], set2: set[T]) -> bool:
+def set_isdisjoint(set1: Set[T], set2: Set[T]) -> bool:
     if not isinstance(set2, Iterable):
         raise TypeError(f"'{type(set2)}' object is not iterable")
 
@@ -283,10 +287,10 @@ def set_isdisjoint(set1: set[T], set2: set[T]) -> bool:
 
 
 def set_intersection(
-    set1: set[T],
+    set1: Set[T],
     *others: Iterable[T],
     # See facebook/pyrefly#1496 - leave generic
-    cls: type[Any] = set,
+    cls: Type[Any] = set,
 ) -> Any:
     if len(others) == 0:
         return set1.copy()
@@ -309,15 +313,15 @@ def set_intersection(
     return cls(intersection_set)
 
 
-def set_intersection_update(set1: set[T], *others: Iterable[T]) -> None:
+def set_intersection_update(set1: Set[T], *others: Iterable[T]) -> None:
     result = set1.intersection(*others)
     set1.clear()
     set1.update(result)
 
 
 def set_union(
-    set1: set[T], *others: Iterable[T], cls: type[C] | None = None
-) -> C | set[T]:
+    set1: Set[T], *others: Iterable[T], cls: Optional[Type[C]] = None
+) -> Union[C, Set[T]]:
     # frozenset also uses this function
     if cls is None:
         # pyrefly: ignore[bad-assignment]
@@ -343,7 +347,7 @@ def set_union(
 
 
 # pyrefly: ignore [bad-return]
-def set_update(set1: set[T], *others: Iterable[T]) -> set[T]:
+def set_update(set1: Set[T], *others: Iterable[T]) -> Set[T]:
     if len(others) == 0:
         return set1
 
@@ -354,9 +358,9 @@ def set_update(set1: set[T], *others: Iterable[T]) -> set[T]:
 
 
 def set_difference(
-    set1: set[T],
+    set1: Set[T],
     *others: Iterable[T],
-    cls: type[Any] = set,
+    cls: Type[Any] = set,
 ) -> Any:
     if len(others) == 0:
         return set1.copy()
@@ -378,20 +382,20 @@ def set_difference(
     return cls(difference_set)
 
 
-def set_difference_update(set1: set[T], *others: Iterable[T]) -> None:
+def set_difference_update(set1: Set[T], *others: Iterable[T]) -> None:
     result = set1.difference(*others)
     set1.clear()
     set1.update(result)
 
 
 def assert_dict_equal(
-    self_: Any, d1: dict[T, U], d2: dict[T, U], msg: str | None = None
+    self_: Any, d1: Dict[T, U], d2: Dict[T, U], msg: Optional[str] = None
 ) -> None:
     self_.assertTrue(d1 == d2, msg)
 
 
 def assert_multi_line_equal(
-    self_: Any, first: T, second: T, msg: str | None = None
+    self_: Any, first: T, second: T, msg: Optional[str] = None
 ) -> None:
     return self_.assertTrue(first == second, msg)
 
@@ -401,8 +405,8 @@ def assert_sequence_equal(
     self_: Any,
     seq1: Sequence[T],
     seq2: Sequence[T],
-    msg: str | None = None,
-    seq_type: type[Any] | None = None,
+    msg: Optional[str] = None,
+    seq_type: Optional[Type[Any]] = None,
 ) -> None:
     return self_.assertTrue(seq1 == seq2, msg)
 
@@ -414,7 +418,7 @@ def getattr_and_trace(*args: Any, **kwargs: Any) -> Any:
     return fn(*args[2:], **kwargs)
 
 
-def mapping_get(obj: Mapping[T, U], key: T, value: U | None = None, /) -> U | None:
+def mapping_get(obj: Mapping[T, U], key: T, value: Optional[U] = None, /) -> Optional[U]:
     try:
         return obj.__getitem__(key)
     except KeyError:
@@ -422,7 +426,7 @@ def mapping_get(obj: Mapping[T, U], key: T, value: U | None = None, /) -> U | No
 
 
 def instantiate_user_defined_class_object(
-    cls: type[T], /, *args: Any, **kwargs: Any
+    cls: Type[T], /, *args: Any, **kwargs: Any
 ) -> T:
     obj = cls.__new__(cls, *args, **kwargs)
 
@@ -438,7 +442,7 @@ def instantiate_user_defined_class_object(
 
 def mutable_mapping_update(
     self,
-    data: Mapping[T, U] | Iterable[tuple[T, U]] = (),
+    data: Union[Mapping[T, U], Iterable[Tuple[T, U]]] = (),
     /,
     **kwargs: Any,
 ) -> None:
@@ -477,8 +481,8 @@ def mutable_mapping_update(
 
 # Used with something like dict(obj)
 def construct_dict(
-    cls: type[T],
-    data: Mapping[object, object] | Iterable[tuple[object, object]] = (),
+    cls: Type[T],
+    data: Union[Mapping[object, object], Iterable[Tuple[object, object]]] = (),
     /,
     **kwargs: Any,
 ) -> T:
@@ -489,7 +493,7 @@ def construct_dict(
 
 def foreach_map_fn(*args: Any) -> Any:
     op = args[0]
-    new_args: list[Any] = []
+    new_args: List[Any] = []
     at_least_one_list = False
     for arg in args[1:]:
         if not isinstance(arg, (list, tuple)):
@@ -511,8 +515,8 @@ def foreach_map_fn(*args: Any) -> Any:
 
 def foreach_lerp_inplace(
     self,
-    end: list[torch.Tensor] | tuple[torch.Tensor, ...],
-    weight: float | int | torch.Tensor,
+    end: Union[List[torch.Tensor], Tuple[torch.Tensor, ...]],
+    weight: Union[Union[float, int], torch.Tensor],
 ) -> None:
     # Decompose lerp via addcmul_ for FMA.  Uses the same dual-formula
     # approach as CUDA's native lerp to get bitwise identical results:
@@ -553,8 +557,8 @@ def foreach_lerp_inplace(
 
 
 def foreach_pow_scalar(
-    scalar: Any, exps: Sequence[bool | complex | float | int]
-) -> tuple[torch.Tensor, ...]:
+    scalar: Any, exps: Union[Sequence[Union[bool, complex], Union[float, int]]]
+) -> Tuple[torch.Tensor, ...]:
     return torch._foreach_pow([scalar for _ in exps], exps)
 
 
@@ -652,8 +656,8 @@ def cmp_ge(a: Any, b: Any) -> bool:
 
 
 def group_tensors_by_device_and_dtype(
-    tensorlistlist: list[list[torch.Tensor | None]], with_indices: bool = False
-) -> dict[tuple[torch.device, torch.dtype], tuple[list[list[Any]], list[int]]]:
+    tensorlistlist: List[List[Optional[torch.Tensor]]], with_indices: bool = False
+) -> Dict[Tuple[torch.device, torch.dtype], Tuple[List[List[Any]], List[int]]]:
     """Pure Python implementation of torch._C._group_tensors_by_device_and_dtype.
 
     Groups tensors by their device and dtype. This is useful before sending
@@ -668,8 +672,8 @@ def group_tensors_by_device_and_dtype(
         A dict mapping (device, dtype) tuples to (grouped_tensorlistlist, indices).
     """
     # Result dict: (device, dtype) -> (list of lists, indices)
-    result: dict[
-        tuple[torch.device, torch.dtype], tuple[list[list[Any]], list[int]]
+    result: Dict[
+        Tuple[torch.device, torch.dtype], Tuple[List[List[Any]], List[int]]
     ] = {}
 
     if not tensorlistlist or not tensorlistlist[0]:

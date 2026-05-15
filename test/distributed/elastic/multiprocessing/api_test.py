@@ -6,6 +6,7 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+from __future__ import annotations
 import asyncio
 import ctypes
 import multiprocessing
@@ -514,13 +515,7 @@ if not (TEST_WITH_DEV_DBG_ASAN or IS_WINDOWS or IS_MACOS):
                 logs_specs=DefaultLogsSpecs(log_dir=self.log_dir()),
             )
 
-            with (
-                mock.patch.object(mpc, "_is_done", return_value=True),
-                mock.patch.object(mpc, "_pc"),
-                mock.patch.object(
-                    mpc._pc, "join", side_effect=[True, False, False, True]
-                ) as mock_join,
-            ):
+            with mock.patch.object(mpc, "_is_done", return_value=True), mock.patch.object(mpc, "_pc"), mock.patch.object( mpc._pc, "join", side_effect=[True, False, False, True] ) as mock_join:
                 mpc._poll()
                 self.assertEqual(4, mock_join.call_count)
 

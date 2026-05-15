@@ -1,5 +1,7 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 import os
 import weakref
@@ -10,6 +12,7 @@ from torch._dynamo.utils import warn_once
 from torch.utils._triton import has_triton
 
 from ._triton_ops_meta import _get_device_name, get_meta
+from typing import Optional, Set, Tuple, Union
 
 
 TORCH_SPARSE_BSR_SCATTER_MM_LRU_CACHE_SIZE = int(
@@ -121,7 +124,7 @@ def slicer(dim, slice_range, *tensors):
 def multidim_slicer(dims, slices, *tensors):
     for t in tensors:
         s = [slice(None)] * t.dim()
-        for d, d_slice in zip(dims, slices, strict=False):
+        for d, d_slice in zip(dims, slices):
             if d is not None:
                 s[d] = d_slice
         yield t[tuple(s)]
@@ -142,7 +145,7 @@ def grid_partitioner(full_grid, grid_blocks, tensor_dims_map):
     import itertools
 
     def generate_grid_points():
-        for fg, mg in zip(full_grid, grid_blocks, strict=False):
+        for fg, mg in zip(full_grid, grid_blocks):
             yield range(0, fg, mg)
 
     def generate_sliced_tensors(slices):
@@ -152,9 +155,9 @@ def grid_partitioner(full_grid, grid_blocks, tensor_dims_map):
     for grid_point in itertools.product(*generate_grid_points()):
         grid = [
             min(fg - gp, mg)
-            for fg, gp, mg in zip(full_grid, grid_point, grid_blocks, strict=False)
+            for fg, gp, mg in zip(full_grid, grid_point, grid_blocks)
         ]
-        slices = [slice(gp, gp + g) for gp, g in zip(grid_point, grid, strict=False)]
+        slices = [slice(gp, gp + g) for gp, g in zip(grid_point, grid)]
         # grid_points are iterated in a "contiguous" order, i.e.
         # left dimensions traversed slower than right dimensions.
         # This order is reversed for CUDA grids.
@@ -177,7 +180,7 @@ def launch_kernel(kernel, tensor_dims_map, full_grid, grid_blocks=None):
 
         grid_blocks = tuple(
             valid_grid_dim(g, mg)
-            for g, mg in zip(grid_blocks, cuda_max_grid, strict=False)
+            for g, mg in zip(grid_blocks, cuda_max_grid)
         )  # type: ignore[assignment]
 
     for grid, *sliced_tensors in grid_partitioner(
@@ -1153,12 +1156,12 @@ def _int_bsr_dense_addmm(
     *,
     beta=1,
     alpha=1,
-    left_alpha: torch.Tensor | None = None,
-    right_alpha: torch.Tensor | None = None,
-    out: torch.Tensor | None = None,
+    left_alpha: Optional[torch.Tensor] = None,
+    right_alpha: Optional[torch.Tensor] = None,
+    out: Optional[torch.Tensor] = None,
     skip_checks: bool = False,
-    max_grid: tuple[int | None, int | None, int | None] | None = None,
-    meta: dict | None = None,
+    max_grid: Union[Tuple[int, None, int, None, int, None], None] = None,
+    meta: Optional[dict] = None,
 ):
     if out is None and dense.dtype is torch.int8:
         f_name = "_int_bsr_dense_addmm"
@@ -1194,12 +1197,12 @@ def bsr_dense_addmm(
     *,
     beta=1,
     alpha=1,
-    left_alpha: torch.Tensor | None = None,
-    right_alpha: torch.Tensor | None = None,
-    out: torch.Tensor | None = None,
+    left_alpha: Optional[torch.Tensor] = None,
+    right_alpha: Optional[torch.Tensor] = None,
+    out: Optional[torch.Tensor] = None,
     skip_checks: bool = False,
-    max_grid: tuple[int | None, int | None, int | None] | None = None,
-    meta: dict | None = None,
+    max_grid: Union[Tuple[int, None, int, None, int, None], None] = None,
+    meta: Optional[dict] = None,
 ):
     """Compute
 
@@ -1688,9 +1691,9 @@ if has_triton():
         *,
         beta=1.0,
         alpha=1.0,
-        out: torch.Tensor | None = None,
+        out: Optional[torch.Tensor] = None,
         skip_checks: bool = False,
-        max_grid: tuple[int | None, int | None, int | None] | None = None,
+        max_grid: Union[Tuple[int, None, int, None, int, None], None] = None,
     ):
         f_name = "sampled_addmm"
 
@@ -1772,10 +1775,10 @@ if has_triton():
         bsr: torch.Tensor,
         dense: torch.Tensor,
         *,
-        out: torch.Tensor | None = None,
+        out: Optional[torch.Tensor] = None,
         skip_checks: bool = False,
-        max_grid: tuple[int | None, int | None, int | None] | None = None,
-        meta: dict | None = None,
+        max_grid: Union[Tuple[int, None, int, None, int, None], None] = None,
+        meta: Optional[dict] = None,
     ):
         f_name = "bsr_dense_mm"
         m, _kl = bsr.shape[-2:]
@@ -1987,10 +1990,10 @@ if has_triton():
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
-        attn_mask: torch.Tensor | None,
+        attn_mask: Optional[torch.Tensor],
         dropout_p: float = 0.0,
         is_causal: bool = False,
-        scale: float | None = None,
+        scale: Optional[float] = None,
     ):
         f_name = "_scaled_dot_product_attention"
         check(not is_causal, f"{f_name}(): is_causal == True is not supported.")

@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 from functools import partial
-from typing import Optional, Union
+from typing import Optional, Tuple, Type, Union
 
 import torch
 import torch._prims as prims
@@ -37,7 +39,7 @@ __all__ = [
 ]
 
 
-def _check_norm_dtype(dtype: torch.dtype | None, x_dtype: torch.dtype, fn_name: str):
+def _check_norm_dtype(dtype: Optional[torch.dtype], x_dtype: torch.dtype, fn_name: str):
     """
     Checks related to the dtype kwarg in `linalg.*norm` functions
     """
@@ -99,7 +101,7 @@ def diagonal(
 
 
 def _check_vector_norm_args(
-    x: TensorLikeType, ord: float | int = 2, dim: DimsType | None = None
+    x: Union[TensorLikeType, ord: float, int]= 2, dim: Optional[DimsType] = None
 ):
     from torch.fx.experimental.symbolic_shapes import sym_or
 
@@ -130,11 +132,11 @@ def _check_vector_norm_args(
 @out_wrapper(exact_dtype=True)
 def vector_norm(
     x: TensorLikeType,
-    ord: float | int = 2,
-    dim: DimsType | None = None,
+    ord: Union[float, int]= 2,
+    dim: Optional[DimsType]= None,
     keepdim: bool = False,
     *,
-    dtype: torch.dtype | None = None,
+    dtype: Optional[torch.dtype]= None,
 ) -> Tensor:
     from torch.fx.experimental.symbolic_shapes import guard_or_false
 
@@ -168,8 +170,6 @@ def vector_norm(
         is_ord_even = ord % 2 == 0 if isinstance(ord, IntLike) else ord % 2.0 == 0.0
         if dim == []:
             dim = None
-        elif dim is not None:
-            dim = utils.canonicalize_dims(x.ndim, dim)
 
         if (dim is None and guard_or_false(x.numel() == 1)) or (
             dim is not None
@@ -210,11 +210,11 @@ def _inverse_permutation(perm):
 @out_wrapper(exact_dtype=True)
 def matrix_norm(
     A: TensorLikeType,
-    ord: float | str = "fro",
+    ord: Union[float, str]= "fro",
     dim: DimsType = (-2, -1),
     keepdim: bool = False,
     *,
-    dtype: torch.dtype | None = None,
+    dtype: Optional[torch.dtype]= None,
 ) -> TensorLikeType:
     # shape
     check_is_matrix(A, "linalg.matrix_norm")
@@ -311,11 +311,11 @@ def matrix_norm(
 @out_wrapper(exact_dtype=True)
 def norm(
     A: TensorLikeType,
-    ord: float | str | None = None,
-    dim: DimsType | None = None,
+    ord: Optional[Union[float, str]]= None,
+    dim: Optional[DimsType]= None,
     keepdim: bool = False,
     *,
-    dtype: torch.dtype | None = None,
+    dtype: Optional[torch.dtype]= None,
 ) -> TensorLikeType:
     if dim is not None:
         if isinstance(dim, Dim):
@@ -344,7 +344,7 @@ def norm(
 
 # CompositeImplicitAutograd
 @out_wrapper("U", "S", "Vh", exact_dtype=True)
-def svd(A: TensorLikeType, full_matrices: bool = True) -> tuple[Tensor, Tensor, Tensor]:
+def svd(A: TensorLikeType, full_matrices: bool = True) -> Tuple[Tensor, Tensor, Tensor]:
     return prims.svd(A, full_matrices=full_matrices)
 
 
@@ -434,5 +434,5 @@ def linalg_lu_solve_out_mps(LU, pivots, B, *, left=True, adjoint=False, out):
     out.copy_(x)
 
 
-mps_lib = torch.library.Library("aten", "IMPL", "MPS")
+mps_lib = torch.library.Library("aten", "IMPL", "MPS")  # noqa: TOR901
 mps_lib.impl("aten::linalg_lu_solve.out", linalg_lu_solve_out_mps)

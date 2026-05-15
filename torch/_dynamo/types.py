@@ -1,3 +1,4 @@
+from __future__ import annotations
 """This module contains the core type definitions and protocols used throughout Dynamo.
 
 The types defined here fall into several categories:
@@ -13,8 +14,10 @@ ensuring type safety and clear contracts between different components of the sys
 
 import dataclasses
 import types
-from collections.abc import Callable
-from typing import Any, NamedTuple, Protocol
+
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing_extensions import NamedTuple, Protocol
+
 
 # CacheEntry has a `guard_manager` field for the guard, and a `code` field for the code object.
 from torch._C._dynamo.eval_frame import (
@@ -28,7 +31,7 @@ from torch._guards import CompileId, Guard
 
 
 # We use a dict to store additional data per frame.
-FrameState = dict[Any, Any]
+FrameState = Dict[Any, Any]
 
 
 class GuardFail(NamedTuple):
@@ -44,23 +47,23 @@ class GuardFilterEntry:
     has_value: bool
     value: object
     guard_type: str
-    derived_guard_types: tuple[str, ...]
+    derived_guard_types: Tuple[str, ...]
     is_global: bool
     orig_guard: Guard
 
 
 class GuardFn(Protocol):
-    closure_vars: dict[str, object]
-    args: list[str]
-    code_parts: list[str]
-    verbose_code_parts: list[str]
-    global_scope: dict[str, object]
-    guard_fail_fn: Callable[[GuardFail], None] | None
-    cache_entry: CacheEntry | None
-    extra_state: ExtraState | None
+    closure_vars: Dict[str, object]
+    args: List[str]
+    code_parts: List[str]
+    verbose_code_parts: List[str]
+    global_scope: Dict[str, object]
+    guard_fail_fn: Optional[Callable[[GuardFail], None]]
+    cache_entry: Optional[CacheEntry]
+    extra_state: Optional[ExtraState]
 
     # maps locals of user function to bool
-    def __call__(self, f_locals: dict[str, object]) -> bool: ...
+    def __call__(self, f_locals: Dict[str, object]) -> bool: ...
 
 
 @dataclasses.dataclass
@@ -82,7 +85,7 @@ class ConvertFrameReturn:
     )
     # also apply frame_exec strategy to future frames with same code
     apply_to_code: bool = True
-    guarded_code: GuardedCode | None = None
+    guarded_code: Optional[GuardedCode] = None
 
 
 def wrap_guarded_code(guarded_code: GuardedCode) -> ConvertFrameReturn:
@@ -96,12 +99,12 @@ class DynamoCallbackFn(Protocol):
     def __call__(
         self,
         frame: DynamoFrameType,
-        cache_entry: CacheEntry | None,
+        cache_entry: Optional[CacheEntry],
         frame_state: FrameState,
     ) -> ConvertFrameReturn: ...
 
 
-DynamoCallback = DynamoCallbackFn | None | bool
+DynamoCallback = Optional[Union[DynamoCallbackFn, bool]]
 
 
 class DynamoGuardHook(Protocol):
@@ -109,7 +112,7 @@ class DynamoGuardHook(Protocol):
         self,
         guard_manager: GuardFn,
         code: types.CodeType,
-        f_locals: dict[str, object],
+        f_locals: Dict[str, object],
         index: int,
         last: bool,
     ) -> None: ...
@@ -137,4 +140,4 @@ class ProfilerEndHook(Protocol):
 class BytecodeHook(Protocol):
     def __call__(
         self, code: types.CodeType, new_code: types.CodeType
-    ) -> types.CodeType | None: ...
+    ) -> Optional[types.CodeType]: ...

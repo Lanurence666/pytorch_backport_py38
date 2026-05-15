@@ -1,5 +1,7 @@
-from collections.abc import Iterator, MutableMapping
-from typing import Generic, TypeVar
+from __future__ import annotations
+
+
+from typing import Dict, Generic, Iterator, List, MutableMapping, Optional, Type, TypeVar
 
 
 K = TypeVar("K")
@@ -14,9 +16,9 @@ class IndexedDict(MutableMapping[K, V], Generic[K, V]):
     __slots__ = ("_dict", "_keys", "_key_to_index")
 
     def __init__(self) -> None:
-        self._dict: dict[K, V] = {}
-        self._keys: list[K] = []  # typing: ignore[bad-override]
-        self._key_to_index: dict[K, int] = {}
+        self._dict: Dict[K, V] = {}
+        self._keys: List[K] = []  # typing: ignore[bad-override]
+        self._key_to_index: Dict[K, int] = {}
 
     def __setitem__(self, key: K, value: V) -> None:
         if key not in self._dict:
@@ -39,14 +41,14 @@ class IndexedDict(MutableMapping[K, V], Generic[K, V]):
     def __contains__(self, key: object) -> bool:
         return key in self._dict
 
-    def next_key(self, key: K) -> K | None:
+    def next_key(self, key: K) -> Optional[K]:
         """Get the next key in insertion order. O(1)."""
         idx = self._key_to_index.get(key)
         if idx is not None and idx + 1 < len(self._keys):
             return self._keys[idx + 1]
         return None
 
-    def prev_key(self, key: K) -> K | None:
+    def prev_key(self, key: K) -> Optional[K]:
         """Get the previous key in insertion order. O(1)."""
         idx = self._key_to_index.get(key)
         if idx is not None and idx > 0:

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Device abstraction layer for TorchDynamo and Inductor backends.
 
@@ -18,23 +19,25 @@ specialized implementations for each hardware backend's unique features.
 import inspect
 import time
 from collections import namedtuple
-from collections.abc import Callable, Iterable
+
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Type, Union
+from typing_extensions import Literal
+
 
 import torch
 from torch.utils._pallas import has_torch_tpu
 
 
-get_cuda_stream: Callable[[int], int] | None
+get_cuda_stream: Optional[Callable[[int], int]]
 if torch.cuda._is_compiled():
     from torch._C import _cuda_getCurrentRawStream as get_cuda_stream
 else:
     get_cuda_stream = None
 
 # Recording the device properties in the main process but used in worker process.
-caching_worker_device_properties: dict[str, Any] = {}
-caching_worker_current_devices: dict[str, int] = {}
+caching_worker_device_properties: Dict[str, Any] = {}
+caching_worker_current_devices: Dict[str, int] = {}
 
 
 class DeviceInterface:
@@ -182,7 +185,7 @@ class DeviceGuard:
     """
 
     def __init__(
-        self, device_interface: type[DeviceInterface], index: int | None
+        self, device_interface: Type[DeviceInterface], index: Optional[int]
     ) -> None:
         self.device_interface = device_interface
         self.idx = index
@@ -223,10 +226,7 @@ class CudaInterface(DeviceInterface):
             if device is not None:
                 if isinstance(device, str):
                     device = torch.device(device)
-                    if device.type != "cuda":
-                        raise AssertionError(
-                            f"Expected device type 'cuda', got '{device.type}'"
-                        )
+                    assert device.type == "cuda"
                 if isinstance(device, torch.device):
                     device = device.index
             if device is None:
@@ -262,7 +262,7 @@ class CudaInterface(DeviceInterface):
         return torch.cuda.is_available()
 
     @staticmethod
-    def get_compute_capability(device: torch.types.Device = None) -> int | str:
+    def get_compute_capability(device: torch.types.Device = None) -> Union[int, str]:
         if torch.version.hip is None:
             major, min = torch.cuda.get_device_capability(device)
             return major * 10 + min
@@ -293,7 +293,7 @@ class CudaInterface(DeviceInterface):
             raise RuntimeError("triton not built with the 'nvidia' backend")
 
 
-get_mtia_stream: Callable[[int], int] | None
+get_mtia_stream: Optional[Callable[[int], int]]
 if torch.mtia._is_compiled():
     from torch._C import _mtia_getCurrentRawStream as get_mtia_stream
 else:
@@ -322,10 +322,7 @@ class MtiaInterface(DeviceInterface):
             if device is not None:
                 if isinstance(device, str):
                     device = torch.device(device)
-                    if device.type != "mtia":
-                        raise AssertionError(
-                            f"Expected device type 'mtia', got '{device.type}'"
-                        )
+                    assert device.type == "mtia"
                 if isinstance(device, torch.device):
                     device = device.index
             if device is None:
@@ -378,7 +375,7 @@ class MtiaInterface(DeviceInterface):
             raise RuntimeError("triton not built with the 'mtia' backend")
 
 
-get_xpu_stream: Callable[[int], int] | None
+get_xpu_stream: Optional[Callable[[int], int]]
 if torch.xpu._is_compiled():
     from torch._C import _xpu_getCurrentRawStream as get_xpu_stream
 else:
@@ -407,10 +404,7 @@ class XpuInterface(DeviceInterface):
             if device is not None:
                 if isinstance(device, str):
                     device = torch.device(device)
-                    if device.type != "xpu":
-                        raise AssertionError(
-                            f"Expected device type 'xpu', got '{device.type}'"
-                        )
+                    assert device.type == "xpu"
                 if isinstance(device, torch.device):
                     device = device.index
             if device is None:
@@ -613,19 +607,19 @@ class TpuInterface(DeviceInterface):
             return 0
 
 
-device_interfaces: dict[str, type[DeviceInterface]] = {}
+device_interfaces: Dict[str, Type[DeviceInterface]] = {}
 _device_initialized = False
 
 
 def register_interface_for_device(
-    device: str | torch.device, device_interface: type[DeviceInterface]
+    device: Union[str, torch.device, device_interface: Type[DeviceInterface]]
 ) -> None:
     if isinstance(device, torch.device):
         device = device.type
     device_interfaces[device] = device_interface
 
 
-def get_interface_for_device(device: str | torch.device) -> type[DeviceInterface]:
+def get_interface_for_device(device: Union[str, torch.device]) -> Type[DeviceInterface]:
     if isinstance(device, torch.device):
         device = device.type
     if not _device_initialized:
@@ -635,7 +629,7 @@ def get_interface_for_device(device: str | torch.device) -> type[DeviceInterface
     raise NotImplementedError(f"No interface for device {device}")
 
 
-def get_registered_device_interfaces() -> Iterable[tuple[str, type[DeviceInterface]]]:
+def get_registered_device_interfaces() -> Iterable[Tuple[str, Type[DeviceInterface]]]:
     if not _device_initialized:
         init_device_reg()
     return device_interfaces.items()

@@ -7,6 +7,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import abc
 import logging
 import os
@@ -25,7 +27,7 @@ from dataclasses import dataclass, field
 from enum import IntFlag
 from multiprocessing import synchronize
 from types import FrameType
-from typing import Any, TextIO, Union
+from typing import Any, Callable, Dict, List, Optional, Set, TextIO, Type, Union, overload
 
 import torch.multiprocessing as mp
 from torch.distributed.elastic.multiprocessing.errors import ProcessFailure, record
@@ -73,7 +75,7 @@ class SignalException(Exception):
         self.sigval = sigval
 
 
-def _terminate_process_handler(signum: int, frame: FrameType | None) -> None:
+def _terminate_process_handler(signum: int, frame: Optional[FrameType]) -> None:
     """Termination handler that raises exceptions on the main process.
 
     When the process receives death signal(SIGTERM, SIGINT), this termination handler will
@@ -102,7 +104,7 @@ def _get_default_signal() -> signal.Signals:
         return signal.SIGTERM
 
 
-def _validate_full_rank(d: dict[int, Any], nprocs: int, what: str):
+def _validate_full_rank(d: Dict[int, Any], nprocs: int, what: str):
     actual_keys = set(d.keys())
     expected_keys = set(range(nprocs))
 
@@ -121,10 +123,10 @@ class Std(IntFlag):
     NONE = 0
     OUT = 1
     ERR = 2
-    ALL = OUT | ERR
+    ALL = Union[OUT, ERR]
 
     @classmethod
-    def from_str(cls, vm: str) -> Union["Std", dict[int, "Std"]]:
+    def from_str(cls, vm: str) -> Union["Std", Dict[int, "Std"]]:
         """
         Example:
         ::
@@ -145,7 +147,7 @@ class Std(IntFlag):
         if re.match(_VALUE_REGEX, vm):  # vm is a number (e.g. 0)
             return to_std(vm)
         elif re.match(_MAPPING_REGEX, vm):  # vm is a mapping (e.g. 0:1,1:2)
-            d: dict[int, Std] = {}
+            d: Dict[int, Std] = {}
             for m in vm.split(","):
                 i, v = m.split(":")
                 d[int(i)] = to_std(v)
@@ -156,7 +158,7 @@ class Std(IntFlag):
             )
 
 
-def to_map(val_or_map: Std | dict[int, Std], local_world_size: int) -> dict[int, Std]:
+def to_map(val_or_map: Union[Std, Dict[int, Std]], local_world_size: int) -> Dict[int, Std]:
     """
     Certain APIs take redirect settings either as a single value (e.g. apply to all
     local ranks) or as an explicit user-provided mapping. This method is a convenience
@@ -186,11 +188,11 @@ class LogsDest:
     For each log type, holds mapping of local rank ids to file paths.
     """
 
-    stdouts: dict[int, str] = field(default_factory=dict)
-    stderrs: dict[int, str] = field(default_factory=dict)
-    tee_stdouts: dict[int, str] = field(default_factory=dict)
-    tee_stderrs: dict[int, str] = field(default_factory=dict)
-    error_files: dict[int, str] = field(default_factory=dict)
+    stdouts: Dict[int, str] = field(default_factory=dict)
+    stderrs: Dict[int, str] = field(default_factory=dict)
+    tee_stdouts: Dict[int, str] = field(default_factory=dict)
+    tee_stderrs: Dict[int, str] = field(default_factory=dict)
+    error_files: Dict[int, str] = field(default_factory=dict)
     filtered_stdout: str = field(default_factory=str)
     filtered_stderr: str = field(default_factory=str)
 
@@ -214,10 +216,10 @@ class LogsSpecs(ABC):
 
     def __init__(
         self,
-        log_dir: str | None = None,
-        redirects: Std | dict[int, Std] = Std.NONE,
-        tee: Std | dict[int, Std] = Std.NONE,
-        local_ranks_filter: set[int] | None = None,
+        log_dir: Optional[str] = None,
+        redirects: Union[Std, Dict[int, Std]] = Std.NONE,
+        tee: Union[Std, Dict[int, Std]] = Std.NONE,
+        local_ranks_filter: Optional[Set[int]] = None,
     ) -> None:
         self._root_log_dir = log_dir
         self._redirects = redirects
@@ -227,7 +229,7 @@ class LogsSpecs(ABC):
     @abstractmethod
     def reify(
         self,
-        envs: dict[int, dict[str, str]],
+        envs: Dict[int, Dict[str, str]],
     ) -> LogsDest:
         """
         Given the environment variables, builds destination of log files for each of the local ranks.
@@ -252,10 +254,10 @@ class DefaultLogsSpecs(LogsSpecs):
 
     def __init__(
         self,
-        log_dir: str | None = None,
-        redirects: Std | dict[int, Std] = Std.NONE,
-        tee: Std | dict[int, Std] = Std.NONE,
-        local_ranks_filter: set[int] | None = None,
+        log_dir: Optional[str] = None,
+        redirects: Union[Std, Dict[int, Std]] = Std.NONE,
+        tee: Union[Std, Dict[int, Std]] = Std.NONE,
+        local_ranks_filter: Optional[Set[int]] = None,
     ) -> None:
         if log_dir != os.devnull:
             if not log_dir:
@@ -273,7 +275,7 @@ class DefaultLogsSpecs(LogsSpecs):
     def root_log_dir(self) -> str:
         return str(self._root_log_dir)
 
-    def _make_log_dir(self, log_dir: str | None, rdzv_run_id: str):
+    def _make_log_dir(self, log_dir: Optional[str], rdzv_run_id: str):
         base_log_dir = log_dir or tempfile.mkdtemp(prefix="torchelastic_")
         os.makedirs(base_log_dir, exist_ok=True)
         dir = tempfile.mkdtemp(prefix=f"{rdzv_run_id}_", dir=base_log_dir)
@@ -282,7 +284,7 @@ class DefaultLogsSpecs(LogsSpecs):
 
     def reify(
         self,
-        envs: dict[int, dict[str, str]],
+        envs: Dict[int, Dict[str, str]],
     ) -> LogsDest:
         """
         Uses following scheme to build log destination paths:
@@ -334,13 +336,13 @@ class DefaultLogsSpecs(LogsSpecs):
         # then tail -f stdout.log/stderr.log so add tee settings to redirects
         for local_rank, tee_std in ts.items():
             redirect_std = redirs[local_rank]
-            redirs[local_rank] = redirect_std | tee_std
+            redirs[local_rank] = {**redirect_std, **tee_std}
 
         SYS_STREAM = ""  # special case to indicate to output to console
         stdouts = dict.fromkeys(range(nprocs), SYS_STREAM)
         stderrs = dict.fromkeys(range(nprocs), SYS_STREAM)
-        tee_stdouts: dict[int, str] = {}
-        tee_stderrs: dict[int, str] = {}
+        tee_stdouts: Dict[int, str] = {}
+        tee_stderrs: Dict[int, str] = {}
         error_files = {}
 
         for local_rank in range(nprocs):
@@ -432,10 +434,10 @@ class RunProcsResult:
 
     """
 
-    return_values: dict[int, Any] = field(default_factory=dict)
-    failures: dict[int, ProcessFailure] = field(default_factory=dict)
-    stdouts: dict[int, str] = field(default_factory=dict)
-    stderrs: dict[int, str] = field(default_factory=dict)
+    return_values: Dict[int, Any] = field(default_factory=dict)
+    failures: Dict[int, ProcessFailure] = field(default_factory=dict)
+    stdouts: Dict[int, str] = field(default_factory=dict)
+    stderrs: Dict[int, str] = field(default_factory=dict)
 
     def is_failed(self) -> bool:
         return len(self.failures) > 0
@@ -465,13 +467,13 @@ class PContext(abc.ABC):
     def __init__(
         self,
         name: str,
-        entrypoint: Callable | str,
-        args: dict[int, tuple],
-        envs: dict[int, dict[str, str]],
+        entrypoint: Union[Callable, str],
+        args: Dict[int, tuple],
+        envs: Dict[int, Dict[str, str]],
         logs_specs: LogsSpecs,
-        log_line_prefixes: dict[int, str] | None = None,
-        duplicate_stdout_filters: list[str] | None = None,
-        duplicate_stderr_filters: list[str] | None = None,
+        log_line_prefixes: Optional[Dict[int, str]] = None,
+        duplicate_stdout_filters: Optional[List[str]] = None,
+        duplicate_stderr_filters: Optional[List[str]] = None,
     ):
         self.name = name
         # validate that all mappings have the same number of keys and
@@ -491,8 +493,8 @@ class PContext(abc.ABC):
         self.stderrs = logs_dest.stderrs
         self.error_files = logs_dest.error_files
         self.nprocs = nprocs
-        self.filtered_stdout: TextIO | None = None
-        self.filtered_stderr: TextIO | None = None
+        self.filtered_stdout: Optional[TextIO] = None
+        self.filtered_stderr: Optional[TextIO] = None
 
         self._tail_logs = [
             TailLog(name, logs_dest.tee_stdouts, sys.stdout, log_line_prefixes),
@@ -582,7 +584,7 @@ class PContext(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def _poll(self) -> RunProcsResult | None:
+    def _poll(self) -> Optional[RunProcsResult]:
         """
         Poll the run status of the processes running under this context.
         This method follows an "all-or-nothing" policy and returns
@@ -592,7 +594,7 @@ class PContext(abc.ABC):
         """
         raise NotImplementedError
 
-    def wait(self, timeout: float = -1, period: float = 1) -> RunProcsResult | None:
+    def wait(self, timeout: float = -1, period: float = 1) -> Optional[RunProcsResult]:
         """
         Wait for the specified ``timeout`` seconds, polling every ``period`` seconds
         for the processes to be done. Returns ``None`` if the processes are still running
@@ -634,7 +636,7 @@ class PContext(abc.ABC):
         return None
 
     @abc.abstractmethod
-    def pids(self) -> dict[int, int]:
+    def pids(self) -> Dict[int, int]:
         """Return pids of processes mapped by their respective local_ranks."""
         raise NotImplementedError
 
@@ -646,7 +648,7 @@ class PContext(abc.ABC):
         """
         raise NotImplementedError
 
-    def close(self, death_sig: signal.Signals | None = None, timeout: int = 30) -> None:
+    def close(self, death_sig: Optional[signal.Signals] = None, timeout: int = 30) -> None:
         r"""
         Terminates all processes managed by this context and cleans up any
         meta resources (e.g. redirect, error_file files).
@@ -677,13 +679,13 @@ def get_std_cm(std_rd: str, redirect_fn):
 def _wrap(
     local_rank: int,
     fn: Callable,
-    args: dict[int, tuple],
-    envs: dict[int, dict[str, str]],
-    stdout_redirects: dict[int, str],  # redirect file for stdout (to console if None)
-    stderr_redirects: dict[int, str],  # redirect file for stderr (to console if None)
-    ret_vals: dict[int, mp.SimpleQueue],
+    args: Dict[int, tuple],
+    envs: Dict[int, Dict[str, str]],
+    stdout_redirects: Dict[int, str],  # redirect file for stdout (to console if None)
+    stderr_redirects: Dict[int, str],  # redirect file for stderr (to console if None)
+    ret_vals: Dict[int, mp.SimpleQueue],
     queue_finished_reading_event: synchronize.Event,
-    numa_options: NumaOptions | None,
+    numa_options: Optional[NumaOptions],
 ) -> None:
     # get the per-rank params up front so we fail fast if no mapping is found
     args_ = args[local_rank]
@@ -715,14 +717,14 @@ class MultiprocessContext(PContext):
         self,
         name: str,
         entrypoint: Callable,
-        args: dict[int, tuple],
-        envs: dict[int, dict[str, str]],
+        args: Dict[int, tuple],
+        envs: Dict[int, Dict[str, str]],
         start_method: str,
         logs_specs: LogsSpecs,
-        log_line_prefixes: dict[int, str] | None = None,
-        numa_options: NumaOptions | None = None,
-        duplicate_stdout_filters: list[str] | None = None,
-        duplicate_stderr_filters: list[str] | None = None,
+        log_line_prefixes: Optional[Dict[int, str]] = None,
+        numa_options: Optional[NumaOptions] = None,
+        duplicate_stdout_filters: Optional[List[str]] = None,
+        duplicate_stderr_filters: Optional[List[str]] = None,
     ):
         super().__init__(
             name,
@@ -743,13 +745,13 @@ class MultiprocessContext(PContext):
         }
 
         # see comments in ``join()`` for what this is
-        self._return_values: dict[int, Any] = {}
-        self._pc: mp.ProcessContext | None = None
+        self._return_values: Dict[int, Any] = {}
+        self._pc: Optional[mp.ProcessContext] = None
         # Note: set method should ONLY be invoked for the use case when all processes finished
         # successfully. If any process died on event.wait() calling set() method will deadlock.
         self._worker_finished_event = mp.get_context(self.start_method).Event()
 
-        self._numa_options: NumaOptions | None = numa_options
+        self._numa_options: Optional[NumaOptions] = numa_options
 
     def _start(self):
         if self._pc:
@@ -778,7 +780,7 @@ class MultiprocessContext(PContext):
     def _is_done(self) -> bool:
         return len(self._return_values) == self.nprocs
 
-    def _poll(self) -> RunProcsResult | None:
+    def _poll(self) -> Optional[RunProcsResult]:
         if self._pc is None:
             raise AssertionError  # assertion for mypy type checker
 
@@ -858,7 +860,7 @@ class MultiprocessContext(PContext):
                 stderrs=self.stderrs,
             )
 
-    def pids(self) -> dict[int, int]:
+    def pids(self) -> Dict[int, int]:
         if self._pc is None:
             raise AssertionError  # assertion for mypy type checking
         return dict(enumerate(self._pc.pids()))
@@ -907,13 +909,13 @@ class SubprocessContext(PContext):
         self,
         name: str,
         entrypoint: str,
-        args: dict[int, tuple],
-        envs: dict[int, dict[str, str]],
+        args: Dict[int, tuple],
+        envs: Dict[int, Dict[str, str]],
         logs_specs: LogsSpecs,
-        log_line_prefixes: dict[int, str] | None = None,
-        numa_options: NumaOptions | None = None,
-        duplicate_stdout_filters: list[str] | None = None,
-        duplicate_stderr_filters: list[str] | None = None,
+        log_line_prefixes: Optional[Dict[int, str]] = None,
+        numa_options: Optional[NumaOptions] = None,
+        duplicate_stdout_filters: Optional[List[str]] = None,
+        duplicate_stderr_filters: Optional[List[str]] = None,
     ):
         super().__init__(
             name,
@@ -927,10 +929,10 @@ class SubprocessContext(PContext):
         )
 
         # state vector; _vdone[local_rank] -> is local_rank finished or not
-        self._running_local_ranks: set[int] = set(range(self.nprocs))
-        self._failures: dict[int, ProcessFailure] = {}
-        self.subprocess_handlers: dict[int, SubprocessHandler] = {}
-        self._numa_options: NumaOptions | None = numa_options
+        self._running_local_ranks: Set[int] = set(range(self.nprocs))
+        self._failures: Dict[int, ProcessFailure] = {}
+        self.subprocess_handlers: Dict[int, SubprocessHandler] = {}
+        self._numa_options: Optional[NumaOptions] = numa_options
 
     def _start(self):
         if self.subprocess_handlers:
@@ -950,7 +952,7 @@ class SubprocessContext(PContext):
             for local_rank in range(self.nprocs)
         }
 
-    def _capture_process_failures(self, done_local_ranks: set[int]):
+    def _capture_process_failures(self, done_local_ranks: Set[int]):
         for local_rank in self._running_local_ranks:
             handler = self.subprocess_handlers[local_rank]
             exitcode = handler.proc.poll()
@@ -965,8 +967,8 @@ class SubprocessContext(PContext):
                     )
                 # else: --> succeeded; nothing to do
 
-    def _poll(self) -> RunProcsResult | None:
-        done_local_ranks: set[int] = set()
+    def _poll(self) -> Optional[RunProcsResult]:
+        done_local_ranks: Set[int] = set()
         self._capture_process_failures(done_local_ranks)
 
         self._running_local_ranks.difference_update(done_local_ranks)
@@ -1000,7 +1002,7 @@ class SubprocessContext(PContext):
         else:  # there are no failures and procs still running
             return None
 
-    def pids(self) -> dict[int, int]:
+    def pids(self) -> Dict[int, int]:
         return {
             local_rank: sh.proc.pid
             for local_rank, sh in self.subprocess_handlers.items()

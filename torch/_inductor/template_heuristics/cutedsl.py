@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import auto, Enum
 from itertools import product
 
 import torch._inductor.config as config
+from typing import List
 
 
 class TensorMapUpdateMode(Enum):
@@ -22,7 +25,7 @@ class CuTeGemmConfig:
     TENSORMAP_UPDATE_MODE: TensorMapUpdateMode = TensorMapUpdateMode.SMEM
 
 
-def get_exhaustive_groupgemm_configs() -> list[CuTeGemmConfig]:
+def get_exhaustive_groupgemm_configs() -> List[CuTeGemmConfig]:
     """
     Returns the exhaustive configuration set for the Blackwell CuTeDSL Grouped GEMM kernel.
     For information regarding valid config sets, see:
@@ -63,7 +66,7 @@ def get_exhaustive_groupgemm_configs() -> list[CuTeGemmConfig]:
         (16, 1),
     ]
 
-    configs: list[CuTeGemmConfig] = []
+    configs: List[CuTeGemmConfig] = []
 
     for use_2cta, cluster_set, tile_m_range in [
         (False, clusters_no_2cta, [64, 128]),
@@ -89,7 +92,7 @@ def get_exhaustive_groupgemm_configs() -> list[CuTeGemmConfig]:
     return configs
 
 
-def get_default_groupgemm_configs() -> list[CuTeGemmConfig]:
+def get_default_groupgemm_configs() -> List[CuTeGemmConfig]:
     """
     Returns the default configuration set for the Blackwell CuTeDSL Grouped GEMM kernel.
     """
@@ -122,7 +125,7 @@ def get_default_groupgemm_configs() -> list[CuTeGemmConfig]:
     return [CuTeGemmConfig(*args) for args in config_tuples]
 
 
-def get_groupgemm_configs() -> list[CuTeGemmConfig]:
+def get_groupgemm_configs() -> List[CuTeGemmConfig]:
     """
     Returns the configuration set for the Blackwell CuTeDSL Grouped GEMM kernel.
 

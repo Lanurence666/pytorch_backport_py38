@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: jit"]
 
+from __future__ import annotations
 import torch
 from torch.cuda.amp import autocast
 

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 rocSHMEM Triton integration for AMD GPU (ROCm) builds.
 
@@ -9,7 +10,7 @@ integration in _nvshmem_triton.py.  It is only imported on ROCm builds
 import logging
 import os
 import sysconfig
-from typing import Any
+from typing import Any, Dict, Optional, Set
 
 import torch
 from torch.distributed._symmetric_memory._shmem_triton_utils import (
@@ -35,7 +36,7 @@ class RocshmemLibFinder:
         export ROCSHMEM_LIB_DIR=/opt/rocm/lib
     """
 
-    found_device_lib_path: str | None = None
+    found_device_lib_path: Optional[str]= None
 
     @classmethod
     def find_device_library(cls) -> str:
@@ -93,7 +94,7 @@ class RocshmemLibFinder:
 class RocshmemKernelRegistry(ShmemKernelRegistry):
     """Track Triton kernels that need rocSHMEM HIP-module initialization."""
 
-    _to_init: dict[str, Any] = {}
+    _to_init: Dict[str, Any] = {}
 
 
 def _rocshmem_init_hook(*args, **kwargs) -> None:  # type: ignore[no-untyped-def]

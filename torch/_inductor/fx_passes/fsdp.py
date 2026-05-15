@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 import math
@@ -16,15 +18,9 @@ from torch._inductor.fx_passes.bucketing import (
     merge_all_reduce_bucket,
     merge_reduce_scatter,
 )
-from torch._inductor.pattern_matcher import (
-    CallFunction,
-    KeywordArg,
-    Match,
-    PatternMatcherPass,
-    register_graph_pattern,
-)
 from torch._logging import trace_structured
 from torch.utils._ordered_set import OrderedSet
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union, cast
 
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -76,13 +72,10 @@ def is_fsdp_reduce_scatter_wait(wait: torch.fx.Node) -> bool:
     """
     if not wait.users:
         return False
-    visited: OrderedSet[torch.fx.Node] = OrderedSet()
+    # Unary chains cannot cycle, so no visited set needed.
     queue = [wait]
     while queue:
         node = queue.pop()
-        if node in visited:
-            continue
-        visited.add(node)
         for user in node.users:
             if user.op == "output":
                 continue
@@ -92,103 +85,9 @@ def is_fsdp_reduce_scatter_wait(wait: torch.fx.Node) -> bool:
     return True
 
 
-_LINEAR_REDUCE_OPS = OrderedSet(["sum", "avg"])
-
-_dedup_rs_pass: PatternMatcherPass | None = None
-
-
-def _get_dedup_rs_pass() -> PatternMatcherPass:
-    global _dedup_rs_pass
-
-    if _dedup_rs_pass is not None:
-        return _dedup_rs_pass
-
-    c10d = torch.ops._c10d_functional
-    aten = torch.ops.aten
-    dedup_rs_pass = PatternMatcherPass(pass_name="dedup_reduce_scatter")
-
-    def wait_rs(name: str) -> CallFunction:
-        return CallFunction(
-            c10d.wait_tensor.default,
-            CallFunction(
-                c10d.reduce_scatter_tensor.default,
-                KeywordArg(name),
-                KeywordArg("reduce_op"),
-                KeywordArg("group_size"),
-                KeywordArg("group_name"),
-            ),
-        )
-
-    def dedup_rs_extra_check(match: Match) -> bool:
-        if match.kwargs["reduce_op"] not in _LINEAR_REDUCE_OPS:
-            return False
-        for node in match.nodes:
-            if node.target is aten.add.Tensor:
-                continue
-            if node.target not in (
-                c10d.wait_tensor.default,
-                c10d.reduce_scatter_tensor.default,
-            ):
-                return False
-            if len(node.users) != 1:
-                return False
-        input_a = match.kwargs["input_a"]
-        input_b = match.kwargs["input_b"]
-        if input_a.meta["val"].dtype != input_b.meta["val"].dtype:
-            return False
-        return True
-
-    @register_graph_pattern(
-        CallFunction(
-            aten.add.Tensor,
-            wait_rs("input_a"),
-            wait_rs("input_b"),
-        ),
-        extra_check=dedup_rs_extra_check,
-        # pyrefly: ignore[bad-argument-type]
-        pass_dict=dedup_rs_pass,
-    )
-    def _(match: Match, input_a, input_b, reduce_op, group_size, group_name):
-        def repl(input_a, input_b):
-            combined = aten.add.Tensor(input_a, input_b)
-            rs = c10d.reduce_scatter_tensor.default(
-                combined, reduce_op, group_size, group_name
-            )
-            return c10d.wait_tensor.default(rs)
-
-        # pyrefly: ignore[bad-argument-type]
-        match.replace_by_example(repl, [input_a, input_b])
-
-    _dedup_rs_pass = dedup_rs_pass
-    return dedup_rs_pass
-
-
-def dedup_fsdp_reduce_scatter(gm: torch.fx.GraphModule) -> None:
-    """
-    Fuse duplicate reduce_scatter ops whose waited results are summed.
-
-    RS is linear, so RS(a) + RS(b) = RS(a + b). This pass rewrites
-        rs_a = reduce_scatter(input_a, ...); wait_a = wait(rs_a)
-        rs_b = reduce_scatter(input_b, ...); wait_b = wait(rs_b)
-        result = add(wait_a, wait_b)
-    into
-        combined = add(input_a, input_b)
-        rs = reduce_scatter(combined, ...)
-        result = wait(rs)
-
-    For N-way add trees (N > 2), the pattern is applied repeatedly
-    until fixpoint — each iteration fuses one leaf pair.
-    """
-    dedup_rs_pass = _get_dedup_rs_pass()
-    while dedup_rs_pass.apply(gm):
-        pass
-    gm.graph.lint()
-    gm.recompile()
-
-
 def bucket_fsdp_all_gather(
     gm: torch.fx.GraphModule,
-    bucket_cap_mb_by_bucket_idx: Callable[[int], float] | None = None,
+    bucket_cap_mb_by_bucket_idx: Optional[Callable[[int], float]]= None,
     mode: BucketMode = "default",
 ) -> None:
     """
@@ -218,7 +117,7 @@ def bucket_fsdp_all_gather(
 
 def bucket_fsdp_reduce_scatter(
     gm: torch.fx.GraphModule,
-    bucket_cap_mb_by_bucket_idx: Callable[[int], float] | None = None,
+    bucket_cap_mb_by_bucket_idx: Optional[Callable[[int], float]]= None,
     mode: BucketMode = "default",
 ) -> None:
     """
@@ -255,8 +154,8 @@ def bucket_fsdp_reduce_scatter(
 
 def bucket_fsdp_all_reduce(
     gm: torch.fx.GraphModule,
-    bucket_cap_mb_by_bucket_idx: Callable[[int], float] | None = None,
-    fsdp_groups: OrderedSet[str] | None = None,
+    bucket_cap_mb_by_bucket_idx: Optional[Callable[[int], float]]= None,
+    fsdp_groups: Optional[OrderedSet[str]]= None,
 ) -> None:
     """Bucketing pass for FSDP all_reduce ops.
 
@@ -288,7 +187,7 @@ def bucket_fsdp_all_reduce(
         merge_all_reduce_bucket(gm.graph, bucket)
 
 
-def _get_collective_kwargs(n: fx.Node) -> dict[str, object]:
+def _get_collective_kwargs(n: fx.Node) -> Dict[str, object]:
     """Normalize a collective node's args into keyword args."""
     from torch.fx.operator_schemas import normalize_function
 
@@ -311,7 +210,7 @@ def _get_group_size_from_node(n: fx.Node) -> int:
     return _get_collective_kwargs(n)["group_size"]  # type: ignore[return-value]
 
 
-def _find_all_gathers(graph: torch.fx.Graph) -> list[torch.fx.Node]:
+def _find_all_gathers(graph: torch.fx.Graph) -> List[torch.fx.Node]:
     """Return all all_gather nodes (both default and _out variants) via O(1) lookup."""
     return [
         *graph.find_nodes(
@@ -325,7 +224,7 @@ def _find_all_gathers(graph: torch.fx.Graph) -> list[torch.fx.Node]:
     ]
 
 
-def _find_reduce_scatters(graph: torch.fx.Graph) -> list[torch.fx.Node]:
+def _find_reduce_scatters(graph: torch.fx.Graph) -> List[torch.fx.Node]:
     """Return all reduce_scatter nodes via O(1) lookup."""
     return graph.find_nodes(
         op="call_function",
@@ -333,7 +232,7 @@ def _find_reduce_scatters(graph: torch.fx.Graph) -> list[torch.fx.Node]:
     )
 
 
-def _find_all_reduces(graph: torch.fx.Graph) -> list[torch.fx.Node]:
+def _find_all_reduces(graph: torch.fx.Graph) -> List[torch.fx.Node]:
     """Return all all_reduce nodes via O(1) lookup."""
     return graph.find_nodes(
         op="call_function",
@@ -343,7 +242,7 @@ def _find_all_reduces(graph: torch.fx.Graph) -> list[torch.fx.Node]:
 
 def identify_fsdp_groups(
     gm: torch.fx.GraphModule,
-) -> tuple[OrderedSet[str], int | None]:
+) -> Union[Tuple[OrderedSet[str], int, None]]:
     """Identify FSDP process groups and return (group_names, group_size).
 
     Uses is_fsdp_all_gather heuristic on all_gather nodes to find FSDP groups,
@@ -352,7 +251,7 @@ def identify_fsdp_groups(
     group-name transitivity.
     """
     fsdp_groups: OrderedSet[str] = OrderedSet()
-    group_size: int | None = None
+    group_size: Optional[int]= None
     for n in _find_all_gathers(gm.graph):
         if is_fsdp_all_gather(n):
             fsdp_groups.add(_get_group_name(n))
@@ -363,7 +262,7 @@ def identify_fsdp_groups(
 
 def compute_pre_bucket_cap_mb(
     group_size: int,
-    bucket_cap_mb_override: float | None = None,
+    bucket_cap_mb_override: Optional[float]= None,
 ) -> float:
     """Compute the bucket cap for pre-bucketing based on bandwidth saturation.
 
@@ -435,14 +334,14 @@ def _tensor_size_mb(val: torch.Tensor) -> float:
 
 def _collect_collective_sizes(
     gm: torch.fx.GraphModule, fsdp_groups: OrderedSet[str]
-) -> list[dict[str, object]]:
+) -> List[Dict[str, object]]:
     """Collect per-collective transfer sizes (MB) for FSDP collectives in graph order.
 
     AG: output tensor size (the gathered result, i.e. bytes on the wire).
     RS: input tensor size (the pre-scatter tensor, i.e. bytes on the wire).
     AR: input tensor size (in-place, same size in and out).
     """
-    sizes: list[dict[str, object]] = []
+    sizes: List[Dict[str, object]] = []
     for n in _find_all_gathers(gm.graph):
         if _get_group_name(n) in fsdp_groups:
             size_mb = _tensor_size_mb(n.meta["val"])
@@ -460,8 +359,8 @@ def _collect_collective_sizes(
 
 def pre_bucket_fsdp_collectives(
     gm: torch.fx.GraphModule,
-    mode: BucketMode | None = None,
-    bucket_cap_mb: float | None = None,
+    mode: Optional[BucketMode]= None,
+    bucket_cap_mb: Optional[float]= None,
 ) -> None:
     """Pre-bucket FSDP collectives before overlap scheduling.
 
@@ -478,7 +377,7 @@ def pre_bucket_fsdp_collectives(
     if not fsdp_groups:
         return
 
-    def _count_fsdp(nodes: list[fx.Node]) -> int:
+    def _count_fsdp(nodes: List[fx.Node]) -> int:
         return sum(1 for n in nodes if _get_group_name(n) in fsdp_groups)
 
     ag_count = _count_fsdp(_find_all_gathers(gm.graph))

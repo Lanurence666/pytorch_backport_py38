@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import gc
 import random
 import sys

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Dynamo Profiler - tracks where Dynamo spends time during compilation.
 
@@ -14,10 +15,9 @@ Usage:
     # Then: snakeviz /tmp/dynamo.prof
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Tuple, Union
 
 
 if TYPE_CHECKING:
@@ -47,15 +47,15 @@ class FunctionTraceTiming:
     # Nesting depth when this function was traced
     inline_depth: int
     # Caller information (for building call graph edges)
-    caller_func_name: str | None = None
-    caller_filename: str | None = None
-    caller_firstlineno: int | None = None
+    caller_func_name: Optional[str]= None
+    caller_filename: Optional[str]= None
+    caller_firstlineno: Optional[int]= None
     # Whether this is a primitive (non-recursive) call
     # A call is primitive if the function doesn't appear anywhere in the call stack
     is_primitive_call: bool = True
     # Full call stack at the time of this call (for proper snakeviz drill-down)
     # Each entry is (func_name, filename, firstlineno)
-    call_stack: tuple[tuple[str, str, int], ...] = ()
+    call_stack: Tuple[Tuple[str, str, int], ...] = ()
 
     # Backwards compatibility alias
     @property
@@ -75,7 +75,7 @@ class FunctionTraceTiming:
         return self.tottime_ns / 1e6
 
     @property
-    def caller_key(self) -> tuple[str, int, str] | None:
+    def caller_key(self) -> Optional[Tuple[str, int, str]]:
         """Return caller as a pstats-compatible key tuple."""
         if self.caller_func_name is not None:
             return (
@@ -86,7 +86,7 @@ class FunctionTraceTiming:
         return None
 
     @property
-    def func_key(self) -> tuple[str, int, str]:
+    def func_key(self) -> Tuple[str, int, str]:
         """Return this function as a pstats-compatible key tuple."""
         return (self.filename, self.firstlineno, self.func_name)
 
@@ -114,14 +114,14 @@ class DynamoProfilerState:
     """State for Dynamo profiler tracking function trace timings."""
 
     def __init__(self) -> None:
-        self.timings: list[FunctionTraceTiming] = []
-        self.stack: list[ProfilerStackEntry] = []
+        self.timings: List[FunctionTraceTiming] = []
+        self.stack: List[ProfilerStackEntry] = []
 
     def record_timing(self, timing: FunctionTraceTiming) -> None:
         """Record timing data for a traced function."""
         self.timings.append(timing)
 
-    def get_timings(self) -> list[FunctionTraceTiming]:
+    def get_timings(self) -> List[FunctionTraceTiming]:
         """Get all recorded timings."""
         return self.timings
 
@@ -147,7 +147,7 @@ class DynamoProfilerState:
             )
         )
 
-    def pop(self) -> ProfilerStackEntry | None:
+    def pop(self) -> Optional[ProfilerStackEntry]:
         """Pop the top entry from the timing stack."""
         if self.stack:
             return self.stack.pop()
@@ -158,21 +158,21 @@ class DynamoProfilerState:
         if self.stack:
             self.stack[-1].child_time_ns += child_cumtime_ns
 
-    def get_current_caller(self) -> tuple[str, str, int] | None:
+    def get_current_caller(self) -> Optional[Tuple[str, str, int]]:
         """Get the current caller (top of stack) as (func_name, filename, firstlineno)."""
         if self.stack:
             entry = self.stack[-1]
             return (entry.func_name, entry.filename, entry.firstlineno)
         return None
 
-    def get_call_stack(self) -> tuple[tuple[str, str, int], ...]:
+    def get_call_stack(self) -> Tuple[Tuple[str, str, int], ...]:
         """Get the full current call stack as tuple of (func_name, filename, firstlineno)."""
         return tuple(
             (entry.func_name, entry.filename, entry.firstlineno) for entry in self.stack
         )
 
     def generate_pstats(
-        self, output_file: str | None = None, print_raw: bool = False
+        self, output_file: Optional[str] = None, print_raw: bool = False
     ) -> pstats.Stats:
         """Generate pstats.Stats object from recorded timings.
 
@@ -188,10 +188,10 @@ class DynamoProfilerState:
         log = logging.getLogger(__name__)
 
         # Aggregate by (filename, lineno, func_name)
-        aggregated: dict[tuple[str, int, str], dict[str, Any]] = {}
+        aggregated: Dict[Tuple[str, int, str], Dict[str, Any]] = {}
         # caller_edges[callee_key][caller_key] -> edge stats
-        caller_edges: dict[
-            tuple[str, int, str], dict[tuple[str, int, str], dict[str, Any]]
+        caller_edges: Dict[
+            Tuple[str, int, str], Dict[Tuple[str, int, str], Dict[str, Any]]
         ] = {}
 
         for t in self.timings:
@@ -283,12 +283,12 @@ class DynamoProfilerState:
                     caller_edges[caller_key] = {}
 
         # Build the stats dict in pstats format
-        stats_dict: dict[
-            tuple[str, int, str], tuple[int, int, float, float, dict[Any, Any]]
+        stats_dict: Dict[
+            Tuple[str, int, str], Tuple[int, int, float, float, Dict[Any, Any]]
         ] = {}
 
         for key, agg in aggregated.items():
-            callers: dict[tuple[str, int, str], tuple[int, int, float, float]] = {}
+            callers: Dict[Tuple[str, int, str], Tuple[int, int, float, float]] = {}
             for caller_key, edge in caller_edges[key].items():
                 callers[caller_key] = (
                     edge["ncalls"],
@@ -327,8 +327,8 @@ class DynamoProfilerState:
         return stats
 
     def generate_svg(
-        self, profile_file: str, svg_file: str | None = None
-    ) -> str | None:
+        self, profile_file: str, svg_file: Optional[str] = None
+    ) -> Optional[str]:
         """Generate an SVG call graph from a profile file using gprof2dot and graphviz.
 
         Args:
@@ -355,7 +355,7 @@ class DynamoProfilerState:
             svg_file = profile_file.rsplit(".", 1)[0] + ".svg"
 
         try:
-            # gprof2dot -f pstats profile.prof | dot -Tsvg -o profile.svg
+            # gprof2dot -f pstats Union[profile.prof, dot] -Tsvg -o profile.svg
             gprof2dot = subprocess.Popen(
                 [
                     "gprof2dot",
@@ -399,7 +399,7 @@ class DynamoProfilerState:
             return None
 
     def dump_stats(
-        self, output_file: str | None = None, generate_svg: bool = True
+        self, output_file: Optional[str] = None, generate_svg: bool = True
     ) -> None:
         """Print profiler stats to stdout and optionally save to file.
 

@@ -1,11 +1,13 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
 import functools
 import itertools
 import math
 import operator
-from typing import Any
+from typing import Any, List, Optional, Tuple, Union
 
 import torch
 from torch._dynamo.utils import counters
@@ -1687,7 +1689,7 @@ def _register_qconv_weight_prepack_pass(
                 packed_weight_op, args=packed_weight_inputs
             )
 
-            new_args: tuple[Any, ...] = (
+            new_args: Tuple[Any, ...] = (
                 qx,
                 x_scale,
                 x_zp,
@@ -2020,7 +2022,7 @@ def _register_qlinear_weight_prepack_pass(
                 packed_weight_op, args=packed_weight_inputs
             )
 
-            new_args: tuple[Any, ...] = (
+            new_args: Tuple[Any, ...] = (
                 qx,
                 x_scale,
                 x_zp,
@@ -2553,7 +2555,7 @@ def _register_linear_dynamic_fp16_weight_prepack_pass(
             )
 
             # create new linear node and insert on graph
-            new_args: tuple[Any, ...] = (
+            new_args: Tuple[Any, ...] = (
                 x,
                 prepack_weight_node,
                 bias,
@@ -2794,7 +2796,7 @@ def _register_smooth_quant_int_mm_pattern():
                         prod *= d
                     x_scale_is_scalar = prod == 1
 
-                new_args: tuple[Any, ...]
+                new_args: Tuple[Any, ...]
                 if x_scale_is_scalar:
                     # in this case, we can call onednn.qlinear directly
                     new_args = (
@@ -2959,7 +2961,7 @@ def _register_qconv_post_op_fusion_pass(
         out_node = match.output_node()
         with match.graph.inserting_before(out_node):
             if not has_binary_post_op:
-                computation_args: tuple[Any, ...] = (
+                computation_args: Tuple[Any, ...] = (
                     x,
                     x_scale,
                     x_zp,
@@ -3320,7 +3322,7 @@ def _register_qlinear_post_op_fusion_pass(
         out_node = match.output_node()
         with match.graph.inserting_before(out_node):
             if not has_binary_post_op:
-                computation_args: tuple[Any, ...] = (
+                computation_args: Tuple[Any, ...] = (
                     x,
                     x_scale,
                     x_zp,
@@ -3501,30 +3503,30 @@ def _register_qlinear_binary_fusion():
 
     1. int8-mixed-fp32
     +---+---------------+-----------+------------------------------+---------+
-    | # | Add type      | Quant out | Pattern                      | Post op |
+    | # | Add Union[type, Quant] Union[Union[out, Pattern], Post] op |
     +---+---------------+-----------+------------------------------+---------+
-    | 1 | In-/out-place | Yes       | linear + fp32 -> (relu) -> q | add     |
+    | 1 | In-/out-Union[Union[place, Yes], linear] + fp32 -> (relu) -> Union[q, add     |]
     +---+---------------+-----------+------------------------------+---------+
-    | 2 | In-/out-place | No        | linear + fp32 -> (relu)      | sum     |
+    | 2 | In-/out-Union[Union[place, No], linear] + fp32 -> Union[(relu), sum     |]
     +---+---------------+-----------+------------------------------+---------+
 
     2. int8-mixed-bf16
     +---+----------+---------------+-----------+-----------------------------------------+---------+
-    | # | X2 dtype | Add type      | Quant out | Pattern                                 | Post op |
+    | # | X2 Union[dtype, Add] Union[type, Quant] Union[Union[out, Pattern], Post] op |
     +---+----------+---------------+-----------+-----------------------------------------+---------+
-    | 1 | BF16     | In-/out-place | Yes       | linear + bf16 -> (relu) -> q            | add     |
+    | 1 | BF16     | In-/out-Union[Union[place, Yes], linear] + bf16 -> (relu) -> Union[q, add     |]
     +---+----------+---------------+-----------+-----------------------------------------+---------+
-    | 2 | BF16     | In-/out-place | No        | linear + bf16 -> (relu)                 | sum     |
+    | 2 | BF16     | In-/out-Union[Union[place, No], linear] + bf16 -> Union[(relu), sum     |]
     +---+----------+---------------+-----------+-----------------------------------------+---------+
-    | 3 | FP32     | Out-place     | Yes       | linear + fp32 -> (relu) -> q            | add     |
+    | 3 | FP32     | Out-Union[Union[place, Yes], linear] + fp32 -> (relu) -> Union[q, add     |]
     |   |          | In-place right|           |                                         |         |
     +---+----------+---------------+-----------+-----------------------------------------+---------+
-    | 4 | FP32     | Out-place     | No        | linear + fp32 -> (relu)                 | sum     |
+    | 4 | FP32     | Out-Union[Union[place, No], linear] + fp32 -> Union[(relu), sum     |]
     |   |          | In-place right|           |                                         |         |
     +---+----------+---------------+-----------+-----------------------------------------+---------+
-    | 5 | FP32     | In-place left | Yes       | linear + fp32 -> to_bf16 -> (relu) -> q | add     |
+    | 5 | FP32     | In-place Union[Union[left, Yes], linear] + fp32 -> to_bf16 -> (relu) -> Union[q, add     |]
     +---+----------+---------------+-----------+-----------------------------------------+---------+
-    | 6 | FP32     | In-place left | No        | linear + fp32 -> to_bf16 -> (relu)      | add     |
+    | 6 | FP32     | In-place Union[Union[left, No], linear] + fp32 -> to_bf16 -> Union[(relu), add     |]
     +---+----------+---------------+-----------+-----------------------------------------+---------+
 
     Note
@@ -3704,7 +3706,7 @@ def _register_qlinear_binary_fusion():
             )
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _register_quantization_weight_pack_pass():
     # Step 1: Dequant promotion for int8-mixed-fp32/bf16
     _register_dequant_promotion()

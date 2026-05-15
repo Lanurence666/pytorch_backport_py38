@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import json
 import logging
 import math
 from collections import defaultdict
-from collections.abc import Callable
+
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
 from torch._inductor.analysis.device_info import DeviceInfo, lookup_device_info
@@ -31,12 +33,12 @@ class ProfileEvent:
 
 
 # adapters convert the json trace into a format that works with flops_counter
-ArgsType = tuple[tuple[Any, ...], dict[Any, Any]]
-AdapterType = Callable[[tuple[Any, ...], tuple[Any, ...]], ArgsType]
-adapters_map: dict[str, AdapterType] = {}
+ArgsType = Tuple[Tuple[Any, ...], Dict[Any, Any]]
+AdapterType = Callable[[Tuple[Any, ...], Tuple[Any, ...]], ArgsType]
+adapters_map: Dict[str, AdapterType] = {}
 
 
-def parse_list(lst: str) -> list[int]:
+def parse_list(lst: str) -> List[int]:
     lst = lst.replace("[", "").replace("]", "")
     substrings = lst.split(",")
 
@@ -44,7 +46,7 @@ def parse_list(lst: str) -> list[int]:
 
 
 def register_adapter(
-    aten: str | list[str],
+    aten: Union[str, List[str],]
 ) -> Callable[
     [AdapterType],
     AdapterType,
@@ -65,8 +67,8 @@ def register_adapter(
 
 @register_adapter(["_slow_conv2d_forward"])
 def _slow_conv2d_adapter(
-    shapes: tuple[Any, ...], concrete: tuple[Any, ...]
-) -> tuple[tuple[Any], dict[Any, Any]]:
+    shapes: Tuple[Any, ...], concrete: Tuple[Any, ...]
+) -> Tuple[Tuple[Any], Dict[Any, Any]]:
     tmp = list(shapes)
     tmp.append(False)
     tmp2 = list(concrete)
@@ -80,8 +82,8 @@ def _slow_conv2d_adapter(
     ["convolution", "_convolution", "cudnn_convolution", "convolution_overrideable"]
 )
 def conv_adapter(
-    shapes: tuple[Any, ...], concrete: tuple[Any, ...]
-) -> tuple[tuple[Any], dict[Any, Any]]:
+    shapes: Tuple[Any, ...], concrete: Tuple[Any, ...]
+) -> Tuple[Tuple[Any], Dict[Any, Any]]:
     tmp = list(shapes)
     if len(tmp) == 4:
         transposed = False
@@ -91,7 +93,7 @@ def conv_adapter(
     else:
         raise ParseException(f"Convolution has the wrong number of inputs: {len(tmp)}")
 
-    kwargs: dict[Any, Any] = {}
+    kwargs: Dict[Any, Any] = {}
     if not transposed:
         # calculate output shape if not transposed.
         def conv_out_dims(x: int, kernel: int, stride: int) -> int:
@@ -108,43 +110,43 @@ def conv_adapter(
 
 
 def default_adapter(
-    shapes: tuple[Any], concrete: tuple[Any]
-) -> tuple[tuple[Any], dict[Any, Any]]:
+    shapes: Tuple[Any], concrete: Tuple[Any]
+) -> Tuple[Tuple[Any], Dict[Any, Any]]:
     return shapes, {}
 
 
 @register_adapter("addmm")
 def addmm_adapter(
-    shapes: tuple[Any], concrete: tuple[Any]
-) -> tuple[tuple[Any], dict[Any, Any]]:
+    shapes: Tuple[Any], concrete: Tuple[Any]
+) -> Tuple[Tuple[Any], Dict[Any, Any]]:
     tmp = list(shapes)[:3]
     return tuple(tmp), {}
 
 
 @register_adapter("bmm")
 def bmm_adapter(
-    shapes: tuple[Any], concrete: tuple[Any]
-) -> tuple[tuple[Any], dict[Any, Any]]:
+    shapes: Tuple[Any], concrete: Tuple[Any]
+) -> Tuple[Tuple[Any], Dict[Any, Any]]:
     tmp = list(shapes)
     return tuple(tmp[:2]), {}
 
 
 @register_adapter("baddbmm")
 def baddbmm_adapter(
-    shapes: tuple[Any], concrete: tuple[Any]
-) -> tuple[tuple[Any], dict[Any, Any]]:
+    shapes: Tuple[Any], concrete: Tuple[Any]
+) -> Tuple[Tuple[Any], Dict[Any, Any]]:
     tmp = list(shapes)[:3]
     return tuple(tmp), {}
 
 
 @register_adapter("mm")
 def mm_adapter(
-    shapes: tuple[Any], concrete: tuple[Any]
-) -> tuple[tuple[Any], dict[Any, Any]]:
+    shapes: Tuple[Any], concrete: Tuple[Any]
+) -> Tuple[Tuple[Any], Dict[Any, Any]]:
     return shapes, {}
 
 
-def _parse_kernel_name(name: str) -> str | None:
+def _parse_kernel_name(name: str) -> Optional[str]:
     """
     parse the name of the kernel from the event name.
     """
@@ -164,7 +166,7 @@ def _parse_kernel_name(name: str) -> str | None:
         return None
 
 
-def _calculate_flops(event: dict[str, Any]) -> int:
+def _calculate_flops(event: Dict[str, Any]) -> int:
     """
     This function has to parse the kernel name, which is error prone. There doesn't seem to be another solution that
     will support all the different backends that can generate kernels, so make sure to update this function when new
@@ -211,7 +213,7 @@ def _get_size_from_string(type_string: str) -> int:
         return getattr(torch, type_string).itemsize
 
 
-def _default_estimate_gb(event: dict[str, Any]) -> float:
+def _default_estimate_gb(event: Dict[str, Any]) -> float:
     sizes_and_types = zip(event["args"]["Input Dims"], event["args"]["Input type"])
     bw = 0
     for size, typ in sizes_and_types:
@@ -220,7 +222,7 @@ def _default_estimate_gb(event: dict[str, Any]) -> float:
     return bw / 1e9
 
 
-def _estimate_gb(event: dict[str, Any]) -> float:
+def _estimate_gb(event: Dict[str, Any]) -> float:
     """
     Our best effort to estimate the gb, should be refactored soon with MemoryCounter.
     """
@@ -311,12 +313,12 @@ def _estimate_gb(event: dict[str, Any]) -> float:
 
 
 def _create_extern_mapping(
-    data: dict[str, Any],
-) -> defaultdict[int, list[dict[str, Any]]]:
+    data: Dict[str, Any],
+) -> defaultdict[int, List[Dict[str, Any]]]:
     """
     compute a mapping from external ids to non kernels, which contain the information we need to estimate flops etc
     """
-    extern_mapping: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
+    extern_mapping: defaultdict[int, List[Dict[str, Any]]] = defaultdict(list)
     for event in data["traceEvents"]:
         if (
             "args" not in event
@@ -330,7 +332,7 @@ def _create_extern_mapping(
     return extern_mapping
 
 
-def _augment_trace_helper(data: dict[str, Any]) -> dict[str, Any]:
+def _augment_trace_helper(data: Dict[str, Any]) -> Dict[str, Any]:
     extern_mapping = _create_extern_mapping(data)
 
     for event in data["traceEvents"]:
@@ -354,7 +356,7 @@ def _augment_trace_helper(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-_dtype_map: dict[str, torch.dtype] = {
+_dtype_map: Dict[str, torch.dtype] = {
     "float": torch.float,
     "float32": torch.float,
     "double": torch.double,
@@ -393,15 +395,15 @@ KernelNameMap = defaultdict[str, OrderedSet[KernelStats]]
 class Device:
     name: str
     index: int
-    info: DeviceInfo | None
+    info: Optional[DeviceInfo]
     stats: KernelNameMap
 
     def __repr__(self) -> str:
         return f"Device({self.name}, {self.index}): {self.info}"
 
 
-DeviceMap = dict[int, Device]
-Table = tuple[list[str], dict[str, list[str]]]
+DeviceMap = Dict[int, Device]
+Table = Tuple[List[str], Dict[str, List[str]]]
 
 
 class JsonProfile:
@@ -410,8 +412,8 @@ class JsonProfile:
     def __init__(
         self,
         path: str,
-        benchmark_name: str | None = None,
-        dtype: torch.dtype | str | None = None,
+        benchmark_name: Optional[str]= None,
+        dtype: Optional[Union[torch.dtype, str]]= None,
     ):
         """
         Convenience class for running common operations on chrome/perfetto json traces.
@@ -431,7 +433,7 @@ class JsonProfile:
             self.dtype = _dtype_map.get(dtype)
         self._create_devices()
 
-    def convert_dtype(self, event: dict[str, Any]) -> torch.dtype | None:
+    def convert_dtype(self, event: Dict[str, Any]) -> Optional[torch.dtype]:
         """
         Each op has a list of dtypes for each input arg. We need to convert these into a single dtype for flop estimation.
         Issues:
@@ -491,10 +493,10 @@ class JsonProfile:
                 name, dev["id"], device_info, defaultdict(OrderedSet)
             )
 
-    def calculate_flops(self, event: dict[str, Any]) -> int:
+    def calculate_flops(self, event: Dict[str, Any]) -> int:
         return _calculate_flops(event)
 
-    def estimate_gb(self, event: dict[str, Any]) -> float:
+    def estimate_gb(self, event: Dict[str, Any]) -> float:
         return _estimate_gb(event)
 
     def augment_trace(self) -> None:
@@ -562,7 +564,7 @@ class JsonProfile:
             "Achieved FLOPS %",
             "Achieved Bandwidth %",
         ]
-        rows: dict[str, list[str]] = {}
+        rows: Dict[str, List[str]] = {}
 
         def safe_div_format(x: float, y: float) -> str:
             if y == 0:
@@ -601,7 +603,7 @@ class JsonProfile:
 
         return headers, rows
 
-    def _create_tables(self, devs: DeviceMap) -> dict[int, Table]:
+    def _create_tables(self, devs: DeviceMap) -> Dict[int, Table]:
         return {idx: self._create_single_table(dev) for idx, dev in devs.items()}
 
     def _combine_tables(
@@ -631,7 +633,7 @@ class JsonProfile:
         self, other: Optional["JsonProfile"] = None, name_limit: int = 40
     ) -> str:
         def create_ret(
-            table_headers: list[str], table_rows: dict[str, list[str]]
+            table_headers: List[str], table_rows: Dict[str, List[str]]
         ) -> str:
             table_flattened = [
                 [kernel_name[:name_limit], *kernel_vals]

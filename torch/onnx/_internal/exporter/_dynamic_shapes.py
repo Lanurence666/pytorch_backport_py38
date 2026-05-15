@@ -1,11 +1,11 @@
+from __future__ import annotations
 """Compatibility functions for the torch.onnx.export API."""
 
 # mypy: allow-untyped-defs
-from __future__ import annotations
 
 import inspect
 import warnings
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Union
 
 import torch
 from torch.export.dynamic_shapes import _DimHint, Dim
@@ -19,13 +19,13 @@ if TYPE_CHECKING:
 
 def from_dynamic_axes_to_dynamic_shapes(
     model,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any] | None,
+    args: Tuple[Any, ...],
+    kwargs: Optional[Dict[str, Any]],
     *,
     dynamic_axes=None,
-    output_names: set[str],
-    input_names: Sequence[str] | None = None,
-) -> tuple[dict[str, Any | None] | None, tuple[Any, ...], dict[str, Any] | None]:
+    output_names: Set[str],
+    input_names: Optional[Sequence[str]] = None
+) -> Union[Tuple[Dict[str, Any, None], None], Tuple[Any, ...], Optional[Dict[str, Any]]]:
     """
     Converts dynamic_axes into dynamic_shapes by wrapping the axis names with ``torch.export.Dim.DYNAMIC``.
 
@@ -59,7 +59,7 @@ def from_dynamic_axes_to_dynamic_shapes(
     if kwargs is None:
         kwargs = {}
 
-    dynamic_shapes: dict[str, Any | None] = {}
+    dynamic_shapes: Dict[str, Optional[Any]] = {}
     for input_name, axes in dynamic_axes.items():
         # NOTE: torch.export.Dim.DYNAMIC does its best to infer the min and max values
         # from the model, but it's not guaranteed to be dynamic.
@@ -69,14 +69,14 @@ def from_dynamic_axes_to_dynamic_shapes(
         if isinstance(axes, dict):
             if any(not isinstance(k, int) for k in axes):
                 raise ValueError(
-                    "The axis in dynamic_axes must be in the form of: dict[int, str] or list[int]."
+                    "The axis in dynamic_axes must be in the form of: Dict[int, str] or List[int]."
                 )
             # str will be converted to Dim.DYNAMIC in convert_str_to_export_dim
             dynamic_shapes[input_name] = axes
         elif isinstance(axes, list):
             if any(not isinstance(k, int) for k in axes):
                 raise ValueError(
-                    "The axis in dynamic_axes must be in the form of: dict[int, str] or list[int]."
+                    "The axis in dynamic_axes must be in the form of: Dict[int, str] or List[int]."
                 )
             dynamic_shapes[input_name] = dict.fromkeys(axes, torch.export.Dim.DYNAMIC)
         elif axes is None:
@@ -108,10 +108,10 @@ def from_dynamic_axes_to_dynamic_shapes(
 
 
 def from_dynamic_shapes_to_dynamic_axes(
-    dynamic_shapes: dict[str, Any] | tuple[Any, ...] | list[Any],
+    dynamic_shapes: Union[Dict[str, Any], Tuple[Any, ...]] | List[Any],
     input_names: Sequence[str],
     exception: Exception,
-) -> dict[str, Any] | None:
+) -> Optional[Dict[str, Any]]:
     """
     Converts dynamic_shapes into dynamic_axes by removing torch.export.Dim wrapping
     and converting to list or dict form based on whether dimension names are present.
@@ -140,13 +140,13 @@ def from_dynamic_shapes_to_dynamic_axes(
             f"the number of graph inputs(flat) ({len(flat_dynamic_shapes)})"
         ) from exception
 
-    dynamic_axes: dict[str, list[int]] = {}
+    dynamic_axes: Dict[str, List[int]] = {}
     # input names are assigned in order
     for input_name, axes in zip(input_names, flat_dynamic_shapes):
         if axes is None:
             continue
 
-        converted_axes: list[int] = []
+        converted_axes: List[int] = []
         if isinstance(axes, dict):
             for axis, dim in axes.items():
                 if dim is None:
@@ -163,7 +163,7 @@ def from_dynamic_shapes_to_dynamic_axes(
 
 
 def _any_str_or_dim_in_dynamic_shapes(
-    dynamic_shapes: dict[str, Any] | tuple[Any, ...] | list[Any],
+    dynamic_shapes: Union[Dict[str, Any], Tuple[Any, ...]] | List[Any],
 ) -> bool:
     """Check if there is any string or Dim in the dynamic_shapes."""
     flat_dynamic_shapes, _ = _flatten_dynamic_shapes_to_axes(dynamic_shapes)
@@ -188,8 +188,8 @@ def _any_str_or_dim_in_dynamic_shapes(
 
 
 def convert_str_to_export_dim(
-    dynamic_shapes: dict[str, Any] | tuple[Any, ...] | list[Any] | None,
-) -> tuple[dict[str, Any] | tuple[Any, ...] | list[Any] | None, bool]:
+    dynamic_shapes: Union[Dict[str, Any], Tuple[Any, ...]] | Optional[List[Any]],
+) -> Union[Tuple[Dict[str, Any], Tuple[Any, ...]] | Optional[List[Any]], bool]:
     # 1. If there is no string in dynamic_shapes, we do not touch dynamic_shapes
     if dynamic_shapes is None or not _any_str_or_dim_in_dynamic_shapes(dynamic_shapes):
         return dynamic_shapes, False
@@ -197,8 +197,8 @@ def convert_str_to_export_dim(
     #    to be replaced with Dim.DYNAMIC, and then unflatten it back to the original structure.
     #    for example: {"y": {0: "dim_0"}, "x": {1: "dim_1"}}
     #    to {"y": {0: Dim.DYNAMIC}, "x": {1: Dim.DYNAMIC}}
-    dynamic_shapes_with_export_dim: list[
-        list[Dim | _DimHint | None] | dict[int, Dim | _DimHint | None] | None
+    dynamic_shapes_with_export_dim: List[
+        Union[List[Dim, _DimHint, None], Union[Dict[int, Dim, _DimHint, None]], None]
     ] = []
     flat_dynamic_shapes, tree_structure = _flatten_dynamic_shapes_to_axes(
         dynamic_shapes
@@ -207,7 +207,7 @@ def convert_str_to_export_dim(
         if axes is None:
             dynamic_shapes_with_export_dim.append(None)
         elif isinstance(axes, dict):
-            converted_axes_dict: dict[int, Dim | _DimHint | None] = {}
+            converted_axes_dict: Optional[Dict[int, Union[Dim, _DimHint]]] = {}
             for axis, dim in axes.items():
                 if isinstance(dim, str):
                     converted_axes_dict[axis] = torch.export.Dim.DYNAMIC
@@ -215,7 +215,7 @@ def convert_str_to_export_dim(
                     converted_axes_dict[axis] = dim
             dynamic_shapes_with_export_dim.append(converted_axes_dict)
         elif isinstance(axes, (list, tuple)):
-            converted_axes_list: list[Dim | _DimHint | None] = []
+            converted_axes_list: Optional[List[Union[Dim, _DimHint]]] = []
             for dim in axes:
                 if isinstance(dim, str):
                     converted_axes_list.append(torch.export.Dim.DYNAMIC)
@@ -233,8 +233,8 @@ def convert_str_to_export_dim(
 
 
 def create_rename_mapping(
-    inputs, dynamic_shapes: dict[str, Any] | tuple[Any, ...] | list[Any]
-) -> dict[str, str]:
+    inputs, dynamic_shapes: Union[Dict[str, Any], Tuple[Any, ...]] | List[Any]
+) -> Dict[str, str]:
     """Create a mapping from old names to new names for dynamic axes."""
 
     # NOTE: There's no need to handle cases where kwargs are out of order with the model signature,
@@ -250,7 +250,7 @@ def create_rename_mapping(
             stacklevel=3,
         )
         return {}
-    rename_mapping: dict[str, str] = {}
+    rename_mapping: Dict[str, str] = {}
     # NOTE: We assume that the flat_dynamic_shapes is in the same order as the inputs
     # When the axis is static, or it connects to _DimHint in dynamic shapes, we skip renaming
     for idx, axes in enumerate(flat_dynamic_shapes):
@@ -301,7 +301,7 @@ def create_rename_mapping(
     return rename_mapping
 
 
-def _get_custom_axis_name(axis: Dim | str) -> str:
+def _get_custom_axis_name(axis: Union[Dim, str]) -> str:
     """Get the custom axis name from a torch.export.Dim."""
     if isinstance(axis, Dim):
         return axis.__name__
@@ -309,16 +309,16 @@ def _get_custom_axis_name(axis: Dim | str) -> str:
 
 
 def _unflatten_dynamic_shapes_with_inputs_tree(
-    inputs: list[Any],
-    dynamic_shapes: dict[str, Any],
-) -> dict[str, Any | None]:
+    inputs: List[Any],
+    dynamic_shapes: Dict[str, Any],
+) -> Dict[str, Optional[Any]]:
     _, tree_structure = _pytree.tree_flatten(inputs)
     return _pytree.tree_unflatten(dynamic_shapes.values(), tree_structure)
 
 
 def _flatten_dynamic_shapes_to_axes(
-    dynamic_shapes: dict[str, Any | None] | tuple[Any, ...] | list[Any],
-) -> tuple[list[Any], _pytree.TreeSpec]:
+    dynamic_shapes: Union[Dict[str, Any, None], Tuple[Any, ...]] | List[Any],
+) -> Tuple[List[Any], _pytree.TreeSpec]:
     # If it's a dict/list/tuple with torch.export.Dim, we consider it's an axis to dim mapping
     def is_axes(x) -> bool:
         return (

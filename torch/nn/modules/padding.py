@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from collections.abc import Sequence
 
 import torch.nn.functional as F
@@ -7,6 +9,7 @@ from torch.nn.common_types import _size_2_t, _size_4_t, _size_6_t
 
 from .module import Module
 from .utils import _ntuple, _pair, _quadruple
+from typing import Sequence, Tuple
 
 
 # TODO: grad_output size asserts in THNN
@@ -85,7 +88,7 @@ class CircularPad1d(_CircularPadNd):
     """
 
     # pyrefly: ignore [bad-override]
-    padding: tuple[int, int]
+    padding: Tuple[int, int]
 
     def __init__(self, padding: _size_2_t) -> None:
         super().__init__()
@@ -146,7 +149,7 @@ class CircularPad2d(_CircularPadNd):
     """
 
     # pyrefly: ignore [bad-override]
-    padding: tuple[int, int, int, int]
+    padding: Tuple[int, int, int, int]
 
     def __init__(self, padding: _size_4_t) -> None:
         super().__init__()
@@ -197,7 +200,7 @@ class CircularPad3d(_CircularPadNd):
     """
 
     # pyrefly: ignore [bad-override]
-    padding: tuple[int, int, int, int, int, int]
+    padding: Tuple[int, int, int, int, int, int]
 
     def __init__(self, padding: _size_6_t) -> None:
         super().__init__()
@@ -269,7 +272,7 @@ class ConstantPad1d(_ConstantPadNd):
     """
 
     # pyrefly: ignore [bad-override]
-    padding: tuple[int, int]
+    padding: Tuple[int, int]
 
     def __init__(self, padding: _size_2_t, value: float) -> None:
         super().__init__(value)
@@ -321,7 +324,7 @@ class ConstantPad2d(_ConstantPadNd):
 
     __constants__ = ["padding", "value"]
     # pyrefly: ignore [bad-override]
-    padding: tuple[int, int, int, int]
+    padding: Tuple[int, int, int, int]
 
     def __init__(self, padding: _size_4_t, value: float) -> None:
         super().__init__(value)
@@ -362,7 +365,7 @@ class ConstantPad3d(_ConstantPadNd):
     """
 
     # pyrefly: ignore [bad-override]
-    padding: tuple[int, int, int, int, int, int]
+    padding: Tuple[int, int, int, int, int, int]
 
     def __init__(self, padding: _size_6_t, value: float) -> None:
         super().__init__(value)
@@ -416,7 +419,7 @@ class ReflectionPad1d(_ReflectionPadNd):
     """
 
     # pyrefly: ignore [bad-override]
-    padding: tuple[int, int]
+    padding: Tuple[int, int]
 
     def __init__(self, padding: _size_2_t) -> None:
         super().__init__()
@@ -470,7 +473,7 @@ class ReflectionPad2d(_ReflectionPadNd):
     """
 
     # pyrefly: ignore [bad-override]
-    padding: tuple[int, int, int, int]
+    padding: Tuple[int, int, int, int]
 
     def __init__(self, padding: _size_4_t) -> None:
         super().__init__()
@@ -526,7 +529,7 @@ class ReflectionPad3d(_ReflectionPadNd):
     """
 
     # pyrefly: ignore [bad-override]
-    padding: tuple[int, int, int, int, int, int]
+    padding: Tuple[int, int, int, int, int, int]
 
     def __init__(self, padding: _size_6_t) -> None:
         super().__init__()
@@ -580,7 +583,7 @@ class ReplicationPad1d(_ReplicationPadNd):
     """
 
     # pyrefly: ignore [bad-override]
-    padding: tuple[int, int]
+    padding: Tuple[int, int]
 
     def __init__(self, padding: _size_2_t) -> None:
         super().__init__()
@@ -634,7 +637,7 @@ class ReplicationPad2d(_ReplicationPadNd):
     """
 
     # pyrefly: ignore [bad-override]
-    padding: tuple[int, int, int, int]
+    padding: Tuple[int, int, int, int]
 
     def __init__(self, padding: _size_4_t) -> None:
         super().__init__()
@@ -677,7 +680,7 @@ class ReplicationPad3d(_ReplicationPadNd):
     """
 
     # pyrefly: ignore [bad-override]
-    padding: tuple[int, int, int, int, int, int]
+    padding: Tuple[int, int, int, int, int, int]
 
     def __init__(self, padding: _size_6_t) -> None:
         super().__init__()
@@ -728,7 +731,7 @@ class ZeroPad1d(ConstantPad1d):
                  [ 0.0000,  0.0000,  0.0000, -3.6372,  0.1182, -1.8652,  0.0000]]])
     """
 
-    padding: tuple[int, int]
+    padding: Tuple[int, int]
 
     def __init__(self, padding: _size_2_t) -> None:
         super().__init__(padding, 0.0)
@@ -785,7 +788,7 @@ class ZeroPad2d(ConstantPad2d):
                   [ 0.0000, -0.9162, -0.5436, -0.6446,  0.0000]]]])
     """
 
-    padding: tuple[int, int, int, int]
+    padding: Tuple[int, int, int, int]
 
     def __init__(self, padding: _size_4_t) -> None:
         super().__init__(padding, 0.0)
@@ -830,7 +833,7 @@ class ZeroPad3d(ConstantPad3d):
         >>> output = m(input)
     """
 
-    padding: tuple[int, int, int, int, int, int]
+    padding: Tuple[int, int, int, int, int, int]
 
     def __init__(self, padding: _size_6_t) -> None:
         super().__init__(padding, 0.0)

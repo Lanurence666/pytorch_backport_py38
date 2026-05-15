@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from itertools import chain
-from typing import Any
+from typing import Any, Dict, Optional, Type
 
 from torch import nn
 from torch.nn.utils.parametrize import is_parametrized, type_before_parametrizations
@@ -16,18 +18,18 @@ __all__ = [
 ]
 
 
-def module_contains_param(module: nn.Module, parametrization: type[nn.Module]) -> bool:
+def module_contains_param(module: nn.Module, parametrization: Type[nn.Module]) -> bool:
     if is_parametrized(module):
         # see if any of the module tensors have a parametriztion attached that matches the one passed in
         return any(
             any(isinstance(param, parametrization) for param in param_list)
-            for param_list in module.parametrizations.values()  # type: ignore[union-attr,operator]
+            for key, param_list in module.parametrizations.items()  # type: ignore[union-attr,operator]
         )
     return False
 
 
 def swap_module(
-    mod: nn.Module, mapping: dict[type[nn.Module], type[nn.Module]]
+    mod: nn.Module, mapping: Dict[Type[nn.Module], Type[nn.Module]]
 ) -> nn.Module:
     r"""Swaps the module using from_dense according to the mapping passed in.
     Args:
@@ -67,7 +69,7 @@ def swap_module(
         return mod
 
 
-def module_to_fqn(model: nn.Module, module: nn.Module, prefix: str = "") -> str | None:
+def module_to_fqn(model: nn.Module, module: nn.Module, prefix: str = "") -> Optional[str]:
     """
     Returns the fqn for a module or None if module not a descendant of model.
     """
@@ -80,7 +82,7 @@ def module_to_fqn(model: nn.Module, module: nn.Module, prefix: str = "") -> str 
     return None
 
 
-def fqn_to_module(model: nn.Module | None, path: str) -> nn.Module | None:
+def fqn_to_module(model: Optional[nn.Module], path: str) -> Optional[nn.Module]:
     """
     Given an fqn, returns the corresponding module or tensor or None if the fqn given by `path`
     doesn't correspond to anything. Similar to model.get_submodule(path) but works for tensors.
@@ -91,7 +93,7 @@ def fqn_to_module(model: nn.Module | None, path: str) -> nn.Module | None:
     return model
 
 
-def get_arg_info_from_tensor_fqn(model: nn.Module, tensor_fqn: str) -> dict[str, Any]:
+def get_arg_info_from_tensor_fqn(model: nn.Module, tensor_fqn: str) -> Dict[str, Any]:
     """
     Uses tensor_fqn to obtain a dict containing module_fqn, module and tensor_name
     """

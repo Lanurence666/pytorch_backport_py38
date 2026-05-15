@@ -3,7 +3,7 @@ from __future__ import annotations
 import atexit
 import functools
 import os
-from typing import TYPE_CHECKING
+from typing import Mapping, TYPE_CHECKING, Union
 from typing_extensions import final, override
 
 import torch._inductor.async_compile
@@ -24,7 +24,7 @@ from .output_code import complex_memory_overlap  # noqa: F401
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    
     from concurrent.futures import Future
 
 
@@ -48,7 +48,7 @@ class _SubprocessFxCompile(_OutOfProcessFxCompile):
         )
 
     @staticmethod
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def process_pool() -> AnyPool:
         pool = SubprocPool(
             # TODO: Consider raising this limit if we start using async w/
@@ -65,7 +65,7 @@ class _SubprocessFxCompile(_OutOfProcessFxCompile):
     def _run_in_child_subprocess(
         cls,
         pickled_input: _WireProtocolPickledInput,
-        extra_env: Mapping[str, str] | None,
+        extra_env: Union[Mapping[str, str], None,]
     ) -> _WireProtocolPickledOutput:
         # TODO: In subprocess mode we need to clear the inductor caches.
         # The problem:

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar
+from typing import Callable, Dict, Iterable, List, TYPE_CHECKING, Tuple, Type, TypeVar
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    
 
     from .variable import Var
 
@@ -22,7 +22,7 @@ def hashable(x: object) -> bool:
         return False
 
 
-def transitive_get(key: object, d: dict[Var, object]) -> object:
+def transitive_get(key: object, d: Dict[Var, object]) -> object:
     """Transitive dict.get
     >>> d = {1: 2, 2: 3, 3: 4}
     >>> d.get(1)
@@ -36,7 +36,7 @@ def transitive_get(key: object, d: dict[Var, object]) -> object:
 
 
 def raises(
-    err: type[BaseException],
+    err: Type[BaseException],
     lamda: Callable[[], object],  # codespell:ignore lamda
 ) -> bool:
     try:
@@ -48,7 +48,7 @@ def raises(
 
 # Taken from theano/theano/gof/sched.py
 # Avoids licensing issues because this was written by Matthew Rocklin
-def _toposort(edges: dict[_T, Iterable[_T]]) -> list[_T]:
+def _toposort(edges: Dict[_T, Iterable[_T]]) -> List[_T]:
     """Topological sort algorithm by Kahn [1] - O(nodes + vertices)
     inputs:
         edges - a dict of the form {a: {b, c}} where b and c depend on a
@@ -81,7 +81,7 @@ def _toposort(edges: dict[_T, Iterable[_T]]) -> list[_T]:
     return L
 
 
-def reverse_dict(d: dict[_T, Iterable[_T]]) -> dict[_T, tuple[_T, ...]]:
+def reverse_dict(d: Dict[_T, Iterable[_T]]) -> Dict[_T, Tuple[_T, ...]]:
     """Reverses direction of dependence dict.
 
     >>> d = {"a": (1, 2), "b": (2, 3), "c": ()}

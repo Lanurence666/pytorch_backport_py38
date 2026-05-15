@@ -5,6 +5,7 @@
 #include <ATen/cuda/ThrustAllocator.h>
 
 #include <c10/util/Load.h>
+#include <ATen/OpMathType.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -138,12 +139,13 @@ std::tuple<Tensor, Tensor, Tensor> unique_dim_cuda_template(
   if (!consecutive) {
     thrust::sort(policy, indices_data, indices_data + num_inp,
       [=] __device__ (int64_t a, int64_t b) -> bool {
+        using opmath_t = at::opmath_type<scalar_t>;
         for (int64_t i = 0; i < n; ++i) {
           scalar_t lhs = c10::load(&input_flat_ptr[i + a * n]);
           scalar_t rhs = c10::load(&input_flat_ptr[i + b * n]);
-          if (lhs < rhs) {
+          if (static_cast<opmath_t>(lhs) < static_cast<opmath_t>(rhs)) {
             return true;
-          } else if (lhs > rhs) {
+          } else if (static_cast<opmath_t>(lhs) > static_cast<opmath_t>(rhs)) {
             return false;
           }
         }
@@ -156,20 +158,22 @@ std::tuple<Tensor, Tensor, Tensor> unique_dim_cuda_template(
     policy, indices_data, num_inp, indices,
     return_inverse, return_counts, options,
     [=] __device__ (int64_t a, int64_t b) -> bool {
+      using opmath_t = at::opmath_type<scalar_t>;
       for (int64_t i = 0; i < n; ++i) {
         scalar_t lhs = c10::load(&input_flat_ptr[i + a * n]);
         scalar_t rhs = c10::load(&input_flat_ptr[i + b * n]);
-        if (lhs != rhs) {
+        if (static_cast<opmath_t>(lhs) != static_cast<opmath_t>(rhs)) {
           return false;
         }
       }
       return true;
     },
     [=] __device__ (int64_t a, int64_t b) -> int64_t {
+      using opmath_t = at::opmath_type<scalar_t>;
       for (int64_t i = 0; i < n; ++i) {
         scalar_t lhs = c10::load(&input_flat_ptr[i + a * n]);
         scalar_t rhs = c10::load(&input_flat_ptr[i + b * n]);
-        if (lhs != rhs) {
+        if (static_cast<opmath_t>(lhs) != static_cast<opmath_t>(rhs)) {
           return 1;
         }
       }

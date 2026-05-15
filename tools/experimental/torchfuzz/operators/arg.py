@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 """Arg operator implementation."""
 
 from torchfuzz.operators.base import Operator
@@ -11,7 +13,7 @@ class ArgOperator(Operator):
         super().__init__("arg")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Arg is not a torch operation, it represents function arguments."""
         return None
 
@@ -19,12 +21,12 @@ class ArgOperator(Operator):
         """Arg can produce any type of output."""
         return True
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Arg requires no inputs for fuzzing."""
         return []
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for arg operation."""
         # The actual argument name assignment will be handled separately

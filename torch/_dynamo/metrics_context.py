@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Metrics collection and management system for Dynamo.
 
 This module provides context managers for gathering and reporting metrics during
@@ -13,13 +14,16 @@ The metrics system enables comprehensive monitoring and analysis of both compila
 execution performance.
 """
 
-from __future__ import annotations
 
 import heapq
 import logging
 import time
-from collections.abc import Callable
-from typing import Any, TYPE_CHECKING, TypeAlias
+
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, TYPE_CHECKING, Tuple, Type
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 from typing_extensions import Self
 
 
@@ -39,7 +43,7 @@ class TopN:
 
     def __init__(self, at_most: int = 25) -> None:
         self.at_most = at_most
-        self.heap: list[tuple[int, Any]] = []
+        self.heap: List[Tuple[int, Any]] = []
 
     def add(self, key: Any, val: int) -> None:
         # Push if we haven't reached the max size, else push and pop the smallest
@@ -49,12 +53,12 @@ class TopN:
     def __len__(self) -> int:
         return len(self.heap)
 
-    def __iter__(self) -> Iterator[tuple[Any, int]]:
+    def __iter__(self) -> Iterator[Tuple[Any, int]]:
         return ((key, val) for val, key in sorted(self.heap, reverse=True))
 
 
 OnExitType: TypeAlias = Callable[
-    [int, int, dict[str, Any], type[BaseException] | None, BaseException | None],
+    [int, int, Dict[str, Any], Optional[Type[BaseException]], Optional[BaseException]],
     None,
 ]
 
@@ -68,10 +72,10 @@ class MetricsContext:
         all metrics set during the lifetime of the contextmanager.
         """
         self._on_exit = on_exit
-        self._metrics: dict[str, Any] = {}
+        self._metrics: Dict[str, Any] = {}
         self._start_time_ns: int = 0
         self._level: int = 0
-        self._edits: list[tuple[CapturedTraceback, set[str]]] = []
+        self._edits: List[Tuple[CapturedTraceback, Set[str]]] = []
 
     def __enter__(self) -> Self:
         """
@@ -87,16 +91,15 @@ class MetricsContext:
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
+        exc_type: Optional[Type[BaseException]],
+        exc_value: Optional[BaseException],
         _traceback: Any,
     ) -> None:
         """
         At exit, call the provided on_exit function.
         """
         self._level -= 1
-        if self._level < 0:
-            raise AssertionError("MetricsContext level cannot become negative")
+        assert self._level >= 0
         if self._level == 0:
             try:
                 end_time_ns = time.time_ns()
@@ -122,7 +125,7 @@ class MetricsContext:
             self._metrics[metric] = 0
         self._metrics[metric] += value
 
-    def _render_edits(self, pred: set[str]) -> str:
+    def _render_edits(self, pred: Set[str]) -> str:
         return "\n\n" + "\n\n".join(
             "Previous Traceback:\n" + "".join(e.format())
             for e, k in self._edits
@@ -159,7 +162,7 @@ class MetricsContext:
             self._metrics[metric] = {}
         self._metrics[metric][key] = value
 
-    def update(self, values: dict[str, Any], overwrite: bool = False) -> None:
+    def update(self, values: Dict[str, Any], overwrite: bool = False) -> None:
         """
         Set multiple metrics directly. This method does NOT increment. Raises if any
         metric has been assigned previously in the current context and overwrite is
@@ -177,7 +180,7 @@ class MetricsContext:
         self._edits.append((CapturedTraceback.extract(skip=1), set(values.keys())))
         self._metrics.update(values)
 
-    def update_outer(self, values: dict[str, Any]) -> None:
+    def update_outer(self, values: Dict[str, Any]) -> None:
         """
         Update, but only when at the outermost context.
         """
@@ -215,11 +218,11 @@ class RuntimeMetricsContext:
         context manager.
         """
         self._on_exit = on_exit
-        self._metrics: dict[str, Any] = {}
+        self._metrics: Dict[str, Any] = {}
         self._start_time_ns: int = 0
 
     def increment(
-        self, metric: str, value: int, extra: dict[str, Any] | None = None
+        self, metric: str, value: int, extra: Optional[Dict[str, Any]] = None
     ) -> None:
         """
         Increment a metric by a given amount.

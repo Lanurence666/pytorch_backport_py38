@@ -212,7 +212,7 @@ if(USE_FLASH_ATTENTION)
       caffe2_update_option(USE_ROCM_CK_SDPA ON)
     endif()
   endif()
-  if(USE_ROCM AND USE_ROCM_CK_SDPA)
+  if(USE_ROCM_CK_SDPA)
     if(DEFINED ENV{PYTORCH_ROCM_ARCH})
       list(LENGTH PYTORCH_ROCM_ARCH NUM_ARCHS)
       if(NUM_ARCHS GREATER 1)
@@ -235,7 +235,8 @@ if(USE_FLASH_ATTENTION)
         -faddrsig
         -fno-rounding-math
         -mconstructor-aliases
-        -mllvm=-amdgpu-internalize-symbols
+        -mllvm
+        -amdgpu-internalize-symbols
         -fvisibility=hidden
         -Wno-float-equal
         -fgpu-flush-denormals-to-zero
@@ -261,8 +262,8 @@ if(USE_FLASH_ATTENTION)
     #  list(APPEND CK_SDPA_EXTRA_HIPCC_FLAGS -mllvm -amdgpu-coerce-illegal-types=1)
     #endif()
 
-    list(APPEND CK_SDPA_EXTRA_HIPCC_FLAGS -mllvm=-amdgpu-early-inline-all=true)
-    list(APPEND CK_SDPA_EXTRA_HIPCC_FLAGS -mllvm=-amdgpu-function-calls=false)
+    list(APPEND CK_SDPA_EXTRA_HIPCC_FLAGS -mllvm -amdgpu-early-inline-all=true)
+    list(APPEND CK_SDPA_EXTRA_HIPCC_FLAGS -mllvm -amdgpu-function-calls=false)
 
     # Additional CK compiler flags
     set(CK_SDPA_EXTRA_HIPCC_OPTIONS
@@ -293,23 +294,11 @@ if(USE_FLASH_ATTENTION)
          "native/transformers/hip/flash_attn/ck/*.hip"
          "native/transformers/hip/flash_attn/ck/fav_v3/*.hip")
 
-    set_source_files_properties(${ck_sdpa_sources_hip} PROPERTIES LANGUAGE HIP)
-
-    # ck_sdpa is not supported on gfx9 "0x" family parts; filter them out of the
-    # per-target HIP arch list so we don't try to codegen for them.
-    set(CK_SDPA_HIP_EXCLUDE_ARCHS gfx900 gfx906 gfx90c)
-    set(_ck_sdpa_hip_arches "")
-    foreach(ARCH ${PYTORCH_ROCM_ARCH})
-      if(NOT "${ARCH}" IN_LIST CK_SDPA_HIP_EXCLUDE_ARCHS)
-        list(APPEND _ck_sdpa_hip_arches ${ARCH})
-      endif()
-    endforeach()
-
-    add_library(ck_sdpa STATIC ${ck_sdpa_sources_hip})
-    target_compile_options(ck_sdpa PRIVATE $<$<COMPILE_LANGUAGE:HIP>:${CK_SDPA_EXTRA_HIPCC_FLAGS}> ${HIP_CXX_FLAGS})
-    set_target_properties(ck_sdpa PROPERTIES
-      POSITION_INDEPENDENT_CODE ON
-      HIP_ARCHITECTURES "${_ck_sdpa_hip_arches}")
+    set_source_files_properties(${ck_sdpa_sources_hip} PROPERTIES HIP_SOURCE_PROPERTY_FORMAT 1)
+    hip_add_library(ck_sdpa STATIC
+                    ${ck_sdpa_sources_hip}
+                    HIPCC_OPTIONS ${HIP_HCC_FLAGS} ${CK_SDPA_EXTRA_HIPCC_FLAGS})
+    set_target_properties(ck_sdpa PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_compile_definitions(ck_sdpa PUBLIC ${CK_SDPA_EXTRA_HIPCC_OPTIONS})
     target_compile_definitions(ck_sdpa PRIVATE AITER_EMBEDDED_HSA_HEADER="aiter_embedded_hsa.h")
     target_include_directories(ck_sdpa PUBLIC
@@ -434,30 +423,35 @@ IF(USE_MSLK)
     file(GLOB_RECURSE mslk_native_rocm_hip CONFIGURE_DEPENDS
       "${MSLK_SRCS}/ck/fp8_rowwise_grouped/kernels/fp8_rowwise_grouped*.hip"
       "${MSLK_SRCS}/ck/fp8_rowwise_grouped/fp8_rowwise_grouped_gemm.hip")
-    set_source_files_properties(${mslk_native_rocm_hip} PROPERTIES LANGUAGE HIP)
+    set_source_files_properties(${mslk_native_rocm_hip} PROPERTIES HIP_SOURCE_PROPERTY_FORMAT 1)
 
-    # Add additional HIP compiler flags for performance
-    set(MSLK_EXTRA_HIP_FLAGS
-      -mllvm=-enable-post-misched=0
-      -mllvm=-greedy-reverse-local-assignment=1
+    # Add additional HIPCC compiler flags for performance
+    set(MSLK_EXTRA_HIPCC_FLAGS
+      -mllvm
+      -enable-post-misched=0
+      -mllvm
+      -greedy-reverse-local-assignment=1
       -fhip-new-launch-api)
     if(DEFINED ROCM_VERSION_DEV AND ROCM_VERSION_DEV VERSION_LESS "7.2.0")
-        list(PREPEND MSLK_EXTRA_HIP_FLAGS -mllvm=-amdgpu-coerce-illegal-types=1)
+        list(PREPEND MSLK_EXTRA_HIPCC_FLAGS -mllvm -amdgpu-coerce-illegal-types=1)
       endif()
 
     # Only compile for gfx942 and gfx950.
-    set(_mslk_hip_arches "")
+    set(HIP_CLANG_FLAGS_ORIGINAL ${HIP_CLANG_FLAGS})
+    string(REGEX REPLACE "--offload-arch=[^ ]*" "" FILTERED_HIP_CLANG_FLAGS "${HIP_CLANG_FLAGS}")
     foreach(ARCH gfx942 gfx950)
       if(${ARCH} IN_LIST PYTORCH_ROCM_ARCH)
-        list(APPEND _mslk_hip_arches ${ARCH})
+        list(APPEND FILTERED_HIP_CLANG_FLAGS --offload-arch=${ARCH})
       endif()
     endforeach()
+    set(HIP_CLANG_FLAGS ${FILTERED_HIP_CLANG_FLAGS})
 
-    add_library(mslk STATIC ${mslk_native_rocm_hip})
-    set_target_properties(mslk PROPERTIES
-      POSITION_INDEPENDENT_CODE ON
-      HIP_ARCHITECTURES "${_mslk_hip_arches}")
-    target_compile_options(mslk PRIVATE $<$<COMPILE_LANGUAGE:HIP>:${MSLK_EXTRA_HIP_FLAGS}> ${HIP_CXX_FLAGS})
+    hip_add_library(
+      mslk STATIC
+      ${mslk_native_rocm_hip}
+      HIPCC_OPTIONS ${HIP_HCC_FLAGS} ${MSLK_EXTRA_HIPCC_FLAGS})
+    set(HIP_CLANG_FLAGS ${HIP_CLANG_FLAGS_ORIGINAL})
+    set_target_properties(mslk PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_compile_definitions(mslk PRIVATE MSLK_NO_EXTENDED_SHAPES)
 
     target_include_directories(mslk PRIVATE

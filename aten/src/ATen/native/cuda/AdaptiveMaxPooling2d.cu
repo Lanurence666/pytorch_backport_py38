@@ -5,6 +5,7 @@
 #include <ATen/cuda/NumericLimits.cuh>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/OpMathType.h>
 #include <ATen/TensorUtils.h>
 #include <ATen/Utils.h>
 #include <c10/util/Exception.h>
@@ -90,7 +91,8 @@ __global__ void adaptivemaxpool(const T *input, T *output, int64_t *indices,
       for(ih = 0; ih < kH; ih++) {
         for(iw = 0; iw < kW; iw++) {
           T val = ptr_input[iw*istrideW];
-          if ((val > max) || at::_isnan(val)) {
+          using opmath_t = at::opmath_type<T>;
+          if ((static_cast<opmath_t>(val) > static_cast<opmath_t>(max)) || at::_isnan(val)) {
             max = val;
             argmax = (ih+istartH)*isizeW + iw+istartW;
           }

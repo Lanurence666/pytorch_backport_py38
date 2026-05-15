@@ -29,7 +29,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import Dict, List, Set, TYPE_CHECKING, Tuple, Union
 
 from torchgen.api import cpp
 from torchgen.api.autograd import (
@@ -106,7 +106,7 @@ from .gen_trace_type import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Sequence
 
 
 # We don't set or modify grad_fn on these methods. Generally, they return
@@ -864,9 +864,9 @@ def gen_variable_type(
     out: str,
     native_yaml_path: str,
     tags_yaml_path: str,
-    fns_with_diff_infos: list[NativeFunctionWithDifferentiabilityInfo],
+    fns_with_diff_infos: List[NativeFunctionWithDifferentiabilityInfo],
     template_path: str,
-    used_keys: set[str],
+    used_keys: Set[str],
 ) -> None:
     """VariableType.h and VariableType.cpp body
 
@@ -885,8 +885,8 @@ def gen_variable_type(
 
     # helper that generates a TORCH_LIBRARY_IMPL macro for each
     # dispatch key that appears in derivatives.yaml
-    def wrapper_registrations(used_keys: set[str]) -> str:
-        library_impl_macro_list: list[str] = []
+    def wrapper_registrations(used_keys: Set[str]) -> str:
+        library_impl_macro_list: List[str] = []
         for key in sorted(used_keys):
             dispatch_key = key
             if key == "Default":
@@ -937,7 +937,7 @@ def gen_variable_type(
             + f"generated from {fm.template_dir_for_comments()}/VariableType.cpp",
         },
         env_callable=gen_variable_type_func,
-        num_shards=10,
+        num_shards=5,
         sharded_keys=sharded_keys,
     )
 
@@ -953,7 +953,7 @@ def gen_wrapper_registration(f: NativeFunction, key: str = "Default") -> str:
 
 def gen_variable_type_func(
     fn: NativeFunctionWithDifferentiabilityInfo,
-) -> dict[str, list[str]]:
+) -> Dict[str, List[str]]:
     f = fn.func
     result = {}
     with native_function_manager(f):
@@ -1064,7 +1064,7 @@ _foreach_ops_with_different_arity = {
 @with_native_function_with_differentiability_info_and_key
 def emit_body(
     fn: NativeFunctionWithDifferentiabilityInfo, key: str = "Default"
-) -> list[str]:
+) -> List[str]:
     if dispatch_strategy(fn) != "use_derived":
         raise AssertionError(
             f"dispatch_strategy(fn) is {dispatch_strategy(fn)}, expected 'use_derived'"
@@ -1083,8 +1083,8 @@ def emit_body(
     is_foreach = name.startswith("_foreach")
     is_inplace_foreach = is_foreach and inplace
     if is_inplace_foreach:
-        inplace_foreacharg2refarg: dict[Argument, Argument] = {}
-        refargname2inplace_foreacharg: dict[str, Argument] = {}
+        inplace_foreacharg2refarg: Dict[Argument, Argument] = {}
+        refargname2inplace_foreacharg: Dict[str, Argument] = {}
         base_name_and_overload_name = (f.func.name.name.base, f.func.name.overload_name)
         if info is None:
             if (
@@ -1119,8 +1119,8 @@ def emit_body(
                 refargname2inplace_foreacharg[ref_arg.name] = foreach_arg
 
     def gen_differentiable_input(
-        arg: Argument | SelfArgument | TensorOptionsArguments,
-    ) -> DifferentiableInput | None:
+        arg: Union[Argument, SelfArgument, TensorOptionsArguments],
+    ) -> Union[DifferentiableInput, None]:
         if isinstance(arg, TensorOptionsArguments):
             return None
         a: Argument = arg.argument if isinstance(arg, SelfArgument) else arg
@@ -1139,7 +1139,7 @@ def emit_body(
         )
 
     @with_native_function
-    def gen_differentiable_inputs(f: NativeFunction) -> list[DifferentiableInput]:
+    def gen_differentiable_inputs(f: NativeFunction) -> List[DifferentiableInput]:
         arguments = list(f.func.arguments.non_out)
         if is_inplace_foreach and info is not None:
             for i, arg in enumerate(f.func.arguments.flat_non_out):
@@ -1157,8 +1157,8 @@ def emit_body(
         return list(mapMaybe(gen_differentiable_input, arguments))
 
     def find_args_with_derivatives(
-        differentiable_inputs: list[DifferentiableInput],
-    ) -> list[DifferentiableInput]:
+        differentiable_inputs: List[DifferentiableInput],
+    ) -> List[DifferentiableInput]:
         """Find arguments that have derivative definitions"""
         if info is None or not info.has_derivatives:
             return differentiable_inputs
@@ -1222,8 +1222,8 @@ def emit_body(
         and (not returns_void)
     )
 
-    def emit_save_inputs() -> list[str]:
-        setup: list[str] = []
+    def emit_save_inputs() -> List[str]:
+        setup: List[str] = []
         if info is None or not info.has_derivatives:
             return setup
 
@@ -1233,7 +1233,7 @@ def emit_body(
 
         # We don't want to save tensors if we know that they will never be used
         # when computing the derivative, so we add guards to those statements
-        def guard_for(arg: SavedAttribute) -> str | None:
+        def guard_for(arg: SavedAttribute) -> Union[str, None]:
             if info is None:
                 raise AssertionError("info is None in guard_for")
 
@@ -1325,8 +1325,8 @@ def emit_body(
                     setup.append(f"grad_fn->{arg.name}_size_ = {arg.name}.size();")
         return setup
 
-    def setup_derivative(differentiable_inputs: list[DifferentiableInput]) -> list[str]:
-        body: list[str] = []
+    def setup_derivative(differentiable_inputs: List[DifferentiableInput]) -> List[str]:
+        body: List[str] = []
         if is_out_fn:
             # For out functions, ensure that no input or output requires grad
             body.append(DECLARE_GRAD_FN.substitute(op="Node"))
@@ -1392,8 +1392,8 @@ def emit_body(
         body.append(SETUP_DERIVATIVE.substitute(setup=setup))
         return body
 
-    def emit_check_if_in_complex_autograd_allowlist() -> list[str]:
-        body: list[str] = []
+    def emit_check_if_in_complex_autograd_allowlist() -> List[str]:
+        body: List[str] = []
         if base_name in GRADIENT_IMPLEMENTED_FOR_COMPLEX:
             return body
         for arg in differentiable_outputs:
@@ -1404,11 +1404,11 @@ def emit_body(
         return body
 
     def emit_check_no_requires_grad(
-        tensor_args: list[DifferentiableInput],
-        args_with_derivatives: list[DifferentiableInput],
-    ) -> list[str]:
+        tensor_args: List[DifferentiableInput],
+        args_with_derivatives: List[DifferentiableInput],
+    ) -> List[str]:
         """Checks that arguments without derivatives don't require grad"""
-        body: list[str] = []
+        body: List[str] = []
         for arg in tensor_args:
             if arg in args_with_derivatives:
                 continue
@@ -1422,8 +1422,8 @@ def emit_body(
             body.append(f'check_no_requires_grad({arg_name}, "{arg_name}", "{name}");')
         return body
 
-    def emit_original_self_definition() -> list[str]:
-        body: list[str] = []
+    def emit_original_self_definition() -> List[str]:
+        body: List[str] = []
         if inplace:
             if is_inplace_foreach:
                 body.append(
@@ -1461,17 +1461,17 @@ def emit_body(
     def save_variables(
         saved_variables: Sequence[SavedAttribute],
         is_output: bool,
-        guard_for: Callable[[SavedAttribute], str | None] = lambda name: None,
+        guard_for: Callable[[SavedAttribute], Union[str, None]] = lambda name: None,
     ) -> Sequence[str]:
         # assign the saved variables to the generated grad_fn
-        stmts: list[str] = []
+        stmts: List[str] = []
         for arg in sorted(saved_variables, key=lambda sa: str(sa.nctype.name)):
             name = (
                 arg.nctype.name.name
                 if isinstance(arg.nctype.name, SpecialArgName)
                 else arg.nctype.name
             )
-            foreacharg: Argument | None = None
+            foreacharg: Union[Argument, None] = None
             is_foreacharg_list_type: bool = False
             type = arg.nctype.type
             expr = arg.expr
@@ -1599,10 +1599,10 @@ def emit_body(
         return call
 
     def wrap_output(
-        f: NativeFunction, unpacked_bindings: list[Binding], var: str
+        f: NativeFunction, unpacked_bindings: List[Binding], var: str
     ) -> str:
         call = ""
-        rhs_value: str | None = None
+        rhs_value: Union[str, None] = None
         if not any(r.type.is_tensor_like() for r in f.func.returns):
             rhs_value = var
         else:
@@ -1615,11 +1615,11 @@ def emit_body(
         return call
 
     def check_tensorimpl_and_storage(
-        call: str, unpacked_bindings: list[Binding]
+        call: str, unpacked_bindings: List[Binding]
     ) -> str:
         # See NOTE [ TensorImpl and Storage Pointer Sanity Checks ]
-        stmts_before_call: list[str] = []
-        stmts_after_call: list[str] = []
+        stmts_before_call: List[str] = []
+        stmts_after_call: List[str] = []
 
         if cpp.name(f.func) in DONT_ENFORCE_SAME_TENSOR_IMPL_OR_STORAGE:
             return call
@@ -1732,7 +1732,7 @@ def emit_body(
         return call
 
     def emit_call(
-        f: NativeFunction, unpacked_bindings: list[Binding], try_jit_decomposition: bool
+        f: NativeFunction, unpacked_bindings: List[Binding], try_jit_decomposition: bool
     ) -> str:
         # We only care about adding `at::AutoDispatchBelowAutograd` guard for non-variable dispatch
         # (which corresponds to 'use_derived' strategy). The purpose of this guard is to make sure
@@ -1834,7 +1834,7 @@ def emit_body(
                 )
         return ""
 
-    def emit_any_requires_grad() -> list[str]:
+    def emit_any_requires_grad() -> List[str]:
         extra_condition = ""
         if info and info.output_differentiability_conditions:
             if len(info.output_differentiability_conditions) != 1:
@@ -1855,14 +1855,14 @@ def emit_body(
             )
         ]
 
-    def get_any_has_forward_grad_name(var_names: tuple[str, ...]) -> str:
+    def get_any_has_forward_grad_name(var_names: Tuple[str, ...]) -> str:
         if len(var_names) == 1:
             return f"_any_has_forward_grad_{var_names[0]}"
         else:
             return f"_any_has_forward_grad_{'_'.join(var_names)}"
 
-    def emit_any_has_forward_grad() -> list[str]:
-        content: list[str] = []
+    def emit_any_has_forward_grad() -> List[str]:
+        content: List[str] = []
         if not is_foreach:
             for derivative in fw_derivatives:
                 requires_fw_grad = get_any_has_fw_grad_cond(derivative=derivative)
@@ -1920,7 +1920,7 @@ def emit_body(
                 content.append("}")
         return content
 
-    def emit_check_inplace() -> list[str]:
+    def emit_check_inplace() -> List[str]:
         if not inplace:
             return []
         return [
@@ -1928,9 +1928,9 @@ def emit_body(
             for arg in differentiable_outputs
         ]
 
-    def emit_fw_derivatives() -> list[str]:
-        content: list[str] = []
-        fw_grad_setters: list[str] = []
+    def emit_fw_derivatives() -> List[str]:
+        content: List[str] = []
+        fw_grad_setters: List[str] = []
         for derivative in fw_derivatives:
             res = derivative.var_names
             if f.func.name.name.inplace:
@@ -2093,7 +2093,7 @@ def emit_body(
                     "(self.size(), ::std::nullopt);"
                 )
                 foreach_forward_grad_formula = derivative.formula
-                _foreach_arg: Argument | DifferentiableInput
+                _foreach_arg: Union[Argument, DifferentiableInput]
                 if inplace:
                     for _foreach_arg, _ref_arg in inplace_foreacharg2refarg.items():
                         # note(crcrpar): Massage only Scalar and ArrayRef<Scalar> here.
@@ -2135,7 +2135,7 @@ def emit_body(
         content.append("\n".join(fw_grad_setters))
         return content
 
-    def get_any_has_fw_grad_cond(derivative: ForwardDerivative | None) -> str:
+    def get_any_has_fw_grad_cond(derivative: Union[ForwardDerivative, None]) -> str:
         #
         # Produces a condition string (e.g, "isFwGradDefined(grad_output) || isFwGradDefined(output)")
         #
@@ -2144,7 +2144,7 @@ def emit_body(
             # - Used in the out_fn case when we want to forbid fw derivatives
             # - Used in the case where the fw_derivative is not defined, but we want
             #   To check if there is a decomposition registered for jvp
-            to_check: list[str] = []
+            to_check: List[str] = []
             for inp in list(
                 mapMaybe(
                     gen_differentiable_input,
@@ -2218,7 +2218,7 @@ def emit_body(
             else ""
         )
 
-    body: list[str] = []
+    body: List[str] = []
     unpack_args_stats, unpacked_bindings = unpack_args(f)
 
     body.extend(unpack_args_stats)

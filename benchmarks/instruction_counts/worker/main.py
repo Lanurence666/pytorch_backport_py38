@@ -1,3 +1,4 @@
+from __future__ import annotations
 """File invoked through subprocess to actually carry out measurements.
 
 `worker/main.py` is deliberately isolated from the rest of the benchmark

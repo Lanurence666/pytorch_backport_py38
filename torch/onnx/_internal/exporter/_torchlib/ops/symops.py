@@ -1,10 +1,10 @@
+from __future__ import annotations
 """Implementation for torch.sym* ops."""
 
 # mypy: disable-error-code="misc,arg-type,type-arg,valid-type,assignment,return-value,type-var,operator,no-untyped-def,index"
 # pyrefly: ignore-errors
 # ruff: noqa: TC003
 
-from __future__ import annotations
 
 from collections.abc import Sequence
 
@@ -19,6 +19,7 @@ from torch.onnx._internal.exporter._torchlib._tensor_typing import (
     TTensor,
 )
 from torch.onnx._internal.exporter._torchlib._torchlib_registry import onnx_impl
+from typing import Sequence, Type
 
 
 @onnx_impl(torch.sym_float, trace_only=True)

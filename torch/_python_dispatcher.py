@@ -1,7 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import re
 
 import torch._C as C
+from typing import List
 
 
 """
@@ -85,7 +88,7 @@ class PythonDispatcher:
 
     """
     Register kernels to the target dispatchKeys.
-    dispatchKeys(list[str]): a list of dispatch keys that you want to register
+    dispatchKeys(List[str]): a list of dispatch keys that you want to register
       your own kernel. Note that you don't need to write the kernel yourself in
       this PythonDispatcher.E.g. for CPU key, a kernel(e.g fn_CPU for CPU) is
       automatically generated and registered.

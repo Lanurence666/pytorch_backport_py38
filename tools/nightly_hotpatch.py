@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
 import argparse
 import os
 import shutil
@@ -7,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
-from typing import cast, NoReturn
+from typing import List, NoReturn, Union, cast
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -74,7 +75,7 @@ def get_pytorch_path() -> str:
     try:
         import torch
 
-        torch_paths: list[str] = cast(list[str], torch.__path__)
+        torch_paths: List[str] = cast(List[str], torch.__path__)
         torch_path: str = torch_paths[0]
         parent_path: str = os.path.dirname(torch_path)
         print(f"PyTorch is installed at: {torch_path}")
@@ -114,10 +115,7 @@ def download_patch(pr_number: int, repo_url: str, download_dir: str) -> str:
     patch_file = os.path.join(download_dir, f"pr-{pr_number}.patch")
     print(f"Downloading PR #{pr_number} patch from {patch_url}...")
     try:
-        with (
-            urllib.request.urlopen(patch_url) as response,
-            open(patch_file, "wb") as out_file,
-        ):
+        with urllib.request.urlopen(patch_url) as response, open(patch_file, "wb") as out_file:
             shutil.copyfileobj(response, out_file)
         if not os.path.isfile(patch_file):
             print(f"Failed to download patch for PR #{pr_number}")
@@ -132,7 +130,7 @@ def download_patch(pr_number: int, repo_url: str, download_dir: str) -> str:
         sys.exit(1)
 
 
-def apply_patch(patch_file: str, target_dir: str | None, strip_count: int) -> None:
+def apply_patch(patch_file: str, target_dir: Union[str, None], strip_count: int) -> None:
     """
     Applies the downloaded patch to the specified directory using the given strip count.
 

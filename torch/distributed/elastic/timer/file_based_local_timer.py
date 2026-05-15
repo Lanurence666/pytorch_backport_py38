@@ -5,6 +5,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import io
 import json
 import os
@@ -13,8 +15,8 @@ import signal
 import sys
 import threading
 import time
-from collections.abc import Callable
-from typing import TypeVar
+
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union
 from typing_extensions import ParamSpec
 
 from torch.distributed.elastic.timer.api import TimerClient, TimerRequest
@@ -133,7 +135,7 @@ class FileTimerClient(TimerClient):
         self.signal = signal
 
     @_retry(max_retries=10, sleep_time=0.1)
-    def _open_non_blocking(self) -> io.TextIOWrapper | None:
+    def _open_non_blocking(self) -> Optional[io.TextIOWrapper]:
         # The server may have crashed or may haven't started yet.
         # In such case, calling open() in blocking model blocks the client.
         # To avoid such issue, open it in non-blocking mode, and an OSError will
@@ -202,15 +204,15 @@ class FileTimerServer:
         run_id: str,
         max_interval: float = 10,
         daemon: bool = True,
-        log_event: Callable[[str, FileTimerRequest | None], None] | None = None,
+        log_event: Optional[Union[Callable[[str, FileTimerRequest, None], None]]]= None,
     ) -> None:
         self._file_path = file_path
         self._run_id = run_id
         self._max_interval = max_interval
         self._daemon = daemon
-        self._timers: dict[tuple[int, str], FileTimerRequest] = {}
+        self._timers: Dict[Tuple[int, str], FileTimerRequest] = {}
         self._stop_signaled = False
-        self._watchdog_thread: threading.Thread | None = None
+        self._watchdog_thread: Optional[threading.Thread] = None
 
         self._is_client_started = False
         if os.path.exists(self._file_path):
@@ -360,12 +362,12 @@ class FileTimerServer:
 
         self.clear_timers(reaped_worker_pids)
 
-    def _get_scopes(self, timer_requests: list[FileTimerRequest]) -> list[str]:
+    def _get_scopes(self, timer_requests: List[FileTimerRequest]) -> List[str]:
         return [r.scope_id for r in timer_requests]
 
     def _get_requests(
         self, fd: io.TextIOWrapper, max_interval: float
-    ) -> list[FileTimerRequest]:
+    ) -> List[FileTimerRequest]:
         start = time.time()
         requests = []
         while not self._stop_signaled or self._run_once:
@@ -400,7 +402,7 @@ class FileTimerServer:
                 break
         return requests
 
-    def register_timers(self, timer_requests: list[FileTimerRequest]) -> None:
+    def register_timers(self, timer_requests: List[FileTimerRequest]) -> None:
         for request in timer_requests:
             pid = request.worker_pid
             scope_id = request.scope_id
@@ -415,14 +417,14 @@ class FileTimerServer:
             else:
                 self._timers[key] = request
 
-    def clear_timers(self, worker_pids: set[int]) -> None:
+    def clear_timers(self, worker_pids: Set[int]) -> None:
         for pid, scope_id in list(self._timers.keys()):
             if pid in worker_pids or not FileTimerServer.is_process_running(pid):
                 del self._timers[(pid, scope_id)]
 
-    def get_expired_timers(self, deadline: float) -> dict[int, list[FileTimerRequest]]:
+    def get_expired_timers(self, deadline: float) -> Dict[int, List[FileTimerRequest]]:
         # pid -> [timer_requests...]
-        expired_timers: dict[int, list[FileTimerRequest]] = {}
+        expired_timers: Dict[int, List[FileTimerRequest]] = {}
         for request in self._timers.values():
             if request.expiration_time <= deadline:
                 expired_scopes = expired_timers.setdefault(request.worker_pid, [])

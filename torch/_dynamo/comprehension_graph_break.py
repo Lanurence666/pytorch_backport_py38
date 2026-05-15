@@ -6,13 +6,13 @@ import dis
 import functools
 import logging
 import sys
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
 
 
 if TYPE_CHECKING:
     import types
 
-    from collections.abc import Callable
+    
 
     from .symbolic_convert import InstructionTranslatorBase
 
@@ -33,16 +33,13 @@ from .variables.misc import NullVariable, UnknownVariable
 log = logging.getLogger(__name__)
 
 
-@functools.cache
-def _get_comprehension_bytecode_prefix() -> list[str]:
+@functools.lru_cache(maxsize=None)
+def _get_comprehension_bytecode_prefix() -> List[str]:
     """Get the bytecode instructions that precede BUILD_LIST in a list comprehension."""
 
-    if sys.version_info < (3, 12):
-        raise AssertionError(
-            f"comprehension bytecode prefix requires Python 3.12+, got {sys.version_info}"
-        )
+    assert sys.version_info >= (3, 12)
 
-    def fn() -> list[int]:
+    def fn() -> List[int]:
         return [i for i in range(1)]  # noqa: C416
 
     insts = [inst.opname for inst in dis.get_instructions(fn)]
@@ -53,8 +50,8 @@ def _get_comprehension_bytecode_prefix() -> list[str]:
     return insts[start_idx:end_idx]
 
 
-@functools.cache
-def _get_comprehension_result_patterns() -> dict[str, dict[str, Any]]:
+@functools.lru_cache(maxsize=None)
+def _get_comprehension_result_patterns() -> Dict[str, Dict[str, Any]]:
     """Discover bytecode patterns for comprehension result handling.
 
     Analyzes sample functions to extract the opcode sequences that appear
@@ -64,12 +61,9 @@ def _get_comprehension_result_patterns() -> dict[str, dict[str, Any]]:
         - pre_store_ops: opcodes between END_FOR and first STORE_FAST
         - post_store_op: first opcode after all STORE_FASTs (for disambiguation)
     """
-    if sys.version_info < (3, 12):
-        raise AssertionError(
-            f"comprehension result patterns require Python 3.12+, got {sys.version_info}"
-        )
+    assert sys.version_info >= (3, 12)
 
-    def fn_stored() -> list[int]:
+    def fn_stored() -> List[int]:
         result = [i for i in range(1)]  # noqa: C416
         return result
 
@@ -77,16 +71,16 @@ def _get_comprehension_result_patterns() -> dict[str, dict[str, Any]]:
         [i for i in range(1)]  # noqa: C416
         return 1
 
-    def fn_returned() -> list[int]:
+    def fn_returned() -> List[int]:
         return [i for i in range(1)]  # noqa: C416
 
     def fn_consumed() -> int:
         return sum([i for i in range(1)])  # noqa: C416
 
-    def extract_pattern(fn: Callable[..., Any]) -> tuple[list[str], str | None]:
+    def extract_pattern(fn: Callable[..., Any]) -> Union[Tuple[List[str], str, None]]:
         """Extract (pre_store_ops, post_store_op) from comprehension bytecode."""
         target_line = list(dis.findlinestarts(fn.__code__))[1][1]
-        insts: list[str] = []
+        insts: List[str] = []
         started = False
         for instr in dis.get_instructions(fn):
             if started and instr.starts_line:
@@ -136,11 +130,11 @@ class ComprehensionAnalysis:
     """
 
     end_ip: int
-    result_var: str | None
+    result_var: Optional[str]
     result_on_stack: bool
-    iterator_vars: list[str]
-    walrus_vars: list[str]
-    captured_vars: list[str]
+    iterator_vars: List[str]
+    walrus_vars: List[str]
+    captured_vars: List[str]
 
 
 def _is_comprehension_start(tx: InstructionTranslatorBase) -> bool:
@@ -149,13 +143,9 @@ def _is_comprehension_start(tx: InstructionTranslatorBase) -> bool:
     In Python 3.12+, comprehensions are inlined with a bytecode pattern that
     precedes BUILD_LIST/BUILD_MAP.
     """
-    if sys.version_info < (3, 12):
-        raise AssertionError(
-            f"comprehension start detection requires Python 3.12+, got {sys.version_info}"
-        )
+    assert sys.version_info >= (3, 12)
 
-    if tx.instruction_pointer is None:
-        raise AssertionError("instruction_pointer must not be None")
+    assert tx.instruction_pointer is not None
     ip = tx.instruction_pointer - 1
 
     pattern = _get_comprehension_bytecode_prefix()
@@ -166,12 +156,8 @@ def _is_comprehension_start(tx: InstructionTranslatorBase) -> bool:
 
 def _find_comprehension_end_for_ip(tx: InstructionTranslatorBase) -> int:
     """Find the instruction pointer of the outermost END_FOR for current comprehension."""
-    if sys.version_info < (3, 12):
-        raise AssertionError(
-            f"comprehension END_FOR search requires Python 3.12+, got {sys.version_info}"
-        )
-    if tx.instruction_pointer is None:
-        raise AssertionError("instruction_pointer must not be None")
+    assert sys.version_info >= (3, 12)
+    assert tx.instruction_pointer is not None
 
     nesting_depth = 0
     for search_ip in range(tx.instruction_pointer, len(tx.instructions)):
@@ -187,20 +173,16 @@ def _find_comprehension_end_for_ip(tx: InstructionTranslatorBase) -> int:
 
 def _analyze_comprehension(tx: InstructionTranslatorBase) -> ComprehensionAnalysis:
     """Analyze comprehension bytecode to determine result handling pattern."""
-    if sys.version_info < (3, 12):
-        raise AssertionError(
-            f"comprehension analysis requires Python 3.12+, got {sys.version_info}"
-        )
-    if tx.instruction_pointer is None:
-        raise AssertionError("instruction_pointer must not be None")
+    assert sys.version_info >= (3, 12)
+    assert tx.instruction_pointer is not None
 
     patterns = _get_comprehension_result_patterns()
     start_ip = tx.instruction_pointer - 1  # BUILD_LIST/BUILD_MAP
 
-    iterator_vars: list[str] = []
-    walrus_vars: list[str] = []
-    captured_vars: list[str] = []
-    defined_inside: set[str] = set()
+    iterator_vars: List[str] = []
+    walrus_vars: List[str] = []
+    captured_vars: List[str] = []
+    defined_inside: Set[str] = set()
 
     # Collect iterator variables from LOAD_FAST_AND_CLEAR before BUILD_LIST/BUILD_MAP
     iter_scan_ip = start_ip - 1
@@ -258,7 +240,7 @@ def _analyze_comprehension(tx: InstructionTranslatorBase) -> ComprehensionAnalys
                     captured_vars.append(var_name)
 
     # Extract pre_store_ops: all opcodes from END_FOR+1 until first STORE_FAST
-    pre_store_ops: list[str] = []
+    pre_store_ops: List[str] = []
     scan_ip = end_for_ip + 1
     while (
         scan_ip < len(tx.instructions)
@@ -286,7 +268,7 @@ def _analyze_comprehension(tx: InstructionTranslatorBase) -> ComprehensionAnalys
             post_store_op == pat["post_store_op"] or not pat["post_store_op"]
         )
 
-    result_var: str | None = None
+    result_var: Optional[str]= None
     if matches("stored"):
         result_var = tx.instructions[store_fast_ip].argval
         result_on_stack = False
@@ -325,12 +307,8 @@ def _handle_comprehension_graph_break(
     calls it via codegen_call_resume, then chains into the resume
     function for the post-comprehension code.
     """
-    if sys.version_info < (3, 12):
-        raise AssertionError(
-            f"comprehension graph break requires Python 3.12+, got {sys.version_info}"
-        )
-    if tx.instruction_pointer is None:
-        raise AssertionError("instruction_pointer must not be None")
+    assert sys.version_info >= (3, 12)
+    assert tx.instruction_pointer is not None
 
     start_ip = tx.instruction_pointer - 1  # BUILD_LIST/BUILD_MAP
     analysis = _analyze_comprehension(tx)
@@ -446,7 +424,7 @@ def _handle_comprehension_graph_break(
         [analysis.result_var] if analysis.result_var else []
     )
 
-    existing_vars: dict[str, int] = {}
+    existing_vars: Dict[str, int] = {}
     for var_name in vars_to_pass:
         tx.symbolic_locals[var_name] = UnknownVariable()
         if var_name in meta.locals_names:
@@ -546,10 +524,10 @@ def _build_comprehension_fn(
     analysis: ComprehensionAnalysis,
     start_ip: int,
     stack_pops: int,
-    stack_pops_null_mask: list[bool],
+    stack_pops_null_mask: List[bool],
     nonnull_count: int,
     meta: StackLocalsMetadata,
-) -> tuple[types.CodeType, str]:
+) -> Tuple[types.CodeType, str]:
     """Build a synthetic function wrapping comprehension bytecode.
 
     Uses the same calling convention as resume functions created by
@@ -587,7 +565,7 @@ def _build_comprehension_fn(
         + analysis.captured_vars
     )
 
-    def update(instructions: list[Instruction], code_options: dict[str, Any]) -> None:
+    def update(instructions: List[Instruction], code_options: Dict[str, Any]) -> None:
         code_options["co_name"] = fn_name
         if sys.version_info >= (3, 11):
             code_options["co_qualname"] = fn_name
@@ -601,10 +579,10 @@ def _build_comprehension_fn(
             args + [v for v in comprehension_body_vars if v not in args]
         )
         code_options["co_flags"] = code_options["co_flags"] & ~(
-            CO_VARARGS | CO_VARKEYWORDS
+            Union[CO_VARARGS, CO_VARKEYWORDS]
         )
 
-        prefix: list[Instruction] = []
+        prefix: List[Instruction] = []
         if freevars:
             prefix.append(create_instruction("COPY_FREE_VARS", arg=len(freevars)))
         prefix.append(create_instruction("RESUME", arg=0))
@@ -627,7 +605,7 @@ def _build_comprehension_fn(
         comp_insts = _copy_comprehension_bytecode(tx, start_ip, analysis.end_ip)
 
         # Epilogue: ensure result is on stack, pack walrus vars, return.
-        epilogue: list[Instruction] = []
+        epilogue: List[Instruction] = []
         if not analysis.result_on_stack:
             if analysis.result_var:
                 epilogue.append(
@@ -659,10 +637,10 @@ def _build_comprehension_fn(
 
 def _copy_comprehension_bytecode(
     tx: InstructionTranslatorBase, start_ip: int, end_ip: int
-) -> list[Instruction]:
+) -> List[Instruction]:
     """Copy comprehension bytecode instructions, updating jump targets."""
-    inst_map: dict[Instruction, Instruction] = {}
-    copied_insts: list[Instruction] = []
+    inst_map: Dict[Instruction, Instruction] = {}
+    copied_insts: List[Instruction] = []
 
     for ip in range(start_ip, end_ip):
         original_inst = tx.instructions[ip]
@@ -710,8 +688,7 @@ def maybe_setup_comprehension_speculation(
             return True
         tx.current_speculation = speculation
     end_for_ip = _find_comprehension_end_for_ip(tx)
-    if end_for_ip < 0:
-        raise AssertionError("failed to find END_FOR for comprehension")
+    assert end_for_ip >= 0
     tx._comprehension_end_for_ips.add(end_for_ip)
     tx._comprehension_depth += 1
     return False

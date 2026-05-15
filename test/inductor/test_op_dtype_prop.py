@@ -197,7 +197,7 @@ class TestCase(InductorTestCase):
         self.assertNotIn(input_dtype, supported_dtypes)
 
         # Retrieve the corresponding torch op.
-        torch_op_name = op_name.removeprefix("libdevice_")
+        torch_op_name = (op_name[len("libdevice_"):] if op_name.startswith("libdevice_") else op_name)
         op = getattr(torch, torch_op_name)
 
         # Edge case: torch.round maps to libdevice.nearbyint.

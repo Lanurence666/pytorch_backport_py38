@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: export"]
 # flake8: noqa
+from __future__ import annotations
 import copy
 import unittest
 from re import escape

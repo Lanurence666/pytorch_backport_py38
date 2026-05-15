@@ -8,6 +8,7 @@
 # Kernels are ordered (see `sort_index`), and when dispatching,
 # we select the first kernel in the list that supports the inputs
 
+from __future__ import annotations
 import argparse
 import collections
 import itertools

@@ -1,4 +1,5 @@
 # Owner(s): ["module: nn"]
+from __future__ import annotations
 import gc
 import math
 import pickle

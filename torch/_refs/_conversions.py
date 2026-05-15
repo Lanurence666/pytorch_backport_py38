@@ -7,6 +7,7 @@ from torch._decomp import register_decomposition
 from torch._prims_common import TensorLikeType
 from torch._prims_common.wrappers import out_wrapper
 from torch._refs import _broadcast_shapes
+from typing import Type, overload
 
 
 # Data conversion references.

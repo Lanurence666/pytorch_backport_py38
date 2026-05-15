@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Set
 
 import torch
 from torch.fx import Graph, map_arg, Node
@@ -12,9 +14,9 @@ from torch.utils._pytree import tree_flatten
 # but there is no unregister API in the pytorch
 # pytree impl
 def _get_flat_args(
-    node: Node, node_to_additional_deps: dict[Node, OrderedSet[Node]]
-) -> list[Node]:
-    args = list[Any]()
+    node: Node, node_to_additional_deps: Dict[Node, OrderedSet[Node]]
+) -> List[Node]:
+    args = List[Any]()
     map_arg((node.args, node.kwargs), args.append)
     if node in node_to_additional_deps:
         args.extend(node_to_additional_deps[node])
@@ -22,7 +24,7 @@ def _get_flat_args(
 
 
 def _get_flat_args_unique(
-    node: Node, node_to_additional_deps: dict[Node, OrderedSet[Node]]
+    node: Node, node_to_additional_deps: Dict[Node, OrderedSet[Node]]
 ) -> OrderedSet[Node]:
     args = OrderedSet[Node]()
     map_arg((node.args, node.kwargs), args.add)
@@ -32,10 +34,10 @@ def _get_flat_args_unique(
 
 
 def _detect_cycles(
-    graph: Graph, node_to_additional_deps: dict[Node, OrderedSet[Node]]
+    graph: Graph, node_to_additional_deps: Dict[Node, OrderedSet[Node]]
 ) -> str:
     # States: 0=Unvisited, 1=Visiting, 2=Visited(Safe)
-    state: dict[Node, int] = {}
+    state: Dict[Node, int] = {}
 
     for root in reversed(graph.nodes):
         if root in state:
@@ -80,7 +82,7 @@ def _detect_cycles(
     return "no cycle detected"
 
 
-def _graph_device_type(graph: Graph | None) -> str:
+def _graph_device_type(graph: Optional[Graph]) -> str:
     if graph is None:
         return "cpu"
 
@@ -91,7 +93,7 @@ def _graph_device_type(graph: Graph | None) -> str:
             return x.device.type
         return "cpu"
 
-    def _flatten_meta(node: Node, key: str) -> list[Any]:
+    def _flatten_meta(node: Node, key: str) -> List[Any]:
         if key not in node.meta:
             return []
         flat, _ = tree_flatten(node.meta[key])

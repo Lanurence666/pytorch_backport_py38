@@ -1,3 +1,4 @@
+from __future__ import annotations
 from torch._inductor import ir
 from torch._inductor.codegen import cpp, cpp_wrapper_cpu, wrapper
 from torch._inductor.codegen.wrapper import PythonWrapperCodegen
@@ -45,16 +46,10 @@ class ExtensionCppWrapperCodegen(cpp_wrapper_cpu.CppWrapperCpu):
         return ExtensionCppWrapperCodegen()
 
     @staticmethod
-    def get_device_include_path_jit(device: str) -> str:
+    def get_device_include_path(device: str) -> str:
         if device == "extension_device":
-            return cpp_wrapper_cpu.CppWrapperCpu.get_device_include_path_jit("cpu")
-        return cpp_wrapper_cpu.CppWrapperCpu.get_device_include_path_jit(device)
-
-    @staticmethod
-    def get_device_include_path_aot(device: str) -> str:
-        if device == "extension_device":
-            return cpp_wrapper_cpu.CppWrapperCpu.get_device_include_path_aot("cpu")
-        return cpp_wrapper_cpu.CppWrapperCpu.get_device_include_path_aot(device)
+            return cpp_wrapper_cpu.CppWrapperCpu.get_device_include_path("cpu")
+        return cpp_wrapper_cpu.CppWrapperCpu.get_device_include_path(device)
 
 
 class ExtensionScheduling(BaseScheduling):

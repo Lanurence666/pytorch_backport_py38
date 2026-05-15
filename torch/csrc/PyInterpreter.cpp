@@ -5,6 +5,7 @@
 #include <torch/csrc/autograd/generated/VariableType.h>
 #include <torch/csrc/utils/python_arg_parser.h>
 #include <torch/csrc/utils/python_dispatch.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 #include <string>
 

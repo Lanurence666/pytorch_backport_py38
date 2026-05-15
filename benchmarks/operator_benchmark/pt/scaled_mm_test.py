@@ -1,3 +1,4 @@
+from __future__ import annotations
 from types import ModuleType
 
 from pt.scaled_mm_common import (

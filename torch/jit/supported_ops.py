@@ -4,6 +4,7 @@ import textwrap
 
 import torch.jit
 from torch.jit._builtins import _find_builtin
+from typing import List, Tuple, Type
 
 
 # this file is for generating documentation using sphinx autodoc

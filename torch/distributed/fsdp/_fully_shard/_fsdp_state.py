@@ -1,10 +1,11 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import logging
-import warnings
-from collections.abc import Callable, Sequence
-from typing import Any, Generic, TYPE_CHECKING, TypeVar
+
+from typing import Any, Callable, Dict, Generic, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union, cast
 
 import torch
 import torch.nn as nn
@@ -42,18 +43,18 @@ class FSDPStateContext(Generic[_StateType]):
         # iterates ``reversed`` so within a nesting chain the deepest
         # state's ``output_dtype`` cast applies first, matching the order
         # ``_post_forward`` would unwind in the non-partial case.
-        self.all_states: list[_StateType] = []
+        self.all_states: List[_StateType] = []
         # Iteration's forward root runs the once-per-forward logic; this root
         # may not be the overall root set by lazy initialization in cases where
         # only a submodule runs forward (e.g. encoder-only for eval)
-        self.iter_forward_root: _StateType | None = None
+        self.iter_forward_root: Optional[_StateType] = None
         # Final callback should only be queued once per backward
         self.post_backward_final_callback_queued: bool = False
         # Whether to finalize backward in this backward's final callback
         self.is_last_backward: bool = True
         # Optional user-provided event recorded after optimizer for the
         # all-gather streams to wait on in the root pre-forward
-        self.post_optim_event: torch.Event | None = None
+        self.post_optim_event: Optional[torch.Event] = None
 
 
 class FSDPState(_State):
@@ -64,24 +65,24 @@ class FSDPState(_State):
         super().__init__()
         # Support multiple param groups for per-param mesh support.
         # Each group has params with the same mesh_info.
-        self._fsdp_param_groups: list[FSDPParamGroup] = []
-        self._is_root: bool | None = None  # root set during lazy init
+        self._fsdp_param_groups: List[FSDPParamGroup] = []
+        self._is_root: Optional[bool] = None  # root set during lazy init
         self._state_ctx = FSDPStateContext()
         self._comm_ctx = FSDPCommContext()
         self._training_state: TrainingState = TrainingState.IDLE
-        self._states_to_forward_prefetch: list[FSDPState] = []
-        self._states_to_backward_prefetch: list[FSDPState] = []
-        self._modules_to_run_forward: set[nn.Module] = set()
+        self._states_to_forward_prefetch: List[FSDPState] = []
+        self._states_to_backward_prefetch: List[FSDPState] = []
+        self._modules_to_run_forward: Set[nn.Module] = set()
         # ``False`` when user set reshard_after_forward
         # through ``fully_shard`` or ``set_reshard_after_forward``
-        self._auto_reshard_after_forward: bool | None = True
+        self._auto_reshard_after_forward: Optional[bool] = True
 
-    def _get_state_for_module(self, module: nn.Module) -> "FSDPState | None":
+    def _get_state_for_module(self, module: nn.Module) -> Union["FSDPState, None"]:
         """Get the state for a module. Subclasses can override to use different state getters."""
         return _get_module_fsdp_state(module)
 
     @property
-    def _fsdp_param_group(self) -> FSDPParamGroup | None:
+    def _fsdp_param_group(self) -> Optional[FSDPParamGroup]:
         """
         Returns the param group for backward compatibility.
         This property is only valid when there is at most one param group.
@@ -104,7 +105,7 @@ class FSDPState(_State):
     # Define a separate init since `__init__` is called in the contract
     def init(
         self,
-        modules: tuple[nn.Module, ...],
+        modules: Tuple[nn.Module, ...],
         device: torch.device,
         mp_policy: MixedPrecisionPolicy,
         auto_reshard_after_forward: bool,
@@ -135,8 +136,8 @@ class FSDPState(_State):
             self._post_forward_hook_handle = hook_handle
 
     def _root_pre_forward(
-        self, module: nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any]
-    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        self, module: nn.Module, args: Tuple[Any, ...], kwargs: Dict[str, Any]
+    ) -> Tuple[Tuple[Any, ...], Dict[str, Any]]:
         self._lazy_init()
         if self._state_ctx.iter_forward_root is not None:
             return args, kwargs
@@ -181,7 +182,7 @@ class FSDPState(_State):
                 f"{self._state_name} requires a single root module but got {self._modules}"
             )
         root_module = self._modules[0]
-        visited_states: set[FSDPState] = set()
+        visited_states: Set[FSDPState] = set()
         for module_name, module in root_module.named_modules():
             if (state := self._get_state_for_module(module)) is None:
                 continue
@@ -213,7 +214,7 @@ class FSDPState(_State):
                 fsdp_param_group.lazy_init()
 
     def _validate_no_duplicate_params(self) -> None:
-        seen: set[int] = set()
+        seen: Set[int] = set()
         for state in self._state_ctx.all_states:
             for fsdp_param_group in state._fsdp_param_groups:
                 for fsdp_param in fsdp_param_group.fsdp_params:
@@ -243,9 +244,9 @@ class FSDPState(_State):
         if not self._is_root:
             raise AssertionError("Expected _is_root to be True")
         root_module = self._modules[0]
-        param_to_fsdp_param: dict[nn.Parameter, FSDPParam] = {}
+        param_to_fsdp_param: Dict[nn.Parameter, FSDPParam] = {}
         # Build a mapping from module to all its FSDPParamGroups (not just one)
-        module_to_fsdp_param_groups: dict[nn.Module, list[FSDPParamGroup]] = {}
+        module_to_fsdp_param_groups: Dict[nn.Module, List[FSDPParamGroup]] = {}
         for state in self._state_ctx.all_states:
             for fsdp_param_group in state._fsdp_param_groups:
                 for fsdp_param in fsdp_param_group.fsdp_params:
@@ -274,8 +275,8 @@ class FSDPState(_State):
 
     @_dynamo_disable
     def _pre_forward(
-        self, module: nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any]
-    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        self, module: nn.Module, args: Tuple[Any, ...], kwargs: Dict[str, Any]
+    ) -> Tuple[Tuple[Any, ...], Dict[str, Any]]:
         # When composing with module-hook-based activation checkpointing, the
         # pre-backward hook is responsible for the unshard
         if self._training_state == TrainingState.PRE_BACKWARD:
@@ -286,7 +287,7 @@ class FSDPState(_State):
                 if not fsdp_param_group.is_unsharded:
                     fsdp_param_group.unshard()
                     fsdp_param_group.wait_for_unshard()
-            return self._cast_forward_inputs(args, kwargs)
+            return args, kwargs
         # With grouped ``fully_shard([a, b, ...])`` the pre-hook fires per
         # module (so ``cast_forward_inputs`` and ``fsdp_param_group.pre_forward``
         # run for each). Root setup and forward prefetch are one-shot, gated
@@ -295,7 +296,15 @@ class FSDPState(_State):
         self._training_state = TrainingState.FORWARD
         if state_first_in_pass:
             args, kwargs = self._root_pre_forward(module, args, kwargs)
-        args, kwargs = self._cast_forward_inputs(args, kwargs)
+        if self._mp_policy.cast_forward_inputs and self._mp_policy.param_dtype:
+            with torch.profiler.record_function("FSDP::cast_forward_inputs"):
+                cast_fn = functools.partial(
+                    _cast_fp_tensor, self._mp_policy.param_dtype
+                )
+                args, kwargs = (
+                    _apply_to_tensors(cast_fn, args),
+                    _apply_to_tensors(cast_fn, kwargs),
+                )
         for fsdp_param_group in self._fsdp_param_groups:
             args, kwargs = fsdp_param_group.pre_forward(module, args, kwargs)
         if state_first_in_pass:
@@ -311,7 +320,7 @@ class FSDPState(_State):
         # When composing with module-hook-based activation checkpointing, the
         # post-backward hook is responsible for the reshard
         if self._training_state == TrainingState.PRE_BACKWARD:
-            return self._cast_output_dtype(output)
+            return output
         for fsdp_param_group in self._fsdp_param_groups:
             output = fsdp_param_group.post_forward(module, input, output)
         output = self._register_pre_backward_hook(output)
@@ -328,15 +337,6 @@ class FSDPState(_State):
                 self._comm_ctx.all_gather_state = None  # free the all-gather result
             self._state_ctx.iter_forward_root = None
         return self._cast_output_dtype(output)
-
-    def _cast_forward_inputs(
-        self, args: tuple[Any, ...], kwargs: dict[str, Any]
-    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
-        if not (self._mp_policy.cast_forward_inputs and self._mp_policy.param_dtype):
-            return args, kwargs
-        with torch.profiler.record_function("FSDP::cast_forward_inputs"):
-            cast_fn = functools.partial(_cast_fp_tensor, self._mp_policy.param_dtype)
-            return _apply_to_tensors(cast_fn, args), _apply_to_tensors(cast_fn, kwargs)
 
     def _cast_output_dtype(self, output: Any) -> Any:
         if self._mp_policy.output_dtype is None:
@@ -417,33 +417,11 @@ class FSDPState(_State):
     def _register_pre_backward_hook(self, output: Any) -> Any:
         if not torch.is_grad_enabled():
             return output
-        # In eager, register hooks directly on grad-requiring outputs.
+        # output is the forward return value — pass directly without wrapping
+        # (unlike _register_post_backward_hook which wraps (args, kwargs))
         tensors = collect_grad_tensors(output)
         for t in tensors:
-            if t._base is not None:
-                cls = ", ".join(type(m).__name__ for m in self._modules) or "?"
-                warnings.warn(
-                    f"FSDP2-wrapped module ({cls}) returned a view tensor. "
-                    "An in-place op on this view (e.g., `x += y`) will silently "
-                    "drop the pre-backward hook and skip the all-gather, which "
-                    "can cause backward to fail or produce wrong gradients. "
-                    "Use out-of-place ops (`out = out + y`, not `out += y`) or "
-                    "`.clone()` the output before any in-place op.",
-                    UserWarning,
-                    stacklevel=2,
-                )
             t.register_hook(self._pre_backward)
-        if torch._C._are_functorch_transforms_active():
-            # Under functorch, some differentiable outputs report
-            # requires_grad=False inside the transform even when returned
-            # primals participate in outer autograd.
-            return _apply_to_tensors(
-                lambda t: RegisterPreBackwardFunction.apply(self, t)
-                if not t.requires_grad
-                and (torch.is_floating_point(t) or torch.is_complex(t))
-                else t,
-                output,
-            )
         return output
 
     def _register_root_post_backward_final_callback(self):
@@ -484,46 +462,18 @@ class FSDPState(_State):
         self._state_ctx.post_backward_final_callback_queued = False
 
 
-def _get_module_fsdp_state(module: nn.Module) -> FSDPState | None:
+def _get_module_fsdp_state(module: nn.Module) -> Optional[FSDPState]:
     state = _get_module_state(module)
     if isinstance(state, FSDPState):
         return state
     return None
 
 
-class RegisterPreBackwardFunction(torch.autograd.Function):
-    generate_vmap_rule = True
-
-    @staticmethod
-    # pyrefly: ignore [bad-override]
-    def forward(state: FSDPState, output: torch.Tensor):
-        return output
-
-    @staticmethod
-    def setup_context(ctx, inputs: tuple[Any, ...], output: Any) -> None:
-        state, _ = inputs
-        ctx.state = state
-
-    @staticmethod
-    def backward(ctx: Any, *grad_outputs: Any) -> Any:
-        (grad,) = grad_outputs
-        return None, ctx.state._pre_backward(grad)
-
-    @staticmethod
-    def jvp(ctx: Any, *grad_inputs: Any) -> Any:
-        # Drop the non-tensor FSDP state tangent; keep tangent backward on the
-        # FSDP pre-backward path.
-        tangent = grad_inputs[1]
-        if tangent is None:
-            return None
-        return RegisterPreBackwardFunction.apply(ctx.state, tangent)
-
-
 def _register_group_forward_hooks(
     modules: Sequence[nn.Module],
     pre_hook: Callable,
     post_hook: Callable,
-    modules_to_run: set[nn.Module],
+    modules_to_run: Set[nn.Module],
     cast_output_dtype: Callable[[Any], Any],
 ) -> _MultiHandle:
     """

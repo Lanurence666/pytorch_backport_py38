@@ -1,4 +1,5 @@
 # Owner(s): ["module: inductor"]
+from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
@@ -898,18 +899,7 @@ class TestComputeCommReorderingBucketing(TestComputeCommReorderingMultiProc):
 
         li = []
         apply = functools.partial(apply_reordering_and_get_graph, out_li=li)
-        with (
-            _dynamo_dist_per_rank_init(
-                self.rank,
-                self.world_size,
-                self.backend(device_type),
-                fake_pg=not at_least_x_gpu(2),
-            ),
-            torch._inductor.config.patch(
-                "aten_distributed_optimizations.insert_overlap_deps", True
-            ),
-            torch._inductor.config.patch(post_grad_custom_post_pass=apply),
-        ):
+        with _dynamo_dist_per_rank_init( self.rank, self.world_size, self.backend(device_type), fake_pg=not at_least_x_gpu(2), ), torch._inductor.config.patch( "aten_distributed_optimizations.insert_overlap_deps", True ), torch._inductor.config.patch(post_grad_custom_post_pass=apply):
             a = torch.ones(8, 8, dtype=torch.float, device=device_type)
             b = torch.ones(8, 8, dtype=torch.float, device=device_type) * 2
             c = torch.ones(8, 8, dtype=torch.float, device=device_type) * 3

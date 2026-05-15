@@ -1,9 +1,14 @@
 # NOTE: This is a placeholder for iterating on export serialization schema design.
 #       Anything is subject to change and no guarantee is provided at this point.
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Annotated
+try:
+    from typing import Annotated, Dict, List, Mapping, Optional, Tuple, Type, Union
+except ImportError:
+    from typing_extensions import Annotated
 
 from torch._export.serde.union import _Union, _union_dataclass
 
@@ -64,7 +69,7 @@ class MemoryFormat(IntEnum):
     PreserveFormat = 4
 
 
-SCALAR_TYPE_TO_C10: dict[int, str] = {
+SCALAR_TYPE_TO_C10: Dict[int, str] = {
     ScalarType.BYTE: "Byte",
     ScalarType.CHAR: "Char",
     ScalarType.SHORT: "Short",
@@ -88,7 +93,7 @@ SCALAR_TYPE_TO_C10: dict[int, str] = {
     ScalarType.UINT64: "UInt64",
 }
 
-LAYOUT_TO_C10: dict[int, str] = {
+LAYOUT_TO_C10: Dict[int, str] = {
     Layout.SparseCoo: "Sparse",
     Layout.SparseCsr: "SparseCsr",
     Layout.SparseCsc: "SparseCsc",
@@ -98,7 +103,7 @@ LAYOUT_TO_C10: dict[int, str] = {
     Layout.Strided: "Strided",
 }
 
-MEMORY_FORMAT_TO_C10: dict[int, str] = {
+MEMORY_FORMAT_TO_C10: Dict[int, str] = {
     MemoryFormat.ContiguousFormat: "Contiguous",
     MemoryFormat.ChannelsLast: "ChannelsLast",
     MemoryFormat.ChannelsLast3d: "ChannelsLast3d",
@@ -109,7 +114,7 @@ MEMORY_FORMAT_TO_C10: dict[int, str] = {
 @dataclass
 class Device:
     type: Annotated[str, 10]
-    index: Annotated[int | None, 20] = None
+    index: Union[Annotated[int, None, 20]]= None
 
 
 @_union_dataclass
@@ -126,7 +131,7 @@ class SymExprHint(_Union):
 @dataclass
 class SymExpr:
     expr_str: Annotated[str, 10]
-    hint: Annotated[SymExprHint | None, 20] = None
+    hint: Union[Annotated[SymExprHint, None, 20]]= None
 
 
 @_union_dataclass
@@ -150,10 +155,10 @@ class SymBool(_Union):
 @dataclass
 class TensorMeta:
     dtype: Annotated[ScalarType, 10]
-    sizes: Annotated[list[SymInt], 20]
+    sizes: Annotated[List[SymInt], 20]
     requires_grad: Annotated[bool, 30]
     device: Annotated[Device, 40]
-    strides: Annotated[list[SymInt], 50]
+    strides: Annotated[List[SymInt], 50]
     storage_offset: Annotated[SymInt, 60]
     layout: Annotated[Layout, 70]
 
@@ -237,35 +242,35 @@ class ComplexValue:
 class Argument(_Union):
     as_none: Annotated[bool, 10]
     as_tensor: Annotated[TensorArgument, 20]
-    as_tensors: Annotated[list[TensorArgument], 30]
+    as_tensors: Annotated[List[TensorArgument], 30]
     as_int: Annotated[int, 50]
-    as_ints: Annotated[list[int], 70]
+    as_ints: Annotated[List[int], 70]
     as_float: Annotated[float, 80]
-    as_floats: Annotated[list[float], 90]
+    as_floats: Annotated[List[float], 90]
     as_string: Annotated[str, 100]
-    as_strings: Annotated[list[str], 101]
+    as_strings: Annotated[List[str], 101]
     as_sym_int: Annotated[SymIntArgument, 110]
-    as_sym_ints: Annotated[list[SymIntArgument], 120]
+    as_sym_ints: Annotated[List[SymIntArgument], 120]
     as_scalar_type: Annotated[ScalarType, 130]
     as_memory_format: Annotated[MemoryFormat, 140]
     as_layout: Annotated[Layout, 150]
     as_device: Annotated[Device, 160]
     as_bool: Annotated[bool, 170]
-    as_bools: Annotated[list[bool], 180]
+    as_bools: Annotated[List[bool], 180]
     as_sym_bool: Annotated[SymBoolArgument, 182]
-    as_sym_bools: Annotated[list[SymBoolArgument], 184]
+    as_sym_bools: Annotated[List[SymBoolArgument], 184]
     as_graph: Annotated[GraphArgument, 200]
-    as_optional_tensors: Annotated[list[OptionalTensorArgument], 190]
+    as_optional_tensors: Annotated[List[OptionalTensorArgument], 190]
     as_custom_obj: Annotated[CustomObjArgument, 210]
     as_operator: Annotated[str, 220]
     as_sym_float: Annotated[SymFloatArgument, 230]
-    as_sym_floats: Annotated[list[SymFloatArgument], 240]
+    as_sym_floats: Annotated[List[SymFloatArgument], 240]
     as_optional_tensor: Annotated[OptionalTensorArgument, 250]
     as_complex: Annotated[ComplexValue, 260]
-    as_nested_tensors: Annotated[list[list[TensorArgument]], 270]
-    as_int_lists: Annotated[list[list[int]], 280]
-    as_string_to_argument: Annotated[dict[str, "Argument"], 290]
-    as_float_lists: Annotated[list[list[float]], 300]
+    as_nested_tensors: Annotated[List[List[TensorArgument]], 270]
+    as_int_lists: Annotated[List[List[int]], 280]
+    as_string_to_argument: Annotated[Dict[str, "Argument"], 290]
+    as_float_lists: Annotated[List[List[float]], 300]
 
 
 class ArgumentKind(IntEnum):
@@ -279,37 +284,37 @@ class NamedArgument:
     # Argument name from the operator schema
     name: Annotated[str, 10]
     arg: Annotated[Argument, 20]
-    kind: Annotated[ArgumentKind | None, 30] = None
+    kind: Union[Annotated[ArgumentKind, None, 30]]= None
 
 
 @dataclass
 class Node:
     target: Annotated[str, 10]
-    inputs: Annotated[list[NamedArgument], 20]
-    outputs: Annotated[list[Argument], 30]
-    metadata: Annotated[dict[str, str], 40]
-    is_hop_single_tensor_return: Annotated[bool | None, 50] = None
+    inputs: Annotated[List[NamedArgument], 20]
+    outputs: Annotated[List[Argument], 30]
+    metadata: Annotated[Dict[str, str], 40]
+    is_hop_single_tensor_return: Union[Annotated[bool, None, 50]]= None
     # For BC, default is None so older serialized models without 'name' can be loaded.
-    name: Annotated[str | None, 60] = None
+    name: Union[Annotated[str, None, 60]]= None
 
 
 @dataclass
 class Graph:
-    inputs: Annotated[list[Argument], 10]
-    outputs: Annotated[list[Argument], 20]
-    nodes: Annotated[list[Node], 30]
-    tensor_values: Annotated[dict[str, TensorMeta], 40]
-    sym_int_values: Annotated[dict[str, SymInt], 50]
-    sym_bool_values: Annotated[dict[str, SymBool], 60]
+    inputs: Annotated[List[Argument], 10]
+    outputs: Annotated[List[Argument], 20]
+    nodes: Annotated[List[Node], 30]
+    tensor_values: Annotated[Dict[str, TensorMeta], 40]
+    sym_int_values: Annotated[Dict[str, SymInt], 50]
+    sym_bool_values: Annotated[Dict[str, SymBool], 60]
     # This is for deserializing the submodule graphs from higher order ops
     # (ex. cond, map) where single tensor returns will just return a single
     # tensor, rather than following export schema and returning a singleton
     # list.
     is_single_tensor_return: Annotated[bool, 70] = False
-    custom_obj_values: Annotated[dict[str, CustomObjArgument], 80] = field(
+    custom_obj_values: Annotated[Dict[str, CustomObjArgument], 80] = field(
         default_factory=dict
     )
-    sym_float_values: Annotated[dict[str, SymFloat], 90] = field(default_factory=dict)
+    sym_float_values: Annotated[Dict[str, SymFloat], 90] = field(default_factory=dict)
 
 
 @dataclass
@@ -433,20 +438,20 @@ class OutputSpec(_Union):
 
 @dataclass
 class GraphSignature:
-    input_specs: Annotated[list[InputSpec], 10]
-    output_specs: Annotated[list[OutputSpec], 20]
+    input_specs: Annotated[List[InputSpec], 10]
+    output_specs: Annotated[List[OutputSpec], 20]
 
 
 @dataclass
 class RangeConstraint:
-    min_val: Annotated[int | None, 10]
-    max_val: Annotated[int | None, 20]
+    min_val: Union[Annotated[int, None, 10]]
+    max_val: Union[Annotated[int, None, 20]]
 
 
 @dataclass
 class ModuleCallSignature:
-    inputs: Annotated[list[Argument], 10]
-    outputs: Annotated[list[Argument], 20]
+    inputs: Annotated[List[Argument], 10]
+    outputs: Annotated[List[Argument], 20]
 
     # These are serialized by calling pytree.treespec_loads
     # And deserialized by calling pytree.treespec_dumps
@@ -455,18 +460,18 @@ class ModuleCallSignature:
 
     # This field is used to prettify the graph placeholders
     # after we Ser/Der and retrace
-    forward_arg_names: Annotated[list[str] | None, 50] = None
+    forward_arg_names: Union[Annotated[List[str], None, 50]]= None
 
 
 @dataclass
 class ModuleCallEntry:
     fqn: Annotated[str, 10]
-    signature: Annotated[ModuleCallSignature | None, 30] = None
+    signature: Union[Annotated[ModuleCallSignature, None, 30]]= None
 
 
 @dataclass
 class NamedTupleDef:
-    field_names: Annotated[list[str], 10]
+    field_names: Annotated[List[str], 10]
 
 
 @dataclass
@@ -476,10 +481,10 @@ class GraphModule:
     # This is used for unflattening, by tracking the calling structure of all of
     # the modules in order to unflatten the modules back to the eager calling
     # conventions.
-    module_call_graph: Annotated[list[ModuleCallEntry], 60]
-    metadata: Annotated[dict[str, str], 40] = field(default_factory=dict)
+    module_call_graph: Annotated[List[ModuleCallEntry], 60]
+    metadata: Annotated[Dict[str, str], 40] = field(default_factory=dict)
     # Mapping of namedtuple types to namedtuple field names, used for BC
-    treespec_namedtuple_fields: Annotated[dict[str, NamedTupleDef], 70] = field(
+    treespec_namedtuple_fields: Annotated[Dict[str, NamedTupleDef], 70] = field(
         default_factory=dict
     )
 
@@ -500,12 +505,12 @@ class SchemaVersion:
 class ExportedProgram:
     graph_module: Annotated[GraphModule, 10]
     # Key is the opset namespace (ex. aten), and value is the version number
-    opset_version: Annotated[dict[str, int], 20]
-    range_constraints: Annotated[dict[str, RangeConstraint], 30]
+    opset_version: Annotated[Dict[str, int], 20]
+    range_constraints: Annotated[Dict[str, RangeConstraint], 30]
     schema_version: Annotated[SchemaVersion, 60]
-    verifiers: Annotated[list[str], 70] = field(default_factory=list)
+    verifiers: Annotated[List[str], 70] = field(default_factory=list)
     torch_version: Annotated[str, 80] = "<=2.4"
-    guards_code: Annotated[list[str], 90] = field(default_factory=list)
+    guards_code: Annotated[List[str], 90] = field(default_factory=list)
 
 
 #########################################################################
@@ -525,13 +530,13 @@ class PayloadMeta:
     # are serialized using pickle.
     use_pickle: Annotated[bool, 30]
     # Custom Objects don't have tensor_meta and will be serialized using pickle
-    tensor_meta: Annotated[TensorMeta | None, 40]
+    tensor_meta: Union[Annotated[TensorMeta, None, 40]]
 
 
 # The mapping from payload FQN to its metadata.
 @dataclass
 class PayloadConfig:
-    config: Annotated[dict[str, PayloadMeta], 10]
+    config: Annotated[Dict[str, PayloadMeta], 10]
 
 
 #
@@ -547,19 +552,19 @@ class AOTInductorModelPickleData:
     library_basename: Annotated[str, 1]
 
     # AOTInductor engine input names.
-    input_names: Annotated[list[str], 2]
+    input_names: Annotated[List[str], 2]
 
     # AOTInductor engine output names.
-    output_names: Annotated[list[str], 3]
+    output_names: Annotated[List[str], 3]
 
     # These fields tell whether floating point inputs/outputs should be converted to
     # a certain type. If None, the dtypes that the AOTInductor engine inferred from the sample
     # inputs are used.
-    floating_point_input_dtype: Annotated[int | None, 4] = None
-    floating_point_output_dtype: Annotated[int | None, 5] = None
+    floating_point_input_dtype: Union[Annotated[int, None, 4]]= None
+    floating_point_output_dtype: Union[Annotated[int, None, 5]]= None
 
     # Whether AOTInductor runtime is for CPU.
-    aot_inductor_model_is_cpu: Annotated[bool | None, 6] = None
+    aot_inductor_model_is_cpu: Union[Annotated[bool, None, 6]]= None
 
 
 @dataclass
@@ -571,4 +576,4 @@ class ExternKernelNode:
 
 @dataclass
 class ExternKernelNodes:
-    nodes: Annotated[list[ExternKernelNode], 10]
+    nodes: Annotated[List[ExternKernelNode], 10]

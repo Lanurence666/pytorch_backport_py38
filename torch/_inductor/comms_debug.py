@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Dict, List, Set, TYPE_CHECKING, Tuple, Union
 
 from torch._logging import trace_structured
 
@@ -16,17 +16,17 @@ if TYPE_CHECKING:
 
 def _debug_iterative_memory_recompute(
     candidate: BaseSchedulerNode,
-    gns: list[BaseSchedulerNode],
+    gns: List[BaseSchedulerNode],
     group_names: str,
-    snodes: list[BaseSchedulerNode],
-    name_to_freeable_input_buf: dict[str, FreeableInputBuffer],
+    snodes: List[BaseSchedulerNode],
+    name_to_freeable_input_buf: Dict[str, FreeableInputBuffer],
     graph_outputs: OrderedSet[str],
     peak_memory: int,
-    iter_curr_memory: dict[BaseSchedulerNode, tuple[int, int]],
-    snodes_allocfree: dict[BaseSchedulerNode, SNodeMemory],
+    iter_curr_memory: Dict[BaseSchedulerNode, Tuple[int, int]],
+    snodes_allocfree: Dict[BaseSchedulerNode, SNodeMemory],
     tlparse_name: str,
-    gn_to_bufs_last_use: dict[
-        BaseSchedulerNode, list[FreeableInputBuffer | SchedulerBuffer]
+    gn_to_bufs_last_use: Dict[
+        BaseSchedulerNode, List[Union[FreeableInputBuffer, SchedulerBuffer]]
     ],
 ) -> bool:
     iterative_recompute_error = False

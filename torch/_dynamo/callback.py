@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module provides callback management functionality for TorchDynamo's compilation process.
 
@@ -27,10 +28,10 @@ Example usage:
 
 import enum
 import threading
-from collections.abc import Callable, Generator
+
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable, Generator, List
 
 
 class CallbackTrigger(enum.Enum):
@@ -52,8 +53,8 @@ class CallbackArgs:
 
 @dataclass
 class CompilationCallbackHandler:
-    start_callbacks: list[Callable[[CallbackArgs], None]] = field(default_factory=list)
-    end_callbacks: list[Callable[[CallbackArgs], None]] = field(default_factory=list)
+    start_callbacks: List[Callable[[CallbackArgs], None]] = field(default_factory=list)
+    end_callbacks: List[Callable[[CallbackArgs], None]] = field(default_factory=list)
 
     __pending_callbacks_counter: int = field(default=0, init=False, repr=False)
     __pending_callbacks_counter_lock: threading.Lock = field(
@@ -132,10 +133,9 @@ class CompilationCallbackHandler:
             yield
         finally:
             with self.__pending_callbacks_counter_lock:
-                if self.__pending_callbacks_counter <= 0:
-                    raise AssertionError(
-                        "Pending callbacks counter cannot become negative."
-                    )
+                assert self.__pending_callbacks_counter > 0, (
+                    "Pending callbacks counter cannot become negative."
+                )
                 if self.__pending_callbacks_counter == 1:
                     self.run_end_callbacks(args)
                 self.__pending_callbacks_counter -= 1
@@ -146,10 +146,7 @@ class CompilationCallbackHandler:
         """
         self.start_callbacks.clear()
         self.end_callbacks.clear()
-        if self.__pending_callbacks_counter != 0:
-            raise AssertionError(
-                f"Cannot clear callbacks while {self.__pending_callbacks_counter} are pending"
-            )
+        assert self.__pending_callbacks_counter == 0
 
 
 callback_handler = CompilationCallbackHandler()

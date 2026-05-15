@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import contextlib
 import io
 import logging
 import os
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Union
 
 import torch
 from torch._library.custom_ops import _maybe_get_opdef
@@ -37,20 +39,20 @@ class TensorMetadata:
 
 @dataclass(frozen=True)
 class OpProfile:
-    args_profile: tuple[TensorMetadata | None]
-    out_profile: TensorMetadata | tuple[TensorMetadata]
+    args_profile: Union[Tuple[TensorMetadata, None]]
+    out_profile: Union[TensorMetadata, Tuple[TensorMetadata]]
 
 
-def _generate_fake_kernel(op_name: str, op_profile: set[OpProfile]) -> Callable:
-    def _match_args(args_profile: tuple[TensorMetadata | None], args: Any) -> bool:
+def _generate_fake_kernel(op_name: str, op_profile: Set[OpProfile]) -> Callable:
+    def _match_args(args_profile: Tuple[Optional[TensorMetadata]], args: Any) -> bool:
         return all(
             TensorMetadata.maybe_from_tensor(arg) == args_profile[i]
             for i, arg in enumerate(args)
         )
 
     def _generate_res(
-        out_profile: TensorMetadata | tuple[TensorMetadata],
-    ) -> torch.Tensor | list[torch.Tensor]:
+        out_profile: Union[TensorMetadata, Tuple[TensorMetadata],]
+    ) -> Union[torch.Tensor, List[torch.Tensor]]:
         ctx = torch.library.get_ctx()
 
         def _generate_tensor_out(t: TensorMetadata) -> torch.Tensor:
@@ -91,7 +93,7 @@ def _generate_fake_kernel(op_name: str, op_profile: set[OpProfile]) -> Callable:
 
 
 @contextlib.contextmanager
-def unsafe_generate_fake_kernels(op_profiles: dict[str, set[OpProfile]]) -> Generator:
+def unsafe_generate_fake_kernels(op_profiles: Dict[str, Set[OpProfile]]) -> Generator:
     """
     Registers a fake kernel based on the given operator profiles. This fake
     kernel registration will override any existing fake kernel registrations.
@@ -113,7 +115,7 @@ def unsafe_generate_fake_kernels(op_profiles: dict[str, set[OpProfile]]) -> Gene
     potentially unsafe.
 
     Args:
-        op_profiles (dict[str, set[OpProfile]]): A dictionary mapping operator
+        op_profiles (Dict[str, Set[OpProfile]]): A dictionary mapping operator
             name to a set of operator profiles from which we will generate fake
             kernels.
 
@@ -139,9 +141,9 @@ def unsafe_generate_fake_kernels(op_profiles: dict[str, set[OpProfile]]) -> Gene
 
     """
 
-    libs: list[torch.library.Library] = []
+    libs: List[torch.library.Library] = []
     # Stores old fake impls from custom ops declared through @custom_op
-    old_fake_impls: dict[str, Callable] = {}
+    old_fake_impls: Dict[str, Callable] = {}
     for op_name, profiles in op_profiles.items():
         log.warning(
             "Registering fake profile for %s. This will override any existing "
@@ -167,7 +169,7 @@ def unsafe_generate_fake_kernels(op_profiles: dict[str, set[OpProfile]]) -> Gene
             # These libraries will then be destroyed after the contextmanager,
             # which will automatically restore the previously registered fake
             # impls.
-            newlib = torch.library.Library(namespace, "FRAGMENT")
+            newlib = torch.library.Library(namespace, "FRAGMENT")  # noqa: TOR901
             torch.library.register_fake(
                 op_str, fake_kernel, lib=newlib, allow_override=True
             )
@@ -194,7 +196,7 @@ def get_torch_version() -> str:
     return f"{int(version[0])}.{int(version[1])}"
 
 
-def generate_yaml_from_profiles(op_profiles: dict[str, set[OpProfile]]) -> str:
+def generate_yaml_from_profiles(op_profiles: Dict[str, Set[OpProfile]]) -> str:
     """
     Generates a yaml string from the given operator profiles which can be saved
     to a file. The yaml string can be loaded back into an operator profile
@@ -240,7 +242,7 @@ def generate_yaml_from_profiles(op_profiles: dict[str, set[OpProfile]]) -> str:
     )
 
 
-def save_op_profiles(op_profiles: dict[str, set[OpProfile]], f: FileLike) -> None:
+def save_op_profiles(op_profiles: Dict[str, Set[OpProfile]], f: FileLike) -> None:
     """
     Serializes the given operator profiles into a yaml format and saves it to
     the given file. The operator profile can be loaded back using `load_op_profiles`.
@@ -260,7 +262,7 @@ def save_op_profiles(op_profiles: dict[str, set[OpProfile]], f: FileLike) -> Non
         raise ValueError(f"Invalid type of file {f}")
 
 
-def read_profiles_from_yaml(yaml_str: str) -> dict[str, set[OpProfile]]:
+def read_profiles_from_yaml(yaml_str: str) -> Dict[str, Set[OpProfile]]:
     """
     Reads the yaml saved by `save_op_profiles` and returns the operator profiles.
     """
@@ -285,7 +287,7 @@ def read_profiles_from_yaml(yaml_str: str) -> dict[str, set[OpProfile]]:
             deserialize_tensor_metadata(arg) for arg in data["args_profile"]
         )
         out_profile_data = data["out_profile"]
-        out_profile: tuple[TensorMetadata] | TensorMetadata = (
+        out_profile: Union[Tuple[TensorMetadata], TensorMetadata]= (
             tuple(deserialize_tensor_metadata(out) for out in out_profile_data)  # type: ignore[assignment]
             if isinstance(out_profile_data, list)
             else deserialize_tensor_metadata(out_profile_data)
@@ -308,7 +310,7 @@ def read_profiles_from_yaml(yaml_str: str) -> dict[str, set[OpProfile]]:
     }
 
 
-def load_op_profiles(f: FileLike) -> dict[str, set[OpProfile]]:
+def load_op_profiles(f: FileLike) -> Dict[str, Set[OpProfile]]:
     """
     Loads the saved operator profiles from `save_op_profiles`.
     """

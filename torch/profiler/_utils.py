@@ -1,10 +1,14 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import operator
 import re
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Literal, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Type, Union
+from typing_extensions import Literal
+
 
 from torch.autograd.profiler import profile
 from torch.profiler import DeviceType
@@ -64,7 +68,7 @@ class EventKey:
     def __repr__(self) -> str:
         return f"{self.event.name}"
 
-    def intervals_overlap(self, intervals: list[Interval]):
+    def intervals_overlap(self, intervals: List[Interval]):
         overlap_time = 0
         intervals = sorted(intervals, key=lambda x: x.start)
 
@@ -100,13 +104,13 @@ class EventKey:
 class BasicEvaluation:
     def __init__(self, prof: profile) -> None:
         self.profile = prof
-        self.metrics: dict[EventKey, EventMetrics] = {}
+        self.metrics: Dict[EventKey, EventMetrics] = {}
         self.compute_self_time()
         self.event_keys = sorted(
             self.metrics.keys(), key=lambda x: x.event.start_time_ns
         )
         self.events = [e.event for e in self.event_keys]
-        self.cuda_events: list[_KinetoEvent] = []
+        self.cuda_events: List[_KinetoEvent] = []
         self.queue_depth_list = self.compute_queue_depth()
         self.compute_idle_time()
 
@@ -182,7 +186,7 @@ class BasicEvaluation:
             cuda_launch_events + cuda_kernel_events, key=lambda x: x.start_ns()
         )
 
-        kernel_mapping: dict[_KinetoEvent, int] = {}
+        kernel_mapping: Dict[_KinetoEvent, int] = {}
         last_mapped_kernel = 0
         for cuda_launch_event in cuda_launch_events:
             index = index_of_first_match(
@@ -208,7 +212,7 @@ class BasicEvaluation:
                 return event.start_time_ns
             raise Exception("Unknown Event Type")  # noqa: TRY002
 
-        queue_depth_list: list[Interval] = []
+        queue_depth_list: List[Interval] = []
         all_events.sort(key=new_old_event_comparator)
         for event in all_events:
             # Find latest cuda kernel event
@@ -253,7 +257,7 @@ class BasicEvaluation:
         # Based on queue_depth_list, we can calculate idle time for all the events
         idle = False
         idle_start = 0
-        idle_intervals: list[Interval] = []
+        idle_intervals: List[Interval] = []
         if self.queue_depth_list and self.events:
             idle_intervals += [
                 Interval(self.events[0].start_time_ns, self.queue_depth_list[0].start),
@@ -339,7 +343,7 @@ class BasicEvaluation:
             event_list = [
                 event
                 for _, event in sorted(
-                    zip(heuristic_score_list, event_list, strict=True),
+                    _zip_strict(heuristic_score_list, event_list),
                     key=operator.itemgetter(0),
                     reverse=True,
                 )
@@ -411,9 +415,9 @@ class TimelineEvent:
 
     timestamp: int
     event_type: Literal["start", "end", "regular"]
-    marker_type: Literal["filename", "node"] | None
-    identifier: str | int | None
-    event: dict[str, Any]
+    marker_type: Optional[Literal["filename", "node"]]
+    identifier: Optional[Union[str, int]]
+    event: Dict[str, Any]
 
 
 @dataclass
@@ -421,9 +425,9 @@ class ContextStackEntry:
     """Represents a context (filename or node) in the stack."""
 
     context_type: Literal["filename", "node"]
-    identifier: str | int
-    metadata: dict | None
-    tid: int | None = None  # Thread ID associated with this context
+    identifier: Union[str, int]
+    metadata: Optional[dict]
+    tid: Optional[int]= None  # Thread ID associated with this context
 
 
 def map_recorded_events_to_aten_ops_with_stack_trace(traced_data):
@@ -446,7 +450,7 @@ def map_recorded_events_to_aten_ops_with_stack_trace(traced_data):
     trace_events = traced_data.get("traceEvents", [])
 
     # Create event timeline
-    event_timeline: list[TimelineEvent] = []
+    event_timeline: List[TimelineEvent] = []
 
     def is_fx_marker_event(event):
         return (
@@ -490,88 +494,87 @@ def map_recorded_events_to_aten_ops_with_stack_trace(traced_data):
     event_timeline.sort(key=lambda x: x.timestamp)
 
     # Process events in chronological order with a stack
-    context_stack: list[ContextStackEntry] = []
+    context_stack: List[ContextStackEntry] = []
 
     # Invariant: all start event has a corresponding end event
     for timeline_event in event_timeline:
-        match timeline_event.event_type:
-            case "start":
-                if timeline_event.identifier is None:
-                    raise AssertionError("identifier must not be None for start event")
+        if timeline_event.event_type == "start":
+            if timeline_event.identifier is None:
+                raise AssertionError("identifier must not be None for start event")
 
-                if timeline_event.marker_type == "filename":
-                    if not isinstance(timeline_event.identifier, str):
-                        raise AssertionError(
-                            f"identifier must be str for filename marker, "
-                            f"got {type(timeline_event.identifier).__name__}"
-                        )
-                    # Push filename context - query metadata registry on-demand
-                    metadata = _FX_METADATA_REGISTRY.get(timeline_event.identifier)
-                    tid = timeline_event.event.get("tid")
-                    context_stack.append(
-                        ContextStackEntry(
-                            "filename", timeline_event.identifier, metadata, tid
-                        )
+            if timeline_event.marker_type == "filename":
+                if not isinstance(timeline_event.identifier, str):
+                    raise AssertionError(
+                        f"identifier must be str for filename marker, "
+                        f"got {type(timeline_event.identifier).__name__}"
                     )
-                elif timeline_event.marker_type == "node":
-                    # Find the current filename from stack
-                    current_file_metadata = None
-                    tid = timeline_event.event.get("tid")
-                    for ctx_entry in reversed(context_stack):
-                        if (
-                            ctx_entry.context_type == "filename"
-                            and ctx_entry.tid == tid
-                        ):
-                            current_file_metadata = ctx_entry.metadata
-                            break
-
-                    if current_file_metadata:
-                        node_metadata = current_file_metadata.get("node_metadata", {})
-                        if timeline_event.identifier in node_metadata:
-                            node_meta: dict | None = node_metadata[
-                                timeline_event.identifier
-                            ]
-                            context_stack.append(
-                                ContextStackEntry(
-                                    "node", timeline_event.identifier, node_meta, tid
-                                )
-                            )
-
-            case "end":
-                # Pop from stack - search backwards to find matching context
-                for i in range(len(context_stack) - 1, -1, -1):
-                    ctx_entry = context_stack[i]
+                # Push filename context - query metadata registry on-demand
+                metadata = _FX_METADATA_REGISTRY.get(timeline_event.identifier)
+                tid = timeline_event.event.get("tid")
+                context_stack.append(
+                    ContextStackEntry(
+                        "filename", timeline_event.identifier, metadata, tid
+                    )
+                )
+            elif timeline_event.marker_type == "node":
+                # Find the current filename from stack
+                current_file_metadata = None
+                tid = timeline_event.event.get("tid")
+                for ctx_entry in reversed(context_stack):
                     if (
-                        timeline_event.marker_type == ctx_entry.context_type
-                        and timeline_event.identifier == ctx_entry.identifier
+                        ctx_entry.context_type == "filename"
+                        and ctx_entry.tid == tid
                     ):
-                        context_stack.pop(i)
+                        current_file_metadata = ctx_entry.metadata
                         break
 
-            case "regular":
-                # Apply metadata from current context stack
-                # Find the most specific context (node takes precedence over filename)
-                # Only augment events with the same tid as the file/node event matched
-                current_stack_trace = None
-                current_node_name = None
-                event_tid = timeline_event.event.get("tid")
-
-                for ctx_entry in reversed(context_stack):
-                    # Only apply metadata from contexts with matching tid
-                    if ctx_entry.tid == event_tid:
-                        if ctx_entry.context_type == "node" and ctx_entry.metadata:
-                            current_stack_trace = ctx_entry.metadata.get(
-                                "stack_trace", "No model stack trace available"
+                if current_file_metadata:
+                    node_metadata = current_file_metadata.get("node_metadata", {})
+                    if timeline_event.identifier in node_metadata:
+                        node_meta: Optional[dict]= node_metadata[
+                            timeline_event.identifier
+                        ]
+                        context_stack.append(
+                            ContextStackEntry(
+                                "node", timeline_event.identifier, node_meta, tid
                             )
-                            current_node_name = ctx_entry.metadata.get("name", "")
-                            # Do we want to only attach the stack trace of the lowest node or stack trace of all nodes
-                            # if nodes are nested, e.g. in nested graph modules
-                            break
+                        )
 
-                # Augment the event
-                if current_stack_trace or current_node_name:
-                    args = timeline_event.event.setdefault("args", {})
-                    if current_stack_trace:
-                        args["stack_trace"] = current_stack_trace
-                    if current_node_name:
-                        args["node_name"] = current_node_name
+        elif timeline_event.event_type == "end":
+            # Pop from stack - search backwards to find matching context
+            for i in range(len(context_stack) - 1, -1, -1):
+                ctx_entry = context_stack[i]
+                if (
+                    timeline_event.marker_type == ctx_entry.context_type
+                    and timeline_event.identifier == ctx_entry.identifier
+                ):
+                    context_stack.pop(i)
+                    break
+
+        elif timeline_event.event_type == "regular":
+            # Apply metadata from current context stack
+            # Find the most specific context (node takes precedence over filename)
+            # Only augment events with the same tid as the file/node event matched
+            current_stack_trace = None
+            current_node_name = None
+            event_tid = timeline_event.event.get("tid")
+
+            for ctx_entry in reversed(context_stack):
+                # Only apply metadata from contexts with matching tid
+                if ctx_entry.tid == event_tid:
+                    if ctx_entry.context_type == "node" and ctx_entry.metadata:
+                        current_stack_trace = ctx_entry.metadata.get(
+                            "stack_trace", "No model stack trace available"
+                        )
+                        current_node_name = ctx_entry.metadata.get("name", "")
+                        # Do we want to only attach the stack trace of the lowest node or stack trace of all nodes
+                        # if nodes are nested, e.g. in nested graph modules
+                        break
+
+            # Augment the event
+            if current_stack_trace or current_node_name:
+                args = timeline_event.event.setdefault("args", {})
+                if current_stack_trace:
+                    args["stack_trace"] = current_stack_trace
+                if current_node_name:
+                    args["node_name"] = current_node_name

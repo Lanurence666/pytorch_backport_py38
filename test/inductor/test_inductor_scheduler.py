@@ -1,5 +1,6 @@
 # Owner(s): ["module: inductor"]
 
+from __future__ import annotations
 from unittest import skipIf
 from unittest.mock import Mock
 
@@ -120,9 +121,7 @@ class TestScheduler(TestCase):
             },
         ],
     )
-    @torch._inductor.config.patch(
-        {"force_disable_caches": True, "shape_padding": False}
-    )
+    @torch._inductor.config.patch({"force_disable_caches": True})
     @skipIf(not IS_BIG_GPU, "we can't use Triton only as a backend for max autotune")
     def test_flop_counter_op(self, device, dtype, options):
         if device == "cpu":

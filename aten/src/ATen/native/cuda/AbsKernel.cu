@@ -5,6 +5,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/OpMathType.h>
 
 namespace at::native {
 

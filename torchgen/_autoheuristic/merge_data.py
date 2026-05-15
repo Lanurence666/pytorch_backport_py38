@@ -1,13 +1,15 @@
+from __future__ import annotations
+from typing import List
 import sys
 
 
-def merge_txt_files(file_list: list[str], output_file: str) -> None:
+def merge_txt_files(file_list: List[str], output_file: str) -> None:
     if not file_list:
         print("No input files provided.")
         return
 
-    metadata: list[str] = []
-    content: list[str] = []
+    metadata: List[str] = []
+    content: List[str] = []
 
     # Read metadata and content from all files
     for file_path in file_list:

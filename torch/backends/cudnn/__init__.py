@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import os
 import sys
 import warnings
@@ -29,7 +31,7 @@ except ImportError:
 #
 # to globally disable CuDNN/MIOpen
 
-__cudnn_version: int | None = None
+__cudnn_version: Optional[int]= None
 
 if _cudnn is not None:
 

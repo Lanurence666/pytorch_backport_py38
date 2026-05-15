@@ -1,5 +1,6 @@
 # Owner(s): ["module: custom-operators"]
 
+from __future__ import annotations
 import contextlib
 import enum
 import gc
@@ -273,7 +274,7 @@ class NestedValueSize(OpaqueBase):
         # Combine repr and globals
         repr_str = f"NestedValueSize(size={size_eval}, config={config_eval})"
         all_globals = (
-            {"NestedValueSize": NestedValueSize} | size_globals | config_globals
+            {**{**{"NestedValueSize": NestedValueSize}, **size_globals}, **config_globals}
         )
 
         return repr_str, all_globals
@@ -446,7 +447,7 @@ class TestOpaqueObject(TestCase):
         # raises. Any registrations before this would leak into the next test.
         super().setUp()
 
-        self.lib = torch.library.Library("_TestOpaqueObject", "FRAGMENT")  # noqa: SCOPED_LIBRARY
+        self.lib = torch.library.Library("_TestOpaqueObject", "FRAGMENT")  # noqa: TOR901
         self._opaque_types_before_test = set(_OPAQUE_TYPES_BY_NAME.keys())
 
         torch.library.define(
@@ -1194,7 +1195,7 @@ def forward(self, x_1, cfg_1):
             return out
 
         torch.library.register_fake(
-            "_TestOpaqueObject::bad_fake", bad_fake1, lib=self.lib
+            "_TestOpaqueObject::bad_fake", bad_fake1, lib=self.lib, allow_override=True
         )
 
         with self.assertRaisesRegex(
@@ -1208,7 +1209,7 @@ def forward(self, x_1, cfg_1):
             return torch.empty_like(x)
 
         torch.library.register_fake(
-            "_TestOpaqueObject::bad_fake", bad_fake2, lib=self.lib
+            "_TestOpaqueObject::bad_fake", bad_fake2, lib=self.lib, allow_override=True
         )
 
         with self.assertRaisesRegex(
@@ -2983,13 +2984,7 @@ def forward(self, primals_2, tangents_1):
                     self.assertTrue(torch.allclose(out, expected))
 
                     upstream_grad = torch.ones_like(out) * 5
-                    with (
-                        torch._dynamo.compiled_autograd._enable(
-                            torch.compile(backend="eager")
-                        )
-                        if use_compiled_autograd
-                        else contextlib.nullcontext()
-                    ):
+                    with torch._dynamo.compiled_autograd._enable( torch.compile(backend="eager") ) if use_compiled_autograd else contextlib.nullcontext():
                         out.backward(upstream_grad)
 
                     self.assertIsNotNone(x.grad)

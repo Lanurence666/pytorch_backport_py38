@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import dataclasses
 import functools
 import os
@@ -7,8 +9,8 @@ import re
 import subprocess
 import sys
 import warnings
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, List, Optional
 
 import torch
 from torch._inductor import config
@@ -35,9 +37,9 @@ def _get_isa_dry_compile_fingerprint(isa_flags: str) -> str:
 
 class VecISA:
     _bit_width: int
-    _macro: list[str]
+    _macro: List[str]
     _arch_flags: str
-    _dtype_nelements: dict[torch.dtype, int]
+    _dtype_nelements: Dict[torch.dtype, int]
 
     # Note [Checking for Vectorized Support in Inductor]
     # TorchInductor CPU vectorization reuses PyTorch vectorization utility functions
@@ -81,7 +83,7 @@ cdll.LoadLibrary("__lib_path__")
     def nelements(self, dtype: torch.dtype = torch.float) -> int:
         return self._dtype_nelements[dtype]
 
-    def build_macro(self) -> list[str]:
+    def build_macro(self) -> List[str]:
         return self._macro
 
     def build_arch_flags(self) -> str:
@@ -143,7 +145,7 @@ cdll.LoadLibrary("__lib_path__")
     def __bool__(self) -> bool:
         return self.__bool__impl(config.cpp.vec_isa_ok)
 
-    @functools.cache  # noqa: B019
+    @functools.lru_cache(maxsize=None)  # noqa: B019
     def __bool__impl(self, vec_isa_ok) -> bool:
         if vec_isa_ok is not None:
             return vec_isa_ok
@@ -217,7 +219,7 @@ extern "C" __m512bh __avx512_bf16_chk_kernel(__m512 a, __m512 b) {
 }
 """
 
-    @functools.cache  # noqa: B019
+    @functools.lru_cache(maxsize=None)  # noqa: B019
     # pyrefly: ignore [bad-override]
     def __bool__(self) -> bool:
         if super().__bool__():
@@ -278,7 +280,7 @@ extern "C" __m512i __avx512_vnni_chk_kernel_2(__m512i src, __m512i a, __m512i b)
 }
 """
 
-    @functools.cache  # noqa: B019
+    @functools.lru_cache(maxsize=None)  # noqa: B019
     def __bool__(self) -> bool:
         if super().__bool__():
             if config.is_fbcode():
@@ -330,7 +332,7 @@ extern "C" void __amx_chk_kernel() {
 
     _amx_fp16_code = _amx_code.replace("_tile_dpbf16ps", "_tile_dpfp16ps")
 
-    @functools.cache  # noqa: B019
+    @functools.lru_cache(maxsize=None)  # noqa: B019
     def __bool__(self) -> bool:
         if super().__bool__():
             if config.is_fbcode():
@@ -425,11 +427,11 @@ class InvalidVecISA(VecISA):
     __hash__: Callable[[VecISA], Any] = VecISA.__hash__  # type: ignore[assignment]
 
 
-def x86_isa_checker() -> list[str]:
-    supported_isa: list[str] = []
+def x86_isa_checker() -> List[str]:
+    supported_isa: List[str] = []
 
     def _check_and_append_supported_isa(
-        dest: list[str], isa_supported: bool, isa_name: str
+        dest: List[str], isa_supported: bool, isa_name: str
     ) -> None:
         if isa_supported:
             dest.append(isa_name)
@@ -466,8 +468,8 @@ supported_vec_isa_list = [
 
 
 def get_isa_from_cpu_capability(
-    capability: str | None,
-    vec_isa_list: list[VecISA],
+    capability: Optional[str],
+    vec_isa_list: List[VecISA],
     invalid_vec_isa: InvalidVecISA,
 ):
     # AMX setting is not supported in eager
@@ -498,9 +500,9 @@ def get_isa_from_cpu_capability(
 # Cache the cpuinfo to avoid I/O overhead. Meanwhile, the cpuinfo content
 # might have too much redundant content that is useless for ISA check. Hence,
 # we only cache some key isa information.
-@functools.cache
-def valid_vec_isa_list() -> list[VecISA]:
-    isa_list: list[VecISA] = []
+@functools.lru_cache(maxsize=None)
+def valid_vec_isa_list() -> List[VecISA]:
+    isa_list: List[VecISA] = []
     if sys.platform == "darwin" and platform.processor() == "arm":
         isa_list.append(VecNEON())
 
@@ -547,7 +549,7 @@ def pick_vec_isa() -> VecISA:
     if config.is_fbcode() and (platform.machine() in ["x86_64", "AMD64"]):
         return VecAVX2()
 
-    _valid_vec_isa_list: list[VecISA] = valid_vec_isa_list()
+    _valid_vec_isa_list: List[VecISA] = valid_vec_isa_list()
     if not _valid_vec_isa_list:
         return invalid_vec_isa
 

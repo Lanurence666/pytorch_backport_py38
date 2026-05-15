@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import sympy
 
@@ -8,12 +10,7 @@ from torch.utils._sympy.symbol import symbol_is_type, SymT
 
 from .. import config
 from ..runtime.hints import AttrsDescriptorWrapper
-from ..utils import (
-    _type_of,
-    device_supports_fp64,
-    expr_fits_within_32bit,
-    triton_version_uses_attrs_dict,
-)
+from ..utils import _type_of, expr_fits_within_32bit, triton_version_uses_attrs_dict
 from ..virtualized import V
 from .common import (
     ArgName,
@@ -37,7 +34,7 @@ def should_unwrap_unspec_arg(name: str):
     return False
 
 
-def signature_of(arg: KernelArgType, *, size_dtype: str | None) -> str:
+def signature_of(arg: KernelArgType, *, size_dtype: Optional[str]) -> str:
     if isinstance(arg, TensorArg):
         typ = _type_of(arg.dtype)
         if should_unwrap_unspec_arg(arg.buffer):
@@ -66,20 +63,12 @@ def signature_of(arg: KernelArgType, *, size_dtype: str | None) -> str:
             return "constexpr"
         elif isinstance(arg.expr, (float, sympy.Float)):
             # Python floats are natively fp64, so use fp64 to preserve precision
-            if config._use_fp64_for_unbacked_floats and device_supports_fp64(
-                V.graph.current_device
-            ):
-                return "fp64"
-            return "fp32"
+            return "fp64" if config._use_fp64_for_unbacked_floats else "fp32"
         elif isinstance(arg.expr, sympy.Symbol) and symbol_is_type(
             arg.expr, (SymT.UNBACKED_FLOAT)
         ):
             # Unbacked floats from .item() should preserve fp64 precision
-            if config._use_fp64_for_unbacked_floats and device_supports_fp64(
-                V.graph.current_device
-            ):
-                return "fp64"
-            return "fp32"
+            return "fp64" if config._use_fp64_for_unbacked_floats else "fp32"
         elif isinstance(arg.expr, bool):
             return "i1"
 
@@ -125,13 +114,13 @@ def non_constexpr_signature(signature):
 
 
 def signature_to_meta(
-    signature: list[KernelArgType],
+    signature: List[KernelArgType],
     *,
-    size_dtype: str | None,
-    argdefs: list[ArgName],
-    indices: list[int] | None = None,
+    size_dtype: Optional[str],
+    argdefs: List[ArgName],
+    indices: Optional[List[int]] = None,
     is_template: bool = False,
-) -> dict[str, str]:
+) -> Dict[str, str]:
     if indices is None:
         indices = list(range(len(signature)))
 
@@ -208,10 +197,10 @@ def _arg_equals_1(arg: KernelArgType) -> bool:
 
 
 def equal_1_arg_indices(
-    args: list[KernelArgType],
+    args: List[KernelArgType],
     *,
-    indices: list[int] | None = None,
-) -> tuple[int, ...]:
+    indices: Optional[List[int]] = None,
+) -> Tuple[int, ...]:
     if indices is None:
         indices = list(range(len(args)))
 
@@ -246,10 +235,10 @@ def _is_tensor_within_2gb(arg: TensorArg) -> bool:
 
 
 def config_of(
-    args: list[KernelArgType],
+    args: List[KernelArgType],
     *,
-    indices: list[int] | None = None,
-    pointer_range_override: tuple[int, ...] | None = None,
+    indices: Optional[List[int]] = None,
+    pointer_range_override: Optional[Tuple[int, ...]] = None,
 ) -> Any:
     if indices is None:
         indices = list(range(len(args)))

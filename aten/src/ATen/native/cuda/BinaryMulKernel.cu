@@ -12,6 +12,7 @@
 #include <ATen/native/cuda/Loops.cuh>
 
 #include <type_traits>
+#include <ATen/OpMathType.h>
 
 // NOTE: CUDA on Windows requires that the enclosing function
 // of a __device__ lambda not have internal linkage.

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Parse cherry-pick comments from a PyTorch GitHub issue and extract trunk PR info.
 
 Usage:

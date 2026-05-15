@@ -1,4 +1,10 @@
-from typing import Any, TypeAlias
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 import torch
 
@@ -69,8 +75,8 @@ try:
     HAS_Z3 = True
 
     def transform_to_z3(
-        constraint: Constraint, counter: int, dimension_dict: dict[int, int]
-    ) -> tuple[_Z3Expr, int]:
+        constraint: Constraint, counter: int, dimension_dict: Dict[int, int]
+    ) -> Tuple[_Z3Expr, int]:
         if isinstance(constraint, Conj):
             conjuncts = []
             for c in constraint.conjucts:
@@ -267,10 +273,10 @@ try:
             raise NotImplementedError("Operation not yet implemented")
 
     def transform_var(
-        tensor: TVar | TensorType | _DynType,
+        tensor: Union[Union[TVar, TensorType], _DynType],
         counter: int,
-        dimension_dict: dict[int, int],
-    ) -> tuple[_Z3Expr, int]:
+        dimension_dict: Dict[int, int],
+    ) -> Tuple[_Z3Expr, int]:
         """
         Transforms tensor variables to a format understood by z3
         Args:
@@ -279,7 +285,7 @@ try:
 
         """
         if isinstance(tensor, TensorType):
-            res: list[_Z3Expr] = []
+            res: List[_Z3Expr] = []
             for t in tensor.__args__:
                 transformed, counter = transform_dimension(t, counter, dimension_dict)
                 res.append(transformed)
@@ -309,8 +315,8 @@ try:
             raise NotImplementedError(f"Unsupported tensor type: {type(tensor)}")
 
     def transform_dimension(
-        dimension: DVar | int | _DynType, counter: int, dimension_dict: dict[int, int]
-    ) -> tuple[_Z3Expr, int]:
+        dimension: Union[Union[DVar, int], _DynType], counter: int, dimension_dict: Dict[int, int]
+    ) -> Tuple[_Z3Expr, int]:
         """
         Takes a dimension variable or a number and transforms it to a tuple
         according to our scheme
@@ -341,10 +347,10 @@ try:
             raise NotImplementedError(f"Unsupported dimension type: {type(dimension)}")
 
     def transform_algebraic_expression(
-        expr: DVar | int | _DynType | Prod | BinConstraintD,
+        expr: Union[Union[DVar, int], Union[_DynType, Prod]] | BinConstraintD,
         counter: int,
-        dimension_dict: dict[int, int],
-    ) -> tuple[_Z3Expr, int]:
+        dimension_dict: Dict[int, int],
+    ) -> Tuple[_Z3Expr, int]:
         """
         Transforms an algebraic expression to z3 format
         Args:
@@ -414,7 +420,7 @@ try:
         Given a trace, generates constraints and transforms them to z3 format
 
         """
-        dimension_dict: dict[int, int] = {}
+        dimension_dict: Dict[int, int] = {}
 
         generator = ConstraintGenerator(traced)
         new_constraints, counter = generator.generate_constraints(counter)
@@ -427,7 +433,7 @@ try:
 
     def iterate_till_fixed_point(
         constraints: Constraint, counter: int
-    ) -> tuple[Constraint, int]:
+    ) -> Tuple[Constraint, int]:
         """
         Transform constraints till reaching a fixed point
         """
@@ -439,7 +445,7 @@ try:
 
     def transform_all_constraints_trace_time(
         tracer_root: torch.nn.Module, graph: Graph, node: Node, counter: int = 0
-    ) -> tuple[_Z3Expr, _Z3Expr]:
+    ) -> Tuple[_Z3Expr, _Z3Expr]:
         """
         Takes a node and a graph and generates two sets of constraints.
         One set constraints the node's constraints and another set
@@ -455,7 +461,7 @@ try:
         its negation.
 
         """
-        dimension_dict: dict[int, int] = {}
+        dimension_dict: Dict[int, int] = {}
 
         generator = ConstraintGenerator(tracer_root, graph)
         new_constraints, counter = generator.generate_constraints(counter)
@@ -510,8 +516,8 @@ try:
         graph: Graph,
         node: Node,
         counter: int = 0,
-        user_constraints: _Z3Expr | None = None,
-    ) -> tuple[_Z3Result, _Z3Result]:
+        user_constraints: Optional[_Z3Expr] = None,
+    ) -> Tuple[_Z3Result, _Z3Result]:
         """
         Given an IR and a node representing a conditional, evaluate the conditional
         and its negation

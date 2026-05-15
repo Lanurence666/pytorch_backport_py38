@@ -121,9 +121,10 @@ class FakeTensorTest(TestCase):
             self.assertTrue(isinstance(z, FakeTensor))
 
     def test_custom_op_fallback(self):
-        from torch.library import _scoped_library, impl
+        from torch.library import impl, Library
 
-        with _scoped_library("my_test_op", "DEF") as test_lib:
+        try:
+            test_lib = Library("my_test_op", "DEF")  # noqa: TOR901
             test_lib.define("foo(Tensor self) -> Tensor")
 
             @impl(test_lib, "foo", "CPU")
@@ -137,6 +138,9 @@ class FakeTensorTest(TestCase):
                 with FakeTensorMode(allow_fallback_kernels=True) as mode:
                     x = mode.from_tensor(x)
                     torch.ops.my_test_op.foo(x)
+
+        finally:
+            test_lib._destroy()
 
     def test_parameter_instantiation(self):
         with FakeTensorMode():
@@ -2520,26 +2524,23 @@ class FakeTensorDispatchCache(TestCase):
             FakeTensorMode.cache_clear()
             self.assertHitsMisses(0, 0)
 
-            try:
-                torch.set_default_device("cpu")
-                x = torch.tensor([1, 2])
-                y = x + 1.0
-                self.assertEqual(y.device.type, "cpu")
-                self.assertHitsMisses(0, 1)
+            torch.set_default_device("cpu")
+            x = torch.tensor([1, 2])
+            y = x + 1.0
+            self.assertEqual(y.device.type, "cpu")
+            self.assertHitsMisses(0, 1)
 
-                torch.set_default_device("cuda")
-                x = torch.tensor([1, 2])
-                y = x + 1.0
-                self.assertEqual(y.device.type, "cuda")
-                self.assertHitsMisses(0, 2)
+            torch.set_default_device("cuda")
+            x = torch.tensor([1, 2])
+            y = x + 1.0
+            self.assertEqual(y.device.type, "cuda")
+            self.assertHitsMisses(0, 2)
 
-                torch.set_default_device("cpu")
-                x = torch.tensor([1, 2])
-                y = x + 1.0
-                self.assertEqual(y.device.type, "cpu")
-                self.assertHitsMisses(1, 2)
-            finally:
-                torch.set_default_device(None)
+            torch.set_default_device("cpu")
+            x = torch.tensor([1, 2])
+            y = x + 1.0
+            self.assertEqual(y.device.type, "cpu")
+            self.assertHitsMisses(1, 2)
 
     def test_cache_inplace_op(self):
         """

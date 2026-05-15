@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Dict
 import os
 import subprocess
 import time
@@ -11,7 +12,7 @@ from ..util.utils import print_log, print_time
 from .utils import run_cpp_test
 
 
-def update_gzip_dict(gzip_dict: dict[str, int], file_name: str) -> str:
+def update_gzip_dict(gzip_dict: Dict[str, int], file_name: str) -> str:
     file_name = file_name.lower()
     gzip_dict[file_name] = gzip_dict.get(file_name, 0) + 1
     num = gzip_dict[file_name]
@@ -36,7 +37,7 @@ def export() -> None:
     # collect .gcda files
     gcda_files = get_gcda_files()
     # file name like utils.cpp may have same name in different folder
-    gzip_dict: dict[str, int] = {}
+    gzip_dict: Dict[str, int] = {}
     for gcda_item in gcda_files:
         # generate json.gz
         subprocess.check_call(["gcov", "-i", gcda_item])

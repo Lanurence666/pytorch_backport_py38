@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from collections import OrderedDict
-from typing import Any
+from typing import Any, Dict, Tuple, overload
 
 import torch
 
@@ -229,7 +231,7 @@ def reset_peak_memory_stats(device_index: _device_t = None, /) -> None:
     return torch._C._accelerator_resetPeakStats(device_index)
 
 
-def get_memory_info(device_index: _device_t = None, /) -> tuple[int, int]:
+def get_memory_info(device_index: _device_t = None, /) -> Tuple[int, int]:
     r"""Return the current device memory information for a given device index.
 
     Args:
@@ -239,7 +241,7 @@ def get_memory_info(device_index: _device_t = None, /) -> tuple[int, int]:
             :ref:`accelerator<accelerators>` device type.
 
     Returns:
-        tuple[int, int]: a tuple of two integers (free_memory, total_memory) in bytes.
+        Tuple[int, int]: a tuple of two integers (free_memory, total_memory) in bytes.
             The first value is the free memory on the device (available across all processes and applications),
             The second value is the device's total hardware memory capacity.
     """

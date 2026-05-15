@@ -13,9 +13,9 @@ import os.path
 import re
 import warnings
 from collections import defaultdict, deque
-from collections.abc import Callable
+
 from dataclasses import dataclass, replace
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, overload
 
 import torch
 import torch._inductor.inductor_prims
@@ -121,17 +121,17 @@ class OpTypes:
 class NodeInfo:
     # Be careful about iterating over these explicitly, as their order may not
     # be deterministic
-    inputs: list[fx.Node]
+    inputs: List[fx.Node]
     _required_fw_nodes: OrderedSet[fx.Node]
     required_bw_nodes: OrderedSet[fx.Node]
     tangents_closure: OrderedSet[fx.Node]
     unclaimed_nodes: OrderedSet[fx.Node]
-    fw_order: dict[fx.Node, int]
+    fw_order: Dict[fx.Node, int]
     # Effectively maps to which of our primals are parameters
     static_lifetime_input_nodes: OrderedSet[fx.Node]
 
     @functools.cached_property
-    def required_fw_nodes(self) -> list[fx.Node]:
+    def required_fw_nodes(self) -> List[fx.Node]:
         return sorted(
             (n for n in self._required_fw_nodes), key=lambda n: self.fw_order[n]
         )
@@ -165,16 +165,6 @@ def must_recompute(node: fx.Node) -> bool:
         CheckpointPolicy.MUST_RECOMPUTE,
         CheckpointPolicy.PREFER_RECOMPUTE,
     ]
-
-
-def _is_assert_only_symbool(node: fx.Node) -> bool:
-    return (
-        isinstance(node.meta.get("val"), torch.SymBool)
-        and len(node.users) > 0
-        and all(
-            user.target is torch.ops.aten._assert_scalar.default for user in node.users
-        )
-    )
 
 
 def has_recomputable_ops(fx_g: fx.GraphModule) -> bool:
@@ -218,7 +208,7 @@ def is_not_collective(node: fx.Node) -> bool:
 InvalidNode = InvalidNodeBase()
 
 
-def _get_ho_op_original_input(getitem_node: fx.Node) -> fx.Node | None:
+def _get_ho_op_original_input(getitem_node: fx.Node) -> Optional[fx.Node]:
     """Given a getitem node, check if it extracts from a higher-order op
     that has kwargs mapping the key back to an original input.
 
@@ -243,7 +233,7 @@ def _get_ho_op_original_input(getitem_node: fx.Node) -> fx.Node | None:
     return None
 
 
-def _is_copy_node_bw_only(node: fx.Node) -> fx.Node | None:
+def _is_copy_node_bw_only(node: fx.Node) -> Optional[fx.Node]:
     """Check if node is a view/reshape of a higher-order op output that aliases an input.
 
     Returns the original input node from the higher-order op's kwargs if the pattern
@@ -259,8 +249,8 @@ def _is_copy_node_bw_only(node: fx.Node) -> fx.Node | None:
 
 def _find_input_for_invalid_output(
     node: fx.Node,
-    env: dict[fx.Node, Any],
-) -> fx.Node | None:
+    env: Dict[fx.Node, Any],
+) -> Optional[fx.Node]:
     """Try to find a valid input replacement for an invalid forward output.
 
     This handles cases where a forward output depends on backward nodes but
@@ -290,10 +280,10 @@ def _find_input_for_invalid_output(
 
 def _extract_graph_with_inputs_outputs(
     joint_graph: fx.Graph,
-    inputs: list[fx.Node],
-    outputs: list[fx.Node],
-    outputs_descs: list[AOTOutput],
-    subgraph: str | None = None,
+    inputs: List[fx.Node],
+    outputs: List[fx.Node],
+    outputs_descs: List[AOTOutput],
+    subgraph: Optional[str]= None,
     ignore_must_be_in_fw_bw: bool = False,
 ) -> fx.Graph:
     """
@@ -307,7 +297,7 @@ def _extract_graph_with_inputs_outputs(
     in valid proxies. Then, all dead code is eliminated.
     """
     new_graph = fx.Graph()
-    env: dict[fx.Node, fx.Node] = {}
+    env: Dict[fx.Node, fx.Node] = {}
 
     # Add new placeholder nodes in the order specified by the inputs
     for node in inputs:
@@ -459,7 +449,7 @@ def _must_be_in_backward(node: fx.Node) -> bool:
 
 def _extract_fwd_bwd_outputs(
     joint_module: fx.GraphModule, *, num_fwd_outputs: int
-) -> tuple[list[fx.Node], list[fx.Node], list[AOTOutput], list[AOTOutput]]:
+) -> Tuple[List[fx.Node], List[fx.Node], List[AOTOutput], List[AOTOutput]]:
     outputs = pytree.arg_tree_leaves(
         *(node.args for node in joint_module.graph.find_nodes(op="output"))
     )
@@ -475,7 +465,7 @@ def _extract_fwd_bwd_outputs(
     return fwd_outputs, bwd_outputs, fwd_outputs_descs, bwd_outputs_descs
 
 
-def _remove_by_name(saved_values: list[fx.Node], name: str) -> None:
+def _remove_by_name(saved_values: List[fx.Node], name: str) -> None:
     for saved_value in saved_values:
         if saved_value.name == name:
             saved_values.remove(saved_value)
@@ -483,7 +473,7 @@ def _remove_by_name(saved_values: list[fx.Node], name: str) -> None:
 
 
 def find_first_sym_node(
-    fwd_module_outputs: list[fx.Node] | tuple[fx.Node, ...],
+    fwd_module_outputs: Union[List[fx.Node], Tuple[fx.Node, ...],]
 ) -> int:
     idx = len(fwd_module_outputs)
     for i in range(len(fwd_module_outputs) - 1, -1, -1):
@@ -658,7 +648,7 @@ def calculate_tensor_size(tensor: torch.Tensor) -> float:
     return (num_elements * element_size) / (1024 * 1024)
 
 
-def get_allowed_dtypes() -> list[torch.dtype]:
+def get_allowed_dtypes() -> List[torch.dtype]:
     allowed_dtypes = torch._inductor.config.post_grad_fusion_options[
         "activation_quantization_aten_pass"
     ].get("allowed_dtypes", "torch.bfloat16")
@@ -702,7 +692,7 @@ def get_quant_type() -> torch.dtype:
     return getattr(torch, quant_type.split(".")[-1])
 
 
-def calculate_range(dtype: torch.dtype) -> tuple[float, float]:
+def calculate_range(dtype: torch.dtype) -> Tuple[float, float]:
     """
     Calculate the range of values for a given torch.dtype.
     Args:
@@ -720,8 +710,8 @@ def quantize_activation_fw(graph: torch.fx.Graph, num_fwd_outputs: int = 0) -> N
     quant_type = get_quant_type()
     clamp_min, clamp_max = calculate_range(quant_type)
     position_to_quant = dict()
-    tensor_scale_nodes: list[fx.Node] = []
-    sym_scale_nodes: list[fx.Node] = []
+    tensor_scale_nodes: List[fx.Node] = []
+    sym_scale_nodes: List[fx.Node] = []
     for position, node in enumerate(fwd_outputs):
         # Don't quantize user-visible forward outputs. A tensor may appear as
         # both a user output and a saved-for-backward activation (same FX node
@@ -870,7 +860,7 @@ def quantize_activation_bw(graph: torch.fx.Graph) -> None:
 def perform_fp8_activation_quantization(
     fwd_module: fx.GraphModule,
     bwd_module: fx.GraphModule,
-    bwd_module_inputs: dict[str, fx.Node],
+    bwd_module_inputs: Dict[str, fx.Node],
     num_fwd_outputs: int = 0,
 ) -> None:
     trace_structured(
@@ -959,13 +949,13 @@ def perform_fp8_activation_quantization(
 
 
 def enable_activation_quantization(
-    saved_values: list[fx.Node],
+    saved_values: List[fx.Node],
     fwd_module: fx.GraphModule,
     bwd_module: fx.GraphModule,
-    static_lifetime_input_nodes: OrderedSet[fx.Node] | None = None,
+    static_lifetime_input_nodes: Optional[OrderedSet[fx.Node]]= None,
     num_fwd_outputs: int = 0,
 ) -> None:
-    static_input_names: list[str] = (
+    static_input_names: List[str] = (
         [node.name for node in static_lifetime_input_nodes]
         if static_lifetime_input_nodes
         else []
@@ -1002,15 +992,15 @@ def enable_activation_quantization(
 
 def _extract_fwd_bwd_modules(
     joint_module: fx.GraphModule,
-    saved_values: list[fx.Node],
-    saved_sym_nodes: list[fx.Node],
-    saved_opaque_nodes: list[fx.Node] | None = None,
+    saved_values: List[fx.Node],
+    saved_sym_nodes: List[fx.Node],
+    saved_opaque_nodes: Optional[List[fx.Node]]= None,
     *,
     num_fwd_outputs: int,
-    static_lifetime_input_nodes: OrderedSet[fx.Node] | None = None,
+    static_lifetime_input_nodes: Optional[OrderedSet[fx.Node]]= None,
     ignore_must_be_in_fw_bw: bool = False,
     omit_aot_autograd_runtime: bool = False,
-) -> tuple[fx.GraphModule, fx.GraphModule]:
+) -> Tuple[fx.GraphModule, fx.GraphModule]:
     """Extract forward and backward graph modules from a joint graph.
 
     Args:
@@ -1220,10 +1210,6 @@ def _extract_fwd_bwd_modules(
             ignore_must_be_in_fw_bw=ignore_must_be_in_fw_bw,
         )
 
-    for node in bwd_graph.nodes:
-        if node.op in ("call_function", "get_attr"):
-            node.meta["autograd_backward"] = True
-
     fwd_module = fx._lazy_graph_module._make_graph_module(joint_module, fwd_graph)
     bwd_module = fx._lazy_graph_module._make_graph_module(joint_module, bwd_graph)
     if (
@@ -1247,9 +1233,9 @@ def default_partition(
     _joint_inputs: Any,
     *,
     num_fwd_outputs: int,
-    static_lifetime_input_indices: list[int] | None = None,
-    static_lifetime_input_nodes: OrderedSet[fx.Node] | None = None,
-) -> tuple[fx.GraphModule, fx.GraphModule]:
+    static_lifetime_input_indices: Optional[List[int]]= None,
+    static_lifetime_input_nodes: Optional[OrderedSet[fx.Node]]= None,
+) -> Tuple[fx.GraphModule, fx.GraphModule]:
     """
     Partitions the :attr:`joint_module` in a manner that closely resembles the
     behavior observed in the original ``.forward()`` and ``.backward()`` of the
@@ -1364,8 +1350,6 @@ def default_partition(
             continue
         if node.target in (
             torch.ops.aten._assert_scalar.default,
-            torch.ops.aten._assert_async.default,
-            torch.ops.aten._assert_async.msg,
             # Profiler record_function ops are technically impure (they set up
             # profiling spans), but they're safe to duplicate during AC recompute.
             # We skip both enter and exit to keep profiling spans balanced.
@@ -1421,12 +1405,6 @@ def default_partition(
 
     saved_values = list(dict.fromkeys(saved_values).keys())
     saved_sym_nodes = list(dict.fromkeys(saved_sym_nodes).keys())
-    # Skip SymBool nodes whose only consumers are _assert_scalar calls.
-    # These are runtime assertion intermediates and are not needed in backward
-    # for any real computation.
-    saved_sym_nodes = [
-        node for node in saved_sym_nodes if not _is_assert_only_symbool(node)
-    ]
     saved_opaque_nodes = list(dict.fromkeys(saved_opaque_nodes).keys())
 
     if config._sync_decision_cross_ranks:
@@ -1502,15 +1480,12 @@ def _size_of(node: fx.Node) -> int:
         elif isinstance(val, (list, tuple)):
             return sum(object_nbytes(n) for n in val)
         elif isinstance(val, dict):
-            return sum(object_nbytes(n) for n in val.values())
+            return sum(object_nbytes(n) for _, n in val.items())
         elif isinstance(val, torch.Tensor):
             return object_nbytes(val)
 
         raise RuntimeError(f"Unknown metadata type {type(val)} on node {node}")
-    if node.op == "get_attr" or (
-        isinstance(node.target, torch._ops.OpOverload)
-        and len(node.target._schema.returns) == 0
-    ):
+    if node.op == "get_attr" or node.target is torch.ops.aten._assert_scalar.default:
         return 0
     raise RuntimeError(
         f"Node {node} didn't have `val` metadata; we should always have `val` metadata on the nodes."
@@ -1521,16 +1496,16 @@ def _size_of(node: fx.Node) -> int:
 def _count_ops(graph: fx.Graph) -> None:
     from collections import defaultdict
 
-    cnt: dict[str, int] = defaultdict(int)
+    cnt: Dict[str, int] = defaultdict(int)
     for node in graph.nodes:
         if node.op == "call_function":
             cnt[node.target.__name__] += 1
     log.info("%s", sorted(cnt.items(), key=operator.itemgetter(1), reverse=True))
 
 
-@functools.cache
-def pointwise_ops() -> list[torch._ops.OpOverloadPacket]:
-    ops: list[torch._ops.OpOverloadPacket] = []
+@functools.lru_cache(maxsize=None)
+def pointwise_ops() -> List[torch._ops.OpOverloadPacket]:
+    ops: List[torch._ops.OpOverloadPacket] = []
     for attr_name in dir(torch.ops.aten):
         opoverloadpacket = getattr(torch.ops.aten, attr_name)
         if not isinstance(opoverloadpacket, torch._ops.OpOverloadPacket):
@@ -1547,8 +1522,8 @@ def pointwise_ops() -> list[torch._ops.OpOverloadPacket]:
 
 
 def sort_depths(
-    args: tuple[Any, ...], depth_map: dict[fx.Node, int]
-) -> list[tuple[fx.Node, int]]:
+    args: Tuple[Any, ...], depth_map: Dict[fx.Node, int]
+) -> List[Tuple[fx.Node, int]]:
     arg_depths = {
         arg: depth_map[arg] for arg in args if isinstance(arg, torch.fx.node.Node)
     }
@@ -1579,7 +1554,7 @@ def reordering_to_mimic_autograd_engine(gm: fx.GraphModule) -> fx.GraphModule:
     """
 
     new_graph = fx.Graph()
-    env: dict[fx.Node, fx.Node] = {}
+    env: Dict[fx.Node, fx.Node] = {}
 
     # Add new placeholder nodes in the order specified by the inputs
     for node in gm.graph.find_nodes(op="placeholder"):
@@ -1642,7 +1617,7 @@ def apply_graphsafe_rng_functionalization(
     rng_count: int,
     last_fwd_input: torch.fx.Node,
     last_bwd_input: torch.fx.Node,
-) -> tuple[torch.fx.Node, torch.fx.Node]:
+) -> Tuple[torch.fx.Node, torch.fx.Node]:
     """
     Note [CUDA Graph Safe RNG Functionalization]
 
@@ -1732,7 +1707,7 @@ def functionalize_rng_ops(
     fw_module: fx.GraphModule,
     bw_module: fx.GraphModule,
     num_sym_nodes: int,
-) -> tuple[fx.GraphModule, fx.GraphModule]:
+) -> Tuple[fx.GraphModule, fx.GraphModule]:
     # During user-driven activation checkpointing, we have to ensure that a rng
     # op in fwd yields the same output as the recomputed rng op in the bwd.  To
     # do this, we use functionalize wrappers to wrap the random ops and share
@@ -1754,8 +1729,8 @@ def functionalize_rng_ops(
     # Unique id to generate name
     uid = itertools.count()
 
-    def get_rng_ops(gmod: fx.GraphModule) -> dict[str, fx.Node]:
-        random_nodes: dict[str, fx.Node] = {}
+    def get_rng_ops(gmod: fx.GraphModule) -> Dict[str, fx.Node]:
+        random_nodes: Dict[str, fx.Node] = {}
         for node in gmod.graph.nodes:
             if (
                 node.op == "call_function"
@@ -1765,7 +1740,7 @@ def functionalize_rng_ops(
                 random_nodes[node.name] = node
         return random_nodes
 
-    def get_device(node: fx.Node) -> torch.device | None:
+    def get_device(node: fx.Node) -> Optional[torch.device]:
         """
         Check the example value of the node outputs to find the device type.
         """
@@ -1783,7 +1758,7 @@ def functionalize_rng_ops(
 
         return torch.device("cpu")
 
-    def get_sample_rng_state(device: torch.device | None) -> torch.Tensor:
+    def get_sample_rng_state(device: Optional[torch.device]) -> torch.Tensor:
         from torch._guards import detect_fake_mode
 
         fake_mode = detect_fake_mode()
@@ -1828,7 +1803,7 @@ def functionalize_rng_ops(
             "Couldn't find tangent node in graph inputs. This is unexpected, please file a bug if you see this"
         )
 
-    fw_rng_state_outputs: list[fx.Node] = []
+    fw_rng_state_outputs: List[fx.Node] = []
 
     last_fwd_input = next(reversed(fw_module.graph.find_nodes(op="placeholder")))
     last_bwd_input = next(reversed(bw_module.graph.find_nodes(op="placeholder")))
@@ -2092,8 +2067,8 @@ def solve_min_cut(
     joint_graph: fx.Graph,
     node_info: NodeInfo,
     min_cut_options: MinCutOptions,
-    dont_ban: OrderedSet[fx.Node] | None = None,
-) -> tuple[list[fx.Node], OrderedSet[fx.Node]]:
+    dont_ban: Optional[OrderedSet[fx.Node]]= None,
+) -> Tuple[List[fx.Node], OrderedSet[fx.Node]]:
     if dont_ban is None:
         dont_ban = OrderedSet()
     op_types = get_default_op_list()
@@ -2182,7 +2157,7 @@ def solve_min_cut(
 
         return False
 
-    def should_ban_recomputation(node: fx.Node) -> str | None:
+    def should_ban_recomputation(node: fx.Node) -> Optional[str]:
         """Returns reason string if node should be banned from recomputation, None otherwise."""
         if node.op != "call_function":
             return None
@@ -2249,7 +2224,7 @@ def solve_min_cut(
 
     def get_node_weight(
         node: fx.Node, static_lifetime_input_nodes: OrderedSet[fx.Node]
-    ) -> tuple[float, str | None]:
+    ) -> Union[Tuple[float, str, None]]:
         """Returns (weight, cannot_save_reason).
 
         cannot_save_reason is None for finite weights, or a string explaining
@@ -2430,12 +2405,12 @@ def solve_min_cut(
     # backwards pass instead of only relying on whether it's unfusible in the
     # forwards.
 
-    def find_first_unfusible(start_nodes: list[fx.Node], max_range: int) -> int:
+    def find_first_unfusible(start_nodes: List[fx.Node], max_range: int) -> int:
         """
         Finds the first unfusible node in the chain of nodes starting from
         `start_nodes` and returns its position.
         """
-        sorted_nodes: list[tuple[int, fx.Node, bool]] = []
+        sorted_nodes: List[Tuple[int, fx.Node, bool]] = []
         for n in start_nodes:
             heapq.heappush(sorted_nodes, (node_info.get_fw_order(n), n, True))
 
@@ -2447,7 +2422,7 @@ def solve_min_cut(
                 if node_info.is_required_fw(user):
                     if node_info.get_fw_order(user) > max_range:
                         continue
-                    val: tuple[int, fx.Node, bool] = (
+                    val: Tuple[int, fx.Node, bool] = (
                         node_info.get_fw_order(user),
                         user,
                         is_fusible(node, user),
@@ -2502,7 +2477,7 @@ def solve_min_cut(
         for start_node in joint_graph.nodes:
             if not node_info.is_required_fw(start_node):
                 continue
-            fusible: list[tuple[int, fx.Node]] = [
+            fusible: List[Tuple[int, fx.Node]] = [
                 (node_info.get_fw_order(start_node), start_node)
             ]
             start_order = node_info.get_fw_order(start_node)
@@ -2541,8 +2516,8 @@ def solve_min_cut(
         structured_tracing_enabled = bool(trace_log.handlers)
 
         # Dump the FX graph for debugging
-        fx_graph_file: str | None = None
-        fx_graph_str: str | None = None
+        fx_graph_file: Optional[str]= None
+        fx_graph_str: Optional[str]= None
         joint_module = joint_graph.owning_module
         try:
             fx_graph_str = (
@@ -2593,7 +2568,7 @@ def solve_min_cut(
             # - X_out -> sink: X's output must be available for backward
 
             # Build a user-friendly explanation grouped by FX node
-            node_constraints: dict[str, list[str]] = {}
+            node_constraints: Dict[str, List[str]] = {}
             raw_path_nodes = ["source"]
 
             def get_base_name(node_name: str) -> str:
@@ -2625,7 +2600,7 @@ def solve_min_cut(
                     )
 
             # Format the constraints nicely
-            constraint_lines: list[str] = []
+            constraint_lines: List[str] = []
             for node_name, constraints in node_constraints.items():
                 constraint_lines.append(f"  {node_name}:")
                 for c in constraints:
@@ -2699,7 +2674,7 @@ def solve_min_cut(
         raise
 
     reachable, non_reachable = partition
-    cutset: OrderedSet[tuple[str, str]] = OrderedSet()
+    cutset: OrderedSet[Tuple[str, str]] = OrderedSet()
     for u, nbrs in ((n, nx_graph[n]) for n in reachable):
         cutset.update((u, v) for v in nbrs if v in non_reachable)
 
@@ -2722,8 +2697,8 @@ def solve_min_cut(
 
 
 def _find_infinite_capacity_path(
-    nx_graph: nx.DiGraph[str, dict[str, Any]],
-) -> list[tuple[str, str, str]] | None:
+    nx_graph: nx.DiGraph[str, Dict[str, Any]],
+) -> Optional[List[Tuple[str, str, str]]]:
     """BFS from source to sink following only infinite-capacity edges.
 
     Returns a list of (from_node, to_node, reason) tuples representing the path,
@@ -2733,7 +2708,7 @@ def _find_infinite_capacity_path(
     visited = OrderedSet(["source"])
     # Each queue item: (current_node, path_of_edges)
     # where path_of_edges is a list of (from_node, to_node, reason) tuples
-    queue: deque[tuple[str, list[tuple[str, str, str]]]] = deque([("source", [])])
+    queue: deque[Tuple[str, List[Tuple[str, str, str]]]] = deque([("source", [])])
 
     while queue:
         node, edge_path = queue.popleft()
@@ -2770,8 +2745,8 @@ def _get_unique_path(base_name: str, extension: str) -> str:
 
 
 def visualize_min_cut_graph(
-    nx_graph: nx.DiGraph[str, dict[str, Any]],
-) -> tuple[str | None, str | None]:
+    nx_graph: nx.DiGraph[str, Dict[str, Any]],
+) -> Union[Tuple[str, None, str, None]]:
     """Visualize the min-cut graph to an SVG file.
 
     Returns (path_to_svg, svg_content) tuple. Both are None if pydot is unavailable.
@@ -2809,7 +2784,7 @@ def visualize_min_cut_graph(
 
 
 def get_default_op_list() -> OpTypes:
-    default_recomputable_ops: list[Callable[..., Any]] = [
+    default_recomputable_ops: List[Callable[..., Any]] = [
         aten.add,
         aten.sub,
         aten.div,
@@ -2966,7 +2941,7 @@ def get_default_op_list() -> OpTypes:
         aten._scaled_mm,
     ]
 
-    fusible_ops = recomputable_ops | random_ops
+    fusible_ops = Union[recomputable_ops, random_ops]
     return OpTypes(
         fusible_ops,
         OrderedSet(compute_intensive_ops),
@@ -2976,8 +2951,8 @@ def get_default_op_list() -> OpTypes:
     )
 
 
-def get_name_to_node(graph: fx.Graph) -> dict[str, fx.Node]:
-    name_to_node: dict[str, fx.Node] = {}
+def get_name_to_node(graph: fx.Graph) -> Dict[str, fx.Node]:
+    name_to_node: Dict[str, fx.Node] = {}
     for node in graph.nodes:
         name_to_node[node.name] = node
     return name_to_node
@@ -2985,12 +2960,12 @@ def get_name_to_node(graph: fx.Graph) -> dict[str, fx.Node]:
 
 def _optimize_runtime_with_given_memory(
     joint_graph: fx.Graph,
-    memory: list[float],
-    runtimes: list[float],
+    memory: List[float],
+    runtimes: List[float],
     max_memory: float,
     node_info: NodeInfo,
-    all_recomputable_banned_nodes: list[fx.Node],
-) -> tuple[float, list[int], list[int]]:
+    all_recomputable_banned_nodes: List[fx.Node],
+) -> Tuple[float, List[int], List[int]]:
     SOLVER = config.activation_memory_budget_solver
     if SOLVER == "greedy":
         return greedy_knapsack(memory, runtimes, max_memory)
@@ -3038,7 +3013,7 @@ from torch.utils._mode_utils import no_dispatch
 def _remove_symbols_without_guarding(x: torch.Tensor, fallback: int) -> torch.Tensor:
     shape = list(x.shape)
 
-    def realize_symbol(d: torch.SymInt | int) -> int:
+    def realize_symbol(d: Union[torch.SymInt, int]) -> int:
         return optimization_hint(d, fallback=fallback)
 
     shape = [realize_symbol(s) for s in shape]
@@ -3095,7 +3070,7 @@ def choose_saved_values_set(
     joint_graph: fx.Graph,
     node_info: NodeInfo,
     memory_budget: float = 1,
-) -> list[fx.Node]:
+) -> List[fx.Node]:
     if memory_budget > 1 or memory_budget < 0:
         raise RuntimeError(
             f"The valid ranges for memory budget are 0 <= m <= 1. The provided value is {memory_budget}"
@@ -3128,7 +3103,7 @@ def choose_saved_values_set(
     if memory_budget == 1:
         return runtime_optimized_saved_values
 
-    def estimate_activations_size(saved_values: list[fx.Node]) -> float:
+    def estimate_activations_size(saved_values: List[fx.Node]) -> float:
         return sum(map(_size_of, saved_values)) / 1e9
 
     min_act_size = estimate_activations_size(node_info.inputs)
@@ -3140,7 +3115,7 @@ def choose_saved_values_set(
     def get_normalized_size(sz: float) -> float:
         return (sz / 1e9) / (max_act_size - min_act_size)
 
-    def get_mem_ratio(activations: list[fx.Node]) -> float:
+    def get_mem_ratio(activations: List[fx.Node]) -> float:
         return (estimate_activations_size(activations) - min_act_size) / (
             max_act_size - min_act_size
         )
@@ -3178,7 +3153,7 @@ def choose_saved_values_set(
 
     def get_recomputable_banned_nodes(
         banned_nodes: OrderedSet[fx.Node],
-    ) -> list[fx.Node]:
+    ) -> List[fx.Node]:
         return [
             i
             for i in banned_nodes
@@ -3221,7 +3196,7 @@ def choose_saved_values_set(
 
     def get_saved_values_knapsack(
         memory_budget: float, node_info: NodeInfo, joint_graph: fx.Graph
-    ) -> tuple[list[fx.Node], float]:
+    ) -> Tuple[List[fx.Node], float]:
         with no_dispatch():
             (
                 expected_runtime,
@@ -3278,7 +3253,7 @@ def choose_saved_values_set(
 
     if config.visualize_memory_budget_pareto:
 
-        def estimate_for_budget(b: float) -> tuple[float, float, float]:
+        def estimate_for_budget(b: float) -> Tuple[float, float, float]:
             saved_values, expected_runtime = get_saved_values_knapsack(
                 b, node_info=node_info, joint_graph=joint_graph
             )
@@ -3354,7 +3329,7 @@ def choose_saved_values_set(
     )[0]
 
 
-def _cone_hashes(graph: torch.fx.Graph) -> dict[torch.fx.Node, str]:
+def _cone_hashes(graph: torch.fx.Graph) -> Dict[torch.fx.Node, str]:
     """Compute a forward-looking structural hash for each node.
 
     Each node's hash captures its "role" in the graph toward the output:
@@ -3364,14 +3339,14 @@ def _cone_hashes(graph: torch.fx.Graph) -> dict[torch.fx.Node, str]:
     (which varies across ranks). This makes the hash invariant to the original
     node naming and ordering.
     """
-    hashes: dict[torch.fx.Node, str] = {}
+    hashes: Dict[torch.fx.Node, str] = {}
     for node in reversed(list(graph.nodes)):
         if node.op == "placeholder":
             val = node.meta.get("val")
             if isinstance(val, torch.Tensor):
                 # Exclude shape: different ranks may have different input
                 # shapes (e.g., shard sizes) for structurally identical graphs.
-                self_key: tuple[Any, ...] = (
+                self_key: Tuple[Any, ...] = (
                     "placeholder",
                     str(val.dtype),
                     val.requires_grad,
@@ -3393,7 +3368,7 @@ def _cone_hashes(graph: torch.fx.Graph) -> dict[torch.fx.Node, str]:
     return hashes
 
 
-def _canonical_node_names(graph: torch.fx.Graph) -> dict[torch.fx.Node, str]:
+def _canonical_node_names(graph: torch.fx.Graph) -> Dict[torch.fx.Node, str]:
     """Build a canonical name mapping for graph nodes using Kahn's algorithm.
 
     Returns a dict mapping each node to a deterministic name like "node_0",
@@ -3405,20 +3380,20 @@ def _canonical_node_names(graph: torch.fx.Graph) -> dict[torch.fx.Node, str]:
     """
     cone = _cone_hashes(graph)
 
-    indeg: dict[torch.fx.Node, int] = dict.fromkeys(graph.nodes, 0)
+    indeg: Dict[torch.fx.Node, int] = dict.fromkeys(graph.nodes, 0)
     for node in graph.nodes:
         for user in node.users:
             indeg[user] += 1
 
-    canonical_idx: dict[torch.fx.Node, int] = {}
+    canonical_idx: Dict[torch.fx.Node, int] = {}
 
-    def _canonical_key(node: torch.fx.Node) -> tuple[Any, ...]:
+    def _canonical_key(node: torch.fx.Node) -> Tuple[Any, ...]:
         if node.op == "placeholder":
             val = node.meta.get("val")
             if isinstance(val, torch.Tensor):
                 # Exclude shape: different ranks may have different input
                 # shapes (e.g., shard sizes) for structurally identical graphs.
-                meta_key: tuple[Any, ...] = (
+                meta_key: Tuple[Any, ...] = (
                     str(val.dtype),
                     val.requires_grad,
                 )
@@ -3438,13 +3413,13 @@ def _canonical_node_names(graph: torch.fx.Graph) -> dict[torch.fx.Node, str]:
     # Seed the heap with nodes that have no dependencies.
     # The counter ensures deterministic ordering when keys are equal.
     counter = 0
-    ready: list[tuple[tuple[Any, ...], int, fx.Node]] = []
+    ready: List[Tuple[Tuple[Any, ...], int, fx.Node]] = []
     for node in graph.nodes:
         if indeg[node] == 0:
             heapq.heappush(ready, (_canonical_key(node), counter, node))
             counter += 1
 
-    canonical_order: list[fx.Node] = []
+    canonical_order: List[fx.Node] = []
 
     while ready:
         _, _, cur = heapq.heappop(ready)
@@ -3461,8 +3436,8 @@ def _canonical_node_names(graph: torch.fx.Graph) -> dict[torch.fx.Node, str]:
 
 
 def _sync_decision_cross_ranks(
-    joint_graph: torch.fx.Graph, saved_values: list[torch.fx.Node]
-) -> list[torch.fx.Node]:
+    joint_graph: torch.fx.Graph, saved_values: List[torch.fx.Node]
+) -> List[torch.fx.Node]:
     # use the same policy across different GPUs
     from torch._subclasses.fake_tensor import unset_fake_temporarily
 
@@ -3513,12 +3488,12 @@ def _sync_decision_cross_ranks(
             # Communicate saved values using canonical names so that
             # node names (which may differ across ranks) don't matter.
             objects = [[canonical[x] for x in saved_values]]
-            saved_ops_names_all_ranks: list[list[str]] = [
+            saved_ops_names_all_ranks: List[List[str]] = [
                 [] for _ in range(torch.distributed.get_world_size())
             ]
             torch.distributed.all_gather_object(saved_ops_names_all_ranks, objects[0])
-            saved_sizes: list[int] = []
-            saved_ops_with_sizes: dict[str, int] = {}
+            saved_sizes: List[int] = []
+            saved_ops_with_sizes: Dict[str, int] = {}
 
             for idx, saved_ops_names in enumerate(saved_ops_names_all_ranks):
                 saved_nodes = [
@@ -3597,7 +3572,7 @@ def thread_graphsafe_rng_from_hops(
     ):
         subgraph = getattr(module, hop_node.args[0].target)
         if isinstance(subgraph, fx.GraphModule):
-            new_rng_inputs: list[fx.Node] = []
+            new_rng_inputs: List[fx.Node] = []
             for placeholder_node in subgraph.graph.find_nodes(op="placeholder"):
                 if rng_string in placeholder_node.name:
                     # Found a rng state placeholder in the hop graph, lets add
@@ -3643,7 +3618,7 @@ def thread_graphsafe_rng_from_hops(
 
 def classify_nodes(
     joint_module: fx.GraphModule,
-    static_lifetime_input_indices: list[int],
+    static_lifetime_input_indices: List[int],
     num_fwd_outputs: int,
 ) -> NodeInfo:
     name_to_node = get_name_to_node(joint_module.graph)
@@ -3712,8 +3687,8 @@ def min_cut_rematerialization_partition(
     compiler: str = "inductor",
     *,
     num_fwd_outputs: int,
-    static_lifetime_input_indices: list[int] | None = None,
-) -> tuple[fx.GraphModule, fx.GraphModule]:
+    static_lifetime_input_indices: Optional[List[int]]= None,
+) -> Tuple[fx.GraphModule, fx.GraphModule]:
     """
     Partitions the joint graph such that the backward recomputes the forward.
     Recomputing helps in trading off memory bandwidth with computation.
@@ -3803,6 +3778,17 @@ def min_cut_rematerialization_partition(
     if config._sync_decision_cross_ranks:
         saved_values = _sync_decision_cross_ranks(joint_graph, saved_values)
 
+    # save_for_backward on tensors and stashes symints in autograd .ctx
+    # Skip SymBool nodes whose only consumers are _assert_scalar calls.
+    # These are runtime assertion intermediates and are not needed in backward
+    # for any real computation.
+    def _is_assert_only_symbool(n: fx.Node) -> bool:
+        return (
+            isinstance(n.meta.get("val"), torch.SymBool)
+            and len(n.users) > 0
+            and all(u.target is torch.ops.aten._assert_scalar.default for u in n.users)
+        )
+
     saved_sym_nodes = list(
         filter(
             lambda n: is_sym_node(n) and not _is_assert_only_symbool(n), saved_values
@@ -3869,7 +3855,7 @@ def min_cut_rematerialization_partition(
         )
         remat_nodes = fw_module_nodes & bw_module_nodes
 
-        counts: dict[str, int] = defaultdict(int)
+        counts: Dict[str, int] = defaultdict(int)
         for node in fw_module.graph.nodes:
             if node.name in remat_nodes and hasattr(node.target, "_overloadpacket"):
                 counts[str(node.target._overloadpacket)] += 1
@@ -3891,9 +3877,9 @@ def draw_graph(
     fname: str,
     figname: str = "fx_graph",
     clear_meta: bool = True,
-    prog: str | list[str] | None = None,
+    prog: Optional[Union[str, List[str]]]= None,
     parse_stack_trace: bool = False,
-    dot_graph_shape: str | None = None,
+    dot_graph_shape: Optional[str]= None,
 ) -> None:
     if clear_meta:
         new_graph = copy.deepcopy(traced.graph)

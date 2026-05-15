@@ -17,7 +17,7 @@ import tempfile
 import time
 import uuid
 from string import Template
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, Set, TYPE_CHECKING, Union
 
 import torch.distributed.elastic.timer as timer
 from torch._utils_internal import justknobs_check
@@ -44,7 +44,7 @@ from torch.distributed.elastic.utils.logging import get_logger
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
 
     from torch.distributed.elastic.events.api import EventMetadataValue
 
@@ -180,20 +180,20 @@ class LocalElasticAgent(SimpleElasticAgent):
         logs_specs: LogsSpecs,
         start_method="spawn",
         exit_barrier_timeout: float = 300,
-        log_line_prefix_template: str | None = None,
+        log_line_prefix_template: Optional[str]= None,
         shutdown_timeout: int = 30,
-        health_check_server: HealthCheckServer | None = None,
+        health_check_server: Optional[HealthCheckServer]= None,
     ):
         super().__init__(spec, exit_barrier_timeout, shutdown_timeout)
         self._start_method = start_method
-        self._pcontext: PContext | None = None
+        self._pcontext: Optional[PContext] = None
         self._rdzv_handler = spec.rdzv_handler
         self._log_line_prefix_template = log_line_prefix_template
-        self._worker_watchdog: timer.FileTimerServer | None = None
+        self._worker_watchdog: Optional[timer.FileTimerServer] = None
         self._logs_specs = logs_specs
         self._health_check_server = health_check_server
 
-    def _setup_local_watchdog(self, envs: dict[int, dict[str, str]]) -> None:
+    def _setup_local_watchdog(self, envs: Dict[int, Dict[str, str]]) -> None:
         enable_watchdog_env_name = TORCHELASTIC_ENABLE_FILE_TIMER
         watchdog_enabled = os.getenv(enable_watchdog_env_name)
         watchdog_file_env_name = TORCHELASTIC_TIMER_FILE
@@ -312,7 +312,7 @@ class LocalElasticAgent(SimpleElasticAgent):
     def _log_watchdog_event(
         self,
         name: str,
-        request: timer.FileTimerRequest | None,
+        request: Union[timer.FileTimerRequest, None,]
     ) -> None:
         wg = self._worker_group
         spec = wg.spec
@@ -324,7 +324,7 @@ class LocalElasticAgent(SimpleElasticAgent):
             md["signal"] = str(request.signal)
         md_str = json.dumps(md)
         state = "RUNNING"
-        metadata: dict[str, EventMetadataValue] = {
+        metadata: Dict[str, EventMetadataValue] = {
             "run_id": spec.rdzv_handler.get_run_id(),
             "global_rank": None,
             "group_rank": wg.group_rank,
@@ -354,7 +354,7 @@ class LocalElasticAgent(SimpleElasticAgent):
     # pyre-fixme[56]: Pyre was not able to infer the type of the decorator
     #  `torch.distributed.elastic.metrics.prof`.
     @prof
-    def _start_workers(self, worker_group: WorkerGroup) -> dict[int, Any]:
+    def _start_workers(self, worker_group: WorkerGroup) -> Dict[int, Any]:
         spec = worker_group.spec
         store = worker_group.store
         if store is None:
@@ -364,9 +364,9 @@ class LocalElasticAgent(SimpleElasticAgent):
         use_agent_store: bool = spec.rdzv_handler.use_agent_store
         logger.info("use_agent_store: %s", use_agent_store)
 
-        args: dict[int, tuple] = {}
-        envs: dict[int, dict[str, str]] = {}
-        log_line_prefixes: dict[int, str] | None = (
+        args: Dict[int, tuple] = {}
+        envs: Dict[int, Dict[str, str]] = {}
+        log_line_prefixes: Optional[Dict[int, str]]= (
             {} if self._log_line_prefix_template else None
         )
         for worker in worker_group.workers:
@@ -434,7 +434,7 @@ class LocalElasticAgent(SimpleElasticAgent):
         return self._pcontext.pids()
 
     def _set_local_rank_env(
-        self, worker_env: dict[str, str | None], local_rank: int, spec: WorkerSpec
+        self, worker_env: Dict[str, Optional[str]], local_rank: int, spec: WorkerSpec
     ) -> None:
         # Set CUDA_VISIBLE_DEVICES and LOCAL_RANK based on virtual_local_rank mode.
         # Virtual mode: Each worker sees only its assigned GPU as device 0, LOCAL_RANK=0

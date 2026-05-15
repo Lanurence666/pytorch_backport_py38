@@ -1,3 +1,4 @@
+from __future__ import annotations
 import numbers
 import warnings
 from collections import namedtuple

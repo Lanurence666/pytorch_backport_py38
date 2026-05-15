@@ -6,11 +6,11 @@ import functools
 import logging
 import re
 import warnings
-from typing import Any, Generic, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, FrozenSet, Generic, List, Optional, Set, TYPE_CHECKING, Tuple, Type, TypeVar
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
 
     from torch._guards import CompileId
 
@@ -25,16 +25,16 @@ class GraphIdFilter:
     """
 
     def __init__(self, filter_str: str) -> None:
-        self._explicit_ids: frozenset[int] = frozenset()
-        self._conditions: list[tuple[str, int]] = []
+        self._explicit_ids: FrozenSet[int] = frozenset()
+        self._conditions: List[Tuple[str, int]] = []
         self._parse(filter_str)
 
     def _parse(self, filter_str: str) -> None:
         if not filter_str or not filter_str.strip():
             return
 
-        explicit_ids: set[int] = set()
-        conditions: list[tuple[str, int]] = []
+        explicit_ids: Set[int] = set()
+        conditions: List[Tuple[str, int]] = []
 
         # Pattern for comparison operators (>=, >, <=, <) followed by a number
         cmp_pattern = re.compile(r"^(>=|>|<=|<)(\d+)$")
@@ -101,14 +101,14 @@ class _GraphRouterBase(Generic[T]):
     """
 
     def __init__(self, config_str: str, rule_type: str) -> None:
-        self._rules: list[tuple[GraphIdFilter, T]] = []
-        self._values: list[T | None] = []
-        self._overflow_value: T | None = None
+        self._rules: List[Tuple[GraphIdFilter, T]] = []
+        self._values: List[Optional[T]] = []
+        self._overflow_value: Optional[T] = None
         self._rule_type = rule_type
         self._parse(config_str)
         self._precompute()
 
-    def _parse_value_str(self, value_str: str) -> T | None:
+    def _parse_value_str(self, value_str: str) -> Optional[T]:
         """Parse a value string into the appropriate type. Returns None to skip."""
         raise NotImplementedError
 
@@ -161,13 +161,13 @@ class _GraphRouterBase(Generic[T]):
         # For IDs > max_id, the result is constant (only unbounded conditions apply)
         self._overflow_value = self._match_rules(max_id + 1)
 
-    def _match_rules(self, graph_id: int) -> T | None:
+    def _match_rules(self, graph_id: int) -> Optional[T]:
         for f, value in self._rules:
             if graph_id in f:
                 return value
         return None
 
-    def get_value_for_graph(self, graph_id: int) -> T | None:
+    def get_value_for_graph(self, graph_id: int) -> Optional[T]:
         """Get the value for a given graph ID. Returns None if no rule matches."""
         if graph_id < len(self._values):
             return self._values[graph_id]
@@ -198,10 +198,10 @@ class GraphBackendRouter(_GraphRouterBase[Any]):
     """
 
     def __init__(self, config_str: str) -> None:
-        self._backend_names: dict[int, str] = {}
+        self._backend_names: Dict[int, str] = {}
         super().__init__(config_str, "backend")
 
-    def _parse_value_str(self, value_str: str) -> Any | None:
+    def _parse_value_str(self, value_str: str) -> Optional[Any]:
         """Look up a backend by name."""
         from .backends.registry import lookup_backend
         from .eval_frame import cached_backends
@@ -209,13 +209,12 @@ class GraphBackendRouter(_GraphRouterBase[Any]):
         backend = lookup_backend(value_str)
 
         # Register the backend so its reset() is called during torch._dynamo.reset()
-        if backend is None:
-            raise AssertionError("Invalid override backend: " + value_str)
+        assert backend is not None, "Invalid override backend: " + value_str
         cached_backends.setdefault(id(backend), backend)
         self._backend_names[id(backend)] = value_str
         return backend
 
-    def _match_rules(self, graph_id: int) -> Any | None:
+    def _match_rules(self, graph_id: int) -> Optional[Any]:
         """Match rules with conflict detection for overlapping filters."""
         matches = {id(backend): backend for f, backend in self._rules if graph_id in f}
         if len(matches) > 1:
@@ -233,7 +232,7 @@ class GraphBackendRouter(_GraphRouterBase[Any]):
         return f"GraphBackendRouter({self._rules})"
 
 
-class GraphConfigRouter(_GraphRouterBase[dict[str, Any]]):
+class GraphConfigRouter(_GraphRouterBase[Dict[str, Any]]):
     """
     Routes graphs to different inductor configs based on their IDs.
 
@@ -273,9 +272,9 @@ class GraphConfigRouter(_GraphRouterBase[dict[str, Any]]):
         except ValueError:
             return value_str
 
-    def _match_rules(self, graph_id: int) -> dict[str, Any] | None:
+    def _match_rules(self, graph_id: int) -> Optional[Dict[str, Any]]:
         """Aggregate configs from all matching rules. Conflicts raise an error."""
-        result: dict[str, Any] = {}
+        result: Dict[str, Any] = {}
         for f, value in self._rules:
             if graph_id in f:
                 for k, v in value.items():
@@ -287,9 +286,9 @@ class GraphConfigRouter(_GraphRouterBase[dict[str, Any]]):
                     result[k] = v
         return result if result else None
 
-    def _parse_value_str(self, value_str: str) -> dict[str, Any] | None:
+    def _parse_value_str(self, value_str: str) -> Optional[Dict[str, Any]]:
         """Parse a config string like 'key1=val1,key2=val2' into a dict."""
-        result: dict[str, Any] = {}
+        result: Dict[str, Any] = {}
         for item in value_str.split(","):
             item = item.strip()
             if not item:
@@ -308,11 +307,11 @@ class GraphConfigRouter(_GraphRouterBase[dict[str, Any]]):
 
 
 def _get_override_for_compile_id(
-    compile_id: CompileId | None,
+    compile_id: Optional[CompileId],
     config_str: str,
     create_router: Callable[[str], _GraphRouterBase[T]],
     label: str,
-) -> T | None:
+) -> Optional[T]:
     """
     Get the override value for a given CompileId.
 
@@ -339,7 +338,7 @@ def _create_backend_router(config_str: str) -> GraphBackendRouter:
 
 
 @functools.lru_cache
-def _validate_backend_names(config_str: str) -> str | None:
+def _validate_backend_names(config_str: str) -> Optional[str]:
     """Return an error message if any backend name is invalid, else None."""
     if not config_str or not config_str.strip():
         return None
@@ -364,7 +363,7 @@ def _validate_backend_names(config_str: str) -> str | None:
 
 
 @functools.lru_cache
-def _validate_inductor_config_keys(config_str: str) -> str | None:
+def _validate_inductor_config_keys(config_str: str) -> Optional[str]:
     """Return an error message if any config key is invalid, else None."""
     router = GraphConfigRouter(config_str)
     from torch._inductor import config
@@ -380,7 +379,7 @@ def _validate_inductor_config_keys(config_str: str) -> str | None:
 
 
 @functools.lru_cache
-def _validate_dynamo_config_keys(config_str: str) -> str | None:
+def _validate_dynamo_config_keys(config_str: str) -> Optional[str]:
     """Return an error message if any config key is invalid, else None."""
     router = GraphConfigRouter(config_str)
     from torch._dynamo import config
@@ -420,7 +419,7 @@ def _create_dynamo_config_router(config_str: str) -> GraphConfigRouter:
 
 
 def get_backend_override_for_compile_id(
-    compile_id: CompileId | None,
+    compile_id: Optional[CompileId],
     config_str: str,
 ) -> Any:
     """
@@ -437,9 +436,9 @@ def get_backend_override_for_compile_id(
 
 
 def get_inductor_config_override_for_compile_id(
-    compile_id: CompileId | None,
+    compile_id: Optional[CompileId],
     config_str: str,
-) -> dict[str, Any] | None:
+) -> Optional[Dict[str, Any]]:
     """
     Get the inductor config override for a given CompileId.
 
@@ -454,9 +453,9 @@ def get_inductor_config_override_for_compile_id(
 
 
 def get_dynamo_config_override_for_compile_id(
-    compile_id: CompileId | None,
+    compile_id: Optional[CompileId],
     config_str: str,
-) -> dict[str, Any] | None:
+) -> Optional[Dict[str, Any]]:
     """
     Get the dynamo config override for a given CompileId.
 

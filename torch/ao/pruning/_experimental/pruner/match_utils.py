@@ -1,8 +1,9 @@
+from __future__ import annotations
 """
 Contains utility functions to check if a pattern is in the graph and return the matching nodes
 """
 
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -12,9 +13,9 @@ from torch.nn.utils import parametrize
 
 
 def _match(
-    modules: dict[str, nn.ModuleDict],
+    modules: Dict[str, nn.ModuleDict],
     node: Node,
-    current: nn.Module | Any,
+    current: Union[nn.Module, Any],
 ) -> bool:
     r"""
     checks to see if a single node of a pattern matches
@@ -37,11 +38,11 @@ def _match(
 
 
 def apply_match(
-    modules: dict[str, nn.ModuleDict],
-    pattern: tuple[Any] | Any,
+    modules: Dict[str, nn.ModuleDict],
+    pattern: Union[Tuple[Any], Any],
     node: Node,
-    matched_node_pattern: list[Node],
-) -> list[Node] | None:
+    matched_node_pattern: List[Node],
+) -> Optional[List[Node]]:
     r"""
     This function will return the matched nodes if the pattern matches the node given
     If there is no match, it will return None

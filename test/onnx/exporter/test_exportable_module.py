@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Unit tests for ExportableModule."""
 
-from __future__ import annotations
 
 from typing import Any
 

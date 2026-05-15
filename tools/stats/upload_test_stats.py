@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from multiprocessing import cpu_count, Pool
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
+from typing import Any, Dict, List, Union
 
 from tools.stats.test_dashboard import upload_additional_info
 from tools.stats.upload_stats_lib import (
@@ -21,7 +21,7 @@ from tools.stats.upload_stats_lib import (
 )
 
 
-def should_upload_full_test_run(head_branch: str | None, head_repository: str) -> bool:
+def should_upload_full_test_run(head_branch: Union[str, None], head_repository: str) -> bool:
     """Return True if we should upload the full test_run dataset.
 
     Rules:
@@ -39,8 +39,8 @@ def parse_xml_report(
     report: Path,
     workflow_id: int,
     workflow_run_attempt: int,
-    job_id: int | None = None,
-) -> list[dict[str, Any]]:
+    job_id: Union[int, None] = None,
+) -> List[Dict[str, Any]]:
     """Convert a test report xml file into a JSON-serializable list of test cases."""
     print(f"Parsing {tag}s for test report: {report}")
 
@@ -48,7 +48,7 @@ def parse_xml_report(
         job_id = get_job_id(report)
         print(f"Found job id: {job_id}")
 
-    test_cases: list[dict[str, Any]] = []
+    test_cases: List[Dict[str, Any]] = []
 
     root = ET.parse(report)
     for test_case in root.iter(tag):
@@ -75,9 +75,9 @@ def parse_xml_report(
 
 def process_xml_element(
     element: ET.Element, output_numbers: bool = True
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Convert a test suite element into a JSON-serializable dict."""
-    ret: dict[str, Any] = {}
+    ret: Dict[str, Any] = {}
 
     # Convert attributes directly into dict elements.
     # e.g.
@@ -132,7 +132,7 @@ def process_xml_element(
     return ret
 
 
-def get_tests(workflow_run_id: int, workflow_run_attempt: int) -> list[dict[str, Any]]:
+def get_tests(workflow_run_id: int, workflow_run_attempt: int) -> List[Dict[str, Any]]:
     with TemporaryDirectory() as temp_dir:
         print("Using temporary directory:", temp_dir)
         os.chdir(temp_dir)
@@ -227,13 +227,13 @@ def backfill_test_jsons_while_running(
                 upload_to_s3("gha-artifacts", s3_key, remove_nan_inf(test_cases))
 
 
-def summarize_test_cases(test_cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def summarize_test_cases(test_cases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Group test cases by classname, file, and job_id. We perform the aggregation
     manually instead of using the `test-suite` XML tag because xmlrunner does
     not produce reliable output for it.
     """
 
-    def get_key(test_case: dict[str, Any]) -> Any:
+    def get_key(test_case: Dict[str, Any]) -> Any:
         return (
             test_case.get("file"),
             test_case.get("classname"),
@@ -244,7 +244,7 @@ def summarize_test_cases(test_cases: list[dict[str, Any]]) -> list[dict[str, Any
             test_case["invoking_file"],
         )
 
-    def init_value(test_case: dict[str, Any]) -> dict[str, Any]:
+    def init_value(test_case: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "file": test_case.get("file"),
             "classname": test_case.get("classname"),

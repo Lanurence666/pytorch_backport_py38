@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import TYPE_CHECKING
+from typing import Callable, Dict, List, Set, TYPE_CHECKING
 
 import torch
 import torch._ops
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 def get_onnx_implemented_overloads(
     registry: _registration.ONNXRegistry,
-) -> list[_registration.TorchOp]:
+) -> List[_registration.TorchOp]:
     """
     Creates a set of OperatorBase and Callable objects that represent ONNX-supported PyTorch operations.
 
@@ -26,7 +26,7 @@ def get_onnx_implemented_overloads(
     Returns:
         A collection of OperatorBase and Callable objects representing ONNX-supported PyTorch operations.
     """
-    registered_ops: list[_registration.TorchOp] = []
+    registered_ops: List[_registration.TorchOp] = []
     for onnx_decomp_meta in registry.functions.values():
         if len(onnx_decomp_meta) == 0:
             raise AssertionError("onnx_decomp_meta must not be empty")
@@ -38,8 +38,8 @@ def get_onnx_implemented_overloads(
 
 
 def create_onnx_friendly_decomposition_table(
-    onnx_registered_ops: set[_registration.TorchOp],
-) -> dict[_registration.TorchOp, Callable]:
+    onnx_registered_ops: Set[_registration.TorchOp],
+) -> Dict[_registration.TorchOp, Callable]:
     """
     This function creates a dictionary of op overloads and their decomposition functions
     for ops that do not have ONNX symbolic functions. If an op already has an ONNX symbolic function,
@@ -53,7 +53,7 @@ def create_onnx_friendly_decomposition_table(
         Dict[torch._ops.OperatorBase, Callable]: A dictionary that maps op overloads to their corresponding
         decomposition functions.
     """
-    decomposition_table: dict[_registration.TorchOp, Callable] = {}
+    decomposition_table: Dict[_registration.TorchOp, Callable] = {}
 
     for op_overload, decomp_fn in itertools.chain(
         torch.export.default_decompositions().items(),  # type: ignore[attr-defined]

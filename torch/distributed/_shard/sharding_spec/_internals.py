@@ -1,9 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 import sys
 from bisect import bisect_right, insort
 
 from torch.distributed._shard.metadata import ShardMetadata
+from typing import List, Optional, Sequence, Tuple
 
 
 def _check_shard_metadata_pair_overlap(shard1: ShardMetadata, shard2: ShardMetadata):
@@ -26,8 +29,8 @@ def _check_shard_metadata_pair_overlap(shard1: ShardMetadata, shard2: ShardMetad
 
 
 def _find_nd_overlapping_shards(
-    shards: list[ShardMetadata], sharded_dims: list[int]
-) -> tuple[int, int] | None:
+    shards: List[ShardMetadata], sharded_dims: List[int]
+) -> Optional[Tuple[int, int]]:
     """Find overlapping shards using sweep-line algorithm."""
     if len(shards) <= 1:
         return None
@@ -53,7 +56,7 @@ def _find_nd_overlapping_shards(
             *(shards[idx].shard_offsets[d] for d in sharded_dims if d != sweep_dim),
         ),
     )
-    active: list[tuple[int, int]] = []
+    active: List[Tuple[int, int]] = []
 
     for idx in sorted_indices:
         current = shards[idx]
@@ -74,8 +77,8 @@ def _find_nd_overlapping_shards(
 
 
 def _find_1d_overlapping_shards(
-    shards: list[ShardMetadata], dim: int
-) -> tuple[int, int] | None:
+    shards: List[ShardMetadata], dim: int
+) -> Optional[Tuple[int, int]]:
     # (begin, end, index_in_shards). Begin and end are inclusive.
     intervals = [
         (s.shard_offsets[dim], s.shard_offsets[dim] + s.shard_sizes[dim] - 1, i)
@@ -88,7 +91,7 @@ def _find_1d_overlapping_shards(
     return None
 
 
-def validate_non_overlapping_shards_metadata(shards: list[ShardMetadata]):
+def validate_non_overlapping_shards_metadata(shards: List[ShardMetadata]):
     """
     Ensures none of the shards overlap with each other.
 
@@ -101,7 +104,7 @@ def validate_non_overlapping_shards_metadata(shards: list[ShardMetadata]):
     if not shards or len(shards) == 1:
         return
 
-    sharded_dims: list[int] = []
+    sharded_dims: List[int] = []
     for dim in range(len(shards[0].shard_offsets)):
         for i in range(1, len(shards)):
             if (
@@ -111,7 +114,7 @@ def validate_non_overlapping_shards_metadata(shards: list[ShardMetadata]):
                 sharded_dims.append(dim)
                 break
 
-    pair: tuple[int, int] | None = None
+    pair: Optional[Tuple[int, int]]= None
     if len(sharded_dims) == 0:
         # if shard is all zeros, we should consider as pass
         all_zeros: bool = all(

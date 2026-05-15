@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import io
 import itertools
 from bisect import bisect_right, insort
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any, Callable, Dict, List, Tuple, Type, cast
 
 import torch
 import torch.distributed as dist
@@ -36,7 +38,7 @@ from .resharding import (
 )
 
 
-__all__: list[str] = ["create_read_items_for_chunk_list"]
+__all__: List[str] = ["create_read_items_for_chunk_list"]
 
 
 def _compare_save_plans(plan: SavePlan, other_plan: SavePlan) -> bool:
@@ -104,7 +106,7 @@ def _compare_save_plans(plan: SavePlan, other_plan: SavePlan) -> bool:
     return True
 
 
-def _contains_usable_plan(delta_plans: list[SavePlan]) -> bool:
+def _contains_usable_plan(delta_plans: List[SavePlan]) -> bool:
     """
     Check if any delta plan is usable, indicating the plan has changed.
 
@@ -117,9 +119,9 @@ def _contains_usable_plan(delta_plans: list[SavePlan]) -> bool:
 
 
 def _merge_delta_local_plans(
-    cached_plans: list[SavePlan],
-    delta_plans: list[SavePlan],
-) -> list[SavePlan]:
+    cached_plans: List[SavePlan],
+    delta_plans: List[SavePlan],
+) -> List[SavePlan]:
     """
     Merge a list of delta plans into a single plan.
 
@@ -254,8 +256,8 @@ def _create_read_item_for_tensor(
 def create_read_items_for_chunk_list(
     fqn: str,
     checkpoint_md: TensorStorageMetadata,
-    local_chunks: list[ChunkStorageMetadata],
-) -> list[ReadItem]:
+    local_chunks: List[ChunkStorageMetadata],
+) -> List[ReadItem]:
     """
     Create a list of ``ReadItem`` based on the checkpoint and local chunks.
 
@@ -272,7 +274,7 @@ def create_read_items_for_chunk_list(
     Returns:
         A list of ``ReadItem`` that will satisfy all input chunks.
     """
-    read_items: list[ReadItem] = []
+    read_items: List[ReadItem] = []
     saved_chunks = checkpoint_md.chunks
 
     if not local_chunks or not saved_chunks:
@@ -317,7 +319,7 @@ def create_read_items_for_chunk_list(
         key=lambda idx: local_bounds[idx][0],
     )
 
-    active_saved: list[tuple[int, int]] = []
+    active_saved: List[Tuple[int, int]] = []
     saved_ptr = 0
     num_saved = len(saved_sorted_indices)
 
@@ -391,7 +393,7 @@ def _create_default_metadata_only_plan(state_dict: STATE_DICT_TYPE) -> SavePlan:
     return SavePlan(requests)
 
 
-def _create_write_items(fqn: str, object: Any) -> list[WriteItem]:
+def _create_write_items(fqn: str, object: Any) -> List[WriteItem]:
     if hasattr(object, "__create_write_items__"):
         # DTensor implements _Checkpointable
         return object.__create_write_items__(fqn, object)
@@ -417,7 +419,7 @@ def _create_chunk_from_dtensor(tensor: DTensor) -> ChunkStorageMetadata:
     )
 
 
-def _create_chunk_list(tensor: torch.Tensor) -> list[ChunkStorageMetadata]:
+def _create_chunk_list(tensor: torch.Tensor) -> List[ChunkStorageMetadata]:
     if hasattr(tensor, "__create_chunk_list__"):
         # DTensor implements _Checkpointable
         local_chunks = tensor.__create_chunk_list__()  # type: ignore[attr-defined]
@@ -436,7 +438,7 @@ def _create_chunk_list(tensor: torch.Tensor) -> list[ChunkStorageMetadata]:
     return local_chunks
 
 
-def _create_read_items(fqn: str, md: STORAGE_TYPES, obj: Any) -> list[ReadItem]:
+def _create_read_items(fqn: str, md: STORAGE_TYPES, obj: Any) -> List[ReadItem]:
     if not isinstance(md, BytesStorageMetadata):
         try:
             local_chunks = _create_chunk_list(obj)
@@ -459,7 +461,7 @@ def _create_read_items(fqn: str, md: STORAGE_TYPES, obj: Any) -> list[ReadItem]:
         ]
 
 
-def _init_state_dict(state_dict: dict[str, Any]) -> Any:
+def _init_state_dict(state_dict: Dict[str, Any]) -> Any:
     """
     Initializes meta tensor if the meta tensor is DTensor or torch.Tensor.
     """

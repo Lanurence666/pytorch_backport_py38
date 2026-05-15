@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 import unittest
 
 from torch.testing._internal.inductor_utils import (
@@ -8,6 +10,7 @@ from torch.testing._internal.inductor_utils import (
     HAS_XPU_AND_TRITON,
 )
 from torch.utils._triton import has_triton
+from typing import List
 
 
 requires_cuda_and_triton = unittest.skipUnless(
@@ -27,7 +30,7 @@ if has_triton():
 
     import torch
 
-    def _get_strange_configs() -> list[triton.Config]:
+    def _get_strange_configs() -> List[triton.Config]:
         if torch.version.hip:
             configs = [
                 triton.Config(
@@ -1080,7 +1083,7 @@ if has_triton():
 
     # support the old (experimental) and new (tensor_descriptor) APIs
     def create_tensor_descriptor_shim(
-        tensor, block_sizes: list[int], new_api: bool = True
+        tensor, block_sizes: List[int], new_api: bool = True
     ):
         if new_api:
             return triton.tools.tensor_descriptor.TensorDescriptor.from_tensor(

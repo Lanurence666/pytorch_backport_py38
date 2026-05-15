@@ -4,9 +4,11 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import argparse
 import math
-from typing import Any
+from typing import Any, Dict, List, Set, Tuple, Union
 
 from torch.distributed.flight_recorder.components.fr_logger import FlightRecorderLogger
 from torch.distributed.flight_recorder.components.types import (
@@ -50,14 +52,14 @@ except ModuleNotFoundError:
     logger.debug("tabulate is not installed. Proceeding without it.")
 
 
-def format_frame(frame: dict[str, str]) -> str:
+def format_frame(frame: Dict[str, str]) -> str:
     name = frame["name"]
     filename = frame["filename"]
     line = frame["line"]
     return f"{name} at {filename}:{line}"
 
 
-def format_frames(frames: list[dict[str, str]]) -> str:
+def format_frames(frames: List[Dict[str, str]]) -> str:
     formatted_frames = []
     for frame in frames:
         formatted_frames.append(format_frame(frame))
@@ -65,9 +67,9 @@ def format_frames(frames: list[dict[str, str]]) -> str:
 
 
 def match_one_event(
-    event_a: dict[Any, Any],
-    event_b: dict[Any, Any],
-    memberships: dict[str, set[Any]],
+    event_a: Dict[Any, Any],
+    event_b: Dict[Any, Any],
+    memberships: Dict[str, Set[Any]],
     pg_name: str,
 ) -> MatchInfo:
     op_a = Op(event_a, memberships, pg_name)
@@ -76,11 +78,11 @@ def match_one_event(
 
 
 def match_coalesced_groups(
-    all_rank_events: dict[Any, Any],
+    all_rank_events: Dict[Any, Any],
     group_size: int,
-    groups: dict[str, Group],
-    memberships: dict[str, set[Any]],
-    _pg_guids: dict[tuple[str, int], str],
+    groups: Dict[str, Group],
+    memberships: Dict[str, Set[Any]],
+    _pg_guids: Dict[Tuple[str, int], str],
 ) -> bool:
     """
     all_rank_events: {
@@ -115,7 +117,7 @@ def match_coalesced_groups(
 
     def visualize_ops(
         match: bool,
-        _pg_guids: dict[tuple[str, int], str],
+        _pg_guids: Dict[Tuple[str, int], str],
     ) -> None:
         all_ops = {
             rank: [
@@ -206,14 +208,14 @@ def match_coalesced_groups(
 
 # We enabled the creating FR entry for non-P2P slow path collective ops in v2.7.
 def match_coalesced_groups_with_non_p2p(
-    all_rank_events: dict[Any, Any],
-    pg_info: tuple[str, str],
-    memberships: dict[str, set[Any]],
-    _pg_guids: dict[tuple[str, int], str],
-    mismatch: dict[str, int],
-    dumps_ranks: set[int],
+    all_rank_events: Dict[Any, Any],
+    pg_info: Tuple[str, str],
+    memberships: Dict[str, Set[Any]],
+    _pg_guids: Dict[Tuple[str, int], str],
+    mismatch: Dict[str, int],
+    dumps_ranks: Set[int],
     version: str,
-    collectives: list[Collective],
+    collectives: List[Collective],
     match_record: MatchStateRecord,
 ) -> bool:
     """
@@ -251,7 +253,7 @@ def match_coalesced_groups_with_non_p2p(
 
     def visualize_ops(
         match: bool,
-        _pg_guids: dict[tuple[str, int], str],
+        _pg_guids: Dict[Tuple[str, int], str],
     ) -> None:
         all_ops = {
             rank: [
@@ -413,7 +415,7 @@ def match_coalesced_groups_with_non_p2p(
     return True
 
 
-def check_size_alltoall(alltoall_cases: list[dict[str, Any]]) -> tuple[bool, int, int]:
+def check_size_alltoall(alltoall_cases: List[Dict[str, Any]]) -> Tuple[bool, int, int]:
     input_numel = 0
     output_numel = 0
     for e in alltoall_cases:
@@ -423,12 +425,12 @@ def check_size_alltoall(alltoall_cases: list[dict[str, Any]]) -> tuple[bool, int
 
 
 def check_current_entry_match(
-    all_entries: dict[int, list[dict[str, Any]]],
-    _pg_guids: dict[tuple[str, int], str],
-    pg_info: tuple[str, str],
-    current_entry: dict[str, Any],
-    _memberships: dict[str, set[Any]],
-    mismatch: dict[str, int],
+    all_entries: Dict[int, List[Dict[str, Any]]],
+    _pg_guids: Dict[Tuple[str, int], str],
+    pg_info: Tuple[str, str],
+    current_entry: Dict[str, Any],
+    _memberships: Dict[str, Set[Any]],
+    mismatch: Dict[str, int],
     match_record: MatchStateRecord,
 ) -> None:
     pg_name, desc = pg_info[0], pg_info[1]
@@ -467,26 +469,26 @@ def check_current_entry_match(
 
 
 def error_analysis(
-    all_entries: dict[int, list[dict[str, Any]]],
+    all_entries: Dict[int, List[Dict[str, Any]]],
     match_record: MatchStateRecord,
-    dumps_ranks: set[int],
+    dumps_ranks: Set[int],
     first_rank: int,
-    current_entry: dict[str, Any],
-    mismatch: dict[str, int],
-    version: tuple[int, int],
+    current_entry: Dict[str, Any],
+    mismatch: Dict[str, int],
+    version: Tuple[int, int],
     pg_name: str,
 ) -> None:
     major_v, minor_v = version[0], version[1]
     # case one: not every rank join the collective or in the flight recorder.
     if (
-        match_record.candidate_ranks | match_record.found_ranks
+        Union[match_record.candidate_ranks, match_record.found_ranks]
     ) != match_record.expected_ranks and match_record.expected_ranks - (
-        match_record.candidate_ranks | match_record.found_ranks
+        Union[match_record.candidate_ranks, match_record.found_ranks]
     ) <= dumps_ranks:
         mismatch[pg_name] += 1
         logger_msg = "Not all ranks joining collective, sequence number: %s"
         missing_ranks = match_record.expected_ranks - (
-            match_record.candidate_ranks | match_record.found_ranks
+            Union[match_record.candidate_ranks, match_record.found_ranks]
         )
         match_record.entry_state.log(
             logger, logger_msg, format_frames, missing_ranks=missing_ranks
@@ -577,10 +579,10 @@ def error_analysis(
 
 def find_coalesced_group(
     pg_name: str,
-    entries: list[dict[str, Any]],
-    _pg_guids: dict[tuple[str, int], str],
+    entries: List[Dict[str, Any]],
+    _pg_guids: Dict[Tuple[str, int], str],
     rank: int,
-) -> list[tuple[int, dict[str, Any]]]:
+) -> List[Tuple[int, Dict[str, Any]]]:
     """Given a list of entries, if the collective_seq_id of the first entry matches that of subsequent ones,
     build an return a list of entries terminating in a 'coalesced' op entry all sharing a collective_seq_id
     """
@@ -611,10 +613,10 @@ def find_coalesced_group(
 # We enabled the creating FR entry for non-P2P slow path collective ops in v2.7.
 def find_coalesced_group_with_non_p2p(
     pg_name: str,
-    entries: list[dict[str, Any]],
-    _pg_guids: dict[tuple[str, int], str],
+    entries: List[Dict[str, Any]],
+    _pg_guids: Dict[Tuple[str, int], str],
     rank: int,
-) -> list[tuple[int, dict[str, Any]]]:
+) -> List[Tuple[int, Dict[str, Any]]]:
     """Given a list of entries, if the collective_seq_id of the first entry matches that of subsequent ones,
     build an return a list of entries terminating in a 'coalesced' op entry all sharing a collective_seq_id
     """
@@ -644,12 +646,12 @@ def find_coalesced_group_with_non_p2p(
 
 
 def just_print_entries(
-    all_entries: dict[int, list[dict[str, Any]]],
-    _groups: dict[str, Group],
-    _memberships: dict[str, set[Any]],
-    _pg_guids: dict[tuple[str, int], str],
+    all_entries: Dict[int, List[Dict[str, Any]]],
+    _groups: Dict[str, Group],
+    _memberships: Dict[str, Set[Any]],
+    _pg_guids: Dict[Tuple[str, int], str],
     args: argparse.Namespace,
-    stack_id_trace_map: dict[str, int],
+    stack_id_trace_map: Dict[str, int],
 ) -> None:
     rows = []
     ranks = sorted(all_entries.keys())
@@ -697,7 +699,7 @@ def just_print_entries(
 
 
 def check_no_missing_dump_files(
-    entries: dict[int, Any], memberships: list[Membership]
+    entries: Dict[int, Any], memberships: List[Membership]
 ) -> None:
     all_ranks = {int(membership.global_rank) for membership in memberships}
     dumps_ranks = {int(key) for key in entries}
@@ -706,7 +708,7 @@ def check_no_missing_dump_files(
         raise AssertionError(f"Missing dump files from ranks {missing}")
 
 
-def check_version(version_by_ranks: dict[str, str], version: str) -> None:
+def check_version(version_by_ranks: Dict[str, str], version: str) -> None:
     for rank, v in version_by_ranks.items():
         if v != version:
             raise AssertionError(
@@ -714,7 +716,7 @@ def check_version(version_by_ranks: dict[str, str], version: str) -> None:
             )
 
 
-def get_version_detail(version: str) -> tuple[int, int]:
+def get_version_detail(version: str) -> Tuple[int, int]:
     # pyrefly: ignore [bad-assignment]
     version = version.split(".")
     if len(version) != 2:
@@ -724,8 +726,8 @@ def get_version_detail(version: str) -> tuple[int, int]:
 
 
 def add_stack_id_in_entries(
-    entries: dict[int, list[dict[str, Any]]],
-) -> tuple[dict[int, list[dict[str, Any]]], dict[str, int]]:
+    entries: Dict[int, List[Dict[str, Any]]],
+) -> Tuple[Dict[int, List[Dict[str, Any]]], Dict[str, int]]:
     stack_id = 0
     stack_id_trace_map = {}
     for rank in entries:
@@ -745,8 +747,8 @@ def add_stack_id_in_entries(
 
 
 def align_trace_from_beginning(
-    entries: dict[int, list[dict[str, Any]]],
-) -> dict[int, list[dict[str, Any]]]:
+    entries: Dict[int, List[Dict[str, Any]]],
+) -> Dict[int, List[Dict[str, Any]]]:
     """
     Align the trace entries by record ID for entries.
     This function takes a dictionary of rank names to lists of trace entries as input.

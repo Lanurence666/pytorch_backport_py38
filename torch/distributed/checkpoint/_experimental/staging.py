@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Experimental staging module for PyTorch Distributed Checkpointing.
 
@@ -18,7 +19,7 @@ Classes:
 import abc
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any, Dict, Type, TypeVar, Union
 
 import torch
 from torch.distributed.checkpoint._state_dict_stager import StateDictStager
@@ -43,7 +44,7 @@ class CheckpointStager(abc.ABC):
         self,
         state_dict: STATE_DICT,
         **kwargs: Any,
-    ) -> STATE_DICT | Future[STATE_DICT]:
+    ) -> Union[STATE_DICT, Future[STATE_DICT]]:
         """
         Stage a state dictionary for checkpointing.
 
@@ -165,7 +166,7 @@ class DefaultStager(CheckpointStager):
         self,
         state_dict: STATE_DICT,
         **kwargs: Any,
-    ) -> STATE_DICT | Future[STATE_DICT]:
+    ) -> Union[STATE_DICT, Future[STATE_DICT]]:
         if self._config.use_async_staging:
             if self._staging_executor is None:
                 raise AssertionError(

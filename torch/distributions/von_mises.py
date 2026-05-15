@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 
 import torch
@@ -7,6 +9,7 @@ from torch import Tensor
 from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 from torch.distributions.utils import broadcast_all, lazy_property
+from typing import Optional, Union, overload
 
 
 __all__ = ["VonMises"]
@@ -103,7 +106,7 @@ def _rejection_sample(loc, concentration, proposal_r, x):
         if accept.any():
             # pyrefly: ignore [no-matching-overload]
             x = torch.where(accept, (u3 - 0.5).sign() * f.acos(), x)
-            done = done | accept
+            done = Union[done, accept]
     return (x + math.pi + loc) % (2 * math.pi) - math.pi
 
 
@@ -134,7 +137,7 @@ class VonMises(Distribution):
         self,
         loc: Tensor,
         concentration: Tensor,
-        validate_args: bool | None = None,
+        validate_args: Optional[bool]= None,
     ) -> None:
         self.loc, self.concentration = broadcast_all(loc, concentration)
         batch_shape = self.loc.shape

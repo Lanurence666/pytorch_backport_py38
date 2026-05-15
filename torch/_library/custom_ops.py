@@ -1,12 +1,14 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import collections
 import inspect
 import logging
 import warnings
 import weakref
-from collections.abc import Callable, Iterable, Sequence
+
 from contextlib import contextmanager
-from typing import Any, overload, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, Type, Union, overload
 
 import torch
 from torch import _C, _ops, Tensor
@@ -17,7 +19,7 @@ from . import autograd, utils
 from .effects import EffectType
 
 
-device_types_t = str | Sequence[str] | None
+device_types_t = Optional[Union[str, Sequence[str]]]
 log = logging.getLogger(__name__)
 
 
@@ -27,10 +29,10 @@ def custom_op(
     fn: None = None,
     /,
     *,
-    mutates_args: str | Iterable[str],
+    mutates_args: Union[str, Iterable[str]],
     device_types: device_types_t = None,
-    schema: str | None = None,
-    tags: Sequence[_C.Tag] | None = None,
+    schema: Optional[str] = None,
+    tags: Optional[Sequence[_C.Tag]] = None,
 ) -> Callable[[Callable[..., object]], "CustomOpDef"]: ...
 
 
@@ -40,23 +42,23 @@ def custom_op(
     fn: Callable[..., object],
     /,
     *,
-    mutates_args: str | Iterable[str],
+    mutates_args: Union[str, Iterable[str]],
     device_types: device_types_t = None,
-    schema: str | None = None,
-    tags: Sequence[_C.Tag] | None = None,
+    schema: Optional[str] = None,
+    tags: Optional[Sequence[_C.Tag]] = None,
 ) -> "CustomOpDef": ...
 
 
 @exposed_in("torch.library")
 def custom_op(
     name: str,
-    fn: Callable | None = None,
+    fn: Optional[Callable] = None,
     /,
     *,
-    mutates_args: str | Iterable[str],
+    mutates_args: Union[str, Iterable[str]],
     device_types: device_types_t = None,
-    schema: str | None = None,
-    tags: Sequence[_C.Tag] | None = None,
+    schema: Optional[str] = None,
+    tags: Optional[Sequence[_C.Tag]] = None,
 ) -> Union[Callable[[Callable[..., object]], "CustomOpDef"], "CustomOpDef"]:
     """Wraps a function into custom operator.
 
@@ -78,13 +80,13 @@ def custom_op(
         mutates_args (Iterable[str] or "unknown"): The names of args that the function mutates.
             This MUST be accurate, otherwise, the behavior is undefined. If "unknown",
             it pessimistically assumes that all inputs to the operator are being mutated.
-        device_types (str | None | Sequence[str]): The device type(s) the function
+        device_types (Union[str, Optional[Sequence[str]]]): The device type(s) the function
             is valid for. If no device type is provided, then the function
             is used as the default implementation for all device types.
             Examples: "cpu", "cuda".
             When registering a device-specific implementation for an operator that accepts no Tensors,
             we require the operator to have a "device: torch.device argument".
-        schema (str | None): A schema string for the operator. If None
+        schema (Optional[str]): A schema string for the operator. If None
             (recommended) we'll infer a schema for the operator from its type
             annotations. We recommend letting us infer a schema unless you
             have a specific reason not to.
@@ -95,15 +97,15 @@ def custom_op(
         - Scalars: ``int``, ``float``, ``bool``, ``str``, ``torch.types.Number``
         - Tensors: ``torch.Tensor``
         - Enums/devices: ``torch.dtype``, ``torch.device``
-        - Flat list of the same type: ``list[torch.Tensor]``,
-          ``list[int]``, ``list[float]``, ``list[bool]``,
-          ``list[torch.types.Number]``
+        - Flat list of the same type: ``List[torch.Tensor]``,
+          ``List[int]``, ``List[float]``, ``List[bool]``,
+          ``List[torch.types.Number]``
         - Optionals: ``Optional`` of any of the above scalar/tensor types
         - Types registered via :func:`torch.library.register_opaque_type`
 
     The following types are supported for the return value:
 
-        ``torch.Tensor``, ``list[torch.Tensor]``, ``int``, ``float``,
+        ``torch.Tensor``, ``List[torch.Tensor]``, ``int``, ``float``,
         ``bool``, ``torch.types.Number``.
 
     .. note::
@@ -162,8 +164,8 @@ def custom_op(
         >>> # Example of a custom op with list inputs
         >>> @custom_op("mylib::weighted_sum", mutates_args=())
         >>> def weighted_sum(
-        >>>     tensors: list[Tensor],
-        >>>     weights: list[float],
+        >>>     tensors: List[Tensor],
+        >>>     weights: List[float],
         >>> ) -> Tensor:
         >>>     return sum(t * w for t, w in zip(tensors, weights))
         >>>
@@ -220,7 +222,7 @@ class CustomOpDef:
         name: str,
         schema: str,
         fn: Callable,
-        tags: Sequence[_C.Tag] | None = None,
+        tags: Optional[Sequence[_C.Tag]] = None,
     ) -> None:
         # Fields used to interface with the PyTorch dispatcher
         self._namespace = namespace
@@ -230,19 +232,19 @@ class CustomOpDef:
 
         self._init_fn = fn
 
-        self._backend_fns: dict[str | None, Callable] = {}
-        self._abstract_fn: Callable | None = None
-        self._setup_context_fn: Callable | None = None
-        self._backward_fn: Callable | None = None
-        self._torch_dispatch_fns: dict[type, Callable] = {}
-        self._vmap_fn: Callable | None = None
-        self._autocast_cuda_dtype: _dtype | None = None
-        self._autocast_cpu_dtype: _dtype | None = None
+        self._backend_fns: Dict[Optional[str], Callable] = {}
+        self._abstract_fn: Optional[Callable] = None
+        self._setup_context_fn: Optional[Callable] = None
+        self._backward_fn: Optional[Callable] = None
+        self._torch_dispatch_fns: Dict[type, Callable] = {}
+        self._vmap_fn: Optional[Callable] = None
+        self._autocast_cuda_dtype: Optional[_dtype] = None
+        self._autocast_cpu_dtype: Optional[_dtype] = None
 
         self._lib = get_library_allowing_overwrite(self._namespace, self._name)
         self._register_to_dispatcher(self._tags)
         self._disabled_kernel: set = set()
-        self._used_triton_kernels: list[Any] = list()
+        self._used_triton_kernels: List[Any] = list()
         OPDEFS[self._qualname] = self
 
     @property
@@ -323,7 +325,7 @@ class CustomOpDef:
                 self._disabled_kernel.discard(device_type)
 
     def register_kernel(
-        self, device_types: device_types_t, fn: Callable | None = None, /
+        self, device_types: device_types_t, fn: Optional[Callable] = None, /
     ) -> Callable:
         """Register an implementation for a device type for this operator.
 
@@ -333,7 +335,7 @@ class CustomOpDef:
         Args:
             fn (Callable): The function to register as the implementation for
                 the given device types.
-            device_types (str | Sequence[str]): The device device_types to register an impl to.
+            device_types (Union[str, Sequence[str]]): The device device_types to register an impl to.
 
         Examples::
             >>> # xdoctest: +REQUIRES(env:TORCH_DOCTEST_CUDA)
@@ -365,7 +367,7 @@ class CustomOpDef:
 
         def inner(fn):
             if device_types is None or isinstance(device_types, str):
-                dtypes: list[str | None] = [device_types]
+                dtypes: List[Optional[str]] = [device_types]
             else:
                 dtypes = list(device_types)
             for device_type in dtypes:
@@ -501,11 +503,11 @@ class CustomOpDef:
         self._abstract_fn = fn
         return fn
 
-    def register_effect(self, effect: EffectType | None) -> None:
+    def register_effect(self, effect: Optional[EffectType]) -> None:
         self._lib._register_effectful_op(self._qualname, effect)
 
     def register_torch_dispatch(
-        self, torch_dispatch_class: Any, fn: Callable | None = None, /
+        self, torch_dispatch_class: Any, fn: Optional[Callable] = None, /
     ) -> Callable:
         r"""Registers a torch_dispatch rule for the given operator and ``torch_dispatch_class``.
 
@@ -540,7 +542,7 @@ class CustomOpDef:
         backward: Callable,
         /,
         *,
-        setup_context: Callable | None = None,
+        setup_context: Optional[Callable] = None,
     ) -> None:
         r"""Register a backward formula for this custom op.
 
@@ -633,16 +635,10 @@ class CustomOpDef:
         self._setup_context_fn = setup_context
 
     def _register_to_dispatcher(self, tags: Sequence[_C.Tag]) -> None:
+        lib = self._lib
         schema_str = self._name + self._schema
         cpp_schema = _C.parse_schema(schema_str)
-        self._validate_schema(cpp_schema, schema_str)
-        self._define_dispatcher_op(schema_str, tags)
-        self._register_fake_dispatcher_impl()
-        self._register_autograd_dispatcher_impl()
-        self._register_adinplaceorview_dispatcher_impl()
-
-    def _validate_schema(self, schema: _C.FunctionSchema, schema_str: str) -> None:
-        if utils.has_kwarg_only_tensors(schema):
+        if utils.has_kwarg_only_tensors(cpp_schema):
             # If you want to support this, the progression is:
             # - supporting kwarg-only Tensors that are non-differentiable
             # - supporting kwarg-only Tensors (regardless of differentiability)
@@ -651,14 +647,12 @@ class CustomOpDef:
                 f"tensors not kwarg-only. Got: {schema_str}"
             )
 
-    def _define_dispatcher_op(self, schema_str: str, tags: Sequence[_C.Tag]) -> None:
-        self._lib.define(
+        lib.define(
             schema_str,
             tags=[_C.Tag.pt2_compliant_tag, *tags],
         )
         self._opoverload = utils.lookup_op(self._qualname)
 
-    def _register_fake_dispatcher_impl(self) -> None:
         def fake_impl(*args, **kwargs):
             if self._abstract_fn is None:
                 if utils.can_generate_trivial_fake_impl(self._opoverload):
@@ -673,52 +667,45 @@ class CustomOpDef:
                 )
             return self._abstract_fn(*args, **kwargs)
 
-        self._lib._register_fake(self._name, fake_impl, _stacklevel=5)
+        lib._register_fake(self._name, fake_impl, _stacklevel=4)
 
-    def _register_autograd_dispatcher_impl(self) -> None:
         autograd_impl = autograd.make_autograd_impl(self._opoverload, self)
-        self._lib.impl(self._name, autograd_impl, "Autograd", with_keyset=True)
-
-    def _register_adinplaceorview_dispatcher_impl(self) -> None:
+        lib.impl(self._name, autograd_impl, "Autograd", with_keyset=True)
         schema = self._opoverload._schema
-        if not (schema._is_view_op() or schema.is_mutable):
-            return
 
-        self._lib.m.register_ad_inplace_or_view_fallback(self._name)  # type: ignore[union-attr]
+        if schema._is_view_op() or schema.is_mutable:
+            lib.m.register_ad_inplace_or_view_fallback(self._name)  # type: ignore[union-attr]
 
         if schema.is_mutable:
-            self._register_mutation_version_bump(schema)
+            mutated_idxs, mutated_keys = utils.mutated_args_kwargs(schema)
 
-    def _register_mutation_version_bump(self, schema: _C.FunctionSchema) -> None:
-        mutated_idxs, mutated_keys = utils.mutated_args_kwargs(schema)
-
-        original_kernel = torch._C._dispatch_get_computed_kernel_for_dispatch_key(
-            f"{self._lib.ns}::{self._name}", "ADInplaceOrView"
-        )
-
-        def adinplaceorview_impl(keyset, *args, **kwargs):
-            # Handle the mutated idx the user gave us explicitly
-            all_args, all_kwargs = utils.fill_defaults(schema, args, kwargs)
-
-            for idx in mutated_idxs:
-                increment_version(all_args[idx])
-            for key in mutated_keys:
-                increment_version(all_kwargs[key])
-            # Handle view + mutation that are in the schema
-            return original_kernel.call_boxed(keyset, *args, **kwargs)
-
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message="Warning only once for all operators",
-                category=UserWarning,
+            original_kernel = torch._C._dispatch_get_computed_kernel_for_dispatch_key(
+                f"{lib.ns}::{self._name}", "ADInplaceOrView"
             )
-            self._lib.impl(
-                self._name,
-                adinplaceorview_impl,
-                "ADInplaceOrView",
-                with_keyset=True,
-            )
+
+            def adinplaceorview_impl(keyset, *args, **kwargs):
+                # Handle the mutated idx the user gave us explicitly
+                all_args, all_kwargs = utils.fill_defaults(schema, args, kwargs)
+
+                for idx in mutated_idxs:
+                    increment_version(all_args[idx])
+                for key in mutated_keys:
+                    increment_version(all_kwargs[key])
+                # Handle view + mutation that are in the schema
+                return original_kernel.call_boxed(keyset, *args, **kwargs)
+
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="Warning only once for all operators",
+                    category=UserWarning,
+                )
+                lib.impl(
+                    self._name,
+                    adinplaceorview_impl,
+                    "ADInplaceOrView",
+                    with_keyset=True,
+                )
 
     def _register_backend_select_dispatcher(self, device_arg_index: int):
         """
@@ -746,7 +733,7 @@ class CustomOpDef:
 
     def register_vmap(
         self,
-        func: Callable | None = None,
+        func: Optional[Callable] = None,
     ):
         r"""Register a vmap implementation to support :func:`torch.vmap` for this custom op.
 
@@ -857,7 +844,7 @@ class CustomOpDef:
         Valid `device_type` include: "cpu" and "cuda".
 
         Args:
-            op (str | OpOverload): The operator to register an autocast dispatch rule to.
+            op (Union[str, OpOverload]): The operator to register an autocast dispatch rule to.
             device_type(str):  Device type to use. 'cuda' or 'cpu'.
                 The type is the same as the `type` attribute of a :class:`torch.device`.
                 Thus, you may obtain the device type of a tensor using `Tensor.device.type`.
@@ -973,7 +960,7 @@ def increment_version(val: Any) -> None:
 # decorator.
 
 
-OPDEF_TO_LIB: dict[str, "torch.library.Library"] = {}
+OPDEF_TO_LIB: Dict[str, "torch.library.Library"] = {}
 OPDEFS: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
 
 
@@ -986,14 +973,14 @@ def get_library_allowing_overwrite(
         OPDEF_TO_LIB[qualname]._destroy()
         del OPDEF_TO_LIB[qualname]
 
-    lib = torch.library.Library(namespace, "FRAGMENT")
+    lib = torch.library.Library(namespace, "FRAGMENT")  # noqa: TOR901
     OPDEF_TO_LIB[qualname] = lib
     return lib
 
 
 def _maybe_get_opdef(
-    op: CustomOpDef | _ops.OpOverload | str,
-) -> CustomOpDef | None:
+    op: Union[Union[CustomOpDef, _ops.OpOverload], str],
+) -> Optional[CustomOpDef]:
     if isinstance(op, CustomOpDef):
         return op
     if isinstance(op, _ops.OpOverload):

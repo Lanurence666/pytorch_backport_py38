@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Union
 import argparse
 import email
 import os
@@ -8,13 +9,14 @@ import subprocess
 from pathlib import Path
 
 from packaging.version import Version
+from setuptools import distutils  # type: ignore[import,attr-defined]
 
 
 UNKNOWN = "Unknown"
 RELEASE_PATTERN = re.compile(r"/v[0-9]+(\.[0-9]+)*(-rc[0-9]+)?/")
 
 
-def get_sha(pytorch_root: str | Path) -> str:
+def get_sha(pytorch_root: Union[str, Path]) -> str:
     try:
         rev = None
         if os.path.exists(os.path.join(pytorch_root, ".git")):
@@ -32,7 +34,7 @@ def get_sha(pytorch_root: str | Path) -> str:
     return UNKNOWN
 
 
-def get_tag(pytorch_root: str | Path) -> str:
+def get_tag(pytorch_root: Union[str, Path]) -> str:
     try:
         tag = subprocess.run(
             ["git", "describe", "--tags", "--exact"],
@@ -48,7 +50,7 @@ def get_tag(pytorch_root: str | Path) -> str:
         return UNKNOWN
 
 
-def get_torch_version(sha: str | None = None) -> str:
+def get_torch_version(sha: Union[str, None] = None) -> str:
     """Determine the torch version string.
 
     The version is determined from one of the following sources, in order of
@@ -111,18 +113,13 @@ def get_torch_version(sha: str | None = None) -> str:
 
 
 if __name__ == "__main__":
-    # Imported here so library users that load this file outside the tools
-    # package (e.g. via importlib.util.spec_from_file_location) do not need
-    # the project root on sys.path just to call get_torch_version().
-    from tools.strtobool import strtobool
-
     parser = argparse.ArgumentParser(
         description="Generate torch/version.py from build and environment metadata."
     )
     parser.add_argument(
         "--is-debug",
         "--is_debug",
-        type=strtobool,
+        type=distutils.util.strtobool,
         help="Whether this build is debug mode or not.",
     )
     parser.add_argument("--cuda-version", "--cuda_version", type=str)

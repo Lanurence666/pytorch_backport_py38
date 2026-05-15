@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from contextlib import contextmanager
 
 import torch
@@ -10,6 +12,7 @@ from torch.distributed._shard.sharded_tensor import ShardedTensor
 from .sharder import Sharder
 from .sharding_plan import ShardingPlan
 from .sharding_spec import ChunkShardingSpec, ShardingSpec
+from typing import Optional, Type
 
 
 def _shard_tensor(
@@ -128,7 +131,7 @@ def shard_parameter(
 
 
 # Tracks the current process group in the load context manager.
-_CURRENT_PROCESS_GROUP: dist.ProcessGroup | None = None
+_CURRENT_PROCESS_GROUP: Optional[dist.ProcessGroup]= None
 
 
 @contextmanager

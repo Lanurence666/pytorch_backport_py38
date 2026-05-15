@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 Utils shared by different modes of quantization (eager/graph)
@@ -8,7 +9,7 @@ import warnings
 from collections import OrderedDict
 from collections.abc import Callable
 from inspect import getfullargspec, signature
-from typing import Any
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, cast
 from typing_extensions import TypeAliasType
 
 import torch
@@ -18,7 +19,7 @@ from torch.nn.utils.parametrize import is_parametrized
 
 
 NodePattern = TypeAliasType(
-    "NodePattern", tuple[Node, Node] | tuple[Node, tuple[Node, Node]] | Any
+    "NodePattern", Union[Tuple[Node, Node], Tuple[Node, Tuple[Node, Node]], Any]
 )
 
 
@@ -36,10 +37,12 @@ QuantizerCls = Any
 
 Pattern = TypeAliasType(
     "Pattern",
-    Callable
-    | tuple[Callable, Callable]
-    | tuple[Callable, tuple[Callable, Callable]]
-    | Any,
+    Union[
+        Callable,
+        Tuple[Callable, Callable],
+        Tuple[Callable, Tuple[Callable, Callable]],
+        Any,
+    ],
 )
 
 
@@ -448,7 +451,7 @@ def calculate_qmin_qmax(
     has_customized_qrange: bool,
     dtype: torch.dtype,
     reduce_range: bool,
-) -> tuple[int, int]:
+) -> Tuple[int, int]:
     r"""Calculates actual qmin and qmax based on the quantization range,
     observer datatype and if range is reduced.
     """
@@ -533,7 +536,7 @@ def has_no_children_ignoring_parametrizations(module):
 
 def _get_path_of_module(
     root: torch.nn.Module, submodule: torch.nn.Module
-) -> str | None:
+) -> Optional[str]:
     """Get the path (fully qualified name) of a submodule
 
     Example::
@@ -555,7 +558,7 @@ def _get_path_of_module(
     return None
 
 
-def _get_signature_locals(f: Callable, loc: dict[str, Any]) -> dict[str, Any]:
+def _get_signature_locals(f: Callable, loc: Dict[str, Any]) -> Dict[str, Any]:
     """Get local keyword arguments
 
     Example::
@@ -590,7 +593,7 @@ def _get_default_kwargs(f: Callable) -> "OrderedDict[str, Any]":
     return OrderedDict(kwargs)
 
 
-def _normalize_kwargs(func: Callable, loc: dict[str, Any]) -> "OrderedDict[str, Any]":
+def _normalize_kwargs(func: Callable, loc: Dict[str, Any]) -> "OrderedDict[str, Any]":
     """Given a function and local function arguments, normalize the keyword
     arguments by filling in default arguments from function signature
 
@@ -649,7 +652,7 @@ def determine_qparams(
     eps: torch.Tensor,
     has_customized_qrange: bool,
     qscheme: torch.qscheme = torch.per_tensor_affine,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Calculates the quantization parameters, given min and max
     value tensors. Works for both per tensor and per channel cases
 
@@ -732,8 +735,8 @@ def _get_num_pos_args(f: Callable) -> int:
 
 
 def get_fqn_to_example_inputs(
-    model: torch.nn.Module, example_inputs: tuple[Any, ...]
-) -> dict[str, tuple[Any, ...]]:
+    model: torch.nn.Module, example_inputs: Tuple[Any, ...]
+) -> Dict[str, Tuple[Any, ...]]:
     """Given a model and its example inputs, return a dictionary from
     fully qualified name of submodules to example_inputs for that submodule,
     e.g. ``{"linear1": (tensor1,), "linear2": (tensor2,), "sub": (tensor3,),

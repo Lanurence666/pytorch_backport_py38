@@ -6,6 +6,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import abc
 import json
 import os
@@ -19,7 +21,7 @@ from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch.distributed.elastic.rendezvous as rdzv
 import torch.distributed.elastic.utils.store as store_util
@@ -89,19 +91,19 @@ class WorkerSpec:
     role: str
     local_world_size: int
     rdzv_handler: rdzv.RendezvousHandler
-    fn: Callable | None = None
+    fn: Optional[Callable]= None
     # TODO @kiuk - make entrypoint a required field
-    entrypoint: Callable | str | None = None
+    entrypoint: Optional[Union[Callable, str]]= None
     args: tuple = ()
     max_restarts: int = 3
     monitor_interval: float = 0.1
-    master_port: int | None = None
-    master_addr: str | None = None
-    local_addr: str | None = None
+    master_port: Optional[int]= None
+    master_addr: Optional[str]= None
+    local_addr: Optional[str]= None
     event_log_handler: str = "null"
-    numa_options: NumaOptions | None = None
-    duplicate_stdout_filters: list[str] | None = None
-    duplicate_stderr_filters: list[str] | None = None
+    numa_options: Optional[NumaOptions]= None
+    duplicate_stdout_filters: Optional[List[str]]= None
+    duplicate_stderr_filters: Optional[List[str]]= None
     virtual_local_rank: bool = False
 
     def __post_init__(self):
@@ -342,7 +344,7 @@ class _RoleInstanceInfo:
             return -1
 
     @staticmethod
-    def find_role_boundaries(roles_infos: list, role: str) -> tuple[int, int]:
+    def find_role_boundaries(roles_infos: list, role: str) -> Tuple[int, int]:
         start_idx, end_idx = -1, -1
         for idx, role_info in enumerate(roles_infos):
             if role_info.role == role:
@@ -379,8 +381,8 @@ class RunResult:
     """
 
     state: WorkerState
-    return_values: dict[int, Any] = field(default_factory=dict)
-    failures: dict[int, ProcessFailure] = field(default_factory=dict)
+    return_values: Dict[int, Any] = field(default_factory=dict)
+    failures: Dict[int, ProcessFailure] = field(default_factory=dict)
 
     def is_failed(self) -> bool:
         return self.state == WorkerState.FAILED
@@ -477,7 +479,7 @@ class SimpleElasticAgent(ElasticAgent):
         return self._worker_group
 
     @abc.abstractmethod
-    def _start_workers(self, worker_group: WorkerGroup) -> dict[int, Any]:
+    def _start_workers(self, worker_group: WorkerGroup) -> Dict[int, Any]:
         r"""Start ``worker_group.spec.local_world_size`` number of workers.
 
         This is according to worker spec for the worker group .
@@ -584,7 +586,7 @@ class SimpleElasticAgent(ElasticAgent):
     @prof
     def _assign_worker_ranks(
         self, store, group_rank: int, group_world_size: int, spec: WorkerSpec
-    ) -> list[Worker]:
+    ) -> List[Worker]:
         """Determine proper ranks for worker processes.
 
         Fast Path: when all workers have the same role and world size. We calculate
@@ -821,11 +823,11 @@ class SimpleElasticAgent(ElasticAgent):
         self,
         state: str,
         source: EventSource,
-        worker: Worker | None = None,
-        raw_error: str | None = None,
-        duration_ms: float | None = None,
-        exit_code: int | None = None,
-        worker_pid: int | None = None,
+        worker: Optional[Worker]= None,
+        raw_error: Optional[str]= None,
+        duration_ms: Optional[float]= None,
+        exit_code: Optional[int]= None,
+        worker_pid: Optional[int]= None,
     ) -> Event:
         wg = self._worker_group
         spec = wg.spec

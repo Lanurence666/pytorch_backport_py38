@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Owner(s): ["oncall: mobile"]
 
+from __future__ import annotations
 import ctypes
 import os
 import unittest

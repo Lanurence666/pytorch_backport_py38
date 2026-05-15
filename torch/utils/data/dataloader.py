@@ -1,4 +1,5 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
 r"""Definition of the DataLoader and associated iterators that subclass _BaseDataLoaderIter.
 
 To support these two classes, in `./_utils` we define many utility methods and
@@ -6,7 +7,6 @@ functions to be run in multiprocessing. E.g., the data loading worker loop is
 in `./_utils/worker.py`.
 """
 
-from __future__ import annotations
 
 import contextlib
 import functools
@@ -17,8 +17,8 @@ import os
 import queue
 import threading
 import warnings
-from collections.abc import Callable
-from typing import Any, Generic, NoReturn, TYPE_CHECKING, TypeVar
+
+from typing import Any, Callable, Generic, Iterable, List, NoReturn, Optional, Set, TYPE_CHECKING, Type, TypeVar, Union
 from typing_extensions import Self
 
 import torch
@@ -59,7 +59,7 @@ _worker_init_fn_t = Callable[[int], None]
 # Ideally we would parameterize `DataLoader` by the return type of `collate_fn`, but there is currently no way to have that
 # type parameter set to a default value if the user doesn't pass in a custom 'collate_fn'.
 # See https://github.com/python/mypy/issues/3737.
-_collate_fn_t = Callable[[list[_T]], Any]
+_collate_fn_t = Callable[[List[_T]], Any]
 
 
 # These functions used to be defined in this file. However, it was moved to
@@ -234,34 +234,34 @@ class DataLoader(Generic[_T_co]):
     """
 
     dataset: Dataset[_T_co]
-    batch_size: int | None
+    batch_size: Optional[int]
     num_workers: int
     pin_memory: bool
     drop_last: bool
     timeout: float
-    sampler: Sampler | Iterable
+    sampler: Union[Sampler, Iterable]
     pin_memory_device: str
-    prefetch_factor: int | None
-    _iterator: _BaseDataLoaderIter | None
+    prefetch_factor: Optional[int]
+    _iterator: Optional[_BaseDataLoaderIter]
     __initialized = False
 
     def __init__(
         self,
         dataset: Dataset[_T_co],
-        batch_size: int | None = 1,
-        shuffle: bool | None = None,
-        sampler: Sampler | Iterable | None = None,
-        batch_sampler: Sampler[list] | Iterable[list] | None = None,
+        batch_size: Optional[int]= 1,
+        shuffle: Optional[bool]= None,
+        sampler: Optional[Union[Sampler, Iterable]]= None,
+        batch_sampler: Optional[Union[Sampler[list], Iterable[list]]]= None,
         num_workers: int = 0,
-        collate_fn: _collate_fn_t | None = None,
+        collate_fn: Optional[_collate_fn_t]= None,
         pin_memory: bool = False,
         drop_last: bool = False,
         timeout: float = 0,
-        worker_init_fn: _worker_init_fn_t | None = None,
+        worker_init_fn: Optional[_worker_init_fn_t]= None,
         multiprocessing_context=None,
         generator=None,
         *,
-        prefetch_factor: int | None = None,
+        prefetch_factor: Optional[int]= None,
         persistent_workers: bool = False,
         pin_memory_device: str = "",
         in_order: bool = True,

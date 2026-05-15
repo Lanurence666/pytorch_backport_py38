@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from abc import ABC
 from collections.abc import Callable
 
@@ -12,6 +14,7 @@ from torch.ao.quantization.utils import NodePattern, Pattern, QuantizerCls
 from torch.fx.graph import Node
 
 from .utils import all_node_args_have_no_tensors
+from typing import Callable, Dict, List, Optional, Type
 
 
 __all__ = [
@@ -47,8 +50,8 @@ class QuantizeHandler(ABC):  # noqa: B024
     def __init__(
         self,
         node_pattern: NodePattern,
-        modules: dict[str, torch.nn.Module],
-        root_node_getter: Callable | None = None,
+        modules: Dict[str, torch.nn.Module],
+        root_node_getter: Optional[Callable]= None,
         is_custom_module=False,
         is_standalone_module=False,
     ):
@@ -66,7 +69,7 @@ class QuantizeHandler(ABC):  # noqa: B024
         # determine how many of the first two args are Tensors (versus scalars)
         # this distinguishes things like "x + y" from "x + 2" or "2 + x"
         if isinstance(self.root_node, Node):
-            cache_for_no_tensor_check: dict[Node, bool] = {}
+            cache_for_no_tensor_check: Dict[Node, bool] = {}
             for arg_idx in range(len(self.root_node.args)):
                 arg = self.root_node.args[arg_idx]
                 if isinstance(arg, Node) and (
@@ -102,9 +105,9 @@ class QuantizeHandler(ABC):  # noqa: B024
 
 def _get_quantize_handler_cls(
     observation_type: ObservationType,
-    dtype_configs: list[DTypeConfig],
-    num_tensor_args_to_observation_type: dict[int, ObservationType],
-) -> type[QuantizeHandler]:
+    dtype_configs: List[DTypeConfig],
+    num_tensor_args_to_observation_type: Dict[int, ObservationType],
+) -> Type[QuantizeHandler]:
     """
     Return a configurable QuantizeHandler that matches the given specifications from the backend.
     """
@@ -113,8 +116,8 @@ def _get_quantize_handler_cls(
         def __init__(
             self,
             node_pattern: NodePattern,
-            modules: dict[str, torch.nn.Module],
-            root_node_getter: Callable | None = None,
+            modules: Dict[str, torch.nn.Module],
+            root_node_getter: Optional[Callable]= None,
         ):
             super().__init__(node_pattern, modules, root_node_getter)
             if num_tensor_args_to_observation_type:
@@ -141,7 +144,7 @@ def _get_quantize_handler_cls(
 
 def _get_pattern_to_quantize_handlers(
     backend_config: BackendConfig,
-) -> dict[Pattern, QuantizerCls]:
+) -> Dict[Pattern, QuantizerCls]:
     """
     Note: Quantize handler is just a holder for some check methods like
     (should_insert_observer_for_output), maybe this can be a enum as well,

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import base64
 import zlib
-from collections.abc import Callable, Iterable
-from typing import Generic, TypeVar
+
+from typing import Callable, Generic, Iterable, List, Type, TypeVar
 
 
 T = TypeVar("T")
@@ -121,7 +123,7 @@ class AppendingByteSerializer(Generic[T]):
         return self._writer.to_bytes()
 
     @staticmethod
-    def to_list(data: bytes, *, deserialize_fn: Callable[[BytesReader], T]) -> list[T]:
+    def to_list(data: bytes, *, deserialize_fn: Callable[[BytesReader], T]) -> List[T]:
         reader = BytesReader(data)
         if reader.read_uint64() != _ENCODING_VERSION:
             raise AssertionError(
@@ -129,7 +131,7 @@ class AppendingByteSerializer(Generic[T]):
                     got {reader.read_uint64()}"
             )
 
-        result: list[T] = []
+        result: List[T] = []
         while not reader.is_finished():
             result.append(deserialize_fn(reader))
         return result

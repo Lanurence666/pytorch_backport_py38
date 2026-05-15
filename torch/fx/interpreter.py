@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import inspect
 import logging
-from collections.abc import Iterator
+
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
 import torch.fx.traceback as fx_traceback
@@ -114,7 +116,7 @@ class Interpreter:
         self,
         module: torch.nn.Module,
         garbage_collect_values: bool = True,
-        graph: Graph | None = None,
+        graph: Optional[Graph]= None,
     ) -> None:
         self.module = module
         self.submodules = dict(self.module.named_modules())
@@ -122,7 +124,7 @@ class Interpreter:
             self.graph = graph
         else:
             self.graph = self.module.graph  # type: ignore[assignment]
-        self.env: dict[Node, Any] = {}
+        self.env: Dict[Node, Any] = {}
         self.name = "Interpreter"
         self.garbage_collect_values = garbage_collect_values
         self.extra_traceback = True
@@ -132,8 +134,8 @@ class Interpreter:
             # of a given node. This represents the *last* use of the node in the
             # execution order of the program, which we will use to free unused
             # values
-            node_to_last_use: dict[Node, Node] = {}
-            self.user_to_last_uses: dict[Node, list[Node]] = {}
+            node_to_last_use: Dict[Node, Node] = {}
+            self.user_to_last_uses: Dict[Node, List[Node]] = {}
 
             def register_last_uses(n: Node, user: Node) -> None:
                 if n not in node_to_last_use:
@@ -148,7 +150,7 @@ class Interpreter:
     def run(
         self,
         *args: Any,
-        initial_env: dict[Node, Any] | None = None,
+        initial_env: Optional[Dict[Node, Any]]= None,
         enable_io_processing: bool = True,
     ) -> Any:
         """
@@ -237,7 +239,7 @@ class Interpreter:
                 )
 
     @compatibility(is_backward_compatible=True)
-    def boxed_run(self, args_list: list[Any]) -> Any:
+    def boxed_run(self, args_list: List[Any]) -> Any:
         """
         Run `module` via interpretation and return the result.  This uses the "boxed"
         calling convention, where you pass a list of arguments, which will be cleared
@@ -296,7 +298,7 @@ class Interpreter:
     # Main Node running APIs
     @compatibility(is_backward_compatible=True)
     def placeholder(
-        self, target: "Target", args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: "Target", args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Any:
         """
         Execute a ``placeholder`` node. Note that this is stateful:
@@ -333,7 +335,7 @@ class Interpreter:
 
     @compatibility(is_backward_compatible=True)
     def get_attr(
-        self, target: "Target", args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: "Target", args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Any:
         """
         Execute a ``get_attr`` node. Will retrieve an attribute
@@ -355,7 +357,7 @@ class Interpreter:
 
     @compatibility(is_backward_compatible=True)
     def call_function(
-        self, target: "Target", args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: "Target", args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Any:
         """
         Execute a ``call_function`` node and return the result.
@@ -378,7 +380,7 @@ class Interpreter:
 
     @compatibility(is_backward_compatible=True)
     def call_method(
-        self, target: "Target", args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: "Target", args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Any:
         """
         Execute a ``call_method`` node and return the result.
@@ -403,7 +405,7 @@ class Interpreter:
 
     @compatibility(is_backward_compatible=True)
     def call_module(
-        self, target: "Target", args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: "Target", args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Any:
         """
         Execute a ``call_module`` node and return the result.
@@ -429,7 +431,7 @@ class Interpreter:
 
     @compatibility(is_backward_compatible=True)
     def output(
-        self, target: "Target", args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: "Target", args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Any:
         """
         Execute an ``output`` node. This really just retrieves
@@ -472,7 +474,7 @@ class Interpreter:
     @compatibility(is_backward_compatible=True)
     def fetch_args_kwargs_from_env(
         self, n: Node
-    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    ) -> Tuple[Tuple[Any, ...], Dict[str, Any]]:
         """
         Fetch the concrete values of ``args`` and ``kwargs`` of node ``n``
         from the current execution environment.
@@ -576,7 +578,7 @@ class Transformer(Interpreter):
             def __init__(self, graph: Graph) -> None:
                 super().__init__()
                 self.graph = graph
-                self.tensor_attrs: dict[torch.Tensor, str] = {}  # type: ignore[assignment]
+                self.tensor_attrs: Dict[torch.Tensor, str] = {}  # type: ignore[assignment]
 
             def is_leaf_module(self, _: torch.nn.Module, __: str) -> bool:
                 return True
@@ -586,7 +588,7 @@ class Transformer(Interpreter):
 
     @compatibility(is_backward_compatible=True)
     def placeholder(
-        self, target: "Target", args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: "Target", args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Proxy:
         """
         Execute a ``placeholder`` node. In ``Transformer``, this is
@@ -609,7 +611,7 @@ class Transformer(Interpreter):
 
     @compatibility(is_backward_compatible=True)
     def get_attr(
-        self, target: "Target", args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: "Target", args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Proxy:
         """
         Execute a ``get_attr`` node. In ``Transformer``, this is
@@ -629,7 +631,7 @@ class Transformer(Interpreter):
 
     @compatibility(is_backward_compatible=True)
     def call_module(
-        self, target: "Target", args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: "Target", args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Any:
         # Override so that the leaf module policy from `self.tracer` is respected.
         if not isinstance(target, str):
@@ -639,7 +641,7 @@ class Transformer(Interpreter):
 
     @compatibility(is_backward_compatible=True)
     def call_function(
-        self, target: "Target", args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: "Target", args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Any:
         # Override so that functions that were wrapped are still wrapped.
         return self.tracer.create_proxy("call_function", target, args, kwargs)
@@ -654,7 +656,7 @@ class Transformer(Interpreter):
             result = super().run(enable_io_processing=False)
         if result is not None:
 
-            def strip_proxy(a: Argument | Proxy) -> Any:
+            def strip_proxy(a: Union[Argument, Proxy]) -> Any:
                 return a.node if isinstance(a, Proxy) else a
 
             new_output_node = self.new_graph.output(map_aggregate(result, strip_proxy))

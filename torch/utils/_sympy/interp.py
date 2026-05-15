@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 This is a simple interpreter for Sympy expressions that dispatches to
@@ -10,7 +11,7 @@ of a full handler, see torch.utils._sympy.value_ranges.ValueRangeAnalysis.
 
 import functools
 import logging
-from typing import Any
+from typing import Any, Dict, Union
 
 import sympy
 from sympy.logic.boolalg import Boolean as SympyBoolean, BooleanAtom
@@ -52,7 +53,7 @@ log = logging.getLogger(__name__)
 # TODO: Dedupe this with SYMPY_INTERP
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def handlers():
     # TODO add CeilDiv (it doesn't appear in the index_expr)
 
@@ -185,8 +186,8 @@ _nil = object()
 
 def sympy_interp(
     analysis,
-    env: dict[sympy.Symbol, Any],
-    expr: sympy.Expr | SympyBoolean,
+    env: Dict[sympy.Symbol, Any],
+    expr: Union[sympy.Expr, SympyBoolean],
     *,
     index_dtype=torch.int64,
     missing_handler=None,

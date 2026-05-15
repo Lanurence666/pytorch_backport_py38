@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import dataclasses
 import functools
@@ -12,6 +14,7 @@ import torch
 from torch.export.experimental._utils import _get_main_cpp_file, _get_make_file
 from torch.export.exported_program import _decompose_exported_program
 from torch.utils._ordered_set import OrderedSet
+from typing import Dict, List, Optional, Set, Tuple, Type, Union, overload
 
 
 _InputT = typing_extensions.ParamSpec("_InputT")
@@ -23,7 +26,7 @@ __all__ = []  # type: ignore[var-annotated]
 
 def _copy_graph_module_and_signature(
     ep: torch.export.ExportedProgram,
-) -> tuple[torch.fx.GraphModule, torch.export.graph_signature.ExportGraphSignature]:
+) -> Tuple[torch.fx.GraphModule, torch.export.graph_signature.ExportGraphSignature]:
     # copy.deepcopy lets the objects override __deepcopy__ methods with graph_copy() and node_copy(),
     # and this can break placeholder names in some particular cases.
     # For example, node copying will avoid Python keywords like 'input', suffixing and renaming to 'input_1'.
@@ -92,9 +95,9 @@ def _export_forward_backward(
 def _sticky_export(
     forward_func: typing.Callable[_InputT, _RetT],
     dynamic_shapes_callback: typing.Callable[
-        _InputT, list[typing.Any] | dict[str, typing.Any] | tuple[typing.Any, ...]
+        _InputT, Union[List[typing.Any], Dict[str, typing.Any]] | Tuple[typing.Any, ...]
     ]
-    | None = None,
+    | None = None
 ) -> typing.Callable[_InputT, _RetT]:
     """
     Lazily export the model on first forward call.
@@ -132,8 +135,8 @@ def _sticky_export(
 
 @dataclasses.dataclass
 class _ExportMethod:
-    overloads: dict[str, torch.export.ExportedProgram]
-    fallbacks: list[torch.export.ExportedProgram]
+    overloads: Dict[str, torch.export.ExportedProgram]
+    fallbacks: List[torch.export.ExportedProgram]
 
 
 class _ExportPackage:
@@ -191,7 +194,7 @@ class _ExportPackage:
     """
 
     def __init__(self) -> None:
-        self.methods: dict[str, _ExportMethod] = {}
+        self.methods: Dict[str, _ExportMethod] = {}
 
     def _exporter(
         self,
@@ -274,9 +277,9 @@ class _ExportPackage:
 
         """
 
-        fallbacks: list[torch.export.ExportedProgram] = []
-        specs: dict[str, typing.Callable[_InputT, typing.Any]] = {}
-        overloads: dict[str, torch.export.ExportedProgram] = {}
+        fallbacks: List[torch.export.ExportedProgram] = []
+        specs: Dict[str, typing.Callable[_InputT, typing.Any]] = {}
+        overloads: Dict[str, torch.export.ExportedProgram] = {}
         self.methods[method] = _ExportMethod(fallbacks=fallbacks, overloads=overloads)
 
         @functools.wraps(fn)
@@ -354,7 +357,7 @@ class _ExportPackage:
     @property
     def _method_overloads(
         self,
-    ) -> typing.Iterator[tuple[str, torch.export.ExportedProgram]]:
+    ) -> typing.Iterator[Tuple[str, torch.export.ExportedProgram]]:
         for method, method_data in self.methods.items():
             for overload, ep in method_data.overloads.items():
                 yield f"{method}:{overload}", ep
@@ -365,7 +368,7 @@ class _ExportPackage:
         standalone: bool = False,
         package_example_inputs: bool = False,
     ) -> None:
-        options: dict[str, typing.Any] = {
+        options: Dict[str, typing.Any] = {
             "aot_inductor.package": True,
             "aot_inductor.package_cpp_only": True,
             "always_keep_tensor_constants": True,
@@ -408,7 +411,7 @@ class _ExportPackage:
         with zipfile.ZipFile(pt2_path, "r") as zip_ref:
             zip_ref.extractall(base_directory)
 
-        example_inputs_map: dict[str, int] | None = (
+        example_inputs_map: Optional[Dict[str, int]]= (
             {} if package_example_inputs else None
         )
         for name, ep in self._method_overloads:

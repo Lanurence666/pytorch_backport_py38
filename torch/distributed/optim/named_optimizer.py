@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import logging
 import warnings
-from collections.abc import Callable, Collection, Mapping
+
 from copy import deepcopy
-from typing import Any, overload
+from typing import Any, Callable, Collection, Dict, List, Mapping, Optional, Tuple, Type, Union, overload
 
 import torch
 import torch.nn as nn
@@ -11,7 +13,7 @@ from torch.distributed._shard.sharded_tensor import ShardedTensor
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
 
-__all__: list[str] = []
+__all__: List[str] = []
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +64,12 @@ class _NamedOptimizer(optim.Optimizer):
 
     def __init__(
         self,
-        named_parameters: Mapping[str, torch.Tensor | ShardedTensor],
+        named_parameters: Mapping[str, Union[torch.Tensor, ShardedTensor]],
         optimizer_class: optim.Optimizer,
         param_groups: Collection[Mapping[str, Any]] | None = None,
-        module: nn.Module | None = None,
-        *args: tuple[Any, ...],
-        **kwargs: dict[str, Any],
+        module: Optional[nn.Module] = None,
+        *args: Tuple[Any, ...],
+        **kwargs: Dict[str, Any],
     ) -> None:
         torch._C._log_api_usage_once("torch.distributed.optim._NamedOptimizer")
         self.param_groups: Collection[Mapping[str, Any]] = param_groups  # type: ignore[assignment]
@@ -122,7 +124,7 @@ class _NamedOptimizer(optim.Optimizer):
                         )
                 param_group["params"] = params
 
-    def state_dict(self) -> dict[str, Any]:
+    def state_dict(self) -> Dict[str, Any]:
         """
         Return the ``state_dict`` of the optimizer.
 
@@ -154,7 +156,7 @@ class _NamedOptimizer(optim.Optimizer):
     @overload
     def step(self, closure: Callable[[], float]) -> float: ...
 
-    def step(self, closure: Callable[[], float] | None = None) -> float | None:
+    def step(self, closure: Callable[[], float] | None = None) -> Optional[float]:
         """
         Perform a single optimization step.
 
@@ -167,7 +169,7 @@ class _NamedOptimizer(optim.Optimizer):
     def state(self) -> Mapping[torch.Tensor, Any]:  # type: ignore[override]
         return self._optimizer.state
 
-    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         """
         Define the default behavior to load a state_dict for ``_NamedOptimizer``.
 
@@ -185,7 +187,7 @@ class _NamedOptimizer(optim.Optimizer):
             ...
         ```
         Args:
-            state_dict (dict[str, Any]) : A ``state_dict`` to load into the optimizer.
+            state_dict (Dict[str, Any]) : A ``state_dict`` to load into the optimizer.
                 Note that this state dict update is performed in place.
 
         .. note:: PyTorch is using lazy init to initialize the optim states.
@@ -311,7 +313,7 @@ class _NamedOptimizer(optim.Optimizer):
         # Calling ``step`` will load the initial state for optimizer states.
         self.step(closure=None)
 
-    def _pre_load_state_dict(self, state_dict: dict[str, Any]) -> dict[str, Any]:
+    def _pre_load_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
         # TODO(chienchin): This API should be FSDP agnostic and should support
         # general user hooks.
         if isinstance(self.module, FSDP):
@@ -320,7 +322,7 @@ class _NamedOptimizer(optim.Optimizer):
             )
         return state_dict
 
-    def _post_state_dict(self, state_dict: dict[str, Any]) -> dict[str, Any]:
+    def _post_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
         # TODO(chienchin): This API should be FSDP agnostic and should support
         # general user hooks.
         if isinstance(self.module, FSDP):
@@ -328,6 +330,6 @@ class _NamedOptimizer(optim.Optimizer):
         return state_dict
 
 
-def _gen_param_group_key(param_keys: list[str]) -> str:
+def _gen_param_group_key(param_keys: List[str]) -> str:
     """Concatenate all param keys as a unique identifier for one param group."""
     return "/".join(sorted(param_keys))

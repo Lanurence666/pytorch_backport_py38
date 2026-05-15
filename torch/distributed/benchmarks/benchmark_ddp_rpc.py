@@ -22,6 +22,7 @@ from torch.distributed.optim import DistributedOptimizer
 from torch.distributed.rpc import RRef, TensorPipeRpcBackendOptions
 from torch.distributed.rpc.backend_registry import BackendType
 from torch.nn.parallel import DistributedDataParallel as DDP
+from typing import Set, Type, overload
 
 
 # Config

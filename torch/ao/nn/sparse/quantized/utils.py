@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import threading
+from typing import Optional, Tuple, Type
 
 
 __all__ = ["LinearBlockSparsePattern"]
@@ -46,9 +49,9 @@ class LinearBlockSparsePattern:
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        backtrace: object | None,
+        exc_type: Optional[Type[BaseException]],
+        exc_value: Optional[BaseException],
+        backtrace: Optional[object],
     ) -> None:
         LinearBlockSparsePattern.row_block_size = (
             LinearBlockSparsePattern.prev_row_block_size
@@ -59,7 +62,7 @@ class LinearBlockSparsePattern:
         LinearBlockSparsePattern.rlock.release()
 
     @staticmethod
-    def block_size() -> tuple[int, int]:
+    def block_size() -> Tuple[int, int]:
         return (
             LinearBlockSparsePattern.row_block_size,
             LinearBlockSparsePattern.col_block_size,

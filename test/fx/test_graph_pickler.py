@@ -4,6 +4,7 @@
 # Tests the graph pickler by using pickling on all the inductor tests.
 #
 
+from __future__ import annotations
 import contextlib
 import importlib
 import os

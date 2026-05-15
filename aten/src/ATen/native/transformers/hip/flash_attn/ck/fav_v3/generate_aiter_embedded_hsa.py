@@ -2,6 +2,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # Generate aiter_embedded_hsa.h with embedded binary .co files for AITER HSA kernels.
 
+from __future__ import annotations
 import argparse
 import re
 import sys

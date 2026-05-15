@@ -12,6 +12,7 @@
 #include <torch/csrc/jit/passes/onnx/shape_type_inference.h>
 #include <torch/csrc/jit/python/python_ir.h>
 #include <sstream>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 namespace torch::jit {
 

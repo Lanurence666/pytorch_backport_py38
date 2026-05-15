@@ -1,15 +1,17 @@
 # mypy: allow-untyped-defs
-from collections.abc import Callable
+from __future__ import annotations
+
+
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, no_type_check
+from typing import Any, Callable, List, Set, no_type_check
 
 import torch
 import torch.distributed as dist
 from torch.autograd import Variable
 
 
-__all__: list[str] = []
+__all__: List[str] = []
 
 _FUNCTIONAL_OPTIM_STEP_METHOD_NAME = "step_param"
 

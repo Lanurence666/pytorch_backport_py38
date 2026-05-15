@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import weakref
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, List, Type
 
 from torch._dynamo.source import Source
 
@@ -14,11 +16,11 @@ PyCodegen = Any
 # We use a dynamo-generated index as a level of indirection
 # this allows us to register objects externally in pre-graph bytecode that we want
 # to pass to the graph, but not support their types as graph inputs
-index_to_bytecode_constructor: dict[int, Callable[[PyCodegen], None]] = {}
+index_to_bytecode_constructor: Dict[int, Callable[[PyCodegen], None]] = {}
 
-index_to_external_object_weakref: dict[int, weakref.ReferenceType[Any]] = {}
+index_to_external_object_weakref: Dict[int, weakref.ReferenceType[Any]] = {}
 
-keep_alive: list[Any] = []
+keep_alive: List[Any] = []
 
 
 def has_user_objects() -> bool:
@@ -40,11 +42,11 @@ def set_external_object_by_index(index: int, value: Any) -> None:
 
 
 def get_external_object_by_index(index: int) -> Any:
-    if index not in index_to_external_object_weakref:
-        raise AssertionError("Index not registered in index_to_user_object_weakref")
+    assert index in index_to_external_object_weakref, (
+        "Index not registered in index_to_user_object_weakref"
+    )
     obj = index_to_external_object_weakref[index]()
-    if obj is None:
-        raise AssertionError("User object is no longer alive")
+    assert obj is not None, "User object is no longer alive"
     return index_to_external_object_weakref[index]()
 
 

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Key enums and structs used to handle data flow within the benchmark."""
 
 # mypy: ignore-errors

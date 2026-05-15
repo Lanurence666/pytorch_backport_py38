@@ -183,9 +183,7 @@ class TestAOTInductorPackage(TestCase):
         package_path = torch._inductor.aoti_compile_and_package(
             ep, inductor_configs=options
         )
-        with (
-            zipfile.ZipFile(package_path, "r") as zip_ref,
-        ):
+        with zipfile.ZipFile(package_path, "r") as zip_ref:
             filenames = zip_ref.namelist()
             prefix = filenames[0].split("/")[0]
             zip_ref.extractall(tmp_dir)
@@ -298,9 +296,7 @@ class TestAOTInductorPackage(TestCase):
                 # Require kernels to be compiled into .o files
                 "aot_inductor.embed_kernel_binary": True,
             }
-            with (
-                tempfile.TemporaryDirectory() as tmp_dir,
-            ):
+            with tempfile.TemporaryDirectory() as tmp_dir:
                 build_path, tmp_path = self.cmake_compile(
                     model, example_inputs, options, tmp_dir
                 )
@@ -351,9 +347,7 @@ class TestAOTInductorPackage(TestCase):
                 "aot_inductor.emit_multi_arch_kernel": True,
                 "aot_inductor.embed_kernel_binary": True,
             }
-            with (
-                tempfile.TemporaryDirectory() as tmp_dir,
-            ):
+            with tempfile.TemporaryDirectory() as tmp_dir:
                 build_path, _ = self.cmake_compile(
                     model, example_inputs, options, tmp_dir
                 )
@@ -390,9 +384,7 @@ class TestAOTInductorPackage(TestCase):
             options = {
                 "aot_inductor_mode.compile_standalone": True,
             }
-            with (
-                tempfile.TemporaryDirectory() as tmp_dir,
-            ):
+            with tempfile.TemporaryDirectory() as tmp_dir:
                 build_path, _ = self.cmake_compile(
                     model, example_inputs, options, tmp_dir
                 )
@@ -405,9 +397,7 @@ class TestAOTInductorPackage(TestCase):
                 "aot_inductor_mode.compile_standalone": True,
                 "aot_inductor.model_name_for_generated_files": "linear",
             }
-            with (
-                tempfile.TemporaryDirectory() as tmp_dir,
-            ):
+            with tempfile.TemporaryDirectory() as tmp_dir:
                 build_path, _ = self.cmake_compile(
                     model, example_inputs, options, tmp_dir
                 )
@@ -446,9 +436,7 @@ class TestAOTInductorPackage(TestCase):
                 "aot_inductor_mode.compile_standalone": True,
                 "aot_inductor.model_name_for_generated_files": "cos",
             }
-            with (
-                tempfile.TemporaryDirectory() as tmp_dir,
-            ):
+            with tempfile.TemporaryDirectory() as tmp_dir:
                 build_path, _ = self.cmake_compile(
                     model, example_inputs, options, tmp_dir
                 )
@@ -487,9 +475,7 @@ class TestAOTInductorPackage(TestCase):
         exporter2(*example_inputs)
 
         for package_example_inputs in [True, False]:
-            with (
-                tempfile.TemporaryDirectory() as tmp_dir,
-            ):
+            with tempfile.TemporaryDirectory() as tmp_dir:
                 package._compiled_and_package(
                     tmp_dir + "/package.pt2", True, package_example_inputs
                 )
@@ -533,9 +519,7 @@ class TestAOTInductorPackage(TestCase):
         expected_res = m1(*example_inputs)
 
         package_example_inputs = True
-        with (
-            tempfile.TemporaryDirectory() as tmp_dir,
-        ):
+        with tempfile.TemporaryDirectory() as tmp_dir:
             package._compiled_and_package(
                 tmp_dir + "/package.pt2", True, package_example_inputs
             )

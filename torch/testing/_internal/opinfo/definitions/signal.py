@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 import unittest
 from collections.abc import Callable
 from functools import partial
@@ -287,7 +289,7 @@ def make_signal_windows_opinfo(
     reference_inputs_func: Callable,
     error_inputs_func: Callable,
     *,
-    skips: tuple[DecorateInfo, ...] = (),
+    skips: Tuple[DecorateInfo, ...] = (),
 ):
     r"""Helper function to create OpInfo objects related to different windows."""
     return OpInfo(
@@ -347,7 +349,7 @@ def make_signal_windows_opinfo(
     )
 
 
-op_db: list[OpInfo] = [
+op_db: List[OpInfo] = [
     make_signal_windows_opinfo(
         name="signal.windows.hamming",
         ref=reference_signal_window(scipy.signal.windows.hamming)

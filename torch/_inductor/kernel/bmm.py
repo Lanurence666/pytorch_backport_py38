@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
-from typing import TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Union
 
 import torch
 from torch._dynamo.utils import counters
@@ -74,6 +76,17 @@ aten_bmm_dtype = ExternKernelChoice(
 aten_baddbmm = ExternKernelChoice(
     torch.baddbmm, "at::baddbmm_out", op_overload=aten.baddbmm.out
 )
+
+
+def _has_broadcast_batch_dim(mat1, mat2):
+    """Check if either input has a broadcast batch dimension (stride=0).
+
+    The Triton bmm template can trigger CUDA IMA during autotuning with
+    stride-0 inputs; the aten bmm fallback handles broadcast correctly.
+    """
+    return V.graph.sizevars.statically_known_equals(
+        mat1.get_stride()[0], 0
+    ) or V.graph.sizevars.statically_known_equals(mat2.get_stride()[0], 0)
 
 
 @L.register_lowering(aten.bmm)
@@ -176,10 +189,10 @@ def tuned_bmm(mat1, mat2, out_dtype=None, *, layout=None):
         aten_handler = aten_bmm_dtype
         aten_extra_kwargs = {"out_dtype": out_dtype}
 
-    choices: list[ChoiceCaller] = []
+    choices: List[ChoiceCaller] = []
 
     # Collect all templates for unified call
-    templates_to_use: list[ExternKernelChoice | KernelTemplate] = []
+    templates_to_use: Union[List[ExternKernelChoice, KernelTemplate]]= Union[[]]
     kwarg_overrides = {}
 
     if use_aten_gemm_kernels():
@@ -187,7 +200,8 @@ def tuned_bmm(mat1, mat2, out_dtype=None, *, layout=None):
         kwarg_overrides[aten_handler.uid] = aten_extra_kwargs
 
     if use_triton_template(layout, check_max_autotune=False):
-        templates_to_use.append(bmm_template)
+        if not _has_broadcast_batch_dim(mat1, mat2):
+            templates_to_use.append(bmm_template)
 
     # Single unified call for all templates
     choices.extend(
@@ -275,15 +289,16 @@ def tuned_baddbmm(inp, mat1, mat2, *, alpha=1, beta=1, layout=None):
     )
     name = "baddbmm"
     # options to tune from
-    choices: list[ChoiceCaller] = []
+    choices: List[ChoiceCaller] = []
 
     # Collect all templates for unified call
-    templates_to_use: list[ExternKernelChoice | KernelTemplate] = []
+    templates_to_use: Union[List[ExternKernelChoice, KernelTemplate]]= Union[[]]
     if use_aten_gemm_kernels():
         templates_to_use.append(aten_baddbmm)
 
     if use_triton_template(layout, check_max_autotune=False):
-        templates_to_use.append(bmm_template)
+        if not _has_broadcast_batch_dim(mat1, mat2):
+            templates_to_use.append(bmm_template)
 
     # Single unified call for all templates
     choices.extend(

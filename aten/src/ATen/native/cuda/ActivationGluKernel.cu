@@ -15,6 +15,7 @@
 #include <ATen/cuda/ApplyGridUtils.cuh>
 #include <ATen/cuda/detail/OffsetCalculator.cuh>
 #include <ATen/native/cuda/Loops.cuh>
+#include <ATen/OpMathType.h>
 
 namespace at::native {
 

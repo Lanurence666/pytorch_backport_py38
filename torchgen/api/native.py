@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Union
 from typing_extensions import assert_never
 
 from torchgen import local
@@ -87,11 +87,11 @@ def argument_type(a: Argument, *, binds: ArgName, symint: bool) -> NamedCType:
 
 
 def argument(
-    a: Argument | SelfArgument | TensorOptionsArguments,
+    a: Union[Argument, SelfArgument, TensorOptionsArguments],
     *,
     is_out: bool,
     symint: bool,
-) -> list[Binding]:
+) -> List[Binding]:
     # Ideally, we NEVER default native functions.  However, there are a number
     # of functions that call native:: directly and rely on the defaulting
     # existing.  So for BC, we generate defaults for non-out variants (but not
@@ -99,7 +99,7 @@ def argument(
     # default)
     should_default = not is_out
     if isinstance(a, Argument):
-        default: str | None = None
+        default: Union[str, None] = None
         if should_default and a.default is not None:
             default = cpp.default_expr(a.default, a.type, symint=symint)
         return [
@@ -150,8 +150,8 @@ def argument(
         assert_never(a)
 
 
-def arguments(func: FunctionSchema, *, symint: bool) -> list[Binding]:
-    args: list[Argument | TensorOptionsArguments | SelfArgument] = []
+def arguments(func: FunctionSchema, *, symint: bool) -> List[Binding]:
+    args: List[Union[Argument, TensorOptionsArguments, SelfArgument]] = []
     args.extend(func.arguments.non_out)
     args.extend(func.arguments.out)
     return [

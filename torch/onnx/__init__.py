@@ -16,7 +16,7 @@ __all__ = [
     "InputObserver",
 ]
 
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Collection, Dict, List, Mapping, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import torch
 from torch._C import _onnx as _C_onnx
@@ -49,7 +49,7 @@ from .errors import OnnxExporterError
 
 if TYPE_CHECKING:
     import os
-    from collections.abc import Callable, Collection, Mapping, Sequence
+    from collections.abc import Callable
 
 # Set namespace for exposed private names
 ONNXProgram.__module__ = "torch.onnx"
@@ -67,25 +67,25 @@ def export(
     | torch.export.ExportedProgram
     | torch.jit.ScriptModule
     | torch.jit.ScriptFunction,
-    args: tuple[Any, ...] = (),
-    f: str | os.PathLike | None = None,
+    args: Tuple[Any, ...] = (),
+    f: Optional[Union[str, os.PathLike]]= None,
     *,
-    kwargs: dict[str, Any] | None = None,
-    verbose: bool | None = None,
-    input_names: Sequence[str] | None = None,
-    output_names: Sequence[str] | None = None,
-    opset_version: int | None = None,
+    kwargs: Optional[Dict[str, Any]]= None,
+    verbose: Optional[bool]= None,
+    input_names: Optional[Sequence[str]]= None,
+    output_names: Optional[Sequence[str]]= None,
+    opset_version: Optional[int]= None,
     dynamo: bool = True,
     # Dynamo only options
     external_data: bool = True,
-    dynamic_shapes: dict[str, Any] | tuple[Any, ...] | list[Any] | None = None,
-    custom_translation_table: dict[Callable, Callable] | None = None,
+    dynamic_shapes: Optional[Union[Dict[str, Any], Tuple[Any, ...], List[Any]]]= None,
+    custom_translation_table: Optional[Dict[Callable, Callable]]= None,
     report: bool = False,
     optimize: bool = True,
     verify: bool = False,
     profile: bool = False,
     dump_exported_program: bool = False,
-    artifacts_dir: str | os.PathLike = ".",
+    artifacts_dir: Union[str, os.PathLike]= ".",
     # BC options
     export_params: bool = True,
     keep_initializers_as_inputs: bool = False,
@@ -96,10 +96,10 @@ def export(
     training: _C_onnx.TrainingMode = _C_onnx.TrainingMode.EVAL,
     operator_export_type: _C_onnx.OperatorExportTypes = _C_onnx.OperatorExportTypes.ONNX,
     do_constant_folding: bool = True,
-    custom_opsets: Mapping[str, int] | None = None,
-    export_modules_as_functions: bool | Collection[type[torch.nn.Module]] = False,
+    custom_opsets: Optional[Mapping[str, int]]= None,
+    export_modules_as_functions: Union[bool, Collection[Type[torch.nn.Module]]]= False,
     autograd_inlining: bool = True,
-) -> ONNXProgram | None:
+) -> Optional[ONNXProgram]:
     r"""Exports a model into ONNX format.
 
     Setting ``dynamo=True`` enables the new ONNX export logic

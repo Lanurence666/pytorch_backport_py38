@@ -1,8 +1,14 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import collections
 import inspect
 import typing
-from types import GenericAlias
+from typing import List, Optional, Tuple, Union
+try:
+    from types import GenericAlias
+except ImportError:
+    GenericAlias = type(List[int])
 
 import torch
 from torch import device, dtype, Tensor, types
@@ -26,7 +32,7 @@ def infer_schema(
     /,
     *,
     mutates_args,
-    op_name: str | None = None,
+    op_name: Optional[str] = None,
 ) -> str:
     r"""Parses the schema of a given function with type hints. The schema is inferred from the
     function's type hints, and can be used to define a new operator.
@@ -82,20 +88,20 @@ def infer_schema(
             )
 
     def unstringify_types(
-        tys: tuple[type[object] | str, ...],
-    ) -> tuple[tuple[typing.Any, ...], bool]:
+        tys: Tuple[Union[type, str], ...],
+    ) -> Tuple[Tuple[typing.Any, ...], bool]:
         res = []
         changed = False
         for ty in tys:
             ty, ty_changed = unstringify_type(ty)
             res.append(ty)
-            changed |= ty_changed
+            changed.update(ty_changed)
         if changed:
             return tuple(res), True
         else:
             return tys, False  # type: ignore[return-value]
 
-    def unstringify_type(ty: type[object] | str) -> tuple[typing.Any, bool]:
+    def unstringify_type(ty: Union[type, str]) -> Tuple[typing.Any, bool]:
         # Dig through a generic type and if it contains a stringified type
         # convert that to a real type. The second return value indicates if the
         # type contained a string or not.
@@ -220,19 +226,19 @@ def infer_schema(
 
 
 def derived_types(
-    base_type: type | typing._SpecialForm,
+    base_type: Union[type, typing._SpecialForm],
     cpp_type: str,
     list_base: bool,
     optional_base_list: bool,
     optional_list_base: bool,
 ):
-    result: list[tuple[type | typing._SpecialForm | GenericAlias, str]] = [
+    result: List[Tuple[Union[type, typing._SpecialForm, GenericAlias], str]] = [
         (base_type, cpp_type),
         # pyrefly: ignore [not-a-type]
         (typing.Optional[base_type], f"{cpp_type}?"),  # noqa: UP045
     ]
 
-    def derived_seq_types(typ: type | typing._SpecialForm):
+    def derived_seq_types(typ: Union[type, typing._SpecialForm]):
         return (
             typing.Sequence[typ],  # type: ignore[valid-type]
             typing.List[typ],  # type: ignore[valid-type]  # noqa: UP006
@@ -259,7 +265,7 @@ def derived_types(
 
 
 def get_supported_param_types():
-    data: list[tuple[type | typing._SpecialForm, str, bool, bool, bool]] = [
+    data: List[Tuple[Union[type, typing._SpecialForm], str, bool, bool, bool]] = [
         # (python type, schema type, type[] variant, type?[] variant, type[]? variant
         (Tensor, "Tensor", True, True, False),
         (int, "SymInt", True, False, True),
@@ -284,8 +290,8 @@ def get_supported_param_types():
 
 SUPPORTED_RETURN_TYPES = {
     Tensor: "Tensor",
-    typing.List[Tensor]: "Tensor[]",  # noqa: UP006
-    list[Tensor]: "Tensor[]",
+    typing.List[Tensor]: "Tensor[]",
+    List[Tensor]: "Tensor[]",
     int: "SymInt",
     float: "float",
     bool: "bool",

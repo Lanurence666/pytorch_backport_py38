@@ -5,29 +5,31 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import ipaddress
 import random
 import re
 import socket
 import time
 import weakref
-from collections.abc import Callable
+
 from datetime import timedelta
 from threading import Event, Thread
-from typing import Any
+from typing import Any, Callable, Dict, Optional, Set, Tuple, Union
 
 
 __all__ = ["parse_rendezvous_endpoint"]
 
 
-def _parse_rendezvous_config(config_str: str) -> dict[str, str]:
+def _parse_rendezvous_config(config_str: str) -> Dict[str, str]:
     """Extract key-value pairs from a rendezvous configuration string.
 
     Args:
         config_str:
             A string in format <key1>=<value1>,...,<keyN>=<valueN>.
     """
-    config: dict[str, str] = {}
+    config: Dict[str, str] = {}
 
     config_str = config_str.strip()
     if not config_str:
@@ -44,7 +46,7 @@ def _parse_rendezvous_config(config_str: str) -> dict[str, str]:
                 "<key1>=<value1>,...,<keyN>=<valueN>."
             )
 
-        value: str | None
+        value: Optional[str]
         if values:
             value = values[0].strip()
         else:
@@ -58,7 +60,7 @@ def _parse_rendezvous_config(config_str: str) -> dict[str, str]:
     return config
 
 
-def _try_parse_port(port_str: str) -> int | None:
+def _try_parse_port(port_str: str) -> Optional[int]:
     """Try to extract the port number from ``port_str``."""
     if port_str and re.match(r"^[0-9]{1,5}$", port_str):
         return int(port_str)
@@ -66,8 +68,8 @@ def _try_parse_port(port_str: str) -> int | None:
 
 
 def parse_rendezvous_endpoint(
-    endpoint: str | None, default_port: int
-) -> tuple[str, int]:
+    endpoint: Union[str, None, default_port: int]
+) -> Tuple[str, int]:
     """Extract the hostname and the port number from a rendezvous endpoint.
 
     Args:
@@ -166,7 +168,7 @@ def _matches_machine_hostname(host: str) -> bool:
     return False
 
 
-def _delay(seconds: float | tuple[float, float]) -> None:
+def _delay(seconds: Union[float, Tuple[float, float]]) -> None:
     """Suspend the current thread for ``seconds``.
 
     Args:
@@ -196,13 +198,13 @@ class _PeriodicTimer:
     class _Context:
         interval: float
         function: Callable[..., None]
-        args: tuple[Any, ...]
-        kwargs: dict[str, Any]
+        args: Tuple[Any, ...]
+        kwargs: Dict[str, Any]
         stop_event: Event
 
-    _name: str | None
-    _thread: Thread | None
-    _finalizer: weakref.finalize | None
+    _name: Optional[str]
+    _thread: Optional[Thread]
+    _finalizer: Optional[weakref.finalize]
 
     # The context that is shared between the timer and the background thread.
     _ctx: _Context
@@ -227,7 +229,7 @@ class _PeriodicTimer:
         self._finalizer = None
 
     @property
-    def name(self) -> str | None:
+    def name(self) -> Optional[str]:
         """Get the name of the timer."""
         return self._name
 

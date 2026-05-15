@@ -2,6 +2,7 @@
 import torch._C
 from torch.distributed.tensor.debug._comm_mode import CommDebugMode
 from torch.distributed.tensor.debug._visualize_sharding import visualize_sharding
+from typing import Set
 
 
 __all__ = ["CommDebugMode", "visualize_sharding"]

@@ -1,3 +1,4 @@
+from __future__ import annotations
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
@@ -8,13 +9,12 @@
 TODO
 """
 
-from __future__ import annotations
 
 import argparse
 import json
 import os.path
 from enum import Enum
-from typing import NamedTuple
+from typing import Union, NamedTuple
 
 import ruamel.yaml  # type: ignore[import]
 
@@ -27,15 +27,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 if __name__ == "__main__":

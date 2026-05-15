@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch import Tensor
 from torch.distributions import constraints
@@ -12,6 +14,7 @@ from torch.distributions.utils import (
 )
 from torch.nn.functional import binary_cross_entropy_with_logits
 from torch.types import _Number, Number
+from typing import Optional, Union
 
 
 __all__ = ["Geometric"]
@@ -49,9 +52,9 @@ class Geometric(Distribution):
 
     def __init__(
         self,
-        probs: Tensor | Number | None = None,
-        logits: Tensor | Number | None = None,
-        validate_args: bool | None = None,
+        probs: Optional[Union[Tensor, Number]]= None,
+        logits: Optional[Union[Tensor, Number]]= None,
+        validate_args: Optional[bool]= None,
     ) -> None:
         if (probs is None) == (logits is None):
             raise ValueError(

@@ -1,6 +1,10 @@
 import functools
-from collections.abc import Callable
-from typing import Concatenate, TypeVar
+
+from typing import Callable, Type, TypeVar
+try:
+    from typing import Concatenate
+except ImportError:
+    from typing_extensions import Concatenate
 from typing_extensions import ParamSpec
 
 
@@ -16,9 +20,9 @@ def cache_method(
     f: Callable[Concatenate[_C, _P], _T],
 ) -> Callable[Concatenate[_C, _P], _T]:
     """
-    Like `@functools.cache` but for methods.
+    Like `@functools.lru_cache(maxsize=None)` but for methods.
 
-    `@functools.cache` (and similarly `@functools.lru_cache`) shouldn't be used
+    `@functools.lru_cache(maxsize=None)` (and similarly `@functools.lru_cache`) shouldn't be used
     on methods because it caches `self`, keeping it alive
     forever. `@cache_method` ignores `self` so won't keep `self` alive (assuming
     no cycles with `self` in the parameters).

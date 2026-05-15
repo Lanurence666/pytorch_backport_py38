@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import importlib
 import inspect
 import pkgutil
 from collections import defaultdict
-from typing import Any
+from typing import Any, Dict, List, Optional, Set
 
 from torch._inductor.autoheuristic.autoheuristic_utils import (
     AHContext,
@@ -14,7 +16,7 @@ from torch._inductor.autoheuristic.learnedheuristic_interface import LearnedHeur
 
 def find_and_instantiate_subclasses(
     package_name: str, base_class: Any
-) -> list[LearnedHeuristic]:
+) -> List[LearnedHeuristic]:
     instances = []
 
     package = importlib.import_module(package_name)
@@ -49,7 +51,7 @@ class LearnedHeuristicController:
     a way to get the decision of a learned heuristic.
     """
 
-    existing_heuristics: dict[str, list[LearnedHeuristic]] = defaultdict(list)
+    existing_heuristics: Dict[str, List[LearnedHeuristic]] = defaultdict(list)
     """
     A dictionary that stores all the learned heuristics for each optimization.
     The key is the optimization name, and the value is a list of LearnedHeuristic objects.
@@ -69,7 +71,7 @@ class LearnedHeuristicController:
         self.metadata = metadata
         self.context = context
 
-    def get_heuristics(self, name: str) -> list[LearnedHeuristic]:
+    def get_heuristics(self, name: str) -> List[LearnedHeuristic]:
         """
         Returns a list of learned heuristics for the given optimization name.
         """
@@ -93,7 +95,7 @@ class LearnedHeuristicController:
 
         return LearnedHeuristicController.existing_heuristics[name]
 
-    def get_decision(self) -> Choice | None:
+    def get_decision(self) -> Optional[Choice]:
         """
         Returns the decision made by the learned heuristic or None if no heuristic was found or the heuristic is unsure
         which choice to make.
@@ -105,7 +107,7 @@ class LearnedHeuristicController:
                 return heuristic.get_decision(self.context, self.metadata.choices)
         return None
 
-    def get_decisions_ranked(self, top_k: int) -> list[Choice] | None:
+    def get_decisions_ranked(self, top_k: int) -> Optional[List[Choice]]:
         heuristics = self.get_heuristics(self.metadata.name)
         for heuristic in heuristics:
             if heuristic.check_precondition(self.metadata, self.context):

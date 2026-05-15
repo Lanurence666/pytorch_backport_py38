@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 r"""This package adds support for device memory management implemented in CUDA."""
 
 import collections
@@ -8,8 +10,8 @@ import pickle
 import sys
 import warnings
 from inspect import signature
-from typing import Any, Literal, TYPE_CHECKING
-from typing_extensions import deprecated
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
+from typing_extensions import Literal, deprecated
 
 import torch
 from torch import _C
@@ -129,7 +131,7 @@ def caching_allocator_alloc(size, device: "Device" = None, stream=None):
         raise TypeError(
             "Invalid type for stream argument, must be "
             "`torch.cuda.Stream` or `int` representing a pointer "
-            "to an existing stream"
+            "to a existing stream"
         )
     with torch.cuda.device(device):
         return torch._C._cuda_cudaCachingAllocator_raw_alloc(size, stream)
@@ -228,7 +230,7 @@ def empty_cache() -> None:
         torch._C._cuda_emptyCache()
 
 
-def memory_stats(device: "Device" = None) -> dict[str, Any]:
+def memory_stats(device: "Device" = None) -> Dict[str, Any]:
     r"""Return a dictionary of CUDA memory allocator statistics for a given device.
 
     The return value of this function is a dictionary of statistics, each of
@@ -335,7 +337,7 @@ def memory_stats(device: "Device" = None) -> dict[str, Any]:
     return collections.OrderedDict(result)
 
 
-def memory_stats_as_nested_dict(device: "Device" = None) -> dict[str, Any]:
+def memory_stats_as_nested_dict(device: "Device" = None) -> Dict[str, Any]:
     r"""Return the result of :func:`~torch.cuda.memory_stats` as a nested dictionary."""
     if not is_initialized():
         return {}
@@ -382,7 +384,7 @@ def reset_peak_memory_stats(device: "Device" = None) -> None:
     return torch._C._cuda_resetPeakMemoryStats(device)
 
 
-def host_memory_stats() -> dict[str, Any]:
+def host_memory_stats() -> Dict[str, Any]:
     r"""Return a dictionary of pinned (host) allocator statistics.
 
     Core statistics (host pinned allocator):
@@ -437,7 +439,7 @@ def host_memory_stats() -> dict[str, Any]:
     return collections.OrderedDict(result)
 
 
-def host_memory_stats_as_nested_dict() -> dict[str, Any]:
+def host_memory_stats_as_nested_dict() -> Dict[str, Any]:
     r"""Return the result of :func:`~torch.cuda.host_memory_stats` as a nested dictionary."""
     if not is_initialized():
         return {}
@@ -697,7 +699,7 @@ def memory_summary(device: "Device" = None, abbreviated: bool = False) -> str:
     )
     lines.append("=" * 75)
     lines.append(
-        "        Metric         | Cur Usage  | Peak Usage | Tot Alloc  | Tot Freed  "
+        "        Union[Metric, Cur] Union[Usage, Peak] Union[Usage, Tot] Union[Alloc, Tot] Freed  "
     )
 
     for metric_key, metric_name, formatter in metrics_to_display:
@@ -829,7 +831,7 @@ def list_gpu_processes(device: "Device" = None) -> str:
     return "\n".join(lines)
 
 
-def mem_get_info(device: "Device" = None) -> tuple[int, int]:
+def mem_get_info(device: "Device" = None) -> Tuple[int, int]:
     r"""Return the global free and total GPU memory for a given device using cudaMemGetInfo.
 
     Args:
@@ -876,7 +878,7 @@ def _record_memory_history_legacy(
 
 
 def _record_memory_history(
-    enabled: Literal["state", "all"] | None = "all", *args, **kwargs
+    enabled: Optional[Literal["state", "all"]]= "all", *args, **kwargs
 ) -> None:
     """Enable recording of stack traces associated with memory
     allocations, so you can tell what allocated any piece of memory in
@@ -944,7 +946,7 @@ def _record_memory_history(
         max_entries (int, optional): Keep a maximum of `max_entries`
             alloc/free events in the recorded history recorded.
         clear_history (bool, optional): Clear history when enabling, defaults to False.
-        skip_actions (list[str], optional): List of action types to skip when recording
+        skip_actions (List[str], optional): List of action types to skip when recording
             memory history. This can be used to reduce memory overhead by excluding
             certain types of events from being recorded. Valid action types are:
 
@@ -969,15 +971,15 @@ def _record_memory_history(
 
 
 def _record_memory_history_impl(
-    enabled: str | None = "all",
-    context: str | None = "all",
+    enabled: Optional[str]= "all",
+    context: Optional[str]= "all",
     stacks: str = "all",
     max_entries: int = sys.maxsize,
     device: "Device" = None,
     clear_history: bool = False,
     compile_context: bool = False,
     global_record_annotations: bool = False,
-    skip_actions: list[str] | None = None,
+    skip_actions: Optional[List[str]] = None
 ):
     _C._cuda_record_memory_history(  # type: ignore[call-arg]
         enabled,
@@ -995,7 +997,7 @@ def _record_memory_history_impl(
 _record_memory_history.__signature__ = signature(_record_memory_history_impl)  # type: ignore[attr-defined]
 
 
-def _allocation_traceback(data_ptr: int) -> list[dict[str, Any]] | None:
+def _allocation_traceback(data_ptr: int) -> Optional[List[Dict[str, Any]]]:
     r"""Return the allocation traceback for a currently-allocated CUDA pointer,
     or ``None`` if the pointer is not found or recording was not enabled.
 
@@ -1281,7 +1283,7 @@ class MemPool(_MemPool):
 
     def __init__(
         self,
-        allocator: _cuda_CUDAAllocator | None = None,
+        allocator: Optional[_cuda_CUDAAllocator]= None,
         use_on_oom: bool = False,
         no_split: bool = False,
     ):
@@ -1289,7 +1291,7 @@ class MemPool(_MemPool):
         super().__init__(allocator, True, use_on_oom, no_split)
 
     @property
-    def id(self) -> tuple[int, int]:
+    def id(self) -> Tuple[int, int]:
         r"""Returns the ID of this pool as a tuple of two ints."""
         return super().id
 

@@ -1,5 +1,6 @@
 # mypy: ignore-errors
 
+from typing import Callable, Set, Type
 import contextlib
 import functools
 import logging
@@ -48,7 +49,7 @@ from torch.testing._internal.common_utils import (
     TestCase,
 )
 
-from collections.abc import Callable
+
 
 log: logging.Logger = logging.getLogger(__name__)
 

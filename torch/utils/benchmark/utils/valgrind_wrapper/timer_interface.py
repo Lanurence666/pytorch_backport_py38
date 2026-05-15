@@ -1,5 +1,5 @@
-"""Intermediate layer between `Timer` and `valgrind`."""
 from __future__ import annotations
+"""Intermediate layer between `Timer` and `valgrind`."""
 
 import collections
 import enum
@@ -13,15 +13,31 @@ import subprocess
 import sys
 import textwrap
 from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    TYPE_CHECKING,
+    Tuple,
+    Type,
+    Union,
+    cast,
     cast, Any, NamedTuple,
-    TYPE_CHECKING)
+)
+
+
+
+
 
 import torch
 from torch.utils.benchmark.utils import common, cpp_jit
 import operator
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    
 
     from torch.utils.benchmark.utils._stubs import CallgrindModuleType
 
@@ -53,13 +69,13 @@ class FunctionCounts:
         4) Two higher order methods (`filter` and `transform`) for custom
            manipulation.
     """
-    _data: tuple[FunctionCount, ...]
+    _data: Tuple[FunctionCount, ...]
     inclusive: bool
     truncate_rows: bool = True
 
     # For normal use, torch._tensor_str.PRINT_OPTS.linewidth determines
     # the print settings. This is simply to allow hermetic unit tests.
-    _linewidth: int | None = None
+    _linewidth: Optional[int]= None
 
     def __iter__(self) -> Iterator[FunctionCount]:
         yield from self._data
@@ -67,10 +83,10 @@ class FunctionCounts:
     def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, item: Any) -> FunctionCount | FunctionCounts:
-        data: FunctionCount | tuple[FunctionCount, ...] = self._data[item]
+    def __getitem__(self, item: Any) -> Union[FunctionCount, FunctionCounts]:
+        data: Union[FunctionCount, Tuple[FunctionCount, ...]]= self._data[item]
         return (
-            FunctionCounts(cast(tuple[FunctionCount, ...], data), self.inclusive, truncate_rows=False)
+            FunctionCounts(cast(Tuple[FunctionCount, ...], data), self.inclusive, truncate_rows=False)
             if isinstance(data, tuple) else data
         )
 
@@ -109,7 +125,7 @@ class FunctionCounts:
     ) -> FunctionCounts:
         return self._merge(other, operator.neg)
 
-    def __mul__(self, other: int | float) -> FunctionCounts:
+    def __mul__(self, other: Union[int, float]) -> FunctionCounts:
         return self._from_dict({
             fn: int(c * other) for c, fn in self._data
         }, self.inclusive)
@@ -161,7 +177,7 @@ class FunctionCounts:
         return self._from_dict(counts, self.inclusive)
 
     @staticmethod
-    def _from_dict(counts: dict[str, int], inclusive: bool) -> FunctionCounts:
+    def _from_dict(counts: Dict[str, int], inclusive: bool) -> FunctionCounts:
         flat_counts = (FunctionCount(c, fn) for fn, c in counts.items() if c)
         return FunctionCounts(tuple(sorted(flat_counts, reverse=True)), inclusive)
 
@@ -182,7 +198,7 @@ class CallgrindStats:
     baseline_exclusive_stats: FunctionCounts
     stmt_inclusive_stats: FunctionCounts
     stmt_exclusive_stats: FunctionCounts
-    stmt_callgrind_out: str | None
+    stmt_callgrind_out: Optional[str]
 
     def __repr__(self) -> str:
         base_stats = self.baseline_exclusive_stats
@@ -303,7 +319,7 @@ class Serialization(enum.Enum):
     TORCH_JIT = 2
 
 
-_GLOBALS_ALLOWED_TYPES: dict[Serialization, tuple[Any, ...]] = {
+_GLOBALS_ALLOWED_TYPES: Dict[Serialization, Tuple[Any, ...]] = {
     Serialization.PICKLE: (str, bytes, bool, int, float, complex),
     Serialization.TORCH_JIT: (torch.jit.ScriptFunction, torch.jit.ScriptModule),
     Serialization.TORCH: (torch.nn.Module,),
@@ -315,11 +331,11 @@ class CopyIfCallgrind:
 
     See `GlobalsBridge` for why this matters.
     """
-    def __init__(self, value: Any, *, setup: str | None = None) -> None:
+    def __init__(self, value: Any, *, setup: Optional[str] = None) -> None:
         for method, supported_types in _GLOBALS_ALLOWED_TYPES.items():
             if any(isinstance(value, t) for t in supported_types):
                 self._value: Any = value
-                self._setup: str | None = setup
+                self._setup: Optional[str] = setup
                 self._serialization: Serialization = method
                 break
         else:
@@ -338,7 +354,7 @@ class CopyIfCallgrind:
         return self._value
 
     @property
-    def setup(self) -> str | None:
+    def setup(self) -> Optional[str]:
         return self._setup
 
     @property
@@ -346,7 +362,7 @@ class CopyIfCallgrind:
         return self._serialization
 
     @staticmethod
-    def unwrap_all(globals: dict[str, Any]) -> dict[str, Any]:
+    def unwrap_all(globals: Dict[str, Any]) -> Dict[str, Any]:
         return {
             k: (v.value if isinstance(v, CopyIfCallgrind) else v)
             for k, v in globals.items()
@@ -426,8 +442,8 @@ class GlobalsBridge:
         operations.
     """
 
-    def __init__(self, globals: dict[str, Any], data_dir: str) -> None:
-        self._globals: dict[str, CopyIfCallgrind] = {}
+    def __init__(self, globals: Dict[str, Any], data_dir: str) -> None:
+        self._globals: Dict[str, CopyIfCallgrind] = {}
         self._data_dir = data_dir
         if not os.path.exists(data_dir):
             os.mkdir(data_dir)
@@ -485,7 +501,7 @@ class GlobalsBridge:
 
 class _ValgrindWrapper:
     def __init__(self) -> None:
-        self._bindings_module: CallgrindModuleType | None = None
+        self._bindings_module: Optional[CallgrindModuleType] = None
         valgrind_symbols = (
             "_valgrind_supported_platform",
             "_valgrind_toggle",
@@ -501,7 +517,7 @@ class _ValgrindWrapper:
                 raise AssertionError("JIT-compiled callgrind bindings are missing required symbols")
             self._supported_platform = self._bindings_module._valgrind_supported_platform()
 
-        self._commands_available: dict[str, bool] = {}
+        self._commands_available: Dict[str, bool] = {}
         if self._supported_platform:
             # Only bother checking on supported platforms.
             for cmd in ("valgrind", "callgrind_control", "callgrind_annotate"):
@@ -511,7 +527,7 @@ class _ValgrindWrapper:
                     check=False,
                 ).returncode
 
-        self._build_type: str | None = None
+        self._build_type: Optional[str] = None
         build_search = re.search("BUILD_TYPE=(.+),", torch.__config__.show())  # type: ignore[no-untyped-call]
         if build_search is not None:
             self._build_type = build_search.groups()[0].split(",")[0]
@@ -527,14 +543,14 @@ class _ValgrindWrapper:
     def collect_callgrind(
         self,
         task_spec: common.TaskSpec,
-        globals: dict[str, Any],
+        globals: Dict[str, Any],
         *,
         number: int,
         repeats: int,
         collect_baseline: bool,
         is_python: bool,
         retain_out_file: bool,
-    ) -> tuple[CallgrindStats, ...]:
+    ) -> Tuple[CallgrindStats, ...]:
         """Collect stats, and attach a reference run which can be used to filter interpreter overhead."""
         self._validate()
         if not is_python and collect_baseline:
@@ -570,13 +586,13 @@ class _ValgrindWrapper:
         self,
         *,
         task_spec: common.TaskSpec,
-        globals: dict[str, Any],
+        globals: Dict[str, Any],
         number: int,
         repeats: int,
         collect_baseline: bool,
         is_python: bool,
         retain_out_file: bool,
-    ) -> tuple[tuple[FunctionCounts, FunctionCounts, str | None], ...]:
+    ) -> Union[Tuple[Tuple[FunctionCounts, FunctionCounts, str, None], ...]]:
         """Core invocation method for Callgrind collection.
 
         Valgrind operates by effectively replacing the CPU with an emulated
@@ -605,7 +621,7 @@ class _ValgrindWrapper:
         stat_log = os.path.join(working_dir, "callgrind_stat.txt")
         stdout_stderr_log = os.path.join(working_dir, "stdout_stderr.log")
 
-        def run(args: list[str], **kwargs: Any) -> tuple[CompletedProcessType, str]:
+        def run(args: List[str], **kwargs: Any) -> Tuple[CompletedProcessType, str]:
             # https://thraxil.org/users/anders/posts/2008/03/13/Subprocess-Hanging-PIPE-is-your-enemy/
             with open(stdout_stderr_log, "wb") as f_stdout_stderr:
                 invocation = subprocess.run(
@@ -729,7 +745,7 @@ class _ValgrindWrapper:
                     raise AssertionError(f"Failed to parse {fpath}")
                 return FunctionCounts(tuple(sorted(fn_counts, reverse=True)), inclusive=inclusive)
 
-            def read_results(i: int) -> tuple[FunctionCounts, FunctionCounts, str | None]:
+            def read_results(i: int) -> Union[Tuple[FunctionCounts, FunctionCounts, str, None]]:
                 if i == repeats and not collect_baseline:
                     # Null baseline.
                     return (
@@ -739,7 +755,7 @@ class _ValgrindWrapper:
                     )
 
                 fpath = f"{callgrind_out}.{i + 1}"  # Callgrind one-indexes files.
-                callgrind_out_contents: str | None = None
+                callgrind_out_contents: Optional[str]= None
                 if retain_out_file:
                     with open(fpath) as f:
                         callgrind_out_contents = f.read()
@@ -764,7 +780,7 @@ class _ValgrindWrapper:
         collect_baseline: bool,
         error_log: str,
         stat_log: str,
-        bindings: CallgrindModuleType | None,
+        bindings: Union[CallgrindModuleType, None,]
     ) -> str:
         def block_stmt(stmt: str, indent: int = 0) -> str:
             """Partially unroll benchmark loop.
@@ -911,7 +927,7 @@ class _ValgrindWrapper:
         )
 
 
-CALLGRIND_SINGLETON: _ValgrindWrapper | None = None
+CALLGRIND_SINGLETON: Optional[_ValgrindWrapper]= None
 def wrapper_singleton() -> _ValgrindWrapper:
     global CALLGRIND_SINGLETON
     if CALLGRIND_SINGLETON is None:

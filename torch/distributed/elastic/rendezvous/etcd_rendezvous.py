@@ -7,6 +7,10 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+from typing import Optional, Union
+
+
 import json
 import logging
 import sys
@@ -124,27 +128,27 @@ class EtcdRendezvousHandler(RendezvousHandler):
     rendezvous:
 
     +--------------------------------------------+--------------------------+
-    | Parameter                                  | Description              |
+    | Union[Parameter, Description]              |
     +============================================+==========================+
-    | min_workers                                | minimum number of        |
+    | Union[min_workers, minimum] number of        |
     |                                            | workers for the          |
     |                                            | rendezvous to be valid   |
     +--------------------------------------------+--------------------------+
-    | max_workers                                | maximum number of        |
+    | Union[max_workers, maximum] number of        |
     |                                            | workers to admit         |
     +--------------------------------------------+--------------------------+
-    | timeout                                    | total timeout within     |
+    | Union[timeout, total] timeout within     |
     |                                            | which next_rendezvous is |
     |                                            | expected to succeed      |
     |                                            | (default 600s)           |
     +--------------------------------------------+--------------------------+
-    | last_call_timeout                          | additional wait amount   |
+    | Union[last_call_timeout, additional] wait amount   |
     |                                            | ("last call") after min  |
     |                                            | number of workers has    |
     |                                            | been reached (defaults   |
     |                                            | to 30s)                  |
     +--------------------------------------------+--------------------------+
-    | etcd_prefix                                | path prefix (from etcd   |
+    | Union[etcd_prefix, path] prefix (from etcd   |
     |                                            | root), inside which all  |
     |                                            | etcd nodes will be       |
     |                                            | created (defaults to     |
@@ -152,7 +156,7 @@ class EtcdRendezvousHandler(RendezvousHandler):
     +--------------------------------------------+--------------------------+
     """
 
-    def __init__(self, rdzv_impl: "EtcdRendezvous", local_addr: str | None):
+    def __init__(self, rdzv_impl: "EtcdRendezvous", local_addr: Optional[str]):
         """
         Args:
             rdzv_impl: the implementation of the rendezvous
@@ -541,7 +545,7 @@ class EtcdRendezvous:
 
             # When reaching min workers, or changing state to frozen, we'll set
             # the active_version node to be ephemeral.
-            set_ttl: int | None = None
+            set_ttl: Optional[int]= None
             if len(state["participants"]) == self._num_max_workers:
                 state["status"] = "frozen"
                 state["keep_alives"] = []

@@ -1,4 +1,5 @@
 # Owner(s): ["oncall: distributed"]
+from __future__ import annotations
 import copy
 from dataclasses import dataclass
 

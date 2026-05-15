@@ -1,9 +1,9 @@
+from __future__ import annotations
 """
 Checks files to make sure there are no imports from disallowed third party
 libraries.
 """
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -12,7 +12,7 @@ import sys
 import token
 from enum import Enum
 from pathlib import Path
-from typing import NamedTuple, TYPE_CHECKING
+from typing import List, NamedTuple, Set, TYPE_CHECKING, Union
 
 
 _PARENT = Path(__file__).parent.absolute()
@@ -32,20 +32,20 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 LINTER_CODE = "IMPORT_LINTER"
 CURRENT_FILE_NAME = os.path.basename(__file__)
-_MODULE_NAME_ALLOW_LIST: set[str] = set()
+_MODULE_NAME_ALLOW_LIST: Set[str] = set()
 
 # Add builtin modules of python.
 _MODULE_NAME_ALLOW_LIST.update(sys.stdlib_module_names)
@@ -80,7 +80,7 @@ use sys.modules.get("torchrec") or the like.
 """
 
 
-def check_file(filepath: str) -> list[LintMessage]:
+def check_file(filepath: str) -> List[LintMessage]:
     path = Path(filepath)
     file = _linter.PythonFile("import_linter", path=path)
     lint_messages = []

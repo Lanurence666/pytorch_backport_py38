@@ -1,10 +1,13 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import argparse
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Dict, List, Set, Tuple
 
 
 def remove_triton_function_declaration(source_code: str) -> str:
@@ -46,7 +49,7 @@ def rename_kernels(source_code: str) -> str:
     return source_code
 
 
-def merge_params(original_params: list[str], new_params: list[str]) -> list[str]:
+def merge_params(original_params: List[str], new_params: List[str]) -> List[str]:
     for idx in range(len(new_params)):
         if new_params[idx] == "T":
             new_params[idx] = original_params[idx]
@@ -54,7 +57,7 @@ def merge_params(original_params: list[str], new_params: list[str]) -> list[str]
 
 
 def add_launch_params(
-    original: str, kernel_to_params: dict[str, tuple[str, str]]
+    original: str, kernel_to_params: Dict[str, Tuple[str, str]]
 ) -> str:
     # Regex to match the function call in the original string
     pattern = r"(\w+)\.run\((.*)\)"

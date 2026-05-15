@@ -1,3 +1,4 @@
+from __future__ import annotations
 """TorchScript.
 
 This module contains functionality to support the JIT's scripting frontend, notably:
@@ -15,9 +16,9 @@ import inspect
 import pickle
 import sys
 import warnings
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from typing import Any, TypeVar
-from typing_extensions import deprecated, Self
+
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
+from typing_extensions import NamedTuple, Self, deprecated
 
 import torch
 import torch._jit_internal as _jit_internal
@@ -286,7 +287,7 @@ class OrderedModuleDict(OrderedDictWrapper):
 class ScriptMeta(type):
     def __init__(cls, name, bases, attrs):
         # Aggregate all the ScriptMethods and constants from superclasses
-        cls._methods: dict[str, Any] = {}
+        cls._methods: Dict[str, Any] = {}
         cls._constants_set = set(getattr(cls, "__constants__", ()))
         for base in reversed(bases):
             for k, v in getattr(base, "_methods", {}).items():
@@ -894,7 +895,7 @@ if _enabled:
         def __copy__(self) -> Self:
             return torch.jit._recursive.wrap_cpp_module(copy.copy(self._c))
 
-        def __deepcopy__(self, memo: dict[int, Any] | None) -> Self:
+        def __deepcopy__(self, memo: Optional[Dict[int, Any]]) -> Self:
             return torch.jit._recursive.wrap_cpp_module(copy.deepcopy(self._c, memo))
 
         # Python magic methods do method lookups on an object's class type, instead of looking up
@@ -1093,7 +1094,7 @@ def call_prepare_scriptable_func_impl(obj, memo):
 
 
 def call_prepare_scriptable_func(obj):
-    memo: dict[int, torch.nn.Module] = {}
+    memo: Dict[int, torch.nn.Module] = {}
     return call_prepare_scriptable_func_impl(obj, memo)
 
 
@@ -1136,7 +1137,7 @@ def _script_impl(
     optimize=None,
     _frames_up=0,
     _rcb=None,
-    example_inputs: list[tuple] | dict[Callable, list[tuple]] | None = None,
+    example_inputs: Optional[Union[List[tuple], Dict[Callable, List[tuple]]]]= None,
 ):
     global type_trace_db
 
@@ -1274,8 +1275,8 @@ def script(
     obj: Any,
     optimize: None = None,
     _frames_up: int = 0,
-    _rcb: Callable[[str], Any] | None = None,
-    example_inputs: list[tuple] | dict[Callable, list[tuple]] | None = None,
+    _rcb: Optional[Callable[[str], Any]]= None,
+    example_inputs: Optional[Union[List[tuple], Dict[Callable, List[tuple]]]]= None,
 ) -> Any:
     r"""Script the function.
 
@@ -1695,14 +1696,14 @@ class _ScriptProfileColumn:
         self.header = header
         self.alignment = alignment
         self.offset = offset
-        self.rows: dict[int, Any] = {}
+        self.rows: Dict[int, Any] = {}
 
     def add_row(self, lineno: int, value: Any):
         self.rows[lineno] = value
 
     def materialize(self):
         max_length = len(self.header)
-        rows: list[tuple[int, str]] = []
+        rows: List[Tuple[int, str]] = []
         for key, value in self.rows.items():
             cell = str(value)
             rows.append((key, cell))
@@ -1719,13 +1720,13 @@ class _ScriptProfileColumn:
 
 
 class _ScriptProfileTable:
-    def __init__(self, cols: list[_ScriptProfileColumn], source_range: list[int]):
+    def __init__(self, cols: List[_ScriptProfileColumn], source_range: List[int]):
         self.cols = cols
         self.source_range = source_range
 
     def dump_string(self):
-        outputs: list[str] = []
-        cells: list[tuple[str, dict[int, str]]] = []
+        outputs: List[str] = []
+        cells: List[Tuple[str, Dict[int, str]]] = []
         header_buffer = ""
         for col in self.cols:
             header, rows = col.materialize()
@@ -1757,7 +1758,7 @@ class _ScriptProfile:
         self.profile.disable()
 
     def dump_string(self) -> str:
-        outputs: list[str] = []
+        outputs: List[str] = []
         for source_stats in self.profile._dump_stats():
             source_ref = source_stats.source()
             source_lines = source_ref.text().splitlines()

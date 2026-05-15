@@ -1,4 +1,5 @@
 # Owner(s): ["oncall: profiler"]
+from __future__ import annotations
 import functools
 import gc
 import itertools as it

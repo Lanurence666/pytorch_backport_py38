@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Profile Guided Optimization (PGO) implementation for Dynamo.
 
@@ -9,7 +10,6 @@ during compilation. The profiles track dynamic vs static properties of tensors
 and help Dynamo make better specialization decisions.
 """
 
-from __future__ import annotations
 
 import base64
 import copy
@@ -22,7 +22,7 @@ import pickle
 import re
 import zlib
 from collections import defaultdict
-from typing import TYPE_CHECKING, TypeVar
+from typing import IO, Optional, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union
 from typing_extensions import override, Self
 
 import torch._dynamo.config
@@ -111,7 +111,7 @@ LOCK_TIMEOUT = 10
 # across attempts.  No need to have one mechanism to do everything.
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _hash_containing_file(filepath: str) -> str:
     # if the file does not exist we consider filepath to be the hash.
     if not os.path.exists(filepath):
@@ -150,7 +150,7 @@ class CodeId:
     # self.filename is kept in the object to give readable information/pointer to the actual file, in a local
     # code state it will refer to the first seen file path.
     file_hash: str
-    closure_hash: int | None = None
+    closure_hash: Optional[int] = None
 
     # Exclude file name.
     def __eq__(self, other: object) -> bool:
@@ -172,7 +172,7 @@ class CodeId:
 
     @staticmethod
     def make(
-        code: types.CodeType, closure: tuple[types.CellType, ...] | None = None
+        code: types.CodeType, closure: Optional[Tuple[types.CellType, ...]] = None
     ) -> CodeId:
         closure_hash = None
         if closure:
@@ -189,15 +189,15 @@ class CodeId:
 
 @dataclasses.dataclass
 class CodeState:
-    automatic_dynamic: defaultdict[str, FrameStateSizeEntry] = dataclasses.field(
+    automatic_dynamic: defaultDict[str, FrameStateSizeEntry] = dataclasses.field(
         default_factory=lambda: defaultdict(FrameStateSizeEntry)
     )
 
 
-_INIT_CODE_STATE: defaultdict[CodeId, CodeState] | None = None
-_CODE_STATE: defaultdict[CodeId, CodeState] | None = None
+_INIT_CODE_STATE: Optional[defaultDict[CodeId, CodeState]] = None
+_CODE_STATE: Optional[defaultDict[CodeId, CodeState]] = None
 _LOGGED_DYNAMIC_ALLOWLIST: bool = False
-_KNOWN_DYNAMIC_SOURCES: set[str] = set()
+_KNOWN_DYNAMIC_SOURCES: Set[str] = set()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -250,23 +250,23 @@ auto_dynamic = AutoDynamic.token
 
 @dataclasses.dataclass
 class FrameStateSizeEntry:
-    scalar: int | AutoDynamic | AutoUnset = dataclasses.field(default=auto_unset)
+    scalar: Union[Union[int, AutoDynamic], AutoUnset] = dataclasses.field(default=auto_unset)
     # NB: We don't have cases where we have a known dimensionality but
     # we know NOTHING about the individual sizes
-    size: AutoDynamic | AutoUnset | tuple[int | AutoDynamic, ...] = dataclasses.field(
+    size: Union[Union[AutoDynamic, AutoUnset], Tuple[Union[int, AutoDynamic]], ...] = dataclasses.field(
         default=auto_unset
     )
-    stride: AutoDynamic | AutoUnset | tuple[int | AutoDynamic | InferStride, ...] = (
+    stride: Union[Union[AutoDynamic, AutoUnset], Tuple[Union[int, AutoDynamic]] | InferStride, ...] = (
         dataclasses.field(default=auto_unset)
     )
-    excluded_sizes: tuple[int | None, ...] | None = dataclasses.field(
+    excluded_sizes: Optional[Tuple[Union[int, None], ...]] = dataclasses.field(
         default=None, compare=False
     )
-    excluded_scalar: int | None = dataclasses.field(default=None, compare=False)
+    excluded_scalar: Optional[int] = dataclasses.field(default=None, compare=False)
 
     def render(self) -> str:
         # Special cases
-        def render_single(s: int | AutoDynamic | AutoUnset | InferStride) -> str:
+        def render_single(s: Union[Union[int, AutoDynamic], Union[AutoUnset, InferStride]]) -> str:
             if s is auto_dynamic:
                 return "?"
             elif s is auto_unset:
@@ -277,7 +277,7 @@ class FrameStateSizeEntry:
             else:
                 return str(s)
 
-        def render_tuple(ss: tuple[int | AutoDynamic | InferStride, ...]) -> str:
+        def render_tuple(ss: Union[Tuple[Union[int, AutoDynamic], InferStride], ...]) -> str:
             return "[" + ", ".join(render_single(s) for s in ss) + "]"
 
         # Common cases
@@ -294,16 +294,13 @@ class FrameStateSizeEntry:
         return f"unusual {repr(self)}"
 
     def __post_init__(self) -> None:
-        if isinstance(self.scalar, torch.SymInt):
-            raise AssertionError(self.scalar)
+        assert not isinstance(self.scalar, torch.SymInt), self.scalar
         if isinstance(self.size, tuple):
             for s in self.size:
-                if isinstance(s, torch.SymInt):
-                    raise AssertionError(s)
+                assert not isinstance(s, torch.SymInt), s
         if isinstance(self.stride, tuple):
             for s1 in self.stride:
-                if isinstance(s1, torch.SymInt):
-                    raise AssertionError(s1)
+                assert not isinstance(s1, torch.SymInt), s1
 
     def is_size_dynamic(self, dim: int) -> bool:
         if self.size is auto_dynamic:
@@ -339,7 +336,7 @@ class FrameStateSizeEntry:
         return self.stride[dim] is auto_dynamic
 
     @staticmethod
-    def _munge_symint(xs: tuple[int, ...]) -> tuple[AutoDynamic | int, ...]:
+    def _munge_symint(xs: Tuple[int, ...]) -> Tuple[Union[AutoDynamic, int], ...]:
         return tuple(auto_dynamic if isinstance(x, torch.SymInt) else x for x in xs)
 
     @classmethod
@@ -348,7 +345,7 @@ class FrameStateSizeEntry:
 
     @classmethod
     def make_tensor(
-        cls, size: tuple[int, ...], stride: tuple[int, ...]
+        cls, size: Tuple[int, ...], stride: Tuple[int, ...]
     ) -> FrameStateSizeEntry:
         return FrameStateSizeEntry(
             scalar=auto_dynamic,
@@ -357,7 +354,7 @@ class FrameStateSizeEntry:
         )
 
     @classmethod
-    def make_size(cls, size: tuple[int, ...]) -> FrameStateSizeEntry:
+    def make_size(cls, size: Tuple[int, ...]) -> FrameStateSizeEntry:
         return FrameStateSizeEntry(
             scalar=auto_unset,
             size=cls._munge_symint(size),
@@ -365,7 +362,7 @@ class FrameStateSizeEntry:
         )
 
     @staticmethod
-    def _merge_atom(x: _T, y: _T) -> AutoDynamic | _T:
+    def _merge_atom(x: _T, y: _T) -> Union[AutoDynamic, _T]:
         if x is auto_unset:
             return y
         if y is auto_unset:
@@ -377,9 +374,9 @@ class FrameStateSizeEntry:
     @classmethod
     def _merge_atom_tup(
         cls,
-        xs: AutoDynamic | AutoUnset | tuple[_T, ...],
-        ys: AutoDynamic | AutoUnset | tuple[_T, ...],
-    ) -> AutoDynamic | AutoUnset | tuple[AutoDynamic | _T, ...]:
+        xs: Union[Union[AutoDynamic, AutoUnset], Tuple[_T, ...]],
+        ys: Union[Union[AutoDynamic, AutoUnset], Tuple[_T, ...]],
+    ) -> Union[Union[AutoDynamic, AutoUnset], Tuple[Union[AutoDynamic, _T]], ...]:
         if xs is auto_unset:
             return ys
         if ys is auto_unset:
@@ -435,7 +432,7 @@ def update_automatic_dynamic(
         is_update = name in frame_state.automatic_dynamic
         mut_entry = frame_state.automatic_dynamic[name]
         old_entry = copy.copy(mut_entry)
-        mut_entry |= entry
+        mut_entry.update(entry)
 
         # Do some logs (damn, I spend more code logging than I do actually doing
         # the updates lol)
@@ -465,7 +462,7 @@ def update_automatic_dynamic(
                 )
 
         def log_tup(
-            tup_name: str, short_reason: str, long_reason: str, i: int | None = None
+            tup_name: str, short_reason: str, long_reason: str, i: Optional[int] = None
         ) -> None:
             entry_tup = (
                 getattr(entry, tup_name) if i is None else getattr(entry, tup_name)[i]
@@ -572,10 +569,7 @@ def process_automatic_dynamic(
                     sub_state.automatic_dynamic[name],
                     is_unspecialized_nn_module=is_unspecialized_nn_module,
                 )
-        if res is None:
-            raise AssertionError(
-                "expected at least one matching automatic_dynamic entry across ranks"
-            )
+        assert res is not None
         return res
 
 
@@ -590,7 +584,7 @@ def format_cache_key(key: str) -> str:
     return f"{key}:{rank}:{tag}"
 
 
-def get_cache_key() -> str | None:
+def get_cache_key() -> Optional[str]:
     # TODO: info versions of these logs that log only once
     if torch.compiler.config.force_disable_caches:
         warn_once(
@@ -616,7 +610,7 @@ def get_cache_key() -> str | None:
     return None
 
 
-def get_extra_cache_key(sticky_key: str) -> str | None:
+def get_extra_cache_key(sticky_key: str) -> Optional[str]:
     if torch.compiler.config.force_disable_caches:
         warn_once(
             "dynamo_pgo force disabled by torch.compiler.config.force_disable_caches"
@@ -627,7 +621,7 @@ def get_extra_cache_key(sticky_key: str) -> str | None:
 
 
 # This solely controls local PGO
-def code_state_path(cache_key: str) -> str | None:
+def code_state_path(cache_key: str) -> Optional[str]:
     if not torch._dynamo.config.automatic_dynamic_local_pgo:
         log.debug("automatic_dynamic_local_pgo not enabled")
         return None
@@ -661,7 +655,7 @@ def should_use_remote_dynamo_pgo_cache() -> bool:
     )
 
 
-def get_remote_cache() -> RemoteCache[JsonDataTy] | None:
+def get_remote_cache() -> Optional[RemoteCache[JsonDataTy]]:
     from torch._inductor.remote_cache import create_cache
 
     if not should_use_remote_dynamo_pgo_cache():
@@ -733,7 +727,7 @@ def _log_size_mismatch_recompile() -> None:
         _LOGGED_DYNAMIC_ALLOWLIST = True
 
 
-def render_code_state(cs: defaultdict[CodeId, CodeState]) -> str:
+def render_code_state(cs: defaultDict[CodeId, CodeState]) -> str:
     code_state_str = "\n".join(
         f"{k}:\n"
         + "\n".join(
@@ -760,10 +754,7 @@ class PGOCacheArtifact(CacheArtifact):
         meta = write_local_impl(
             self._rewrite_cache_key_for_mega_cache(self.key), self.content
         )
-        if meta is None:
-            raise AssertionError(
-                "write_local_impl returned None during PGO cache population"
-            )
+        assert meta is not None
 
     @override
     @staticmethod
@@ -785,12 +776,9 @@ class PGOCacheArtifact(CacheArtifact):
         return original_key
 
 
-def hit(key: str, ty: str) -> defaultdict[CodeId, CodeState]:
+def hit(key: str, ty: str) -> defaultDict[CodeId, CodeState]:
     global _INIT_CODE_STATE
-    if not isinstance(_CODE_STATE, defaultdict):
-        raise AssertionError(
-            f"expected _CODE_STATE to be a defaultdict, got {type(_CODE_STATE)}"
-        )
+    assert isinstance(_CODE_STATE, defaultdict)
     log.info("get_code_state %s hit %s, %d entries", key, ty, len(_CODE_STATE))
     trace_structured_artifact(
         f"get_{ty}_code_state",
@@ -802,7 +790,7 @@ def hit(key: str, ty: str) -> defaultdict[CodeId, CodeState]:
     return _CODE_STATE
 
 
-def get_local_code_state(cache_key: str) -> defaultdict[CodeId, CodeState] | None:
+def get_local_code_state(cache_key: str) -> Optional[defaultDict[CodeId, CodeState]]:
     global _CODE_STATE
     path = code_state_path(cache_key)
     if path is not None and os.path.exists(path):
@@ -832,8 +820,8 @@ def get_local_code_state(cache_key: str) -> defaultdict[CodeId, CodeState] | Non
 def lookup_remote_cache_entry(
     remote_cache: RemoteCache[JsonDataTy],
     cache_key: str,
-    event_name: str | None = None,
-) -> defaultdict[CodeId, CodeState] | None:
+    event_name: Optional[str] = None,
+) -> Optional[defaultDict[CodeId, CodeState]]:
     code_state = None
     try:
         cache_data = remote_cache.get(cache_key)
@@ -842,15 +830,9 @@ def lookup_remote_cache_entry(
     else:
         if cache_data is not None:
             try:
-                if not isinstance(cache_data, dict):
-                    raise AssertionError(
-                        f"expected cache_data to be a dict, got {type(cache_data)}"
-                    )
+                assert isinstance(cache_data, dict)
                 data = cache_data["data"]
-                if not isinstance(data, str):
-                    raise AssertionError(
-                        f"expected cache_data['data'] to be a str, got {type(data)}"
-                    )
+                assert isinstance(data, str)
                 payload = base64.b64decode(data)
                 if event_name is not None:
                     CompileEventLogger.pt2_compile(
@@ -872,7 +854,7 @@ def lookup_remote_cache_entry(
     return code_state
 
 
-def get_remote_code_state(cache_key: str) -> defaultdict[CodeId, CodeState] | None:
+def get_remote_code_state(cache_key: str) -> Optional[defaultDict[CodeId, CodeState]]:
     global _CODE_STATE
     remote_cache = get_remote_cache()
     if remote_cache is not None:
@@ -894,10 +876,7 @@ def get_extra_remote_code_state(cache_key: str) -> None:
     Reads an additional PGO profile from the given cache key, and merges it with the default PGO profile.
     """
     global _CODE_STATE
-    if _CODE_STATE is None:
-        raise AssertionError(
-            "_CODE_STATE must be initialized before reading extra remote code state"
-        )
+    assert _CODE_STATE is not None
 
     remote_cache = get_remote_cache()
     if remote_cache is not None:
@@ -914,10 +893,7 @@ def get_extra_remote_code_state(cache_key: str) -> None:
                 len(code_state) if code_state is not None else 0,
             )
             if code_state is not None:
-                if _CODE_STATE:
-                    raise AssertionError(
-                        "expected _CODE_STATE to be empty before merging extra remote state"
-                    )
+                assert not _CODE_STATE
                 _CODE_STATE = code_state
                 # log to tlparse
                 trace_structured_artifact(
@@ -927,7 +903,7 @@ def get_extra_remote_code_state(cache_key: str) -> None:
                 )
 
 
-def get_code_state() -> defaultdict[CodeId, CodeState]:
+def get_code_state() -> defaultDict[CodeId, CodeState]:
     global _CODE_STATE, _INIT_CODE_STATE
     if _CODE_STATE is not None:
         return _CODE_STATE
@@ -957,8 +933,7 @@ def get_code_state() -> defaultdict[CodeId, CodeState]:
 
     log.info("get_code_state using default")
 
-    if _CODE_STATE is None:
-        raise AssertionError("_CODE_STATE should have been initialized above")
+    assert _CODE_STATE is not None
     return _CODE_STATE
 
 
@@ -984,7 +959,7 @@ def put_code_state() -> None:
             put_remote_code_state(extra_write_key)
 
 
-def write_local_impl(cache_key: str, pickled_code: bytes) -> tuple[str, int] | None:
+def write_local_impl(cache_key: str, pickled_code: bytes) -> Optional[Tuple[str, int]]:
     path = code_state_path(cache_key)
 
     if path is None:
@@ -1012,10 +987,7 @@ def write_local_impl(cache_key: str, pickled_code: bytes) -> tuple[str, int] | N
 def put_local_code_state(cache_key: str) -> None:
     with dynamo_timed(name := "pgo.put_local_code_state", log_pt2_compile_event=True):
         CompileEventLogger.pt2_compile(name, cache_key=cache_key)
-        if _CODE_STATE is None:
-            raise AssertionError(
-                "_CODE_STATE must be initialized before writing local code state"
-            )
+        assert _CODE_STATE is not None
 
         pickled_code = pickle.dumps(_CODE_STATE)
 
@@ -1048,10 +1020,7 @@ def put_remote_code_state(cache_key: str, extra_code_state: bool = False) -> Non
         dynamo_compile_column_us="pgo_put_remote_code_state_time_us",
     ):
         CompileEventLogger.pt2_compile(name, cache_key=cache_key)
-        if _CODE_STATE is None:
-            raise AssertionError(
-                "_CODE_STATE must be initialized before writing remote code state"
-            )
+        assert _CODE_STATE is not None
 
         remote_cache = get_remote_cache()
 

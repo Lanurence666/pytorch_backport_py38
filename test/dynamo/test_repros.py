@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 PYTEST_DONT_REWRITE (prevents pytest from rewriting assertions, which interferes
 with test_rewrite_assert_with_msg and test_rewrite_assert_without_msg)
@@ -90,7 +91,7 @@ from torch.utils._python_dispatch import TorchDispatchMode
 _orig_module_call = torch.nn.Module.__call__
 
 # Custom operator that only supports CPU and Meta
-lib = torch.library.Library("test_sample", "DEF")  # noqa: SCOPED_LIBRARY
+lib = torch.library.Library("test_sample", "DEF")  # noqa: TOR901
 lib.define("foo(Tensor self) -> Tensor")
 lib.impl("foo", torch.sin, "CPU")
 
@@ -982,22 +983,24 @@ class LRUCacheWarningTests(LoggingTestCase):
     @make_logging_test(dynamo=logging.DEBUG)
     def test_lru_cache_warning_issued_during_tracing(self, records):
         prev_default = torch._C._get_default_device()
-        try:
-            torch.set_default_device("cuda")
 
-            @torch.compile(backend="eager")
-            def f(x):
-                torch.get_device_module()
-                x = x.cos().sin()
-                return x
-
-            result = f(torch.randn(1024))
-            self.assertIsInstance(result, torch.Tensor)
-        finally:
+        def _restore_default_device():
             if prev_default == "cpu":
                 torch.set_default_device(None)
             else:
                 torch.set_default_device(prev_default)
+
+        self.addCleanup(_restore_default_device)
+        torch.set_default_device("cuda")
+
+        @torch.compile(backend="eager")
+        def f(x):
+            torch.get_device_module()
+            x = x.cos().sin()
+            return x
+
+        result = f(torch.randn(1024))
+        self.assertIsInstance(result, torch.Tensor)
 
         for record in records:
             if "call to a lru_cache wrapped function at:" in record.getMessage():
@@ -7204,12 +7207,7 @@ def forward(self, s77 : torch.SymInt, s27 : torch.SymInt, L_x_ : torch.Tensor):
         ):
             torch.compile(lambda: None, backend="eager")
 
-        with (
-            torch._dynamo.config.patch(
-                suppress_errors=True, fail_on_recompile_limit_hit=True
-            ),
-            self.assertRaises(AssertionError),
-        ):
+        with torch._dynamo.config.patch( suppress_errors=True, fail_on_recompile_limit_hit=True ), self.assertRaises(AssertionError):
             torch.compile(lambda: None, backend="eager")
 
     def test_str_isalnum(self):

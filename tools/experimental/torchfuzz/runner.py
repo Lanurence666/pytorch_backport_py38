@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Dict
 """
 Program runner utilities for PyTorch fuzzer.
 This module handles running and testing generated PyTorch programs.
@@ -8,7 +10,7 @@ import subprocess
 import sys
 
 
-def _build_subprocess_env(*, exclude_primary_device: bool = False) -> dict[str, str]:
+def _build_subprocess_env(*, exclude_primary_device: bool = False) -> Dict[str, str]:
     """Build the subprocess environment, applying the active plugin's hook (if any)."""
     from torchfuzz.codegen import get_device_info
 

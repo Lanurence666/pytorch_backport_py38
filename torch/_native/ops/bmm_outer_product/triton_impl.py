@@ -6,7 +6,7 @@ import torch
 from ... import triton_utils as tu
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _has_triton() -> bool:
     try:
         return importlib.util.find_spec("triton") is not None

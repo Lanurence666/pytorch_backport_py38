@@ -6,6 +6,7 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+from __future__ import annotations
 import multiprocessing as mp
 import os
 import shutil
@@ -134,7 +135,6 @@ class ElasticLaunchTest(unittest.TestCase):
         cls._etcd_server.stop()
 
     def setUp(self):
-        super().setUp()
         self.test_dir = tempfile.mkdtemp()
 
         # remove any lingering environment variables.

@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import copy
 import json
 import logging
 from abc import abstractmethod
 from collections import defaultdict
-from collections.abc import Callable
+
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Any, Callable, Dict, Generic, List, Optional, Tuple, Type, TypeVar
 
 import torch
 from torch._dynamo.package import (
@@ -89,11 +91,11 @@ class PrecompileContext:
     # Protected by the compile_lock
     # _backend_artifacts_by_key organizes results by the key of each artifact.
     # Each object here must be serializable
-    _backend_artifacts_by_key: dict[_BackendId, BackendCacheArtifact[Any]] = {}
+    _backend_artifacts_by_key: Dict[_BackendId, BackendCacheArtifact[Any]] = {}
 
     # On call to `serialize()`, all cache artifacts in _dynamo_cache_entries are converted
     # into DynamoCacheArtifacts and added to _new_cache_artifacts for serialization
-    _dynamo_cache_entries: dict[str, _DynamoCacheEntry] = {}
+    _dynamo_cache_entries: Dict[str, _DynamoCacheEntry] = {}
 
     @classmethod
     def clear(cls) -> None:
@@ -129,13 +131,12 @@ class PrecompileContext:
         """
         Edit the content of an existing artifact
         """
-        if key not in cls._backend_artifacts_by_key:
-            raise AssertionError(f"Key {key} not found in artifacts")
+        assert key in cls._backend_artifacts_by_key, f"Key {key} not found in artifacts"
         artifact = cls._backend_artifacts_by_key[_BackendId(key)]
         artifact.edit_contents(edit_fn)
 
     @classmethod
-    def serialize_artifact_by_key(cls, key: str) -> BackendCacheArtifact[Any] | None:
+    def serialize_artifact_by_key(cls, key: str) -> Optional[BackendCacheArtifact[Any]]:
         """
         Return the backend cache artifact with the associated key
         """
@@ -143,15 +144,15 @@ class PrecompileContext:
 
     @staticmethod
     def dump_debug_info(
-        dynamo_entries: dict[str, _DynamoCacheEntry],
-        backend_artifacts: dict[_BackendId, BackendCacheArtifact[Any]],
-    ) -> dict[str, Any]:
+        dynamo_entries: Dict[str, _DynamoCacheEntry],
+        backend_artifacts: Dict[_BackendId, BackendCacheArtifact[Any]],
+    ) -> Dict[str, Any]:
         """
         Return a JSON serializable debug dump of all entries in the precompile context
         Called in serialize before serialization, and in populate_caches after deserialization
         """
         # Print debug information
-        debug_info: defaultdict[str, list[Any]] = defaultdict(list)
+        debug_info: defaultdict[str, List[Any]] = defaultdict(list)
         for key, cache_entry in dynamo_entries.items():
             info = cache_entry.debug_info()
             info["key"] = key
@@ -163,7 +164,7 @@ class PrecompileContext:
         return debug_info
 
     @classmethod
-    def save_to_dynamo_cache(cls) -> dict[str, Any]:
+    def save_to_dynamo_cache(cls) -> Dict[str, Any]:
         precompile_cache_entries, debug_info = cls.create_cache_entries()
         for key, entry in precompile_cache_entries.items():
             DynamoCache.write(entry, key)
@@ -172,7 +173,7 @@ class PrecompileContext:
     @classmethod
     def create_cache_entries(
         cls,
-    ) -> tuple[dict[str, PrecompileCacheEntry], dict[str, Any]]:
+    ) -> Tuple[Dict[str, PrecompileCacheEntry], Dict[str, Any]]:
         """
         Grabs all the cache entries in the precompile context and
         stitches them together into full PrecompileCacheEntries.

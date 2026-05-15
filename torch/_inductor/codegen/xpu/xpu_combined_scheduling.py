@@ -1,7 +1,7 @@
 # mypy: allow-untyped-defs
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
+from typing import Any, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union
 
 from torch._inductor.scheduler import (
     BaseSchedulerNode,
@@ -16,7 +16,7 @@ from ..triton import TritonScheduling
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    
     from typing import TypeAlias
 
     from sympy import Expr
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
     from ..common import BackendFeature
 
-    _IntLike: TypeAlias = int | Expr
+    _IntLike: TypeAlias = Union[int, Expr]
 
 
 class XPUCombinedScheduling(BaseScheduling):
@@ -39,7 +39,7 @@ class XPUCombinedScheduling(BaseScheduling):
     this would also be the place to do it.
     """
 
-    def __init__(self, scheduler: Scheduler | None) -> None:
+    def __init__(self, scheduler: Optional[Scheduler]) -> None:
         super().__init__(scheduler)
         self._triton_scheduling = TritonScheduling(scheduler)
         self._cutlass_scheduling = CUTLASSScheduling(scheduler)
@@ -75,7 +75,7 @@ class XPUCombinedScheduling(BaseScheduling):
 
     def group_fn(
         self, sizes: Sequence[Sequence[_IntLike]]
-    ) -> tuple[tuple[_IntLike, ...], ...]:
+    ) -> Tuple[Tuple[_IntLike, ...], ...]:
         return self._triton_scheduling.group_fn(sizes)
 
     def codegen_template(
@@ -83,7 +83,7 @@ class XPUCombinedScheduling(BaseScheduling):
         template_node: BaseSchedulerNode,
         epilogue_nodes: Sequence[BaseSchedulerNode],
         prologue_nodes: Sequence[BaseSchedulerNode],
-    ) -> str | None:
+    ) -> Optional[str]:
         if self._cutlass_scheduling.is_cutlass_template(template_node):
             assert not prologue_nodes
             return self._cutlass_scheduling.codegen_template(
@@ -97,7 +97,7 @@ class XPUCombinedScheduling(BaseScheduling):
     def codegen_mix_order_reduction(self, node):
         return self._triton_scheduling.codegen_mix_order_reduction(node)
 
-    def codegen_node(self, node: FusedSchedulerNode | SchedulerNode) -> None:
+    def codegen_node(self, node: Union[FusedSchedulerNode, SchedulerNode]) -> None:
         return self._triton_scheduling.codegen_node(node)
 
     def codegen_sync(self) -> None:
@@ -111,7 +111,7 @@ class XPUCombinedScheduling(BaseScheduling):
 
     def benchmark_fused_nodes(
         self, nodes: Sequence[BaseSchedulerNode]
-    ) -> tuple[float, str]:
+    ) -> Tuple[float, str]:
         return self._triton_scheduling.benchmark_fused_nodes(nodes)
 
     def benchmark_codegened_module(self, module):
@@ -121,7 +121,7 @@ class XPUCombinedScheduling(BaseScheduling):
         self,
         nodes: Sequence[Any],
         benchmark_kernel: bool = False,
-        hint_override: int | None = None,
+        hint_override: Optional[int]= None,
     ) -> str:
         return self._triton_scheduling.generate_kernel_code_from_nodes(
             nodes, benchmark_kernel, hint_override=hint_override
@@ -129,7 +129,7 @@ class XPUCombinedScheduling(BaseScheduling):
 
     def benchmark_combo_kernel(
         self, node_list: Sequence[BaseSchedulerNode], node_benchmark_results
-    ) -> tuple[float, float, list[str | None]]:
+    ) -> Union[Tuple[float, float, List[str, None]]]:
         return self._triton_scheduling.benchmark_combo_kernel(
             node_list, node_benchmark_results
         )

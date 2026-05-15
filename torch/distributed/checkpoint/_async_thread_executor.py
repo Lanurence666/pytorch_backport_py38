@@ -1,5 +1,9 @@
 # pyre-strict
 # mypy: allow-untyped-defs
+from __future__ import annotations
+from typing import Optional, Union
+
+
 import os
 from concurrent.futures import Future, ThreadPoolExecutor
 
@@ -11,12 +15,12 @@ from torch.distributed.checkpoint.storage import StorageWriter
 
 
 def save_wrapper(
-    staging_future_or_state_dict: Future[STATE_DICT_TYPE] | STATE_DICT_TYPE,
+    staging_future_or_state_dict: Union[Future[STATE_DICT_TYPE], STATE_DICT_TYPE],
     *,
     checkpoint_id: str | os.PathLike | None = None,
-    storage_writer: StorageWriter | None = None,
-    planner: SavePlanner | None = None,
-    process_group: dist.ProcessGroup | None = None,
+    storage_writer: Optional[StorageWriter] = None,
+    planner: Optional[SavePlanner] = None,
+    process_group: Optional[dist.ProcessGroup] = None,
     no_dist: bool = False,
     use_collectives: bool = True,
 ) -> Future:
@@ -46,12 +50,12 @@ class _ThreadBasedAsyncCheckpointExecutor(_AsyncCheckpointExecutor):
 
     def execute_save(
         self,
-        staging_future_or_state_dict: Future[STATE_DICT_TYPE] | STATE_DICT_TYPE,
+        staging_future_or_state_dict: Union[Future[STATE_DICT_TYPE], STATE_DICT_TYPE],
         *,
         checkpoint_id: str | os.PathLike | None = None,
-        storage_writer: StorageWriter | None = None,
-        planner: SavePlanner | None = None,
-        process_group: dist.ProcessGroup | None = None,
+        storage_writer: Optional[StorageWriter] = None,
+        planner: Optional[SavePlanner] = None,
+        process_group: Optional[dist.ProcessGroup] = None,
         no_dist: bool = False,
         use_collectives: bool = True,
     ) -> Future:

@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import io
 import json
 import logging
 import os
 import tempfile
-from typing import IO
+from typing import IO, List
 
 import torch
 from torch._inductor import config
@@ -20,7 +22,7 @@ from torch.types import FileLike
 log = logging.getLogger(__name__)
 
 
-def compile_so(aoti_dir: str, aoti_files: list[str], so_path: str) -> str:
+def compile_so(aoti_dir: str, aoti_files: List[str], so_path: str) -> str:
     def get_aoti_file_with_suffix(suffix: str) -> str:
         for file in aoti_files:
             if file.endswith(suffix):

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module implements variable tracking for PyTorch nn.Module instances during Dynamo tracing.
 
@@ -26,9 +27,9 @@ import inspect
 import itertools
 import re
 import types
-from collections.abc import Iterable, Sequence
+
 from contextlib import contextmanager, nullcontext
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import torch.nn
 from torch._guards import Source
@@ -88,7 +89,7 @@ def initialize_lazy_module(
     tx: "InstructionTranslator",
     mod: torch.nn.Module,
     args: Sequence[VariableTracker],
-    kwargs: dict[str, VariableTracker],
+    kwargs: Dict[str, VariableTracker],
 ) -> None:
     """
     Fairly coupled helper used by NNModuleVariable and UnspecializedNNModuleVariable.
@@ -147,7 +148,7 @@ def record_nn_module_stack(
 
 
 def guard_to_detect_forward_monkeypatching(
-    source: Source | None, mod: torch.nn.Module
+    source: Union[Source, None, mod: torch.nn.Module]
 ) -> None:
     # Users sometimes patch the forward method of a nn module instance to
     # perform optimizations like quantization. Though this is not a good
@@ -210,8 +211,7 @@ class NNModuleVariable(VariableTracker):
 
     def get_nn_module_stack_source(self) -> Source:
         res = self.nn_module_stack_source or self.source
-        if not res:
-            raise AssertionError("nn_module_stack_source must not be None")
+        assert res
         return res
 
     def set_nn_module_stack_source(self, source: Source) -> None:
@@ -220,7 +220,7 @@ class NNModuleVariable(VariableTracker):
     def python_type(self) -> type:
         return self.module_type
 
-    def get_id(self, tx: "InstructionTranslator") -> int | None:
+    def get_id(self, tx: "InstructionTranslator") -> Optional[int]:
         return id(tx.output.get_submodule(self.module_key))
 
     def get_real_python_backed_value(self) -> object:
@@ -249,10 +249,10 @@ class NNModuleVariable(VariableTracker):
     ) -> None:
         return
 
-    def unpack_var_sequence(self, tx: "InstructionTranslator") -> list[VariableTracker]:
+    def unpack_var_sequence(self, tx: "InstructionTranslator") -> List[VariableTracker]:
         # implement list/iter/tuple/etc calls
         base = tx.output.get_submodule(self.module_key)
-        result: list[VariableTracker] = []
+        result: List[VariableTracker] = []
         if isinstance(base, torch.nn.ModuleDict):
             for name, submod in base.items():
                 name_var = VariableTracker.build(tx, name)
@@ -265,12 +265,9 @@ class NNModuleVariable(VariableTracker):
                 result.append(name_var)
             return result
 
-        if not isinstance(
+        assert isinstance(
             base, (torch.nn.ModuleList, torch.nn.ParameterList, torch.nn.Sequential)
-        ):
-            raise AssertionError(
-                f"Expected ModuleList, ParameterList, or Sequential, got {typestr(base)}"
-            )
+        ), typestr(base)
         for idx, submod in enumerate(base):
             result.append(
                 tx.output.register_attr_or_module(
@@ -312,7 +309,7 @@ class NNModuleVariable(VariableTracker):
         tx: "InstructionTranslator",
         name: str,
         obj_source: Source,
-    ) -> VariableTracker | None:
+    ) -> Optional[VariableTracker]:
         """Check for a __getattr__ and handle it specially if it is implemented"""
         if object_has_getattribute(base):
             getattribute_fn = inspect.getattr_static(type(base), "__getattribute__")
@@ -490,7 +487,7 @@ class NNModuleVariable(VariableTracker):
         self,
         tx: "InstructionTranslator",
         args: Sequence[VariableTracker],
-        kwargs: dict[str, VariableTracker],
+        kwargs: Dict[str, VariableTracker],
     ) -> VariableTracker:
         mod = tx.output.get_submodule(self.module_key)
 
@@ -509,10 +506,9 @@ class NNModuleVariable(VariableTracker):
                     self.convert_to_unspecialized(tx)
 
                 # Unroll sequential
-                if is_lazy:
-                    raise AssertionError(
-                        "Expected lazy sequential isn't a valid combination?"
-                    )
+                assert not is_lazy, (
+                    "Expected lazy sequential isn't a valid combination?"
+                )
                 if kwargs:
                     raise_args_mismatch(
                         tx,
@@ -589,8 +585,7 @@ class NNModuleVariable(VariableTracker):
                     fn_source = AttrSource(fn_source, "__func__")
                     args = [self] + list(args)
                 else:
-                    if not istype(fn, types.FunctionType):
-                        raise AssertionError(f"Expected FunctionType, got {type(fn)}")
+                    assert istype(fn, types.FunctionType)
                 return tx.inline_user_function_return(
                     variables.UserFunctionVariable(fn, source=fn_source),
                     args,
@@ -604,6 +599,8 @@ class NNModuleVariable(VariableTracker):
     ) -> "VariableTracker":
         # nn.Module containers (ModuleList/Dict/Sequential/ParameterDict/ParameterList)
         # These are Python-level __getitem__, not CPython C slots.
+        # TODO(follow-up): add tests for ModuleList negative index, ModuleList/Sequential
+        # slice, ModuleDict missing key, invalid key types
         from .lists import SliceVariable
         from .tensor import SymNodeVariable
 
@@ -631,8 +628,7 @@ class NNModuleVariable(VariableTracker):
                 )
             fn = module.__getitem__.__func__  # pyrefly: ignore[missing-attribute]
 
-            if not isinstance(fn, types.FunctionType):
-                raise AssertionError(f"Expected FunctionType, got {type(fn)}")
+            assert isinstance(fn, types.FunctionType)
 
             src = AttrSource(AttrSource(self.source, "__getitem__"), "__func__")  # type: ignore[arg-type]
             return tx.inline_user_function_return(
@@ -706,7 +702,7 @@ class NNModuleVariable(VariableTracker):
         tx: "InstructionTranslator",
         name: str,
         args: Sequence[VariableTracker],
-        kwargs: dict[str, VariableTracker],
+        kwargs: Dict[str, VariableTracker],
         constant: bool = False,
     ) -> VariableTracker:
         from . import ListIteratorVariable, TupleVariable
@@ -799,7 +795,7 @@ class NNModuleVariable(VariableTracker):
                     hints=[],
                 )
 
-        def get_kwargs(*names: str) -> dict[str, Any]:
+        def get_kwargs(*names: str) -> Dict[str, Any]:
             assert_all_args_kwargs_const()
             fn = getattr(module, name)
             bound_args = inspect.signature(fn).bind(
@@ -811,9 +807,9 @@ class NNModuleVariable(VariableTracker):
             return {k: bound_args[k] for k in names}
 
         def wrap_values(
-            items: Iterable[tuple[Any, Any]],
+            items: Iterable[Tuple[Any, Any]],
         ) -> "variables.ListIteratorVariable":
-            named_children: list[VariableTracker] = []
+            named_children: List[VariableTracker] = []
             for name, submod in items:
                 named_children.append(
                     tx.output.register_attr_or_module(
@@ -858,7 +854,7 @@ class NNModuleVariable(VariableTracker):
                     "0 args and 0 kwargs",
                     f"{len(args)} args and {len(kwargs)} kwargs",
                 )
-            named_children: list[VariableTracker] = []
+            named_children: List[VariableTracker] = []
             for name, submod in module.named_children():
                 named_children.append(named_embed(name, submod))
             return ListIteratorVariable(
@@ -866,7 +862,7 @@ class NNModuleVariable(VariableTracker):
             )
         elif name == "named_parameters":
             tx.output.guard_on_key_order.add(AttrSource(self.source, "_parameters"))
-            named_parameters: list[VariableTracker] = []
+            named_parameters: List[VariableTracker] = []
             for name, param in module.named_parameters(
                 **get_kwargs("prefix", "recurse")
             ):
@@ -876,7 +872,7 @@ class NNModuleVariable(VariableTracker):
             )
         elif name == "named_buffers":
             tx.output.guard_on_key_order.add(AttrSource(self.source, "_buffers"))
-            named_buffers: list[VariableTracker] = []
+            named_buffers: List[VariableTracker] = []
             for name, buffer in module.named_buffers(
                 **get_kwargs("prefix", "recurse", "remove_duplicate")
             ):
@@ -884,7 +880,7 @@ class NNModuleVariable(VariableTracker):
             return ListIteratorVariable(named_buffers, mutation_type=ValueMutationNew())
         elif name == "named_modules":
             tx.output.guard_on_key_order.add(AttrSource(self.source, "_modules"))
-            named_modules_list: list[VariableTracker] = []
+            named_modules_list: List[VariableTracker] = []
             for name, submod in module.named_modules(
                 **get_kwargs("memo", "prefix", "remove_duplicate")
             ):
@@ -941,7 +937,7 @@ class NNModuleVariable(VariableTracker):
                     "0 args and 0 kwargs",
                     f"{len(args)} args and {len(kwargs)} kwargs",
                 )
-            items_result: list[VariableTracker] = []
+            items_result: List[VariableTracker] = []
             for name, submod in module.items():  # type: ignore[operator]
                 items_result.append(named_embed(name, submod))
             return ListIteratorVariable(items_result, mutation_type=ValueMutationNew())
@@ -1034,16 +1030,15 @@ class UnspecializedNNModuleVariable(UserDefinedObjectVariable):
 
     def get_nn_module_stack_source(self) -> Source:
         res = self.nn_module_stack_source or self.source
-        if not res:
-            raise AssertionError("nn_module_stack_source must not be None")
+        assert res
         return res
 
     def set_nn_module_stack_source(self, source: Source) -> None:
         self.nn_module_stack_source = source
 
     @staticmethod
-    @functools.cache
-    def _nn_module_method_ids() -> set[int]:
+    @functools.lru_cache(maxsize=None)
+    def _nn_module_method_ids() -> Set[int]:
         # Allow __setattr__ to fall through to base class handler
         supported = {
             torch.nn.Module.__setattr__,
@@ -1056,7 +1051,7 @@ class UnspecializedNNModuleVariable(UserDefinedObjectVariable):
             if hasattr(x, "__code__") and x not in supported
         }
 
-    def unpack_var_sequence(self, tx: "InstructionTranslator") -> list[VariableTracker]:
+    def unpack_var_sequence(self, tx: "InstructionTranslator") -> List[VariableTracker]:
         try:
             fn = inspect.getattr_static(self.value_type, "__iter__")
         except AttributeError as e:
@@ -1084,7 +1079,7 @@ class UnspecializedNNModuleVariable(UserDefinedObjectVariable):
         self,
         tx: "InstructionTranslator",
         args: Sequence[VariableTracker],
-        kwargs: dict[str, VariableTracker],
+        kwargs: Dict[str, VariableTracker],
     ) -> VariableTracker:
         mod = self.value
         # see comment on lazy module handling in NNModuleVariable.call_function for context
@@ -1179,7 +1174,7 @@ class UnspecializedNNModuleVariable(UserDefinedObjectVariable):
         tx: "InstructionTranslator",
         name: str,
         args: Sequence[VariableTracker],
-        kwargs: dict[str, VariableTracker],
+        kwargs: Dict[str, VariableTracker],
     ) -> VariableTracker:
         if name in ["_call_impl", "_wrapped_call_impl"]:
             fn = getattr(self.value_type, name)
@@ -1270,7 +1265,7 @@ class UnspecializedNNModuleVariable(UserDefinedObjectVariable):
 
     def getattr_helper(
         self, tx: "InstructionTranslator", field: str, name_vt: VariableTracker
-    ) -> VariableTracker | None:
+    ) -> Optional[VariableTracker]:
         dict_vt = self.var_getattr(tx, field)
         if isinstance(dict_vt, variables.UserDefinedDictVariable):
             dict_vt = dict_vt._base_vt
@@ -1325,11 +1320,11 @@ class UnspecializedNNModuleVariable(UserDefinedObjectVariable):
 
             def build_key_value(
                 i: int, k: Any, v: Any
-            ) -> tuple[VariableTracker, VariableTracker]:
+            ) -> Tuple[VariableTracker, VariableTracker]:
                 # Make key sourceless to avoid any guard on it
                 key = VariableTracker.build(tx, k)
 
-                # Instead of using dict[key] to access the value, use a dict[dict.keys()[index]] to access the
+                # Instead of using Dict[key] to access the value, use a Dict[dict.keys()[index]] to access the
                 # value. This removes the reliance on the actual key value.
                 source_key = ConstDictKeySource(hooks_dict_source, i)
                 source_value = DictGetItemSource(hooks_dict_source, source_key)
@@ -1371,10 +1366,7 @@ class UnspecializedNNModuleVariable(UserDefinedObjectVariable):
                     f"'{type(self.value).__name__}' object has no attribute '{name}'"
                 ],
             )
-        if out is None:
-            raise AssertionError(
-                f"manually_trace_nn_module_getattr failed to find attribute '{name}'"
-            )
+        assert out is not None
         return out
 
 
@@ -1402,10 +1394,9 @@ class FSDPManagedNNModuleVariable(UnspecializedNNModuleVariable):
 
     def __init__(self, value: torch.nn.Module, **kwargs: Any) -> None:
         source = kwargs.get("source")
-        if source is None:
-            raise AssertionError(
-                "FSDPManagedNNModule depends on having an accurate source to control guarding."
-            )
+        assert source is not None, (
+            "FSDPManagedNNModule depends on having an accurate source to control guarding."
+        )
 
         super().__init__(value=value, **kwargs)
         self.source = source

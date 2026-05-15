@@ -1,8 +1,14 @@
+from __future__ import annotations
+
 import contextlib
 import functools
 import logging
-from collections.abc import Callable, Iterator, Mapping
-from typing import Any, ParamSpec, TypeVar
+
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Set, Type, TypeVar, Union
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec
 
 
 _P = ParamSpec("_P")
@@ -58,7 +64,7 @@ def _compile_submod(gm: torch.fx.GraphModule, prefix: str) -> torch.fx.GraphModu
             # Get inductor configs from annotation
             # TODO we should change partition when there are multiple differently
             # annotated regions.
-            inductor_options: dict[str, Any] = {}
+            inductor_options: Dict[str, Any] = {}
             for sub_node in submod.graph.nodes:
                 if hasattr(sub_node, "meta") and sub_node.meta.get("custom", None):
                     custom = sub_node.meta["custom"]
@@ -89,11 +95,7 @@ def _compile_submod(gm: torch.fx.GraphModule, prefix: str) -> torch.fx.GraphModu
                         f"Available config keys can be found in torch._inductor.config"
                     )
 
-            with (
-                inductor_config.patch(inductor_options),
-                _disable_remat_for_regional_subcompile(),
-                torch.fx.traceback._set_regional_inductor_subgraph_name(node.target),
-            ):
+            with inductor_config.patch(inductor_options), _disable_remat_for_regional_subcompile():
                 compiled_fn = torch._inductor.standalone_compile(
                     submod,
                     fake_inputs,
@@ -143,7 +145,7 @@ class _RegionScooper:
         # optional "inductor_region" key inside the compile_with_inductor
         # annotation. When absent, all tagged nodes share a single default region
         _DEFAULT_REGION = object()
-        regions: dict[object, set[torch.fx.Node]] = {}
+        regions: Dict[object, Set[torch.fx.Node]] = {}
         for node in gm.graph.nodes:
             if _needs_inductor_compile(node):
                 compile_value = node.meta["custom"]["compile_with_inductor"]
@@ -163,7 +165,7 @@ class _RegionScooper:
         # Run CapabilityBasedPartitioner per region to get cycle-safe partitions
         # without merging across region boundaries.
         def _is_in_region(
-            region_nodes: set[torch.fx.Node],
+            region_nodes: Set[torch.fx.Node],
         ) -> Callable[[Mapping[str, torch.nn.Module], torch.fx.Node], bool]:
             def is_node_supported(
                 _submodules: Mapping[str, torch.nn.Module], node: torch.fx.Node
@@ -172,7 +174,7 @@ class _RegionScooper:
 
             return is_node_supported
 
-        all_partitions: list[dict[torch.fx.Node, int | None]] = []
+        all_partitions: Union[List[Dict[torch.fx.Node, int, None]]]= []
         for region_nodes in regions.values():
             support = create_op_support(_is_in_region(region_nodes))
             partitioner = CapabilityBasedPartitioner(
@@ -190,7 +192,7 @@ class _RegionScooper:
 
     @staticmethod
     def recursively_scoop_regions(
-        gm: torch.fx.GraphModule, _processed: set[int] | None = None
+        gm: Optional[torch.fx.GraphModule, _processed: Set[int]]= None
     ) -> torch.fx.GraphModule:
         if _processed is None:
             _processed = set()

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Note [Opaque Objects]
 
@@ -27,7 +29,7 @@ implemented before registering it as a value-typed opaque object class:
   object, meaning that a recompilation will happen if __eq__ returns False.
   - __hash__: This must be implemented for Fake Tensor caching
   - __fx_repr__: This must be implemented to provide an evaluable representation
-    for FX graph codegen. It should return a tuple of (repr_string, dict[str, type])
+    for FX graph codegen. It should return a tuple of (repr_string, Dict[str, type])
     where repr_string can reconstruct the object and the dict maps names used in
     repr_string to their corresponding types.
 
@@ -36,11 +38,15 @@ through `register_opaque_type(MyClass, typ="value")`.
 """
 
 import logging
-from collections.abc import Callable
+
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Literal, NewType, TYPE_CHECKING, TypeAlias
-from typing_extensions import TypeIs
+from typing import Any, Callable, Dict, List, Mapping, Optional, TYPE_CHECKING, Tuple, Type, Union
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
+from typing_extensions import Literal, NewType, TypeIs
 from weakref import WeakKeyDictionary
 
 import torch
@@ -75,7 +81,7 @@ class FakeOpaqueObject:
         pass
 
     @classmethod
-    def __obj_unflatten__(cls, flattened_ctx: dict[str, Any]) -> None:
+    def __obj_unflatten__(cls, flattened_ctx: Dict[str, Any]) -> None:
         raise RuntimeError(
             "FakeOpaqueObject should not be created through __obj_unflatten__ "
             "and should be special handled. Please file an issue to Github."
@@ -91,8 +97,8 @@ OpaqueType = NewType("OpaqueType", torch._C.ScriptObject)
 # Should derive the object from existing graph inputs or return None to fall
 # back to get_attr.  Args: (obj, get_tracked_proxy, tracer).
 ReconstructFn: TypeAlias = Callable[
-    [OpaqueBase, Callable[[OpaqueBase], "Proxy | None"], "PythonKeyTracer"],
-    "Proxy | None",
+    [OpaqueBase, Callable[[OpaqueBase], "Union[Proxy, None]"], "PythonKeyTracer"],
+    "Optional[Proxy]",
 ]
 
 
@@ -101,20 +107,20 @@ class _OpaqueTypeInfo:
     class_name: str
     opaque_typ: Literal["reference", "value"]
     guard_fn: Callable[
-        [Any], list[Any]
+        [Any], List[Any]
     ]  # Callable that takes the object and returns list of values to guard on
-    members: dict[str, MemberType]  # Maps member name to how it should be handled
+    members: Dict[str, MemberType]  # Maps member name to how it should be handled
     hoist: bool
-    reconstruct_fn: ReconstructFn | None
+    reconstruct_fn: Optional[ReconstructFn]
 
 
 # Mapping of type -> (string name, reference/value type)
 _OPAQUE_TYPES: WeakKeyDictionary[Any, _OpaqueTypeInfo] = WeakKeyDictionary()
 # Mapping of class_name -> (type, reference/value type)
-_OPAQUE_TYPES_BY_NAME: dict[str, _OpaqueTypeInfo] = {}
+_OPAQUE_TYPES_BY_NAME: Dict[str, _OpaqueTypeInfo] = {}
 
 
-def _resolve_opaque_type_info(cls: Any) -> _OpaqueTypeInfo | None:
+def _resolve_opaque_type_info(cls: Any) -> Optional[_OpaqueTypeInfo]:
     if cls in _OPAQUE_TYPES:
         return _OPAQUE_TYPES[cls]
     if not isinstance(cls, type):
@@ -155,8 +161,8 @@ def register_opaque_type(
     typ: str,
     hoist=False,
     guard_fn: Any = None,
-    members: dict[str, MemberType] | None = None,
-    reconstruct_fn: ReconstructFn | None = None,
+    members: Optional[Dict[str, MemberType]]= None,
+    reconstruct_fn: Optional[ReconstructFn]= None,
 ) -> None:
     """
     Registers the given type as an opaque type which allows this to be consumed
@@ -176,12 +182,12 @@ def register_opaque_type(
             (e.g., change your custom ops to use hoisted strings to avoid
             baking the string into the Dynamo/AOTAutograd/FX graphs).
             This flag does nothing for reference types.
-        guard_fn (callable | None): A function that takes an instance of the opaque
+        guard_fn (Optional[callable]): A function that takes an instance of the opaque
             object and returns a list of values to guard on. These values will be compared
             for equality on each function call, triggering recompilation if they change.
             Only applicable for reference types.
             Example: lambda obj: [obj.x, obj.y]
-        members (dict[str, MemberType] | None): Dictionary mapping member names
+        members (Optional[Dict[str, MemberType]]): Dictionary mapping member names
             (attributes, properties, or methods) to their MemberType, which controls
             how they are handled during torch.compile tracing:
             - MemberType.USE_REAL: Evaluates with the real object at compile time and
@@ -246,7 +252,7 @@ def register_opaque_type(
                 "expected to have a `__fx_repr__` method "
                 "implementation as we will use this to reconstruct "
                 "the object in the FX codegen. __fx_repr__ should return "
-                "a tuple of (repr_string, dict[str, type])."
+                "a tuple of (repr_string, Dict[str, type])."
             )
 
         if guard_fn is not None:
@@ -289,7 +295,7 @@ def should_hoist(cls: Any) -> bool:
     return info.hoist
 
 
-def get_reconstruct_fn(cls: type[OpaqueBase]) -> ReconstructFn | None:
+def get_reconstruct_fn(cls: Type[OpaqueBase]) -> Optional[ReconstructFn]:
     info = _resolve_opaque_type_info(cls)
     if info is None:
         return None
@@ -303,7 +309,7 @@ def has_members(cls: Any) -> bool:
     return len(info.members) > 0
 
 
-def is_opaque_type(cls: type[Any] | str) -> bool:
+def is_opaque_type(cls: Union[Type[Any], str]) -> bool:
     """
     Checks if the given type is an opaque type.
     Also returns True for subclasses of registered opaque types.
@@ -322,7 +328,7 @@ def is_opaque_type(cls: type[Any] | str) -> bool:
     return torch._C._is_opaque_type_registered(info.class_name)
 
 
-def is_opaque_value_type(cls: type[Any] | str) -> bool:
+def is_opaque_value_type(cls: Union[Type[Any], str]) -> bool:
     """
     Checks if the given type is an opaque **value** type.
     See Note [Opaque Objects] for more information.
@@ -356,7 +362,7 @@ def is_opaque_reference_type(cls: Any) -> bool:
     return info.opaque_typ == "reference"
 
 
-def get_opaque_obj_repr(obj: Any) -> tuple[str, dict[str, type]]:
+def get_opaque_obj_repr(obj: Any) -> Tuple[str, Dict[str, type]]:
     """
     Get the FX-evaluable repr for an opaque object and collect required globals.
 
@@ -381,7 +387,7 @@ def get_opaque_obj_repr(obj: Any) -> tuple[str, dict[str, type]]:
             "expected to have a `__fx_repr__` method "
             "implementation as we will use this to reconstruct "
             "the object in the FX codegen. __fx_repr__ should return "
-            "a tuple of (repr_string, dict[str, type])."
+            "a tuple of (repr_string, Dict[str, type])."
         )
 
     repr_str, globals_dict = obj.__fx_repr__()
@@ -401,7 +407,7 @@ def get_opaque_obj_repr(obj: Any) -> tuple[str, dict[str, type]]:
     return repr_str, globals_dict
 
 
-def get_opaque_obj_info(cls: Any) -> _OpaqueTypeInfo | None:
+def get_opaque_obj_info(cls: Any) -> Optional[_OpaqueTypeInfo]:
     if not is_opaque_type(cls):
         return None
 
@@ -411,7 +417,7 @@ def get_opaque_obj_info(cls: Any) -> _OpaqueTypeInfo | None:
     return _resolve_opaque_type_info(cls)
 
 
-def get_member_type(cls: Any, member_name: str) -> MemberType | None:
+def get_member_type(cls: Any, member_name: str) -> Optional[MemberType]:
     """
     Get the MemberType for a specific member of an opaque object class.
 

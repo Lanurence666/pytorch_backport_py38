@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import abc
 from collections import namedtuple
 
 import torch.nn as nn
 from torch.fx._compatibility import compatibility
 from torch.fx.graph_module import GraphModule
+from typing import Optional, Tuple
 
 
 __all__ = ["PassResult", "PassBase"]
@@ -18,7 +21,7 @@ class PassResult(namedtuple("PassResult", ["graph_module", "modified"])):
         modified: A flag for if the pass has modified the graph module
     """
 
-    __slots__: tuple[str, ...] = ()
+    __slots__: Tuple[str, ...] = ()
 
     def __new__(cls, graph_module: nn.Module, modified: bool) -> "PassResult":
         return super().__new__(cls, graph_module, modified)
@@ -37,7 +40,7 @@ class PassBase(abc.ABC):
     the PassManager's `passes` attribute.
     """
 
-    def __call__(self, graph_module: GraphModule) -> PassResult | None:
+    def __call__(self, graph_module: GraphModule) -> Optional[PassResult]:
         """
         Runs the precondition check, the pass itself, and the postcondition check.
         """
@@ -48,7 +51,7 @@ class PassBase(abc.ABC):
         return res
 
     @abc.abstractmethod
-    def call(self, graph_module: GraphModule) -> PassResult | None:
+    def call(self, graph_module: GraphModule) -> Optional[PassResult]:
         """
         The pass that is run through the given graph module. To implement a
         pass, it is required to implement this function.

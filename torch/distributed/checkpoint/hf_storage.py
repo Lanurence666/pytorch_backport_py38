@@ -1,10 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import dataclasses
 import json
 import logging
 import queue
 import threading
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 import torch
 from torch.distributed.checkpoint import FileSystemReader, FileSystemWriter
@@ -54,7 +56,7 @@ class HuggingFaceStorageWriter(FileSystemWriter):
     def __init__(
         self,
         path: str,
-        fqn_to_index_mapping: dict[str, int] | None = None,
+        fqn_to_index_mapping: Optional[Dict[str, int]]= None,
         thread_count: int = 1,
         save_distributed: bool = False,
         enable_consolidation: bool = False,
@@ -83,19 +85,19 @@ class HuggingFaceStorageWriter(FileSystemWriter):
             serialization_format=SerializationFormat.SAFETENSORS,
             thread_count=thread_count,
         )
-        self.fqn_to_index_mapping: dict[str, int] | None = fqn_to_index_mapping
+        self.fqn_to_index_mapping: Optional[Dict[str, int]] = fqn_to_index_mapping
         self.save_distributed: bool = save_distributed
         self.enable_consolidation: bool = enable_consolidation
-        self.consolidated_output_path: str | None = None
+        self.consolidated_output_path: Optional[str] = None
         if self.enable_consolidation:
             self.consolidated_output_path = str(self.path)
             self.path = self.fs.concat_path(self.path, SHARDED_DIR_NAME)
         self.thread_count_consolidation = thread_count_consolidation
 
-    def prepare_global_plan(self, plans: list[SavePlan]) -> list[SavePlan]:
+    def prepare_global_plan(self, plans: List[SavePlan]) -> List[SavePlan]:
         new_plans = []
         for i, plan in enumerate(plans, start=1):
-            storage_data: dict[str, Any] = {}
+            storage_data: Dict[str, Any] = {}
             if self.fqn_to_index_mapping is not None:
                 storage_data["fqn_to_index_mapping"] = self.fqn_to_index_mapping
             if self.save_distributed:
@@ -109,16 +111,16 @@ class HuggingFaceStorageWriter(FileSystemWriter):
         self,
         plan: SavePlan,
         planner: SavePlanner,
-    ) -> Future[list[WriteResult]]:
+    ) -> Future[List[WriteResult]]:
         if len(plan.items) == 0:
             fut: Future = Future()
             fut.set_result([])
             return fut
 
         # storage_plan is a map from key to file index
-        storage_data: dict[str, Any] = plan.storage_data
-        storage_plan: dict[str, int] | None = None
-        shard_index: int | None = None
+        storage_data: Dict[str, Any] = plan.storage_data
+        storage_plan: Optional[Dict[str, int]]= None
+        shard_index: Optional[int]= None
         if "fqn_to_index_mapping" in storage_data:
             storage_plan = storage_data["fqn_to_index_mapping"]
         if "shard_index" in storage_data:
@@ -136,7 +138,7 @@ class HuggingFaceStorageWriter(FileSystemWriter):
 
         return super()._write_data(planner, file_queue)
 
-    def finish(self, metadata: Metadata, results: list[list[WriteResult]]) -> None:
+    def finish(self, metadata: Metadata, results: List[List[WriteResult]]) -> None:
         if self.save_distributed and not self.enable_consolidation:
             # if we are saving distributed, without consolidating,
             # then we have no metadata to write because a metadata
@@ -145,7 +147,7 @@ class HuggingFaceStorageWriter(FileSystemWriter):
             logger.info("Not consolidating sharded checkpoint in finish step.")
             return
         if self.save_distributed:
-            fqn_to_index_mapping: dict[str, int] = (
+            fqn_to_index_mapping: Dict[str, int] = (
                 self.fqn_to_index_mapping
                 if self.fqn_to_index_mapping is not None
                 else dict.fromkeys(metadata.state_dict_metadata.keys(), 1)
@@ -176,8 +178,8 @@ class HuggingFaceStorageWriter(FileSystemWriter):
             json.dump(metadata_to_write, metadata_file, indent=2)
 
     def _split_by_storage_plan(
-        self, storage_plan: dict[str, int] | None, items: list[WriteItem]
-    ) -> dict[int, list[WriteItem]]:
+        self, storage_plan: Optional[Dict[str, int]], items: List[WriteItem]
+    ) -> Dict[int, List[WriteItem]]:
         # storage_plan is a map from key to index
         if storage_plan is None:
             return {1: items}
@@ -255,7 +257,7 @@ class HuggingFaceStorageReader(FileSystemReader):
     def read_data(self, plan: LoadPlan, planner: LoadPlanner) -> Future[None]:
         from safetensors import safe_open  # type: ignore[import]
 
-        per_file: dict[str, list[ReadItem]] = {}
+        per_file: Dict[str, List[ReadItem]] = {}
 
         for read_item in plan.items:
             item_md: _HFStorageInfo = self.storage_data[read_item.storage_index]
@@ -314,8 +316,8 @@ class HuggingFaceStorageReader(FileSystemReader):
         from safetensors import safe_open  # type: ignore[import]
         from safetensors.torch import _getdtype  # type: ignore[import]
 
-        state_dict_metadata: dict[str, TensorStorageMetadata] = {}
-        storage_data: dict[MetadataIndex, _HFStorageInfo] = {}
+        state_dict_metadata: Dict[str, TensorStorageMetadata] = {}
+        storage_data: Dict[MetadataIndex, _HFStorageInfo] = {}
 
         safetensors_files = []
         for file in self.fs.ls(self.path):

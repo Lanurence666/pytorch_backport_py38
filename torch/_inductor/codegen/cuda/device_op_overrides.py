@@ -1,4 +1,6 @@
 from __future__ import annotations
+from typing import Optional
+
 
 import torch
 
@@ -331,8 +333,8 @@ class CUDADeviceOpOverrides(DeviceOpOverrides):
         return "CUdeviceptr"
 
     def cpp_scratch(
-        self, idx: int, workspace: TritonScratchWorkspace, prefix: str | None = None
-    ) -> tuple[list[str], str] | None:
+        self, idx: int, workspace: TritonScratchWorkspace, prefix: Optional[str] = None
+    ) -> Optional[Tuple[List[str], str]]:
         prefix = f"{prefix}_" if prefix else ""
         var_name = f"{prefix}scratch_{idx}"
         if workspace.size > 0:

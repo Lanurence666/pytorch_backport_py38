@@ -1,9 +1,11 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 
+from __future__ import annotations
+
 import abc
 import io
-from collections.abc import Sequence
-from typing import cast, IO
+
+from typing import Dict, IO, Optional, Sequence, Type, cast
 
 # introduced as collections.abc.Buffer in Python 3.12
 from typing_extensions import Buffer
@@ -131,7 +133,7 @@ class ZStandard(StreamTransformExtension):
             def writeable(self) -> bool:
                 return True
 
-            def write(self, b: Buffer) -> int | None:
+            def write(self, b: Buffer) -> Optional[int]:
                 outdata = self.compressor.compress(b)
                 if outdata:
                     self.output.write(outdata)
@@ -158,7 +160,7 @@ class ZStandard(StreamTransformExtension):
             def readable(self) -> bool:
                 return True
 
-            def readinto(self, b: Buffer) -> int | None:
+            def readinto(self, b: Buffer) -> Optional[int]:
                 # This needs to read enough so it can decompress
                 # something so the output doesn't look like EOF.  This
                 # means reading at least one block.  The max block
@@ -189,11 +191,11 @@ class ZStandard(StreamTransformExtension):
 class ExtensionRegistry:
     def __init__(self) -> None:
         # Populate default registry contents
-        self.extensions: dict[str, type[Extension]] = {
+        self.extensions: Dict[str, Type[Extension]] = {
             cls.registry_name(): cls for cls in (ZStandard,)
         }
 
-    def register(self, cls: type[Extension]) -> None:
+    def register(self, cls: Type[Extension]) -> None:
         self.extensions[cls.registry_name()] = cls
 
     def from_descriptor_list(self, descriptors: Sequence[str]) -> Sequence[Extension]:

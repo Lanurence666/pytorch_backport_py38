@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: dynamo"]
 """
 PYTEST_DONT_REWRITE (prevents pytest from rewriting assertions, which interferes

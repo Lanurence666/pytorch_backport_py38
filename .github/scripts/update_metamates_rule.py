@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Update the "Metamates" rule in merge_rules.yaml.
 

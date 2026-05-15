@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 
 import torch
@@ -17,6 +19,7 @@ from torch.backends.cuda import (
 from torch.nn.attention import SDPBackend
 
 from .nested_tensor import NestedTensor
+from typing import Optional, Tuple, Union
 
 
 log = logging.getLogger(__name__)
@@ -26,7 +29,7 @@ def _validate_sdpa_input(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    attn_mask: torch.Tensor | None = None,
+    attn_mask: Optional[torch.Tensor]= None,
     dropout_p=0.0,
     is_causal=False,
     scale=None,
@@ -337,7 +340,7 @@ def _select_sdp_backend(query, key, value, attn_mask, dropout, is_causal, enable
     return SDPBackend.ERROR
 
 
-def _cumulative_and_max_seq_len_nnz(qkv: torch.Tensor) -> tuple[torch.Tensor, int, int]:
+def _cumulative_and_max_seq_len_nnz(qkv: torch.Tensor) -> Tuple[torch.Tensor, int, int]:
     # This function is used to calculate two pieces of metadata that are needed
     # for use with flash-attention and efficient_attention kernels. They are the
     # cumulative sequence_length over a batch of sequences and the maximum
@@ -669,8 +672,8 @@ def _autocast(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    attn_mask: torch.Tensor | None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    attn_mask: Union[torch.Tensor, None,]
+) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, None]]:
     """
     [Autocasting SDPA for NJT]
 
@@ -715,7 +718,7 @@ def jagged_scaled_dot_product_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    attn_mask: torch.Tensor | None = None,
+    attn_mask: Optional[torch.Tensor]= None,
     dropout_p=0.0,
     is_causal=False,
     scale=None,

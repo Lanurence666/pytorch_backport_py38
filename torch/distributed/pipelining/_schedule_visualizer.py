@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Copyright (c) Meta Platforms, Inc. and affiliates
 
 """
@@ -10,7 +11,9 @@ visualize_schedule(ops, "test.png")
 """
 
 import collections
-from typing import NamedTuple
+from typing import Dict, List, Optional, Set, Tuple, Type, Union
+from typing_extensions import NamedTuple
+
 from unittest import mock
 
 from torch.distributed.pipelining.schedules import (
@@ -32,14 +35,14 @@ class OpKey(NamedTuple):
 
 
 def get_schedule_ops(
-    schedule: str | type[_PipelineSchedule],
+    schedule: Union[str, Type[_PipelineSchedule]],
     pp_degree: int,
     num_microbatches: int,
-    num_stages_per_rank: int | None = None,
+    num_stages_per_rank: Optional[int] = None,
     add_spacing: bool = False,
     with_comms: bool = False,
     defer_pp_recv: bool = False,
-) -> list[list[_Action | None]]:
+) -> List[List[Optional[_Action]]]:
     """
     Get all actions for a given schedule, pp_degree, and num_microbatches. The actions are returned in a list of lists
     where each inner list represents a rank and each element in the inner list represents an action.
@@ -99,7 +102,7 @@ def get_schedule_ops(
         raise AssertionError("Expected pipeline_order to not be None")
 
     # Convert to List[List[_Action]]
-    all_actions: list[list[_Action | None]] = []
+    all_actions: List[List[Optional[_Action]]] = []
     if with_comms:
         runtime = _PipelineScheduleRuntime(
             stages, num_microbatches, defer_pp_recv=defer_pp_recv
@@ -151,8 +154,8 @@ action_type_to_color_mapping = {
 
 
 def add_schedule_op_spacing(
-    schedule: list[list[_Action | None]],
-) -> list[list[_Action | None]]:
+    schedule: List[List[Optional[_Action]]],
+) -> List[List[Optional[_Action]]]:
     """
     Add spacing to the schedule based on dependencies between ranks.
 
@@ -184,11 +187,11 @@ def add_schedule_op_spacing(
     )
 
     num_ranks = len(schedule)
-    spaced_schedule: list[list[_Action | None]] = [[] for _ in range(num_ranks)]
+    spaced_schedule: List[List[Optional[_Action]]] = [[] for _ in range(num_ranks)]
     rank_ops = [collections.deque(ops) for ops in schedule]
 
     # Track completion times: (stage_index, action_type, microbatch_index) -> completion_time
-    scheduled_ops: dict[OpKey, int] = {}
+    scheduled_ops: Dict[OpKey, int] = {}
 
     def is_dependency_ready(dependency_key: OpKey, timestep: int) -> bool:
         """Check if a dependency operation has completed by the given timestep."""
@@ -197,7 +200,7 @@ def add_schedule_op_spacing(
             and timestep >= scheduled_ops[dependency_key]
         )
 
-    def get_dependencies(action: _Action) -> list[OpKey]:
+    def get_dependencies(action: _Action) -> List[OpKey]:
         """Get the list of dependencies for an action."""
         stage_idx = action.stage_index
         comp_type = action.computation_type
@@ -257,7 +260,7 @@ def add_schedule_op_spacing(
                 raise AssertionError(
                     f"OVERLAP_F_B action {action} has None sub_actions"
                 )
-            dep_list: list[bool] = []
+            dep_list: List[bool] = []
             for sub_action in action.sub_actions:
                 dep_list.append(is_action_ready(sub_action, timestep))
             return all(dep_list)
@@ -349,8 +352,8 @@ def add_schedule_op_spacing(
 
 
 def visualize_schedule(
-    schedule: list[list[_Action | None]],
-    filename: str | None = None,
+    schedule: List[List[Optional[_Action]]],
+    filename: Optional[str] = None,
 ) -> None:
     """
     Visualize the schedule using matplotlib.

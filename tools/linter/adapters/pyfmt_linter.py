@@ -18,7 +18,7 @@ import subprocess
 import sys
 from enum import Enum
 from pathlib import Path
-from typing import NamedTuple
+from typing import List, NamedTuple, Union
 
 import isort
 import usort
@@ -36,15 +36,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 def as_posix(name: str) -> str:
@@ -109,7 +109,7 @@ def run_ruff_format(content: str, path: Path) -> str:
         raise ValueError(exc.output) from exc
 
 
-def check_file(filename: str) -> list[LintMessage]:
+def check_file(filename: str) -> List[LintMessage]:
     path = Path(filename).absolute()
     original = replacement = path.read_text(encoding="utf-8")
 

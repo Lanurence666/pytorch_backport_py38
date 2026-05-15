@@ -1,3 +1,4 @@
+from __future__ import annotations
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
@@ -9,7 +10,6 @@
 Any job with a specific `sync-tag` must match all other jobs with the same `sync-tag`.
 """
 
-from __future__ import annotations
 
 import argparse
 import itertools
@@ -17,7 +17,7 @@ import json
 from collections import defaultdict
 from enum import Enum
 from pathlib import Path
-from typing import Any, NamedTuple, TYPE_CHECKING
+from typing import Any, Dict, NamedTuple, TYPE_CHECKING, Tuple, Union
 
 from yaml import dump, load
 
@@ -44,15 +44,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 def glob_yamls(path: Path) -> Iterable[Path]:
@@ -70,7 +70,7 @@ def is_workflow(yaml: Any) -> bool:
 
 def print_lint_message(
     path: Path,
-    job: dict[str, Any],
+    job: Dict[str, Any],
     sync_tag: str,
     baseline_path: Path,
     baseline_job_id: str,
@@ -98,8 +98,8 @@ def print_lint_message(
 
 
 def get_jobs_with_sync_tag(
-    job: dict[str, Any],
-) -> tuple[str, str, dict[str, Any]] | None:
+    job: Dict[str, Any],
+) -> Union[Tuple[str, str, Dict[str, Any]], None]:
     sync_tag = job.get("with", {}).get("sync-tag")
     if sync_tag is None:
         return None

@@ -1,12 +1,12 @@
+from __future__ import annotations
 """UBER PROTOTYPE!!!"""
 # mypy: allow-untyped-defs
 
-from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
-from functools import cache
-from typing import Any, TYPE_CHECKING
+from functools import lru_cache
+from typing import Any, Dict, Optional, TYPE_CHECKING, Tuple, Type
 from typing_extensions import TypeVarTuple, Unpack
 
 from . import _registry
@@ -24,18 +24,18 @@ __all__ = [
 ]
 
 
-_FA4_MODULE_PATH: str | None = None
+_FA4_MODULE_PATH: Optional[str] = None
 
 
 @dataclass
 class _FA4Handle:
-    library: Library | None
+    library: Optional[Library]
 
     def remove(self) -> None:
         self.library = None
 
 
-@cache
+@lru_cache(maxsize=None)
 def _get_device_major(device: torch.device) -> int:
     major, _ = torch.cuda.get_device_capability(device)
     return major
@@ -56,7 +56,7 @@ def register_flash_attention_fa4(
     return _FA4Handle(_fa4_register_kernels())
 
 
-@cache
+@lru_cache(maxsize=None)
 def _fa4_import_module(module_path: str) -> ModuleType:
     module = importlib.import_module(module_path)
     if not hasattr(module, "_flash_attn_fwd") or not hasattr(module, "_flash_attn_bwd"):
@@ -65,7 +65,7 @@ def _fa4_import_module(module_path: str) -> ModuleType:
 
 
 def _fa4_register_kernels() -> Library:
-    lib = Library("aten", "IMPL", "CUDA")
+    lib = Library("aten", "IMPL", "CUDA")  # noqa: TOR901
     lib.impl("_flash_attention_forward", _fa4_flash_attention_forward_impl, "CUDA")
     lib.impl(
         "_flash_attention_forward_no_dropout_inplace",
@@ -88,10 +88,10 @@ def _fa4_register_kernels() -> Library:
 
 def _fa4_common_support_error(
     query: torch.Tensor,
-    tensors: tuple[torch.Tensor, ...],
-    cum_seq_q: torch.Tensor | None,
-    require_fp32: tuple[tuple[str, torch.Tensor], ...] = (),
-) -> str | None:
+    tensors: Tuple[torch.Tensor, ...],
+    cum_seq_q: Optional[torch.Tensor],
+    require_fp32: Tuple[Tuple[str, torch.Tensor], ...] = (),
+) -> Optional[str]:
     if not all(t.is_cuda for t in tensors):
         return "inputs must be CUDA tensors"
     if len({t.device for t in tensors}) != 1:
@@ -118,12 +118,12 @@ def _fa4_forward_support_error(
     value: torch.Tensor,
     dropout_p: float,
     return_debug_mask: bool,
-    alibi_slopes: torch.Tensor | None,
-    seqused_k: torch.Tensor | None,
-    cum_seq_q: torch.Tensor | None,
-    block_table: torch.Tensor | None = None,
-    num_splits: int | None = None,
-) -> str | None:
+    alibi_slopes: Optional[torch.Tensor],
+    seqused_k: Optional[torch.Tensor],
+    cum_seq_q: Optional[torch.Tensor],
+    block_table: Optional[torch.Tensor] = None,
+    num_splits: Optional[int] = None,
+) -> Optional[str]:
     if dropout_p != 0.0:
         return "dropout_p must be 0"
     if return_debug_mask:
@@ -160,8 +160,8 @@ def _fa4_backward_support_error(
     out: torch.Tensor,
     logsumexp: torch.Tensor,
     dropout_p: float,
-    cum_seq_q: torch.Tensor | None,
-) -> str | None:
+    cum_seq_q: Optional[torch.Tensor],
+) -> Optional[str]:
     if dropout_p != 0.0:
         return "dropout_p must be 0"
     error = _fa4_common_support_error(
@@ -175,7 +175,7 @@ def _fa4_backward_support_error(
     return None
 
 
-def _aten_to_fa4_window_size(val: int | None) -> int | None:
+def _aten_to_fa4_window_size(val: Optional[int]) -> Optional[int]:
     """need to convert -1 to None for FA4"""
     return None if val == -1 else val
 
@@ -183,7 +183,7 @@ def _aten_to_fa4_window_size(val: int | None) -> int | None:
 Ts = TypeVarTuple("Ts")
 
 
-def _transpose_dense(*tensors: Unpack[Ts]) -> tuple[Unpack[Ts]]:
+def _transpose_dense(*tensors: Unpack[Ts]) -> Tuple[Unpack[Ts]]:
     return tuple(t.transpose(1, 2) for t in tensors)  # type: ignore[attr-defined]
 
 
@@ -191,24 +191,24 @@ def _fa4_run_forward(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    cu_seq_q: torch.Tensor | None,
-    cu_seq_k: torch.Tensor | None,
-    max_q: int | None,
-    max_k: int | None,
-    scale: float | None,
+    cu_seq_q: Optional[torch.Tensor],
+    cu_seq_k: Optional[torch.Tensor],
+    max_q: Optional[int],
+    max_k: Optional[int],
+    scale: Optional[float],
     is_causal: bool,
-    window_size_left: int | None,
-    window_size_right: int | None,
-    seqused_k: torch.Tensor | None,
-    out: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
-    num_splits: int | None = None,
-) -> tuple[torch.Tensor, torch.Tensor]:
+    window_size_left: Optional[int],
+    window_size_right: Optional[int],
+    seqused_k: Optional[torch.Tensor],
+    out: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
+    num_splits: Optional[int] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
     if _FA4_MODULE_PATH is None:
         raise RuntimeError("FA4 not registered")
     module = _fa4_import_module(_FA4_MODULE_PATH)
 
-    kwargs: dict[str, Any] = {
+    kwargs: Dict[str, Any] = {
         "softmax_scale": scale,
         "causal": is_causal,
         "window_size_left": _aten_to_fa4_window_size(window_size_left),
@@ -234,14 +234,14 @@ def _fa4_run_backward(
     value: torch.Tensor,
     out: torch.Tensor,
     logsumexp: torch.Tensor,
-    cu_seq_q: torch.Tensor | None,
-    cu_seq_k: torch.Tensor | None,
-    scale: float | None,
+    cu_seq_q: Optional[torch.Tensor],
+    cu_seq_k: Optional[torch.Tensor],
+    scale: Optional[float],
     is_causal: bool,
-    window_size_left: int | None,
-    window_size_right: int | None,
+    window_size_left: Optional[int],
+    window_size_right: Optional[int],
     deterministic: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if _FA4_MODULE_PATH is None:
         raise RuntimeError("FA4 not registered")
     module = _fa4_import_module(_FA4_MODULE_PATH)
@@ -267,23 +267,23 @@ def _fa4_flash_attention_forward_impl(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    cum_seq_q: torch.Tensor | None,
-    cum_seq_k: torch.Tensor | None,
+    cum_seq_q: Optional[torch.Tensor],
+    cum_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     dropout_p: float,
     is_causal: bool,
     return_debug_mask: bool,
     *,
-    scale: float | None = None,
-    window_size_left: int | None = None,
-    window_size_right: int | None = None,
-    seqused_k: torch.Tensor | None = None,
-    alibi_slopes: torch.Tensor | None = None,
-    out: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
+    scale: Optional[float] = None,
+    window_size_left: Optional[int] = None,
+    window_size_right: Optional[int] = None,
+    seqused_k: Optional[torch.Tensor] = None,
+    alibi_slopes: Optional[torch.Tensor] = None,
+    out: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
     compute_auxiliary: bool = True,
-    num_splits: int | None = None,
+    num_splits: Optional[int] = None,
 ):
     error = _fa4_forward_support_error(
         query,
@@ -332,21 +332,21 @@ def _fa4_flash_attention_forward_no_dropout_inplace_impl(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    cum_seq_q: torch.Tensor | None,
-    cum_seq_k: torch.Tensor | None,
+    cum_seq_q: Optional[torch.Tensor],
+    cum_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     dropout_p: float,
     is_causal: bool,
     return_debug_mask: bool,
     *,
-    scale: float | None = None,
-    window_size_left: int | None = None,
-    window_size_right: int | None = None,
-    seqused_k: torch.Tensor | None = None,
-    alibi_slopes: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
-    num_splits: int | None = None,
+    scale: Optional[float] = None,
+    window_size_left: Optional[int] = None,
+    window_size_right: Optional[int] = None,
+    seqused_k: Optional[torch.Tensor] = None,
+    alibi_slopes: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
+    num_splits: Optional[int] = None,
 ):
     _, lse, _, _, _ = _fa4_flash_attention_forward_impl(
         query,
@@ -379,8 +379,8 @@ def _fa4_flash_attention_backward_impl(
     value: torch.Tensor,
     out: torch.Tensor,
     logsumexp: torch.Tensor,
-    cum_seq_q: torch.Tensor | None,
-    cum_seq_k: torch.Tensor | None,
+    cum_seq_q: Optional[torch.Tensor],
+    cum_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     dropout_p: float,
@@ -388,9 +388,9 @@ def _fa4_flash_attention_backward_impl(
     rng_state: torch.Tensor,
     unused: torch.Tensor,
     *,
-    scale: float | None = None,
-    window_size_left: int | None = None,
-    window_size_right: int | None = None,
+    scale: Optional[float] = None,
+    window_size_left: Optional[int] = None,
+    window_size_right: Optional[int] = None,
 ):
     error = _fa4_backward_support_error(
         grad_out,
@@ -431,7 +431,7 @@ def _fa4_scaled_dot_product_flash_attention_forward_impl(
     is_causal: bool = False,
     return_debug_mask: bool = False,
     *,
-    scale: float | None = None,
+    scale: Optional[float] = None,
 ):
     error = _fa4_forward_support_error(
         query,
@@ -491,8 +491,8 @@ def _fa4_scaled_dot_product_flash_attention_backward_impl(
     value: torch.Tensor,
     out: torch.Tensor,
     logsumexp: torch.Tensor,
-    cum_seq_q: torch.Tensor | None,
-    cum_seq_k: torch.Tensor | None,
+    cum_seq_q: Optional[torch.Tensor],
+    cum_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     dropout_p: float,
@@ -500,7 +500,7 @@ def _fa4_scaled_dot_product_flash_attention_backward_impl(
     philox_seed: torch.Tensor,
     philox_offset: torch.Tensor,
     *,
-    scale: float | None = None,
+    scale: Optional[float] = None,
 ):
     error = _fa4_backward_support_error(
         grad_out,

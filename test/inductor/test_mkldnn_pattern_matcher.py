@@ -25,9 +25,9 @@ from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     IS_FBCODE,
     IS_LINUX,
-    requires_mkl,
     skipIfXpu,
     TEST_ACL,
+    TEST_MKL,
     xfailIfACL,
 )
 from torch.testing._internal.inductor_utils import (
@@ -794,7 +794,7 @@ class TestPatternMatcher(TestPatternMatcherBase):
             self.assertEqual(metrics.generated_kernel_count, expected_kernel_count)
 
     @reduced_f32_on_and_off()
-    @requires_mkl
+    @unittest.skipIf(not TEST_MKL, "Test requires MKL")
     def test_linear_fp32(self, device="cpu"):
         self.device = device
 
@@ -818,7 +818,7 @@ class TestPatternMatcher(TestPatternMatcherBase):
 
             self._test_common(mod, (v,), matcher_check_fn)
 
-    @requires_mkl
+    @unittest.skipIf(not TEST_MKL, "Test requires MKL")
     def test_linear_input_non_contiguous_3D_wo_bias(self, device="cpu"):
         self.device = device
 
@@ -845,14 +845,7 @@ class TestPatternMatcher(TestPatternMatcherBase):
         for dtype in dtypes:
             torch._dynamo.reset()
             autocast_enabled = dtype in [torch.bfloat16, torch.float16]
-            with (
-                torch.no_grad(),
-                torch.autocast(
-                    device_type="cpu",
-                    enabled=autocast_enabled,
-                    dtype=dtype,
-                ),
-            ):
+            with torch.no_grad(), torch.autocast( device_type="cpu", enabled=autocast_enabled, dtype=dtype, ):
                 expected = mod(v)
                 actual, (source_code,) = run_and_get_code(
                     torch.compile(mod, fullgraph=True),
@@ -1532,7 +1525,7 @@ class TestPatternMatcher(TestPatternMatcherBase):
             om(*example_inputs)
             om(*example_inputs)
 
-    @requires_mkl
+    @unittest.skipIf(not TEST_MKL, "Test requires MKL")
     @xfailIfACL
     def test_reproduce_121253_issue_addmm_fusion_check(self):
         class Mod(torch.nn.Module):

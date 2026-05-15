@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch import Tensor
 from torch.distributions import constraints
@@ -54,10 +56,10 @@ class Binomial(Distribution):
 
     def __init__(
         self,
-        total_count: Tensor | int = 1,
-        probs: Tensor | None = None,
-        logits: Tensor | None = None,
-        validate_args: bool | None = None,
+        total_count: Union[Tensor, int]= 1,
+        probs: Optional[Tensor]= None,
+        logits: Optional[Tensor]= None,
+        validate_args: Optional[bool]= None,
     ) -> None:
         if (probs is None) == (logits is None):
             raise ValueError(

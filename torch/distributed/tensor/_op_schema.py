@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 DTensor operator schema definitions and utilities.
@@ -23,10 +24,18 @@ These schema definitions enable the DTensor system to:
 4. Cache sharding decisions for performance optimization
 """
 
-from collections.abc import Sequence
+
 from dataclasses import dataclass
-from functools import cached_property
-from typing import Any
+try:
+    from functools import lru_cached_property
+except ImportError:
+    from functools import cached_property as lru_cached_property
+
+try:
+    from functools import cached_property
+except ImportError:
+    from functools import lru_cached_property as cached_property
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union, overload
 from typing_extensions import deprecated
 
 import torch
@@ -57,14 +66,14 @@ except ImportError:
 
 
 # Common type aliases
-ArgsType = tuple[object, ...]
-KwargsType = dict[str, object]
+ArgsType = Tuple[object, ...]
+KwargsType = Dict[str, object]
 
-PlacementList = list[Placement | None]
+PlacementList = Union[List[Placement, None]]
 
 # ATen op schemas could have Tensor, Tuple[Tensor] and List[Tensor], so output type should
 # be the same set of possibilities.
-OutputSpecType = DTensorSpec | Sequence[DTensorSpec | None] | None
+OutputSpecType = Optional[Union[DTensorSpec, Sequence[DTensorSpec, None]]]
 
 
 def _rebuild_tensor_from_dtensor_meta(arg) -> object:
@@ -111,8 +120,8 @@ class OpSpec:
     # output_specs and input_specs are related: for this op, given these input_specs,
     # this is the way the output would look
     # Note: output_specs can be None for ops that don't return tensors (e.g., _linalg_check_errors)
-    output_specs: DTensorSpec | tuple[DTensorSpec | None, ...] | None
-    input_specs: Sequence[DTensorSpec] | None = None
+    output_specs: Optional[Union[DTensorSpec, Tuple[DTensorSpec, None, ...]]]
+    input_specs: Optional[Sequence[DTensorSpec]]= None
 
     """
     redistribute_cost tells how expensive it is to redistribute a given input into the
@@ -140,7 +149,7 @@ class OpSpec:
             K,    # cost of redistributing tensor_a from 'Shard(0)'
         ],
     """
-    redistribute_cost: list[list[float]] | None = None
+    redistribute_cost: Optional[List[List[float]]]= None
 
     @cached_property
     def output_spec(self) -> DTensorSpec:
@@ -229,16 +238,13 @@ class OpStrategy(StrategyType):
     invariant: the DeviceMesh on all OpSpec must be the same
     """
 
-    def __init__(self, strategies: list[OpSpec]) -> None:
+    def __init__(self, strategies: List[OpSpec]) -> None:
         super().__init__()
-        self.strategies: list[OpSpec] = strategies
+        self.strategies: List[OpSpec] = strategies
 
     def __str__(self) -> str:
         strategy_list_str = ", ".join([str(strategy) for strategy in self.strategies])
-        try:
-            mesh_shape = self.mesh_shape
-        except AssertionError:
-            return f"OpStrategy[{strategy_list_str}]"
+        mesh_shape = self.mesh_shape
         return f"OpStrategy[{strategy_list_str}] @ mesh: {mesh_shape}"
 
     def max_num_shards(self) -> int:
@@ -355,7 +361,7 @@ class RuntimeSchemaInfo:
     # Note that only a few ops need this information, e.g. view, transpose, var.dim, etc.
     static_argnum: int = 100
     # This static_kwargkey records static kwarg names which would affect sharding prop
-    static_kwargkey: list[str] | None = None
+    static_kwargkey: Optional[List[str]]= None
     # each op can decide if it wants to use pytree flatten/unflatten during operator
     # eager execution, by default we don't need to do flatten/unflatten, only if the
     # op indicate it needs to, this is to accelerate eager performance.
@@ -385,12 +391,12 @@ class OpSchema:
     args_schema: ArgsType
     kwargs_schema: KwargsType
 
-    schema_info: RuntimeSchemaInfo | None = None
+    schema_info: Optional[RuntimeSchemaInfo]= None
 
-    _comparison_key: tuple[object, ...] | None = None
+    _comparison_key: Optional[Tuple[object, ...]]= None
 
     @property
-    def args_spec(self) -> tuple[DTensorSpec, ...]:
+    def args_spec(self) -> Tuple[DTensorSpec, ...]:
         """
         args_spec: Tuple[DTensorSpec, ...]: contains a clean list of args spec list
             with NO non-DTensor positional arguments (i.e. int/float/tuple, etc)
@@ -404,7 +410,7 @@ class OpSchema:
         return tuple(item for item in args if isinstance(item, DTensorSpec))
 
     @property
-    def args_strategy(self) -> tuple[OpStrategy, ...]:
+    def args_strategy(self) -> Tuple[OpStrategy, ...]:
         # filter out non-relevant values from args schema to get a clean OpStrategy list
         # separate with args_spec for the ease of type annotation
         # TODO: see if we should merge this with args_spec
@@ -416,7 +422,7 @@ class OpSchema:
         return tuple(item for item in args if isinstance(item, OpStrategy))
 
     @property
-    def kwargs_strategy(self) -> tuple[OpStrategy, ...]:
+    def kwargs_strategy(self) -> Tuple[OpStrategy, ...]:
         # returns OpStrategy items from kwargs_schema.
         kwargs_vals = (
             tree_leaves(self.kwargs_schema)
@@ -426,7 +432,7 @@ class OpSchema:
         return tuple(item for item in kwargs_vals if isinstance(item, OpStrategy))
 
     @property
-    def args_meta(self) -> tuple[TensorMeta | Any, ...]:
+    def args_meta(self) -> Union[Tuple[TensorMeta, Any, ...]]:
         # Used for calling single_dim strategy functions, which aren't allowed to see DTensorSpecs/Meshes
         # like args_spec, but has OpStrategy replaced with corresponding TensorMeta,
         # and TupleStrategy replaced with tuple of TensorMeta
@@ -449,7 +455,7 @@ class OpSchema:
         return tuple(convert_to_meta(arg) for arg in self.args_schema)
 
     @property
-    def kwargs_meta(self) -> dict[str, object]:
+    def kwargs_meta(self) -> Dict[str, object]:
         # like args_meta, but for kwargs
 
         def convert_to_meta(item):
@@ -476,7 +482,7 @@ class OpSchema:
         )
 
     def __str__(self) -> str:
-        args_schema: list[str] = []
+        args_schema: List[str] = []
         device_mesh = None
 
         for arg in self.args_schema:
@@ -640,7 +646,7 @@ class OpSchema:
 
     def _inplace_rewrap_schema_suggestion(self, origin_schema: "OpSchema") -> None:
         suggestion_args_spec = self.args_spec
-        new_arg_schema: list[object] = []
+        new_arg_schema: List[object] = []
         idx_of_args_spec = 0
         if (
             origin_schema.schema_info is not None
@@ -675,7 +681,7 @@ class OutputSharding:
     # specifies the output sharding pattern
     output_spec: OutputSpecType
     # schema for redistribution if needed
-    redistribute_schema: OpSchema | None = None
+    redistribute_schema: Optional[OpSchema]= None
     # flag indicating if inputs need redistribution
     needs_redistribute: bool = False
     # flag to use values from `redistribute_schema`
@@ -713,11 +719,11 @@ class OpInfo:
     # In this case, OpInfo is created with create_schema=False, setting schema to None.
     # The operator information is still available through output_sharding.redistribute_schema
     # when redistribution is needed.
-    schema: OpSchema | None
-    flat_args_schema: list[object]
+    schema: Optional[OpSchema]
+    flat_args_schema: List[object]
     local_args: Sequence[object]
-    local_kwargs: dict[str, object]
-    args_tree_spec: TreeSpec | None = None
+    local_kwargs: Dict[str, object]
+    args_tree_spec: Optional[TreeSpec]= None
 
     # the output sharding info
-    output_sharding: OutputSharding | None = None
+    output_sharding: Optional[OutputSharding]= None

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Utility functions
 
 This module provides helper functions for LRU caching decorators used
@@ -9,6 +10,7 @@ from functools import lru_cache, wraps
 from typing_extensions import ParamSpec, TypedDict, TypeVar
 
 from torch import Tensor
+from typing import Callable, Dict, Tuple, Type
 
 
 # Type specification for function parameters
@@ -45,8 +47,8 @@ def _lru_cache(fn: Callable[P, R]) -> Callable[P, R]:
 class EncodedTensor(TypedDict):
     """TypedDict for encoded tensor metadata."""
 
-    shape: tuple[int, ...]
-    stride: tuple[int, ...]
+    shape: Tuple[int, ...]
+    stride: Tuple[int, ...]
     dtype: str
 
 

@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import operator
 from collections.abc import Callable
 from functools import reduce
@@ -7,6 +9,7 @@ import torch
 import torch.nn.functional as F
 
 from .base_sparsifier import BaseSparsifier
+from typing import Callable, Optional, Tuple, Union
 
 
 __all__ = ["WeightNormSparsifier"]
@@ -59,9 +62,9 @@ class WeightNormSparsifier(BaseSparsifier):
     def __init__(
         self,
         sparsity_level: float = 0.5,
-        sparse_block_shape: tuple[int, int] = (1, 4),
-        zeros_per_block: int | None = None,
-        norm: Callable | int | None = None,
+        sparse_block_shape: Tuple[int, int] = (1, 4),
+        zeros_per_block: Optional[int]= None,
+        norm: Optional[Union[Callable, int]]= None,
     ):
         if zeros_per_block is None:
             zeros_per_block = reduce(operator.mul, sparse_block_shape)

@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import itertools
-from collections.abc import Iterable, Iterator, Sequence, Sized
-from typing import Generic, TypeVar
+from collections.abc import Sized
+from typing import Generator, Generic, Iterable, Iterator, List, Optional, Sequence, Type, TypeVar, Union
 
 import torch
 
@@ -132,7 +134,7 @@ class RandomSampler(Sampler[int]):
         self,
         data_source: Sized,
         replacement: bool = False,
-        num_samples: int | None = None,
+        num_samples: Optional[int] = None,
         generator=None,
     ) -> None:
         self.data_source = data_source
@@ -283,7 +285,7 @@ class WeightedRandomSampler(Sampler[int]):
         return self.num_samples
 
 
-class BatchSampler(Sampler[list[int]]):
+class BatchSampler(Sampler[List[int]]):
     r"""Wraps another sampler to yield a mini-batch of indices.
 
     Args:
@@ -307,7 +309,7 @@ class BatchSampler(Sampler[list[int]]):
 
     def __init__(
         self,
-        sampler: Sampler[int] | Iterable[int],
+        sampler: Union[Sampler[int], Iterable[int]],
         batch_size: int,
         drop_last: bool,
     ) -> None:
@@ -330,12 +332,12 @@ class BatchSampler(Sampler[list[int]]):
         self.batch_size = batch_size
         self.drop_last = drop_last
 
-    def __iter__(self) -> Iterator[list[int]]:
+    def __iter__(self) -> Iterator[List[int]]:
         sampler_iter = iter(self.sampler)
         if self.drop_last:
             # Create multiple references to the same iterator
             args = [sampler_iter] * self.batch_size
-            for batch_droplast in zip(*args, strict=False):
+            for batch_droplast in zip(*args):
                 yield [*batch_droplast]
         else:
             batch = [*itertools.islice(sampler_iter, self.batch_size)]

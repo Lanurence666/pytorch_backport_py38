@@ -1,6 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 from typing import Any
 
 import torch

@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 r"""Implementation for the Resilient backpropagation."""
 
-from typing import cast
+from typing import Callable, List, Optional, Tuple, Union, cast, overload
 
 import torch
 from torch import Tensor
@@ -31,12 +33,12 @@ class Rprop(Optimizer):
     def __init__(
         self,
         params: ParamsT,
-        lr: float | Tensor = 1e-2,
-        etas: tuple[float, float] = (0.5, 1.2),
-        step_sizes: tuple[float, float] = (1e-6, 50),
+        lr: Union[float, Tensor]= 1e-2,
+        etas: Tuple[float, float] = (0.5, 1.2),
+        step_sizes: Tuple[float, float] = (1e-6, 50),
         *,
         capturable: bool = False,
-        foreach: bool | None = None,
+        foreach: Optional[bool]= None,
         maximize: bool = False,
         differentiable: bool = False,
     ) -> None:
@@ -131,11 +133,11 @@ class Rprop(Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
-            params: list[Tensor] = []
-            grads: list[Tensor] = []
-            prevs: list[Tensor] = []
-            step_sizes: list[Tensor] = []
-            state_steps: list[Tensor] = []
+            params: List[Tensor] = []
+            grads: List[Tensor] = []
+            prevs: List[Tensor] = []
+            step_sizes: List[Tensor] = []
+            state_steps: List[Tensor] = []
 
             etaminus, etaplus = group["etas"]
             step_size_min, step_size_max = group["step_sizes"]
@@ -221,11 +223,11 @@ Rprop.__doc__ = (
 
 
 def _single_tensor_rprop(
-    params: list[Tensor],
-    grads: list[Tensor],
-    prevs: list[Tensor],
-    step_sizes: list[Tensor],
-    state_steps: list[Tensor],
+    params: List[Tensor],
+    grads: List[Tensor],
+    prevs: List[Tensor],
+    step_sizes: List[Tensor],
+    state_steps: List[Tensor],
     *,
     step_size_min: float,
     step_size_max: float,
@@ -292,11 +294,11 @@ def _single_tensor_rprop(
 
 
 def _multi_tensor_rprop(
-    params: list[Tensor],
-    grads: list[Tensor],
-    prevs: list[Tensor],
-    step_sizes: list[Tensor],
-    state_steps: list[Tensor],
+    params: List[Tensor],
+    grads: List[Tensor],
+    prevs: List[Tensor],
+    step_sizes: List[Tensor],
+    state_steps: List[Tensor],
     *,
     step_size_min: float,
     step_size_max: float,
@@ -319,7 +321,7 @@ def _multi_tensor_rprop(
         if not all(
             p.device.type == step.device.type
             and p.device.type in capturable_supported_devices
-            for p, step in zip(params, state_steps, strict=True)
+            for p, step in _zip_strict(params, state_steps)
         ):
             raise AssertionError(
                 f"If capturable=True, params and state_steps must be on supported devices: {capturable_supported_devices}."
@@ -335,11 +337,11 @@ def _multi_tensor_rprop(
         grouped_step_sizes_,
         grouped_state_steps_,
     ), _ in grouped_tensors.values():
-        grouped_params = cast(list[Tensor], grouped_params_)
-        grouped_grads = cast(list[Tensor], grouped_grads_)
-        grouped_prevs = cast(list[Tensor], grouped_prevs_)
-        grouped_step_sizes = cast(list[Tensor], grouped_step_sizes_)
-        grouped_state_steps = cast(list[Tensor], grouped_state_steps_)
+        grouped_params = cast(List[Tensor], grouped_params_)
+        grouped_grads = cast(List[Tensor], grouped_grads_)
+        grouped_prevs = cast(List[Tensor], grouped_prevs_)
+        grouped_step_sizes = cast(List[Tensor], grouped_step_sizes_)
+        grouped_state_steps = cast(List[Tensor], grouped_state_steps_)
 
         # Update steps
         # If steps are on CPU, foreach will fall back to the slow path, which is a for-loop calling t.add(1) over
@@ -411,14 +413,14 @@ def _multi_tensor_rprop(
 
 @_disable_dynamo_if_unsupported(single_tensor_fn=_single_tensor_rprop)
 def rprop(
-    params: list[Tensor],
-    grads: list[Tensor],
-    prevs: list[Tensor],
-    step_sizes: list[Tensor],
-    state_steps: list[Tensor],
+    params: List[Tensor],
+    grads: List[Tensor],
+    prevs: List[Tensor],
+    step_sizes: List[Tensor],
+    state_steps: List[Tensor],
     # kwonly args with defaults are not supported by functions compiled with torchscript issue #70627
     # setting this as kwarg for now as functional API is compiled by torch/distributed/optim
-    foreach: bool | None = None,
+    foreach: Optional[bool]= None,
     capturable: bool = False,
     maximize: bool = False,
     differentiable: bool = False,

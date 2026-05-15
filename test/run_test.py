@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
 import argparse
 import contextlib
 import copy
@@ -19,7 +20,10 @@ from collections import defaultdict
 from collections.abc import Sequence
 from contextlib import ExitStack
 from datetime import datetime
-from importlib.metadata import PackageNotFoundError, version
+try:
+    from importlib.metadata import PackageNotFoundError
+except ImportError:
+    from importlib_metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, cast, NamedTuple
 
@@ -422,9 +426,7 @@ AOT_DISPATCH_TESTS = [
     test for test in TESTS if test.startswith("functorch/test_aotdispatch")
 ]
 FUNCTORCH_TESTS = [test for test in TESTS if test.startswith("functorch")]
-DYNAMO_CORE_TESTS = [
-    test for test in TESTS if test.startswith("dynamo") and "cpython" not in test
-]
+DYNAMO_CORE_TESTS = [test for test in TESTS if test.startswith("dynamo")]
 CPYTHON_TESTS = [test for test in TESTS if "cpython" in test]
 ONNX_TESTS = [test for test in TESTS if test.startswith("onnx")]
 QUANTIZATION_TESTS = [test for test in TESTS if test.startswith("test_quantization")]

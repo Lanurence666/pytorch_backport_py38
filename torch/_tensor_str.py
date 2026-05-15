@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import contextlib
 import dataclasses
 import math
 import textwrap
-from typing import Any
+from typing import Any, Dict, Optional, Set
 
 import torch
 from torch import inf
@@ -15,7 +17,7 @@ class __PrinterOptions:
     threshold: float = 1000
     edgeitems: int = 3
     linewidth: int = 80
-    sci_mode: bool | None = None
+    sci_mode: Optional[bool]= None
 
 
 PRINT_OPTS = __PrinterOptions()
@@ -95,7 +97,7 @@ def set_printoptions(
     PRINT_OPTS.sci_mode = sci_mode
 
 
-def get_printoptions() -> dict[str, Any]:
+def get_printoptions() -> Dict[str, Any]:
     r"""Gets the current options for printing, as a dictionary that
     can be passed as ``**kwargs`` to set_printoptions().
     """

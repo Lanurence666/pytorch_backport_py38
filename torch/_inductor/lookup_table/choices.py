@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import logging
 from functools import lru_cache
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Generator, List, Optional, TYPE_CHECKING, Tuple, Union
 
 import torch
 from torch._inductor import config
@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    
 
     from torch._inductor.codegen.common import KernelTemplate
     from torch._inductor.kernel_inputs import KernelInputs
@@ -29,7 +29,7 @@ class LookupTableChoices(InductorChoices):
     All lookup functionality is contained within this class and can be customized by overriding methods.
     """
 
-    def _get_lookup_table(self) -> dict[str, list[dict[str, Any]]]:
+    def _get_lookup_table(self) -> Dict[str, List[Dict[str, Any]]]:
         """
         Get the template lookup table from config.
         Override this method to use custom lookup table sources (database, API, etc.).
@@ -40,7 +40,7 @@ class LookupTableChoices(InductorChoices):
 
     @staticmethod
     @lru_cache
-    def _get_device_key(device: torch.device) -> str | None:
+    def _get_device_key(device: torch.device) -> Optional[str]:
         """
         Generate a device key for lookup table indexing.
         For CPU devices, returns None.
@@ -89,7 +89,7 @@ class LookupTableChoices(InductorChoices):
 
     def make_lookup_key(
         self, kernel_inputs: KernelInputs, op_name: str, include_device: bool = False
-    ) -> str | None:
+    ) -> Optional[str]:
         """
         Create a flattened lookup key from kernel inputs and operation name.
         Override this method to customize key generation.
@@ -124,7 +124,7 @@ class LookupTableChoices(InductorChoices):
 
     def make_lookup_key_variants(
         self, kernel_inputs: KernelInputs, op_name: str
-    ) -> tuple[str | None, str | None]:
+    ) -> Tuple[Optional[str], Optional[str]]:
         """
         Generate both device-specific and device-agnostic lookup keys.
         Override this method to customize key variant generation.
@@ -145,9 +145,9 @@ class LookupTableChoices(InductorChoices):
 
     @staticmethod
     def _entry_is_valid(
-        cfg: dict[str, Any],
+        cfg: Dict[str, Any],
         template_id: str,
-        template_hash_map: dict[str, str | None] | None,
+        template_hash_map: Union[Dict[str, str, None], None],
     ) -> bool:
         """
         Check if a config entry is valid based on template hash validation.
@@ -207,9 +207,9 @@ class LookupTableChoices(InductorChoices):
         self,
         kernel_inputs: KernelInputs,
         op_name: str,
-        template_uids: list[str],
-        template_hash_map: dict[str, str | None] | None = None,
-    ) -> dict[str, list[dict[str, Any]]]:
+        template_uids: List[str],
+        template_hash_map: Union[Dict[str, str, None], None] = None,
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Unified function to look up template configurations for multiple templates.
         Override this method to customize lookup logic.
@@ -269,7 +269,7 @@ class LookupTableChoices(InductorChoices):
             template_uids,
         )
         # Group configs by template_id
-        configs_by_template: dict[str, list[dict[str, Any]]] = {}
+        configs_by_template: Dict[str, List[Dict[str, Any]]] = {}
         for cfg in config_list:
             if not isinstance(cfg, dict):
                 raise ValueError(
@@ -311,12 +311,12 @@ class LookupTableChoices(InductorChoices):
 
     def _finalize_template_configs(
         self,
-        template_choices: dict[str, Generator[KernelTemplateChoice, None, None]],
+        template_choices: Dict[str, Generator[KernelTemplateChoice, None, None]],
         kernel_inputs: KernelInputs,
-        templates: list[KernelTemplate | ExternKernelChoice],
+        templates: List[Union[KernelTemplate, ExternKernelChoice]],
         op_name: str,
-        kwarg_overrides: dict[str, dict[str, Any]] | None = None,
-    ) -> list[KernelTemplateChoice]:
+        kwarg_overrides: Dict[str, Dict[str, Any]] | None = None,
+    ) -> List[KernelTemplateChoice]:
         """Check lookup table for hits, use those if found, otherwise fall back to parent."""
         # 1. Collect template src_hashes for validation
         template_uids = [template.uid for template in templates]
@@ -362,12 +362,12 @@ class LookupTableChoices(InductorChoices):
 
     def _fallback(
         self,
-        template_choices: dict[str, Generator[KernelTemplateChoice, None, None]],
+        template_choices: Dict[str, Generator[KernelTemplateChoice, None, None]],
         kernel_inputs: KernelInputs,
-        templates: list[KernelTemplate | ExternKernelChoice],
+        templates: List[Union[KernelTemplate, ExternKernelChoice]],
         op_name: str,
-        kwarg_overrides: dict[str, dict[str, Any]] | None = None,
-    ) -> list[KernelTemplateChoice]:
+        kwarg_overrides: Dict[str, Dict[str, Any]] | None = None,
+    ) -> List[KernelTemplateChoice]:
         """Fallback to parent if no lookup table or no matches."""
         # NOTE: this is broken out, so that subclasses are able to override this
         # to handle explicitly the situations where the lookup take had a miss vs
@@ -382,14 +382,14 @@ class LookupTableChoices(InductorChoices):
 
     def _create_lookup_choices(
         self,
-        lookup_results: dict[str, list[dict[str, Any]]],
-        templates: list[KernelTemplate | ExternKernelChoice],
+        lookup_results: Dict[str, List[Dict[str, Any]]],
+        templates: List[Union[KernelTemplate, ExternKernelChoice]],
         kernel_inputs: KernelInputs,
         op_name: str,
-    ) -> list[KernelTemplateChoice]:
+    ) -> List[KernelTemplateChoice]:
         """Create KernelTemplateChoice objects from lookup results using parent's get_ktc method."""
         templates_by_uid = {template.uid: template for template in templates}
-        lookup_choices: list[KernelTemplateChoice] = []
+        lookup_choices: List[KernelTemplateChoice] = []
 
         for template_uid, configs in lookup_results.items():
             template = templates_by_uid[template_uid]

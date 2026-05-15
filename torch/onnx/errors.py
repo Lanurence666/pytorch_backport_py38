@@ -1,6 +1,6 @@
+from __future__ import annotations
 """ONNX exporter exceptions."""
 
-from __future__ import annotations
 
 
 __all__ = [
@@ -10,7 +10,7 @@ __all__ = [
 ]
 
 import textwrap
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 
 if TYPE_CHECKING:
@@ -30,7 +30,7 @@ class UnsupportedOperatorError(OnnxExporterError):
 
     # NOTE: This is legacy and is only used by the torchscript exporter
     # Clean up when the torchscript exporter is removed
-    def __init__(self, name: str, version: int, supported_version: int | None) -> None:
+    def __init__(self, name: str, version: int, supported_version: Optional[int]) -> None:
         if supported_version is not None:
             msg = (
                 f"Exporting the operator '{name}' to ONNX opset version {version} "

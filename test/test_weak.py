@@ -1,5 +1,6 @@
 # Owner(s): ["module: meta tensors"]
 
+from __future__ import annotations
 import copy
 import gc
 import random
@@ -124,16 +125,16 @@ class WeakTest(TestCase):
         d1 = {o2: "5", o3: "6"}
         pairs = [(o2, 7), (o3, 8)]
 
-        tmp1 = wkd1 | wkd2  # Between two WeakKeyDictionaries
+        tmp1 = {**wkd1, **wkd2}  # Between two WeakKeyDictionaries
         self.assertEqual(dict(tmp1), dict(wkd1) | dict(wkd2))
         self.assertIs(type(tmp1), WeakIdKeyDictionary)
-        wkd1 |= wkd2
+        wkd1.update(wkd2)
         self.assertEqual(wkd1, tmp1)
 
-        tmp2 = wkd2 | d1  # Between WeakKeyDictionary and mapping
+        tmp2 = {**wkd2, **d1}  # Between WeakKeyDictionary and mapping
         self.assertEqual(dict(tmp2), dict(wkd2) | d1)
         self.assertIs(type(tmp2), WeakIdKeyDictionary)
-        wkd2 |= d1
+        wkd2.update(d1)
         self.assertEqual(wkd2, tmp2)
 
         tmp3 = wkd3.copy()  # Between WeakKeyDictionary and iterable key, value
@@ -141,7 +142,7 @@ class WeakTest(TestCase):
         self.assertEqual(dict(tmp3), dict(wkd3) | dict(pairs))
         self.assertIs(type(tmp3), WeakIdKeyDictionary)
 
-        tmp4 = d1 | wkd3  # Testing .__ror__
+        tmp4 = {**d1, **wkd3}  # Testing .__ror__
         self.assertEqual(dict(tmp4), d1 | dict(wkd3))
         self.assertIs(type(tmp4), WeakIdKeyDictionary)
 

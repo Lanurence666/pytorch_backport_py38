@@ -1,6 +1,10 @@
-from collections.abc import Callable, Sequence
+from __future__ import annotations
+
+
 from functools import update_wrapper
-from typing import Any, Final, Generic, overload, TypeVar
+from typing import Any, Callable, Dict, Generic, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
+from typing_extensions import Final
+
 
 import torch
 import torch.nn.functional as F
@@ -22,9 +26,9 @@ __all__ = [
 ]
 
 
-# FIXME: Use (*values: *Ts) -> tuple[Tensor for T in Ts] if Mapping-Type is ever added.
+# FIXME: Use (*values: *Ts) -> Tuple[Tensor for T in Ts] if Mapping-Type is ever added.
 #   See https://github.com/python/typing/issues/1216#issuecomment-2126153831
-def broadcast_all(*values: Tensor | Number) -> tuple[Tensor, ...]:
+def broadcast_all(*values: Union[Tensor, Number]) -> Tuple[Tensor, ...]:
     r"""
     Given a list of values (possibly containing numbers), returns a list where each
     value is broadcasted based on the following rules:
@@ -47,7 +51,7 @@ def broadcast_all(*values: Tensor | Number) -> tuple[Tensor, ...]:
             "torch.Tensor or objects implementing __torch_function__."
         )
     if not all(is_tensor_like(v) for v in values):
-        options: dict[str, Any] = dict(dtype=torch.get_default_dtype())
+        options: Dict[str, Any] = dict(dtype=torch.get_default_dtype())
         for value in values:
             if isinstance(value, torch.Tensor):
                 options = dict(dtype=value.dtype, device=value.device)
@@ -60,9 +64,9 @@ def broadcast_all(*values: Tensor | Number) -> tuple[Tensor, ...]:
 
 
 def _standard_normal(
-    shape: Sequence[int | SymInt],
-    dtype: _dtype | None,
-    device: Device | None,
+    shape: Sequence[Union[int, SymInt]],
+    dtype: Optional[_dtype],
+    device: Optional[Device],
 ) -> Tensor:
     if torch._C._get_tracing_state():
         # [JIT WORKAROUND] lack of support for .normal_()
@@ -163,8 +167,8 @@ class lazy_property(Generic[T, R]):
     def __get__(self, instance: T, obj_type: Any = None) -> R: ...
 
     def __get__(
-        self, instance: T | None, obj_type: Any = None
-    ) -> "R | _lazy_property_and_property[T, R]":
+        self, instance: Optional[T], obj_type: Any = None
+    ) -> "Union[R, _lazy_property_and_property[T, R]]":
         if instance is None:
             return _lazy_property_and_property(self.wrapped)
         with torch.enable_grad():

@@ -1,10 +1,10 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Provide an API for writing protocol buffers to event files to be consumed by TensorBoard for visualization."""
-from __future__ import annotations
 
 import os
 import time
-from typing import TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Type, Union
 
 import torch
 
@@ -729,10 +729,10 @@ class SummaryWriter:
     def add_figure(
         self,
         tag: str,
-        figure: Figure | list[Figure],
-        global_step: int | None = None,
+        figure: Union[Figure, List[Figure]],
+        global_step: Optional[int] = None,
         close: bool = True,
-        walltime: float | None = None,
+        walltime: Optional[float] = None,
     ) -> None:
         """Render matplotlib figure into an image and add it to summary.
 

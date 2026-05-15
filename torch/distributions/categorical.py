@@ -1,10 +1,13 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch import nan, Tensor
 from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 from torch.distributions.utils import lazy_property, logits_to_probs, probs_to_logits
+from typing import Optional
 
 
 __all__ = ["Categorical"]
@@ -55,9 +58,9 @@ class Categorical(Distribution):
 
     def __init__(
         self,
-        probs: Tensor | None = None,
-        logits: Tensor | None = None,
-        validate_args: bool | None = None,
+        probs: Optional[Tensor]= None,
+        logits: Optional[Tensor]= None,
+        validate_args: Optional[bool]= None,
     ) -> None:
         if (probs is None) == (logits is None):
             raise ValueError(

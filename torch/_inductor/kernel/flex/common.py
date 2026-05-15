@@ -1,11 +1,12 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Common utilities and functions for flex attention kernels"""
 
 import math
-from collections.abc import Sequence
+
 from functools import partial
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Sequence, Set, TYPE_CHECKING, Union, cast
 
 import sympy
 
@@ -18,7 +19,7 @@ from torch.utils._pytree import tree_map, tree_map_only
 if TYPE_CHECKING:
     from torch._inductor.codegen.cuda_combined_scheduling import _IntLike
 else:
-    _IntLike = int | sympy.Expr
+    _IntLike = Union[int, sympy.Expr]
 
 
 from ...ir import (
@@ -46,10 +47,10 @@ from ...select_algorithm import realize_inputs
 from ...utils import load_template
 
 
-SubgraphResults = list[ComputedBuffer | None] | ComputedBuffer | None
+SubgraphResults = Optional[Union[List[Optional[ComputedBuffer]], ComputedBuffer]]
 
 
-def zeros_and_scatter_lowering(shape: list[int], indices, values):
+def zeros_and_scatter_lowering(shape: List[int], indices, values):
     """To support backwards on captured buffers we register a specific lowering for our specific custom up"""
     # Always accumulate into fp32 then cast
     grad = _full(0, values.get_device(), torch.float32, shape)
@@ -96,7 +97,7 @@ def zeros_and_scatter_lowering(shape: list[int], indices, values):
 
 def get_fwd_subgraph_outputs(
     subgraph_buffer: SubgraphResults, mask_graph_buffer: SubgraphResults
-) -> list[ComputedBuffer | None]:
+) -> Union[List[ComputedBuffer, None]]:
     subgraph_buffer = (
         subgraph_buffer if isinstance(subgraph_buffer, Sequence) else [subgraph_buffer]
     )
@@ -110,7 +111,7 @@ def get_fwd_subgraph_outputs(
 
 
 def build_subgraph_module_buffer(
-    args: list[TensorBox],
+    args: List[TensorBox],
     graph_module: torch.fx.GraphModule,
 ) -> SubgraphResults:
     """This function's goal is to take in the required args and produce the subgraph buffer
@@ -134,7 +135,7 @@ def build_subgraph_module_buffer(
     with V.set_graph_handler(pw_subgraph):  # type: ignore[arg-type]
         pw_subgraph.run(*args)
 
-    def convert_output_node_to_buffer(output_buffer) -> ComputedBuffer | None:
+    def convert_output_node_to_buffer(output_buffer) -> Optional[ComputedBuffer]:
         if output_buffer is None:
             return None
         if isinstance(output_buffer, ComputedBuffer):
@@ -164,72 +165,20 @@ def build_subgraph_module_buffer(
     return tree_map(convert_output_node_to_buffer, pw_subgraph.graph_outputs)
 
 
-def build_subgraph_buffer(args: list[TensorBox], subgraph: Subgraph) -> SubgraphResults:
+def build_subgraph_buffer(args: List[TensorBox], subgraph: Subgraph) -> SubgraphResults:
     return build_subgraph_module_buffer(args, subgraph.graph_module)
 
 
-def maybe_realize(args: list[IRNode | None]):
+def maybe_realize(args: List[Optional[IRNode]]):
     """Accepts a list of optional IRNodes and returns a list of realized IRNodes"""
     return tree_map(
         lambda x: (
-            realize_inputs(x) if x is not None and not isinstance(x, sympy.Expr) else x
+            realize_inputs(x)
+            if x is not None and not isinstance(x, sympy.Symbol)
+            else x
         ),
         args,
     )
-
-
-def realize_captures_for_cutedsl(buffers):
-    """Realize captured buffers for CuteDSL, preserving views and plain inputs.
-
-    Unlike maybe_realize (used by the Triton path), CuteDSL needs physical
-    tensors passed at runtime. Pointwise/computed captures must be materialized
-    into a fresh buffer whose layout matches the logical shape the subgraph
-    indexes. ReinterpretView captures use unique synthetic inputs so aliased
-    views keep distinct call-site size/stride/offset metadata while the kernel
-    indexes each captured view argument from offset zero.
-
-    Realized captures are registered on V.graph so the CuteDSL template can
-    resolve view nodes without explicit plumbing from callers.
-    """
-    from ...ir import ExternKernel, FixedLayout, InputBuffer, ReinterpretView
-
-    view_captures: dict[str, ReinterpretView] = {}
-
-    def _realize(x):
-        if x is None or isinstance(x, sympy.Expr):
-            return x
-        realized = ExternKernel.realize_input(x)
-        if isinstance(realized, ReinterpretView):
-            layout = realized.get_layout()
-            capture_index = len(V.graph._cutedsl_capture_nodes) + len(view_captures)
-            name = V.graph.qualify_name(f"cutedsl_capture{capture_index}")
-            view_captures[name] = realized
-            # Give each captured view a logical input name so aliasing views do
-            # not collapse to their shared base buffer.
-            return InputBuffer(
-                name=name,
-                layout=FixedLayout(
-                    layout.device,
-                    layout.dtype,
-                    layout.size,
-                    layout.stride,
-                    is_pinned=layout.is_pinned,
-                ),
-            )
-        if isinstance(realized, InputBuffer):
-            return realized
-        return ExternKernel.copy_input(realized)
-
-    buffers = tree_map(_realize, buffers)
-    freeze_irnodes(buffers)
-
-    for buf in tree_map_only(IRNode, lambda x: x, buffers) if buffers else []:
-        if isinstance(buf, IRNode) and (name := buf.maybe_get_name()):
-            V.graph._cutedsl_capture_nodes[name] = buf
-    # Keep the original view nodes for call-site reinterpret_tensor emission.
-    V.graph._cutedsl_capture_nodes.update(view_captures)
-
-    return buffers
 
 
 def freeze_irnodes(tree: Any) -> Any:
@@ -252,7 +201,7 @@ def create_placeholder(
     name: str,
     dtype: torch.dtype,
     device: torch.device,
-    size: list[int] | None = None,
+    size: Optional[List[int]] = None
 ) -> TensorBox:
     """Creates a placeholder input buffers for producing subgraph_output."""
     input_buffer = InputBuffer(
@@ -276,7 +225,7 @@ def construct_strides(
     assert len(sizes) == len(fill_order), (
         "Length of sizes must match the length of the fill order"
     )
-    strides: list[_IntLike] = [0] * len(sizes)
+    strides: List[_IntLike] = [0] * len(sizes)
 
     # Start with stride 1 for the innermost dimension
     current_stride: _IntLike = 1
@@ -366,7 +315,7 @@ def contiguous_last_dim(x):
 
 
 def set_head_dim_values(
-    kernel_options: dict[str, Any], qk_head_dim, v_head_dim, graph_sizevars
+    kernel_options: Dict[str, Any], qk_head_dim, v_head_dim, graph_sizevars
 ):
     """
     Mutates kernel options, adding head dimension calculations.

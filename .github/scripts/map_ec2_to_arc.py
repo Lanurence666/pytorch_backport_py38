@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Map EC2 runner labels to ARC equivalents using .github/arc.yaml.
 
 Takes a GitHub Actions test matrix, replaces each runner with its ARC

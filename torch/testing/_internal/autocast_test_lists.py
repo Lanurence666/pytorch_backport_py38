@@ -5,6 +5,7 @@ import collections
 import torch
 from torch.testing._internal.common_utils import TEST_WITH_ROCM
 from torch.testing._internal.common_utils import TestCase
+from typing import List, cast
 
 
 class AutocastTestLists:
@@ -438,7 +439,7 @@ class TestAutocast(TestCase):
                 if isinstance(first, torch.Tensor):
                     return torch.equal(first, second)
                 elif isinstance(first, collections.abc.Iterable):
-                    return all(compare(f, s) for f, s in zip(first, second, strict=False))
+                    return all(compare(f, s) for f, s in zip(first, second))
                 else:
                     return first == second
 

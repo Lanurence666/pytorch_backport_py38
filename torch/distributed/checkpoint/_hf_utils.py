@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import io
 import json
 import struct
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional, Tuple
 
 import torch
 
@@ -56,7 +58,7 @@ class _HFStorageInfo:
 
 
 def _gen_file_name(
-    index: int, largest_index: int, shard_index: int | None = None
+    index: Optional[int, largest_index: int, shard_index: int]= None
 ) -> str:
     if shard_index is not None:
         return (
@@ -76,7 +78,7 @@ def _gen_file_name(
         )
 
 
-def _get_safetensors_file_metadata(file_bytes: io.IOBase) -> tuple[Any, int]:
+def _get_safetensors_file_metadata(file_bytes: io.IOBase) -> Tuple[Any, int]:
     # this uses the same logic that's done in HF code base
     # https://github.com/2404589803/huggingface_hub/blob/main/src/huggingface_hub/hf_api.py#L5308
     # and follows their documentation on how their files are serialized
@@ -98,7 +100,7 @@ def _get_dtype(dtype_str: str) -> torch.dtype:
     return dtype
 
 
-def _get_dcp_custom_metadata(metadata: Any) -> Any | None:
+def _get_dcp_custom_metadata(metadata: Any) -> Optional[Any]:
     if DEFAULT_EXTRA_METADATA_KEY in metadata:
         custom_metadata = metadata[DEFAULT_EXTRA_METADATA_KEY]
         if CUSTOM_METADATA_KEY in custom_metadata:

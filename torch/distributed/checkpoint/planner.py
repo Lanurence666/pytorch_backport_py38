@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import abc
 import io
 import operator
 from dataclasses import dataclass
 from enum import auto, Enum
 from functools import reduce
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import torch
 from torch.distributed.checkpoint.metadata import (
@@ -62,12 +64,12 @@ class WriteItem:
     type: WriteItemType
 
     # Size of bytesIO data to be written.
-    bytes_io_data: BytesIOWriteData | None = None
+    bytes_io_data: Optional[BytesIOWriteData]= None
 
     # Value present if it's a tensor write
-    tensor_data: TensorWriteData | None = None
+    tensor_data: Optional[TensorWriteData]= None
 
-    def tensor_storage_size(self) -> int | None:
+    def tensor_storage_size(self) -> Optional[int]:
         """
         Calculates the storage size of the underlying tensor, or None if this is not a tensor write.
 
@@ -103,7 +105,7 @@ class ReadItem:
 
 @dataclass(frozen=True)
 class SavePlan:
-    items: list[WriteItem]
+    items: List[WriteItem]
     storage_data: Any = None
     planner_data: Any = None
     # This is used to indicate that the ranks should
@@ -113,7 +115,7 @@ class SavePlan:
 
 @dataclass
 class LoadPlan:
-    items: list[ReadItem]
+    items: List[ReadItem]
     storage_data: Any = None
     planner_data: Any = None
 
@@ -194,7 +196,7 @@ class SavePlanner(abc.ABC):
     >>>         ]
     >>>         all_plans = [
     >>>             replace(plan, items=items)
-    >>>             for plan, items in zip(all_plans, items_per_rank, strict=True)
+    >>>             for plan, items in _zip_strict(all_plans, items_per_rank)
     >>>         ]
     >>>         return super().create_global_plan(all_plans)
 
@@ -217,30 +219,30 @@ class SavePlanner(abc.ABC):
 
     # Save plan for the current rank as computed by `create_local_plan` API
     # Cached on the local rank.
-    _cached_save_plan: dict[str, SavePlan] = {}
+    _cached_save_plan: Dict[str, SavePlan] = {}
     # Final save plan for the current rank.
     # This is created by merging the plan created by `create_local_plan` API
     # and the result of `create_global_plan` for the given rank.
     # This is the final plan computed by the `finish_plan` API that gets
     # sent to the `write_data`.
     # Cached on the local rank.
-    _cached_final_save_plan: dict[str, SavePlan] = {}
+    _cached_final_save_plan: Dict[str, SavePlan] = {}
     # Collection of all the local plans from all the ranks.
     # This is the input to the `create_global_plan` API.
     # Cached on the coordinator rank.
-    _cached_all_plans: dict[str, list[SavePlan]] = {}
+    _cached_all_plans: Dict[str, List[SavePlan]] = {}
     # Global checkpoint plan as computed by `create_global_plan` API.
     # Cached on the coordinator rank.
-    _cached_global_plan: dict[str, list[SavePlan]] = {}
+    _cached_global_plan: Dict[str, List[SavePlan]] = {}
     # Metadata for the global checkpoint plan as computed by `create_global_plan` API.
     # Cached on the coordinator rank.
-    _cached_metadata: dict[str, Metadata] = {}
+    _cached_metadata: Dict[str, Metadata] = {}
 
     @abc.abstractmethod
     def set_up_planner(
         self,
         state_dict: STATE_DICT_TYPE,
-        storage_meta: StorageMeta | None = None,
+        storage_meta: Optional[StorageMeta]= None,
         is_coordinator: bool = False,
     ) -> None:
         """
@@ -264,8 +266,8 @@ class SavePlanner(abc.ABC):
 
     @abc.abstractmethod
     def create_global_plan(
-        self, all_plans: list[SavePlan]
-    ) -> tuple[list[SavePlan], Metadata]:
+        self, all_plans: List[SavePlan]
+    ) -> Tuple[List[SavePlan], Metadata]:
         """
         Compute the global checkpoint plan and return the local plan of each rank.
 
@@ -281,7 +283,7 @@ class SavePlanner(abc.ABC):
         """
 
     @abc.abstractmethod
-    def resolve_data(self, write_item: WriteItem) -> torch.Tensor | io.BytesIO:
+    def resolve_data(self, write_item: WriteItem) -> Union[torch.Tensor, io.BytesIO]:
         """
         Transform and prepare ``write_item`` from ``state_dict`` for storage, ensuring idempotency and thread-safety.
 
@@ -379,7 +381,7 @@ class LoadPlanner:
     def set_up_planner(
         self,
         state_dict: STATE_DICT_TYPE,
-        metadata: Metadata | None = None,
+        metadata: Optional[Metadata]= None,
         is_coordinator: bool = False,
     ) -> None:
         """
@@ -397,7 +399,7 @@ class LoadPlanner:
         """
 
     @abc.abstractmethod
-    def create_global_plan(self, global_plan: list[LoadPlan]) -> list[LoadPlan]:
+    def create_global_plan(self, global_plan: List[LoadPlan]) -> List[LoadPlan]:
         """
         Compute the global load plan and return plans for each rank.
 

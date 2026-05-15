@@ -8,6 +8,19 @@ import click
 import spin
 
 
+try:
+    from hashlib import file_digest as _hashlib_file_digest_compat
+except ImportError:
+    def _hashlib_file_digest(file, digest, /):
+        import hashlib
+        if isinstance(digest, str):
+            digest = hashlib.new(digest)
+        while True:
+            chunk = file.read(1 << 16)
+            if not chunk:
+                break
+            digest.update(chunk)
+        return digest
 CWD = Path(__file__).absolute().parent.parent
 sys.path.insert(0, str(CWD))  # this only affects the current process
 from tools.clean import clean as _clean
@@ -15,7 +28,7 @@ from tools.clean import clean as _clean
 
 def file_digest(file, algorithm: str):
     try:
-        return hashlib.file_digest(file, algorithm)
+        return _hashlib_file_digest_compat(file, algorithm)
     except AttributeError:
         pass  # Fallback to manual implementation below
     hash = hashlib.new(algorithm)
@@ -198,13 +211,11 @@ SLOW_LINTERS = {
     "CODESPELL",
     "FLAKE8",
     "GB_REGISTRY",
-    "GENERATED_SHIMS_VERSION",
     "PYFMT",
     "STABLE_SHIM_USAGE",
     "STABLE_SHIM_VERSION",
     "TEST_DEVICE_BIAS",
     "TEST_HAS_MAIN",
-    "SCOPED_LIBRARY",
 }
 
 

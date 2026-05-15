@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
-from typing import cast
+from __future__ import annotations
+
+from typing import Callable, Dict, List, Optional, Union, cast, overload
 
 import torch
 from torch import Tensor
@@ -29,16 +31,16 @@ class Adagrad(Optimizer):
     def __init__(
         self,
         params: ParamsT,
-        lr: float | Tensor = 1e-2,
+        lr: Union[float, Tensor] = 1e-2,
         lr_decay: float = 0,
         weight_decay: float = 0,
         initial_accumulator_value: float = 0,
         eps: float = 1e-10,
-        foreach: bool | None = None,
+        foreach: Optional[bool] = None,
         *,
         maximize: bool = False,
         differentiable: bool = False,
-        fused: bool | None = None,
+        fused: Optional[bool] = None,
     ) -> None:
         if isinstance(lr, Tensor) and lr.numel() != 1:
             raise ValueError("Tensor lr must be 1-element")
@@ -200,10 +202,10 @@ class Adagrad(Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
-            params_with_grad: list[Tensor] = []
-            grads: list[Tensor] = []
-            state_sums: list[Tensor] = []
-            state_steps: list[Tensor] = []
+            params_with_grad: List[Tensor] = []
+            grads: List[Tensor] = []
+            state_sums: List[Tensor] = []
+            state_steps: List[Tensor] = []
 
             has_sparse_grad, has_complex = self._init_group(
                 group, params_with_grad, grads, state_sums, state_steps
@@ -283,17 +285,17 @@ Adagrad.__doc__ = (
 
 
 def adagrad(
-    params: list[Tensor],
-    grads: list[Tensor],
-    state_sums: list[Tensor],
-    state_steps: list[Tensor],
-    fused: bool | None = None,
-    grad_scale: Tensor | None = None,
-    found_inf: Tensor | None = None,
+    params: List[Tensor],
+    grads: List[Tensor],
+    state_sums: List[Tensor],
+    state_steps: List[Tensor],
+    fused: Optional[bool] = None,
+    grad_scale: Optional[Tensor] = None,
+    found_inf: Optional[Tensor] = None,
     # kwonly args with defaults are not supported by functions compiled with torchscript issue #70627
     # setting these as kwargs for now as functional API is compiled by torch/distributed/optim
     has_sparse_grad: bool = False,
-    foreach: bool | None = None,
+    foreach: Optional[bool] = None,
     differentiable: bool = False,
     has_complex: bool = False,
     *,
@@ -362,12 +364,12 @@ def _make_sparse(grad, grad_indices, values):
 
 
 def _single_tensor_adagrad(
-    params: list[Tensor],
-    grads: list[Tensor],
-    state_sums: list[Tensor],
-    state_steps: list[Tensor],
-    grad_scale: Tensor | None,
-    found_inf: Tensor | None,
+    params: List[Tensor],
+    grads: List[Tensor],
+    state_sums: List[Tensor],
+    state_steps: List[Tensor],
+    grad_scale: Optional[Tensor],
+    found_inf: Optional[Tensor],
     *,
     lr: float,
     weight_decay: float,
@@ -384,9 +386,8 @@ def _single_tensor_adagrad(
     if not torch.jit.is_scripting():
         lr = _to_scalar(lr)
 
-    for param, grad, state_sum, step_t in zip(
-        params, grads, state_sums, state_steps, strict=True
-    ):
+    for param, grad, state_sum, step_t in _zip_strict(
+        params, grads, state_sums, state_steps):
         # update step
         step_t += 1
         step = _get_value(step_t)
@@ -430,12 +431,12 @@ def _single_tensor_adagrad(
 
 
 def _multi_tensor_adagrad(
-    params: list[Tensor],
-    grads: list[Tensor],
-    state_sums: list[Tensor],
-    state_steps: list[Tensor],
-    grad_scale: Tensor | None,
-    found_inf: Tensor | None,
+    params: List[Tensor],
+    grads: List[Tensor],
+    state_sums: List[Tensor],
+    state_steps: List[Tensor],
+    grad_scale: Optional[Tensor],
+    found_inf: Optional[Tensor],
     *,
     lr: float,
     weight_decay: float,
@@ -466,10 +467,10 @@ def _multi_tensor_adagrad(
         device_state_sums_,
         device_state_steps_,
     ), _ in grouped_tensorlists.values():
-        device_params = cast(list[Tensor], device_params_)
-        device_grads = cast(list[Tensor], device_grads_)
-        device_state_sums = cast(list[Tensor], device_state_sums_)
-        device_state_steps = cast(list[Tensor], device_state_steps_)
+        device_params = cast(List[Tensor], device_params_)
+        device_grads = cast(List[Tensor], device_grads_)
+        device_state_sums = cast(List[Tensor], device_state_sums_)
+        device_state_steps = cast(List[Tensor], device_state_steps_)
 
         device_has_sparse_grad = has_sparse_grad and any(
             grad.is_sparse for grad in device_grads
@@ -541,14 +542,14 @@ def _multi_tensor_adagrad(
 
 
 def _fused_adagrad(
-    params: list[Tensor],
-    grads: list[Tensor],
-    state_sums: list[Tensor],
-    state_steps: list[Tensor],
-    grad_scale: Tensor | None,
-    found_inf: Tensor | None,
+    params: List[Tensor],
+    grads: List[Tensor],
+    state_sums: List[Tensor],
+    state_steps: List[Tensor],
+    grad_scale: Optional[Tensor],
+    found_inf: Optional[Tensor],
     *,
-    lr: float | Tensor,
+    lr: Union[float, Tensor],
     weight_decay: float,
     lr_decay: float,
     eps: float,
@@ -573,7 +574,7 @@ def _fused_adagrad(
     found_inf_dict: DeviceDict = (
         {found_inf.device: found_inf} if found_inf is not None else {}
     )
-    lr_dict: DeviceDict | None = (
+    lr_dict: Optional[DeviceDict] = (
         {lr.device: lr} if isinstance(lr, Tensor) and str(lr.device) != "cpu" else None
     )
 
@@ -589,10 +590,10 @@ def _fused_adagrad(
         ),
         _,
     ) in grouped_tensors.items():
-        device_params = cast(list[Tensor], device_params_)
-        device_grads = cast(list[Tensor], device_grads_)
-        device_state_sums = cast(list[Tensor], device_state_sums_)
-        device_state_steps = cast(list[Tensor], device_state_steps_)
+        device_params = cast(List[Tensor], device_params_)
+        device_grads = cast(List[Tensor], device_grads_)
+        device_state_sums = cast(List[Tensor], device_state_sums_)
+        device_state_steps = cast(List[Tensor], device_state_steps_)
 
         device_grad_scale, device_found_inf = None, None
         if grad_scale is not None:

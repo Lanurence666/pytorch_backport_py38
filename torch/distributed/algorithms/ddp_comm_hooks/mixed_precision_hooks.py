@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, no_type_check
+from typing import Any, cast, no_type_check
 
 import torch
 import torch.distributed as dist

@@ -1,5 +1,7 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import enum
 import operator
 from collections.abc import Callable
@@ -15,6 +17,7 @@ from torch.fx import GraphModule
 from torch.fx.graph import Node
 
 from .ns_types import NSNodeTargetType, NSResultsType
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 
 toq = torch.ops.quantized
@@ -39,8 +42,8 @@ def get_node_first_input_and_output_type(
     node: Node,
     gm: GraphModule,
     logger_cls: Callable,
-    node_type_to_io_type_map: dict[str, set[NSNodeTargetType]],
-) -> tuple[NodeInputOrOutputType, NodeInputOrOutputType]:
+    node_type_to_io_type_map: Dict[str, Set[NSNodeTargetType]],
+) -> Tuple[NodeInputOrOutputType, NodeInputOrOutputType]:
     # TODO(future PR): clean this up
     FUNS_IO_TYPE_FP32 = node_type_to_io_type_map["funs_io_type_fp32"]
     FUNS_IO_TYPE_FP16 = node_type_to_io_type_map["funs_io_type_fp16"]
@@ -173,8 +176,8 @@ def get_node_first_input_and_output_type(
 def get_node_input_qparams(
     node: Node,
     gm: GraphModule,
-    node_type_to_io_type_map: dict[str, set[NSNodeTargetType]],
-) -> tuple[torch.Tensor | float, torch.Tensor | int] | None:
+    node_type_to_io_type_map: Dict[str, Set[NSNodeTargetType]],
+) -> Optional[Union[Tuple[torch.Tensor, float, torch.Tensor, int]]]:
     """
     Returns the qparams (scale, zero_point) of the first input to `node`,
     if they can be inferred from the graph.
@@ -322,7 +325,7 @@ def get_number_of_non_param_args(
     return 1
 
 
-def get_arg_indices_of_inputs_to_log(node: Node) -> list[int]:
+def get_arg_indices_of_inputs_to_log(node: Node) -> List[int]:
     """
     Returns the indices of args of the node which we should attach
     loggers to, if input logging is enabled.

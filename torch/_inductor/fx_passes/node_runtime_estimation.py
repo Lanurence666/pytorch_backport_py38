@@ -1,14 +1,14 @@
+from __future__ import annotations
 """
-Node runtime estimation for overlap scheduling.
+Collective runtime estimation using CUDA events and power-of-2 rounding.
 """
 
-from __future__ import annotations
 
 import functools
 import itertools
 import operator
 from functools import lru_cache
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import torch
 import torch.fx as fx
@@ -21,7 +21,7 @@ from torch._logging import getArtifactLogger, trace_structured
 from torch.fx.operator_schemas import normalize_function
 
 
-def _format_csv(headers: list[str], rows: list[list[str]]) -> str:
+def _format_csv(headers: List[str], rows: List[List[str]]) -> str:
     """Format data as CSV. Human-readable and easily parseable."""
     lines = [",".join(headers)]
     for row in rows:
@@ -47,7 +47,7 @@ def _get_collective_key(coll_node: fx.Node) -> str:
     )
     group_size = kwargs.get("group_size", None)
 
-    tensor_bytes: int | None = None
+    tensor_bytes: Optional[int]= None
     success, args, kw = fx_utils.get_fake_args_kwargs(coll_node)
     if success:
 
@@ -67,7 +67,7 @@ def _get_collective_key(coll_node: fx.Node) -> str:
     return f"{coll_node.target} group_size:{group_size} group_name:{group_name} input_bytes:{tensor_bytes}"
 
 
-def _get_collective_estimations(coll_node: fx.Node) -> tuple[float, float]:
+def _get_collective_estimations(coll_node: fx.Node) -> Tuple[float, float]:
     """Get NCCL and Inductor analytical estimations for a collective node.
 
     Returns: (nccl_ms, inductor_ms)
@@ -94,12 +94,12 @@ log = getArtifactLogger(__name__, "node_runtime_estimation")
 # solvable in future, potentially with workflow to seed cache
 @clear_on_fresh_cache
 @lru_cache
-def _get_collective_cache() -> dict[str, float]:
+def _get_collective_cache() -> Dict[str, float]:
     """Get process-local cache for collective benchmarks."""
     return {}
 
 
-def get_cached_runtime(key: str) -> float | None:
+def get_cached_runtime(key: str) -> Optional[float]:
     """Get cached runtime from process-local cache."""
     return _get_collective_cache().get(key)
 
@@ -109,7 +109,7 @@ def set_cached_runtime(key: str, value: float) -> None:
     _get_collective_cache()[key] = value
 
 
-def get_hint(x: int | torch.SymInt) -> int | None:
+def get_hint(x: Union[int, torch.SymInt]) -> Optional[int]:
     if isinstance(x, int):
         return x
     assert isinstance(x, torch.SymInt)
@@ -140,10 +140,10 @@ def _median(lst):
 
 def _benchmark_collective_with_cuda_events_impl(
     n: torch.fx.Node,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
     nruns: int,
-) -> float | None:
+) -> Optional[float]:
     """
     Core benchmarking logic using CUDA events and barriers.
     Returns runtime in ms or None on failure.
@@ -193,7 +193,7 @@ def _benchmark_collective_with_cuda_events_impl(
 def benchmark_collective_with_cuda_events(
     n: torch.fx.Node,
     nruns: int = 2,
-) -> tuple[float | None, str]:
+) -> Union[Tuple[float, None, str]]:
     """
     Benchmark collective with CUDA events. Returns (runtime_ms, cache_key) or (None, "") on failure.
     """
@@ -205,7 +205,7 @@ def benchmark_collective_with_cuda_events(
 def benchmark_collective_with_cuda_events_impl(
     n: torch.fx.Node,
     nruns: int = 3,
-) -> tuple[float | None, str]:
+) -> Union[Tuple[float, None, str]]:
     """
     Benchmark collective with CUDA events. Returns (runtime_ms, cache_key) or (None, "") on failure.
     """
@@ -232,7 +232,7 @@ def benchmark_collective_with_cuda_events_impl(
         return None, ""
 
     # Extract actual input size in BYTES (first tensor argument)
-    actual_bytes: int | None = None
+    actual_bytes: Optional[int]= None
 
     def extract_tensor_info(t: torch.Tensor) -> torch.Tensor:
         nonlocal actual_bytes
@@ -276,9 +276,9 @@ def benchmark_collective_with_cuda_events_impl(
 
 
 def _log_compute_estimations(
-    compute_nodes: list[fx.Node],
-    benchmarked_estimations: list[float],
-    analytical_estimations: list[float],
+    compute_nodes: List[fx.Node],
+    benchmarked_estimations: List[float],
+    analytical_estimations: List[float],
 ) -> None:
     """Log compute node runtime estimations comparing benchmarked vs analytical."""
     import torch.utils._pytree as pytree
@@ -359,10 +359,10 @@ def _log_graph_collective_benchmarks(gm: fx.GraphModule, artifact_name: str) -> 
 
 
 def _log_collective_benchmarks(
-    collective_nodes: list[fx.Node],
-    collective_keys: list[str] | None = None,
-    benchmarked_medians: list[float] | None = None,
-    world_size: int | None = None,
+    collective_nodes: List[fx.Node],
+    collective_keys: Optional[List[str]]= None,
+    benchmarked_medians: Optional[List[float]]= None,
+    world_size: Optional[int]= None,
     artifact_name: str = "fx_collectives_analytical_estimation",
 ) -> None:
     """Log collective estimations for tlparse. Includes benchmarks if provided."""

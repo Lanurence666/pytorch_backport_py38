@@ -1,14 +1,16 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 import copy
 import logging
 import operator
 from collections import defaultdict
-from collections.abc import Callable
+
 from enum import Enum
 from inspect import Parameter, Signature, signature
 from types import MethodType
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
 import torch.fx as fx
@@ -129,7 +131,7 @@ def _insert_stage_symbolic_backward(
     output_node: fx.Node,
 ):
     # Collect metadata about tuple output values. TODO: move this to split_module or FX IR
-    tuples: dict[fx.Node, tuple] = {}
+    tuples: Dict[fx.Node, tuple] = {}
     for node in reversed(g.nodes):
         if node.op == "call_function":
             # In the forward pass, only emit placeholder, module calls, and
@@ -169,7 +171,7 @@ def _insert_stage_symbolic_backward(
     # We will only emit backward operations for nodes that can contribute
     # to the specified loss value.
     live_nodes = {loss_node: None}
-    val_to_grad: dict[fx.Node, fx.Node | None] = {loss_node: None}
+    val_to_grad: Union[Dict[fx.Node, fx.Node, None]]= {loss_node: None}
 
     def assign_or_accumulate_grad(forward_node, grad_value):
         if forward_node in val_to_grad and forward_node.op != "placeholder":
@@ -190,7 +192,7 @@ def _insert_stage_symbolic_backward(
             fx.node.map_arg(node.args, add_to_live_nodes)
             fx.node.map_arg(node.kwargs, add_to_live_nodes)
             if node.op == "call_module":
-                output_grads: tuple[fx.Node | None, ...] | fx.Node | None
+                output_grads: Optional[Union[Tuple[fx.Node, None, ...], fx.Node]]
                 if node in tuples:
                     stage_output = tuples[node]
                     output_grads = tuple(val_to_grad.get(n) for n in tuples[node])
@@ -364,7 +366,7 @@ class MultiUseParameterConfig(Enum):
     REPLICATE = 2
 
 
-MultiUseParamSpec = MultiUseParameterConfig | dict[str, MultiUseParameterConfig]
+MultiUseParamSpec = Union[MultiUseParameterConfig, Dict[str, MultiUseParameterConfig]]
 
 
 class DetachExecutor(fx.Interpreter):
@@ -447,7 +449,7 @@ class _LinearNodeList:
     def to_graph(self):
         graph = fx.Graph()
 
-        ref_str_to_node: dict[str, fx.Node] = {}
+        ref_str_to_node: Dict[str, fx.Node] = {}
 
         def ref_to_node(arg):
             if isinstance(arg, _NodeReference):
@@ -573,16 +575,16 @@ class Pipe(torch.nn.Module):
 
         # Map parameter value to a dictionary that maps the user pipeline module
         # to the local qualname within that module
-        params_to_users: dict[torch.nn.Parameter, dict[str, str]] = {}
+        params_to_users: Dict[torch.nn.Parameter, Dict[str, str]] = {}
 
         for m_qualname, mod in self.split_gm.named_children():
             for p_qualname, param in mod.named_parameters():
                 params_to_users.setdefault(param, {})
                 params_to_users[param][m_qualname] = p_qualname
 
-        self.replicated_params: list[dict[str, str]] = [
+        self.replicated_params: List[Dict[str, str]] = [
             use_mapping
-            for use_mapping in params_to_users.values()
+            for _, use_mapping in params_to_users.items()
             if len(use_mapping) > 1
         ]
 
@@ -663,7 +665,7 @@ class Pipe(torch.nn.Module):
     @staticmethod
     def _number_and_count_forward_stages(gm: fx.GraphModule):
         num_stages = 0
-        found_idxs: dict[int, None] = {}
+        found_idxs: Dict[int, None] = {}
         for node in gm.graph.nodes:
             if node.op == "call_module" and node.target.startswith(PP_SUBMOD_PREFIX):
                 node.meta["stage_idx"] = int(node.target[len(PP_SUBMOD_PREFIX) + 1 :])
@@ -685,7 +687,7 @@ class Pipe(torch.nn.Module):
     def _from_traced(
         mod: torch.nn.Module,
         exported_program: ExportedProgram,
-        multi_use_param_spec: MultiUseParamSpec | None = None,
+        multi_use_param_spec: Optional[MultiUseParamSpec]= None,
         output_loss_value_spec=None,
         split_policy: Callable[[torch.fx.GraphModule], torch.fx.GraphModule]
         | None = None,
@@ -710,7 +712,7 @@ class Pipe(torch.nn.Module):
         # Deduplicate `get_attr` nodes that refer to the same parameter . Downstream code for moving
         # parameters relies on the invariant that parameter accesses happen once. This is not necessarily
         # the case (especially with custom tracers), so fix that up here.
-        get_attr_nodes: dict[str, fx.Node] = {}
+        get_attr_nodes: Dict[str, fx.Node] = {}
         for node in traced.graph.nodes:  # type: ignore[union-attr]
             if node.op == "get_attr":
                 get_attr_nodes.setdefault(node.target, node)
@@ -894,7 +896,7 @@ class Pipe(torch.nn.Module):
 
         # [aliasing] store tensor id -> list of FQNs, built from state dict
         # Also assign non-persistent buffers
-        id_to_fqns: dict[int, set[str]] = defaultdict(set)
+        id_to_fqns: Dict[int, Set[str]] = defaultdict(set)
         for fqn, tensor in mod.state_dict(keep_vars=True).items():
             id_to_fqns[id(tensor)].add(fqn)
         for fqn, tensor in mod.named_buffers():
@@ -904,7 +906,7 @@ class Pipe(torch.nn.Module):
         # need to move the `get_attr` nodes from the root of the graph to those
         # hierarchies.
         # [aliasing] use id -> fqn mapping to list out all valid FQNs
-        inputs_to_state: dict[str, list[str]] = {}
+        inputs_to_state: Dict[str, List[str]] = {}
         for attr in attr_nodes:
             _, tensor = _recursive_getattr_with_parent(mod, attr.target)
             fqns = list(id_to_fqns[id(tensor)])
@@ -916,7 +918,7 @@ class Pipe(torch.nn.Module):
         # [aliasing] for each submodule split, assign attributes on FQNs that may be used.
         # We determine this based on whether or not the FQN attribute parent exists.
         # i.e. if the last submodule exists, assign the attribute.
-        added_attributes: dict[str, list[str]] = defaultdict(list)
+        added_attributes: Dict[str, List[str]] = defaultdict(list)
         for fqn, tensor in mod.state_dict(keep_vars=True).items():
             for name, submod in split.named_children():
                 if isinstance(submod, fx.GraphModule):
@@ -1027,8 +1029,8 @@ class Pipe(torch.nn.Module):
     @staticmethod
     def _trace_with_export(
         mod: torch.nn.Module,
-        example_args: tuple[Any, ...],
-        example_kwargs: dict[str, Any] | None = None,
+        example_args: Tuple[Any, ...],
+        example_kwargs: Optional[Dict[str, Any]]= None,
     ) -> ExportedProgram:
         logger.info("Tracing model ...")
         try:
@@ -1047,9 +1049,9 @@ class Pipe(torch.nn.Module):
     @staticmethod
     def from_tracing(
         mod: torch.nn.Module,
-        example_args: tuple[Any, ...],
-        example_kwargs: dict[str, Any] | None = None,
-        split_policy: Callable[[fx.GraphModule], fx.GraphModule] | None = None,
+        example_args: Tuple[Any, ...],
+        example_kwargs: Optional[Dict[str, Any]]= None,
+        split_policy: Optional[Callable[[fx.GraphModule], fx.GraphModule]]= None,
     ):
         # If a param will be used in multiple pipeline stages, we default the strategy to REPLICATE'ing the param across
         # stages instead of TRANSMIT'ting it
@@ -1136,7 +1138,7 @@ class Pipe(torch.nn.Module):
         self,
         stage_index: int,
         device: torch.device,
-        group: ProcessGroup | None = None,
+        group: Optional[ProcessGroup]= None,
     ) -> _PipelineStage:
         """
         Create a `PipelineStage` given a stage index and distributed group.
@@ -1198,7 +1200,7 @@ def _split_after_forward(self, *args, **kwargs):
         pipe_split()
 
 
-def annotate_split_points(mod: torch.nn.Module, spec: dict[str, SplitPoint]):
+def annotate_split_points(mod: torch.nn.Module, spec: Dict[str, SplitPoint]):
     # TODO: make this implementation out-of-place?
     for qualname, split_type in spec.items():
         atoms = qualname.split(".")
@@ -1224,10 +1226,10 @@ def annotate_split_points(mod: torch.nn.Module, spec: dict[str, SplitPoint]):
 
 def pipeline(
     module: torch.nn.Module,
-    mb_args: tuple[Any, ...],
-    mb_kwargs: dict[str, Any] | None = None,
-    split_spec: dict[str, SplitPoint] | None = None,
-    split_policy: Callable[[fx.GraphModule], fx.GraphModule] | None = None,
+    mb_args: Tuple[Any, ...],
+    mb_kwargs: Optional[Dict[str, Any]]= None,
+    split_spec: Optional[Dict[str, SplitPoint]]= None,
+    split_policy: Optional[Callable[[fx.GraphModule], fx.GraphModule]]= None,
 ) -> Pipe:
     """
     Split a module based on a specification.

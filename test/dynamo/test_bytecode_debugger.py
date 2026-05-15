@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: dynamo"]
 
 """

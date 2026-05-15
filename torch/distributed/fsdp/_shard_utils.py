@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
 import itertools
 import math
@@ -15,6 +17,7 @@ from torch.distributed._shard.sharded_tensor import (
 )
 from torch.distributed._shard.sharding_spec import ShardMetadata
 from torch.distributed.tensor import DeviceMesh, DTensor, Replicate, Shard as DShard
+from typing import Optional, Union, overload
 
 
 def _get_remote_device_str(rank, device_type, num_devices_per_node):
@@ -32,7 +35,7 @@ def _create_chunk_sharded_tensor(
     world_size: int,
     num_devices_per_node: int,
     pg: dist.ProcessGroup,
-    device: torch.device | None = None,
+    device: torch.Optional[device] = None
 ) -> ShardedTensor:
     """
     Shard a tensor to chunks along the first dimension. The local rank will gets its
@@ -119,7 +122,7 @@ def _create_chunk_dtensor(
 
 def _all_gather_dtensor(
     tensor: DTensor,
-    root_mesh: DeviceMesh | None,
+    root_mesh: Union[DeviceMesh, None,]
 ) -> torch.Tensor:
     """
     All gather a DTensor in its sharded dimension and return the local tensor.

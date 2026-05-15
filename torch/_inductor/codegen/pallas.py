@@ -5,7 +5,7 @@ import hashlib
 import math
 import re
 import typing_extensions
-from typing import Any, cast, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union, cast
 
 import sympy
 
@@ -62,7 +62,7 @@ pallas_pexpr = PallasPrinter().doprint
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    
 
     from ..ir import IRNode
     from ..ops_handler import ReductionType
@@ -79,7 +79,7 @@ kernel_code_log = torch._logging.getArtifactLogger(__name__, "kernel_code")
 class PallasKernelWrapper:
     """Wrapper to provide .run() interface for Pallas kernels"""
 
-    def __init__(self, kernel_fn: Callable[..., Any], kernel_path: str | None = None):
+    def __init__(self, kernel_fn: Callable[..., Any], kernel_path: Optional[str] = None):
         self.kernel_fn = kernel_fn
         self.kernel_path = kernel_path
         kernel_code_log.info("Pallas kernel path: %s", kernel_path)
@@ -276,7 +276,7 @@ class PallasKernelOverrides(OpOverrides):
     def to_dtype(
         x: str,
         dtype: torch.dtype,
-        src_dtype: torch.dtype | None = None,
+        src_dtype: Optional[torch.dtype] = None,
         use_compute_types: bool = True,
     ) -> str:
         # TPU doesn't support 64-bit types
@@ -881,7 +881,7 @@ class _BroadcastedIterVar:
     idx: int
     var_sym: sympy.Symbol
     entry: IterationRangesEntry
-    length_val: int | None
+    length_val: Optional[int]
 
 
 @dataclasses.dataclass
@@ -893,19 +893,19 @@ class _CodegenContext:
     is_tpu: bool
     interpret_is_cpu: bool
     interpret_literal: str
-    kernel_params: list[str]
-    pure_out_params: list[str]
-    output_params: list[str]
-    size_var_params: list[str]
-    output_buffer_lookup: dict[str, str]
-    aliasable_flags: dict[str, bool]
-    alias_params: list[str]
-    pointer_tail: list[str]
-    kernel_input_params: list[str]
-    full_kernel_params: list[str]
+    kernel_params: List[str]
+    pure_out_params: List[str]
+    output_params: List[str]
+    size_var_params: List[str]
+    output_buffer_lookup: Dict[str, str]
+    aliasable_flags: Dict[str, bool]
+    alias_params: List[str]
+    pointer_tail: List[str]
+    kernel_input_params: List[str]
+    full_kernel_params: List[str]
     non_alias_out_set: OrderedSet[str]
-    copy_output_indices: list[int]
-    alias_pairs: list[tuple[int, int]]
+    copy_output_indices: List[int]
+    alias_pairs: List[Tuple[int, int]]
 
 
 class PallasKernel(SIMDKernel):
@@ -929,19 +929,19 @@ class PallasKernel(SIMDKernel):
         # padding to multiples of 128. Uses lax.fori_loop with direct TMA primitives.
         self.use_emit_pipeline = self.is_gpu  # Enable TMA approach for GPU
         # Track which output param each store uses: list of (out_ptr_name, store_line)
-        self.store_with_output: list[tuple[str, str]] = []
+        self.store_with_output: List[Tuple[str, str]] = []
         # Track load index expressions for reduction axis detection
-        self.load_index_exprs: dict[str, sympy.Expr] = {}
+        self.load_index_exprs: Dict[str, sympy.Expr] = {}
         # Track outputs that need to be readable (for scatter operations)
         self.outputs_need_read: OrderedSet[str] = OrderedSet()
         # Map input buffer names to their detected permutation tuples.
-        self.permuted_input_buffers: dict[str, tuple[int, ...]] = {}
-        self.collapsed_reshape_inputs: dict[str, tuple[int, ...]] = {}
-        self.collapsed_output_shape: tuple[int, ...] | None = None
-        self._cpu_max_grid_product: int | None = None
+        self.permuted_input_buffers: Dict[str, Tuple[int, ...]] = {}
+        self.collapsed_reshape_inputs: Dict[str, Tuple[int, ...]] = {}
+        self.collapsed_output_shape: Optional[Tuple[int, ...]] = None
+        self._cpu_max_grid_product: Optional[int] = None
         # Precompute output buffer names from scheduler nodes so that the
         # load path can check output shapes before stores are processed.
-        self._output_buffer_names: list[str] = []
+        self._output_buffer_names: List[str] = []
         for snode in self.features.scheduler_nodes():
             for dep in snode.read_writes.writes:
                 self._output_buffer_names.append(dep.name)
@@ -956,14 +956,14 @@ class PallasKernel(SIMDKernel):
         # (stride, offset, skip) triples.  Used to reshape inputs outside
         # the kernel and generate static indexing inside
         # (e.g. in_ref[:, :, offset] instead of in_ref[...].flatten()[idx]).
-        self.strided_input_buffers: dict[str, list[tuple[int, int, int]]] = {}
+        self.strided_input_buffers: Dict[str, List[Tuple[int, int, int]]] = {}
         # Buffers that already use flatten+gather indexing; strided
         # decomposition must not reshape these (it would break flat offsets).
         self.flatten_indexed_buffers: OrderedSet[str] = OrderedSet()
         # Indirect (data-dependent) access info for scalar prefetch
-        self.indirect_access: _IndirectAccessInfo | None = None
-        self._cse_to_param: dict[str, str] = {}
-        self._param_to_graph_name: dict[str, str] = {}
+        self.indirect_access: Optional[_IndirectAccessInfo] = None
+        self._cse_to_param: Dict[str, str] = {}
+        self._param_to_graph_name: Dict[str, str] = {}
         self.is_tpu = device.type == "tpu"
 
     def check_bounds(
@@ -1150,7 +1150,7 @@ class PallasKernel(SIMDKernel):
         """Check if index expression contains iteration variables."""
         return bool(self._get_used_iter_vars(index))
 
-    def _get_indirect_vars(self, index: sympy.Expr) -> list[sympy.Symbol]:
+    def _get_indirect_vars(self, index: sympy.Expr) -> List[sympy.Symbol]:
         """Get list of indirect variable symbols (tmp*) in an index expression."""
         return [s for s in index.free_symbols if str(s).startswith("tmp")]
 
@@ -1160,7 +1160,7 @@ class PallasKernel(SIMDKernel):
 
     def _decompose_strided_access(
         self, index: sympy.Expr, name: str
-    ) -> list[tuple[int, int, int]] | None:
+    ) -> List[Tuple[int, int, int]] | None:
         """Decompose a flat index into per-dimension (stride, offset, skip) triples.
 
         Given flat index like ``64*x0 + 2*x1 + 5`` and buffer shape ``(32, 64)``
@@ -1192,7 +1192,7 @@ class PallasKernel(SIMDKernel):
         buf_shape_or_none = [self._safe_int(s) for s in buf_size]
         if any(s is None or s <= 0 for s in buf_shape_or_none):
             return None
-        buf_shape: list[int] = cast(list[int], buf_shape_or_none)
+        buf_shape: List[int] = cast(List[int], buf_shape_or_none)
         ndim = len(buf_shape)
         if ndim == 0:
             return None
@@ -1205,9 +1205,9 @@ class PallasKernel(SIMDKernel):
             return None
 
         # [stride, raw_offset] per dim — raw_offset may be >= stride
-        result: list[list[int]] = [[1, 0] for _ in range(ndim)]
+        result: List[List[int]] = [[1, 0] for _ in range(ndim)]
         # Track which variable maps to which dimension
-        var_to_dim: dict[sympy.Symbol, int] = {}
+        var_to_dim: Dict[sympy.Symbol, int] = {}
 
         remaining = V.graph.sizevars.simplify(index)
         for var in used_vars:
@@ -1263,7 +1263,7 @@ class PallasKernel(SIMDKernel):
         # Decompose each dim's raw offset into (skip, offset) where
         # offset < stride: raw = skip * stride + offset.
         # Then validate the output numel matches.
-        decomposed: list[tuple[int, int, int]] = []
+        decomposed: List[Tuple[int, int, int]] = []
         output_numel_expected = 1
         for d in range(ndim):
             stride, raw_offset = result[d]
@@ -1298,9 +1298,9 @@ class PallasKernel(SIMDKernel):
         return decomposed
 
     @staticmethod
-    def _strided_load_expr(buf: str, decomp: list[tuple[int, int, int]]) -> str:
+    def _strided_load_expr(buf: str, decomp: List[Tuple[int, int, int]]) -> str:
         """Build ``buf[:, :, offset]`` for strided dims, ``:`` for others."""
-        parts: list[str] = []
+        parts: List[str] = []
         for stride, offset, _skip in decomp:
             if stride == 1:
                 parts.append(":")
@@ -1310,7 +1310,7 @@ class PallasKernel(SIMDKernel):
         return f"{buf}[{', '.join(parts)}]"
 
     def _codegen_strided_reshapes(
-        self, code: IndentedBuffer, params: list[str]
+        self, code: IndentedBuffer, params: List[str]
     ) -> None:
         """Emit reshape + optional slice for strided input parameters.
 
@@ -1327,7 +1327,7 @@ class PallasKernel(SIMDKernel):
             if info is None:
                 continue
             _, buf_size, _, _, _ = info
-            new_shape_parts: list[str] = []
+            new_shape_parts: List[str] = []
             for d, (stride, _offset, _skip) in enumerate(strides):
                 dim = self._safe_int(buf_size[d])
                 if dim is None:
@@ -1342,7 +1342,7 @@ class PallasKernel(SIMDKernel):
                     f"{param} = {param}.reshape({', '.join(new_shape_parts)})"
                 )
                 if any(skip > 0 for _, _, skip in strides):
-                    slice_parts: list[str] = []
+                    slice_parts: List[str] = []
                     for stride, _offset, skip in strides:
                         if stride == 1:
                             slice_parts.append(":")
@@ -1352,7 +1352,7 @@ class PallasKernel(SIMDKernel):
                     code.writeline(f"{param} = {param}[{', '.join(slice_parts)}]")
 
     @staticmethod
-    def _get_actual_out_strides(out_buf, n: int) -> list[int] | None:
+    def _get_actual_out_strides(out_buf, n: int) -> Optional[List[int]]:
         """Extract actual output buffer strides from its layout."""
         layout = getattr(out_buf, "get_layout", lambda: None)()
         if layout is None:
@@ -1360,7 +1360,7 @@ class PallasKernel(SIMDKernel):
         stride_raw = getattr(layout, "stride", None)
         if stride_raw is None or len(stride_raw) != n:
             return None
-        strides: list[int] = []
+        strides: List[int] = []
         for s in stride_raw:
             v = int(s) if isinstance(s, (int, sympy.Integer)) else None
             if v is None:
@@ -1368,7 +1368,7 @@ class PallasKernel(SIMDKernel):
             strides.append(v)
         return strides
 
-    def _compute_store_coeffs(self, ordered: list) -> dict | None:
+    def _compute_store_coeffs(self, ordered: list) -> Optional[dict]:
         """Compute store-side linearization coefficients from range tree nesting.
 
         The tree structure encodes the output iteration order: later
@@ -1380,8 +1380,8 @@ class PallasKernel(SIMDKernel):
         Returns ``{sympy.Symbol: int}`` mapping each RT var to its store
         coefficient, or ``None`` on failure.
         """
-        prefix_groups: dict[str, list] = {}
-        prefix_order: list[str] = []
+        prefix_groups: Dict[str, list] = {}
+        prefix_order: List[str] = []
         for v in ordered:
             node = self.range_tree_nodes[v]
             p = node.prefix
@@ -1404,7 +1404,7 @@ class PallasKernel(SIMDKernel):
 
     def _get_full_load_permutation(
         self, name: str, index: sympy.Expr
-    ) -> tuple[int, ...] | None:
+    ) -> Optional[Tuple[int, ...]]:
         """Return permutation for a full-array load, or None.
 
         Computes the permutation by mapping each range-tree variable to
@@ -1429,7 +1429,7 @@ class PallasKernel(SIMDKernel):
         in_shape_raw = [self._safe_int(s) for s in buf_size]
         if len(in_shape_raw) < 2 or None in in_shape_raw:
             return None
-        in_shape: list[int] = cast(list[int], in_shape_raw)
+        in_shape: List[int] = cast(List[int], in_shape_raw)
         if not is_contiguous:
             return None  # .contiguous() at JAX boundary handles this
 
@@ -1475,7 +1475,7 @@ class PallasKernel(SIMDKernel):
         ]
         if not all(isinstance(c, int) and c > 0 for c in coeffs_raw):
             return None
-        coeffs: list[int] = cast(list[int], coeffs_raw)
+        coeffs: List[int] = cast(List[int], coeffs_raw)
 
         n = len(ordered)
         in_strides = self._c_contiguous_strides(in_shape)
@@ -1510,7 +1510,7 @@ class PallasKernel(SIMDKernel):
 
     def _get_collapsed_load_permutation(
         self, name: str, index: sympy.Expr
-    ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+    ) -> Tuple[Tuple[int, ...], Tuple[int, ...]] | None:
         """Handle permutation when range tree has collapsed dimensions.
 
         When simplify_and_reorder merges contiguous dims, the range tree
@@ -1532,7 +1532,7 @@ class PallasKernel(SIMDKernel):
         in_shape_raw = [self._safe_int(s) for s in buf_size]
         if len(in_shape_raw) < 2 or None in in_shape_raw:
             return None
-        in_shape: list[int] = cast(list[int], in_shape_raw)
+        in_shape: List[int] = cast(List[int], in_shape_raw)
         if not is_contiguous:
             return None
 
@@ -1548,7 +1548,7 @@ class PallasKernel(SIMDKernel):
         ranges_raw = [self._safe_int(self.range_tree_nodes[v].length) for v in ordered]
         if None in ranges_raw:
             return None
-        ranges: list[int] = cast(list[int], ranges_raw)
+        ranges: List[int] = cast(List[int], ranges_raw)
         if math.prod(ranges) != math.prod(in_shape):
             return None
 
@@ -1571,7 +1571,7 @@ class PallasKernel(SIMDKernel):
         in_coeffs_raw = [self._get_index_coefficient(simplified, v) for v in ordered]
         if not all(isinstance(c, int) and c > 0 for c in in_coeffs_raw):
             return None
-        in_coeffs: list[int] = cast(list[int], in_coeffs_raw)
+        in_coeffs: List[int] = cast(List[int], in_coeffs_raw)
 
         in_stride_to_dim = {s: i for i, s in enumerate(collapsed_in_strides)}
         var_to_in_dim = []
@@ -1593,7 +1593,7 @@ class PallasKernel(SIMDKernel):
             out_shape_raw = [self._safe_int(s) for s in out_buf.get_size()]
             if any(s is None for s in out_shape_raw) or len(out_shape_raw) < 2:
                 continue
-            out_shape: list[int] = cast(list[int], out_shape_raw)
+            out_shape: List[int] = cast(List[int], out_shape_raw)
             if math.prod(out_shape) != math.prod(in_shape):
                 continue
             out_groups = self._group_dims_to_ranges(out_shape, list(in_groups))
@@ -1625,13 +1625,13 @@ class PallasKernel(SIMDKernel):
         return None
 
     @staticmethod
-    def _group_dims_to_ranges(dims: list[int], ranges: list[int]) -> list[int] | None:
+    def _group_dims_to_ranges(dims: List[int], ranges: List[int]) -> Optional[List[int]]:
         """Group consecutive dims (right-to-left) to match range values.
 
         Returns collapsed shape (left-to-right) or None if no valid grouping.
         """
         available = list(ranges)
-        groups: list[int] = []
+        groups: List[int] = []
         product = 1
         for i in range(len(dims) - 1, -1, -1):
             product *= dims[i]
@@ -1672,7 +1672,7 @@ class PallasKernel(SIMDKernel):
             return _BufferIndexing(index_str=index_str, needs_flatten=needs_flatten)
 
     @staticmethod
-    def _safe_int(val: Any) -> int | None:
+    def _safe_int(val: Any) -> Optional[int]:
         """Convert value to int, returning None on failure."""
         try:
             return int(val)
@@ -1680,7 +1680,7 @@ class PallasKernel(SIMDKernel):
             return None
 
     @staticmethod
-    def _c_contiguous_strides(shape: list[int]) -> list[int]:
+    def _c_contiguous_strides(shape: List[int]) -> List[int]:
         """Return C-contiguous strides for the given shape."""
         n = len(shape)
         strides = [1] * n
@@ -1689,18 +1689,18 @@ class PallasKernel(SIMDKernel):
         return strides
 
     @staticmethod
-    def _map_coeffs_to_dims(coeffs: list[int], strides: list[int]) -> list[int] | None:
+    def _map_coeffs_to_dims(coeffs: List[int], strides: List[int]) -> Optional[List[int]]:
         """Map coefficient values to dimension indices via stride matching.
 
         Returns a list where entry k is the dimension whose stride equals
         coeffs[k], or None if the mapping is ambiguous or incomplete.
         """
-        stride_to_dim: dict[int, int] = {}
+        stride_to_dim: Dict[int, int] = {}
         for d, s in enumerate(strides):
             if s in stride_to_dim:
                 return None  # duplicate strides
             stride_to_dim[s] = d
-        mapping: list[int] = []
+        mapping: List[int] = []
         for c in coeffs:
             d = stride_to_dim.get(c)
             if d is None:
@@ -1710,7 +1710,7 @@ class PallasKernel(SIMDKernel):
             return None
         return mapping
 
-    def _zero_dim_output_flags(self, ctx: _CodegenContext) -> tuple[bool, bool]:
+    def _zero_dim_output_flags(self, ctx: _CodegenContext) -> Tuple[bool, bool]:
         """Return whether an output has a zero or unknown dimension."""
         has_unknown_dim = False
         for buf_name in ctx.output_buffer_lookup.values():
@@ -1726,7 +1726,7 @@ class PallasKernel(SIMDKernel):
                     has_unknown_dim = True
         return False, has_unknown_dim
 
-    def _get_reduction_axes(self) -> tuple[int, ...]:
+    def _get_reduction_axes(self) -> Tuple[int, ...]:
         """Determine which axes of the loaded array are reduction axes.
 
         Finds the innermost reduction stride from the load index
@@ -1758,7 +1758,7 @@ class PallasKernel(SIMDKernel):
             strides_or_none = [self._safe_int(s) for s in actual_strides]
             if any(s is None for s in strides_or_none):
                 continue
-            strides: list[int] = cast(list[int], strides_or_none)
+            strides: List[int] = cast(List[int], strides_or_none)
 
             # Get reduction stride coefficients by zeroing pw_vars.
             r_only = load_index
@@ -1828,7 +1828,7 @@ class PallasKernel(SIMDKernel):
             return (0,)
         return (-1,)
 
-    def _compute_prefix_numel(self, prefixes: OrderedSet) -> int | None:
+    def _compute_prefix_numel(self, prefixes: OrderedSet) -> Optional[int]:
         """Compute total numel for given prefixes (e.g., pointwise prefixes)."""
         result = 1
         for p in prefixes:
@@ -1839,7 +1839,7 @@ class PallasKernel(SIMDKernel):
                 result *= numel
         return result
 
-    def _compute_reduction_numel(self) -> int | None:
+    def _compute_reduction_numel(self) -> Optional[int]:
         """Compute total reduction numel."""
         result = 1
         for tree in self.range_trees:
@@ -1870,7 +1870,7 @@ class PallasKernel(SIMDKernel):
             return False
 
         # Check all input buffers for contiguity, dtype, and shape consistency
-        input_shapes: list[tuple] = []
+        input_shapes: List[tuple] = []
         for name in self.args.input_buffers:
             info = self._get_buffer_info(name)
             if info is None:
@@ -1919,7 +1919,7 @@ class PallasKernel(SIMDKernel):
 
         return True
 
-    def _get_buffer_info(self, name: str) -> tuple[Any, Any, Any, list, bool] | None:
+    def _get_buffer_info(self, name: str) -> Optional[Tuple[Any, Any, Any, list, bool]]:
         """Get buffer metadata (buf_obj, buf_size, buf_numel, actual_strides, is_contiguous).
 
         Returns None if the buffer doesn't exist.
@@ -1963,7 +1963,7 @@ class PallasKernel(SIMDKernel):
 
     def _compute_output_numel_from_index(
         self, index: sympy.Expr
-    ) -> tuple[int, OrderedSet]:
+    ) -> Tuple[int, OrderedSet]:
         """Compute expected output numel and used vars from iteration variables in index."""
         used_vars = self._get_used_iter_vars(index)
 
@@ -2073,7 +2073,7 @@ class PallasKernel(SIMDKernel):
         is_known_non_contiguous = not is_contiguous and all(
             s is not None for s in actual_strides
         )
-        has_symbolic_coef = any(not isinstance(c, int | float) for c in coefficients)
+        has_symbolic_coef = any(not isinstance(c, (int , float)) for c in coefficients)
         skip_for_non_contiguous = (
             is_known_non_contiguous and not is_tpu and buf_numel == output_numel
         )
@@ -2110,17 +2110,8 @@ class PallasKernel(SIMDKernel):
 
         buf_size = buf_obj.get_size()
 
+        # 0-dimensional (scalar) buffer - use [...] to access it
         if len(buf_size) == 0:
-            return _BufferIndexing(
-                index_str="...", needs_flatten=indexing.needs_flatten
-            )
-
-        # if buffer size is 1, and index is an integer, use "..."
-        if (
-            len(buf_size) == 1
-            and buf_size[0] == 1
-            and not self._has_iteration_vars(index)
-        ):
             return _BufferIndexing(
                 index_str="...", needs_flatten=indexing.needs_flatten
             )
@@ -2221,7 +2212,7 @@ class PallasKernel(SIMDKernel):
         return _BufferIndexing(index_str=slice_str, needs_flatten=False)
 
     @staticmethod
-    def _gather_permute_expr(load_expr: str, perm: tuple[int, ...]) -> str:
+    def _gather_permute_expr(load_expr: str, perm: Tuple[int, ...]) -> str:
         """Generate gather-based permutation instead of jnp.permute_dims.
 
         Avoids a Mosaic compiler bug where jnp.permute_dims produces
@@ -2230,7 +2221,7 @@ class PallasKernel(SIMDKernel):
         """
         return f"pallas_permute({load_expr}, {perm})"
 
-    def _trace_to_load_source(self, var_name: str) -> str | None:
+    def _trace_to_load_source(self, var_name: str) -> Optional[str]:
         """Trace a tmp variable back to its source buffer's kernel param.
 
         Follows CSE assignments backward through bounds-checking (where/clamp)
@@ -2250,7 +2241,7 @@ class PallasKernel(SIMDKernel):
 
     def _detect_indirect_access(
         self, buf: str, name: str, index: sympy.Expr
-    ) -> _IndirectAccessInfo | None:
+    ) -> Optional[_IndirectAccessInfo]:
         """Detect a load with data-dependent indexing suitable for scalar prefetch.
 
         Matches exactly one indirect variable whose coefficient corresponds to
@@ -2264,7 +2255,7 @@ class PallasKernel(SIMDKernel):
         buf_size_raw = [self._safe_int(s) for s in buf_size]
         if len(buf_size_raw) < 2 or any(s is None for s in buf_size_raw):
             return None
-        buf_size_ints: list[int] = cast(list[int], buf_size_raw)
+        buf_size_ints: List[int] = cast(List[int], buf_size_raw)
 
         indirect_vars = self._get_indirect_vars(index)
         if len(indirect_vars) != 1:
@@ -2338,7 +2329,7 @@ class PallasKernel(SIMDKernel):
                 live_vars.add(m.group())
 
         # Parse assignments from compute lines
-        assignments: list[tuple[str | None, str, Any]] = []
+        assignments: List[Tuple[Optional[str], str, Any]] = []
         for line in self.compute._lines:
             line_str = str(line).lstrip()
             m = re.match(r"^(tmp\d+)\s*=\s*(.*)", line_str, re.DOTALL)
@@ -2698,7 +2689,7 @@ class PallasKernel(SIMDKernel):
 
     def _build_full_array_store_expr(
         self, out: str, value: CSEVariable, needs_transpose: bool
-    ) -> list[str]:
+    ) -> List[str]:
         """
         Build store expression for full array assignment.
 
@@ -2729,7 +2720,7 @@ class PallasKernel(SIMDKernel):
         value: CSEVariable,
         indexing: _BufferIndexing,
         mode: Any = None,
-    ) -> list[str]:
+    ) -> List[str]:
         """
         Build the store expression based on indexing mode.
         mode can be None (set) or "atomic_add" (accumulate).
@@ -2745,7 +2736,7 @@ class PallasKernel(SIMDKernel):
             # Block variable indexing (e.g., im2col) - use flattened scatter
             scatter_op = "add" if mode == "atomic_add" else "set"
             return [
-                f"{out}[...] = {out}[...].flatten().at[jnp.asarray({indexing.index_str}).flatten()].{scatter_op}("
+                f"{out}[...] = {out}[...].flatten().at[({indexing.index_str}).flatten()].{scatter_op}("
                 f"jnp.asarray({value}).flatten()).reshape({out}.shape)"
             ]
 
@@ -2769,8 +2760,8 @@ class PallasKernel(SIMDKernel):
                 self.outputs_need_read.add(out)
                 alias_param = f"{out}_alias"
                 lines.append(
-                    f"{out}[...] = {alias_param}[...].flatten().at[jnp.asarray({indexing.index_str}).flatten()].{scatter_op}("
-                    f"jnp.asarray({value_expr}).flatten()).reshape({out}.shape)"
+                    f"{out}[...] = {alias_param}[...].flatten().at[({indexing.index_str}).flatten()].{scatter_op}("
+                    f"{value_expr}.flatten()).reshape({out}.shape)"
                 )
             else:
                 lines.append(f"{out}[{indexing.index_str}] = {value_expr}")
@@ -2782,7 +2773,7 @@ class PallasKernel(SIMDKernel):
         self,
         out: str,
         value: CSEVariable,
-        scatter_info: dict[str, Any],
+        scatter_info: Dict[str, Any],
         name: str,
         mode: Any,
     ) -> str:
@@ -3143,11 +3134,6 @@ class PallasKernel(SIMDKernel):
                     # Get base index expression
                     indexing = self._get_index_expr(index)
 
-                    # Adjust index for buffer shape (scalar, multi-dim, etc.)
-                    indexing = self._adjust_index_for_buffer_shape(
-                        name, index, indexing
-                    )
-
                     # Check for im2col-like patterns
                     indexing = self._check_im2col_pattern(index, indexing)
 
@@ -3163,8 +3149,8 @@ class PallasKernel(SIMDKernel):
 
     @staticmethod
     def _get_index_coefficient(
-        index: sympy.Expr, var: sympy.Symbol, default: int | float = 0
-    ) -> int | float:
+        index: sympy.Expr, var: sympy.Symbol, default: Union[int, float] = 0
+    ) -> Union[int, float]:
         """Get integer coefficient of a variable in an index expression."""
         coeff = index.coeff(var)
         if coeff == 0:
@@ -3176,7 +3162,7 @@ class PallasKernel(SIMDKernel):
 
     def _detect_scatter_pattern(
         self, index: sympy.Expr, output_name: str = ""
-    ) -> dict[str, Any] | None:
+    ) -> Optional[Dict[str, Any]]:
         """Detect scatter operation pattern. Returns scatter info dict or None."""
         indirect_syms = self._get_indirect_vars(index)
         if len(indirect_syms) != 1:
@@ -3197,7 +3183,7 @@ class PallasKernel(SIMDKernel):
 
     def _detect_point_scatter(
         self, output_name: str, indirect_var: str, indirect_coeff: int
-    ) -> dict[str, Any] | None:
+    ) -> Optional[Dict[str, Any]]:
         """Detect single-element scatter pattern."""
         if not output_name:
             return None
@@ -3230,12 +3216,12 @@ class PallasKernel(SIMDKernel):
 
     def _detect_iter_scatter(
         self, index: sympy.Expr, indirect_var: str, indirect_coeff: int
-    ) -> dict[str, Any] | None:
+    ) -> Optional[Dict[str, Any]]:
         """Detect scatter pattern with iteration variables."""
         used_iter_vars = self._get_used_iter_vars(index)
 
         # Collect (var_name, coefficient, length) for each variable
-        all_vars: list[tuple[str, int, int]] = []
+        all_vars: List[Tuple[str, int, int]] = []
         for var in used_iter_vars:
             coeff = int(self._get_index_coefficient(index, var))
             if coeff > 0 and var in self.range_tree_nodes:
@@ -3278,8 +3264,8 @@ class PallasKernel(SIMDKernel):
         dtype: torch.dtype,
         src_dtype: torch.dtype,
         reduction_type: ReductionType,
-        value: CSEVariable | tuple[CSEVariable, ...],
-    ) -> CSEVariable | tuple[CSEVariable, ...]:  # type: ignore[override]
+        value: Union[CSEVariable, Tuple[CSEVariable, ...]],
+    ) -> Union[CSEVariable, Tuple[CSEVariable, ...]]:  # type: ignore[override]
         """
         Generate code for reduction operations in JAX/Pallas.
 
@@ -3321,10 +3307,10 @@ class PallasKernel(SIMDKernel):
         # or a full reduction to scalar
         pointwise_prefixes = OrderedSet(["x", "y", "z"])
         has_pointwise = any(p in self.numels for p in pointwise_prefixes)
-        pointwise_numel: int | None = self._compute_prefix_numel(pointwise_prefixes)
-        reduction_numel: int | None = self._compute_reduction_numel()
+        pointwise_numel: Optional[int] = self._compute_prefix_numel(pointwise_prefixes)
+        reduction_numel: Optional[int] = self._compute_reduction_numel()
         n_reduction_dims = sum(
-            1 for entry in self.range_tree_nodes.values() if entry.is_reduction
+            1 for var, entry in self.range_tree_nodes.items() if entry.is_reduction
         )
 
         is_partial_reduction = (
@@ -3464,7 +3450,7 @@ class PallasKernel(SIMDKernel):
             else 0
         )
 
-        ref_shape: list[int] = []
+        ref_shape: List[int] = []
         for buf_name in out_bufs:
             info = self._get_buffer_info(buf_name)
             if info is None:
@@ -3588,7 +3574,7 @@ class PallasKernel(SIMDKernel):
 
         return True
 
-    def codegen_kernel(self, name: str | None = None) -> str:  # type: ignore[override]
+    def codegen_kernel(self, name: Optional[str] = None) -> str:  # type: ignore[override]
         """
         Generate the complete Pallas kernel code as a Python string.
 
@@ -3628,7 +3614,7 @@ class PallasKernel(SIMDKernel):
         interpret_is_cpu = V.graph.get_current_device_or_throw().type == "cpu"
         interpret_literal = "True" if interpret_is_cpu else "False"
 
-        aliasable_flags: dict[str, bool] = {}
+        aliasable_flags: Dict[str, bool] = {}
         for param in pure_out_params:
             aliasable_flags[param] = True
         alias_params = [
@@ -3865,9 +3851,9 @@ class PallasKernel(SIMDKernel):
 
     @staticmethod
     def _compute_alias_pairs(
-        ctx: _CodegenContext, aliasable_flags: dict[str, bool]
-    ) -> list[tuple[int, int]]:
-        alias_pairs: list[tuple[int, int]] = []
+        ctx: _CodegenContext, aliasable_flags: Dict[str, bool]
+    ) -> List[Tuple[int, int]]:
+        alias_pairs: List[Tuple[int, int]] = []
         for out_idx, name in enumerate(ctx.output_params):
             if name.startswith("out_ptr"):
                 if aliasable_flags.get(name, False):
@@ -4100,7 +4086,7 @@ from torch._inductor.runtime.runtime_utils import (
             imports += "\nfrom jax.experimental.pallas import tpu as pltpu"
         ctx.code.splice(imports, strip=True)
 
-    def _get_iter_var_axis(self, var_sym: sympy.Symbol) -> int | None:
+    def _get_iter_var_axis(self, var_sym: sympy.Symbol) -> Optional[int]:
         """Map an iteration variable to its output tensor axis index.
 
         Non-reduction variables map to axes 0, 1, 2, ... in order.
@@ -4109,7 +4095,7 @@ from torch._inductor.runtime.runtime_utils import (
         """
         pw_idx = 0
         r_idx = 0
-        n_pw = sum(1 for e in self.range_tree_nodes.values() if not e.is_reduction)
+        n_pw = sum(1 for _, e in self.range_tree_nodes.items() if not e.is_reduction)
         for sym, entry in self.range_tree_nodes.items():
             if sym == var_sym:
                 return pw_idx if not entry.is_reduction else n_pw + r_idx
@@ -4121,7 +4107,7 @@ from torch._inductor.runtime.runtime_utils import (
 
     def _get_reshape_target_shape_and_numel(
         self,
-    ) -> tuple[tuple[int, ...] | None, int | None]:
+    ) -> Optional[Tuple[Tuple[int, ...]], Optional[int]]:
         # Find reshape target: N-D shape whose numel matches an iteration
         # var. Try output first (repeat/upsample), then inputs (reductions).
         iter_lengths = OrderedSet(
@@ -4156,7 +4142,7 @@ from torch._inductor.runtime.runtime_utils import (
         return reshape_target_shape, reshape_target_numel
 
     def _make_broadcasted_iteration_var_expr(
-        self, broadcast_vars: list[_BroadcastedIterVar], broadcast_idx: int
+        self, broadcast_vars: List[_BroadcastedIterVar], broadcast_idx: int
     ) -> str:
         bv = broadcast_vars[broadcast_idx]
         length = bv.entry.length
@@ -4279,7 +4265,7 @@ from torch._inductor.runtime.runtime_utils import (
 
     @staticmethod
     def _broadcast_axis_idx(
-        broadcast_vars: list[_BroadcastedIterVar],
+        broadcast_vars: List[_BroadcastedIterVar],
         broadcast_idx: int,
         num_broadcast_dims: int,
     ) -> int:
@@ -4495,7 +4481,7 @@ from torch._inductor.runtime.runtime_utils import (
             "        return pallas_gpu_unpad_results(_result, out_shapes, _is_scalar)"
         )
 
-    def _param_to_buf_name(self, param: str) -> str | None:
+    def _param_to_buf_name(self, param: str) -> Optional[str]:
         """Map a kernel parameter name back to its graph buffer name."""
         for graph_name, inner_name in self.args.input_buffers.items():
             if inner_name == param:
@@ -4516,7 +4502,7 @@ from torch._inductor.runtime.runtime_utils import (
         is_tpu_literal = "True" if ctx.is_tpu else "False"
 
         # Collect per-input permutations for tiling alignment.
-        all_perms: list[tuple[int, ...] | None] = []
+        all_perms: Optional[List[Tuple[int, ...]]] = []
         for p in ctx.kernel_input_params:
             buf_name = self._param_to_buf_name(p)
             all_perms.append(
@@ -4579,7 +4565,7 @@ from torch._inductor.runtime.runtime_utils import (
         self,
         ctx: _CodegenContext,
         kernel_arg: str,
-        alias_pairs: list[tuple[int, int]],
+        alias_pairs: List[Tuple[int, int]],
         alias_map_literal: str,
     ) -> None:
         code = ctx.code
@@ -4666,7 +4652,7 @@ from torch._inductor.runtime.runtime_utils import (
                 + ", ".join([f"tuple({name}.shape)" for name in ctx.output_params])
                 + ",)"
             )
-            dtype_exprs: list[str] = []
+            dtype_exprs: List[str] = []
             for name in ctx.output_params:
                 buf_name = ctx.output_buffer_lookup.get(name)
                 if buf_name is not None:
@@ -4821,7 +4807,7 @@ from torch._inductor.runtime.runtime_utils import (
                 + ", ".join([f"tuple({name}.shape)" for name in ctx.output_params])
                 + ",)"
             )
-            dtype_exprs: list[str] = []
+            dtype_exprs: List[str] = []
             for name in ctx.output_params:
                 buf_name = ctx.output_buffer_lookup.get(name)
                 if buf_name is not None:
@@ -4831,7 +4817,7 @@ from torch._inductor.runtime.runtime_utils import (
                         continue
                 dtype_exprs.append(f"torch_dtype_to_jax_runtime({name}.dtype)")
             code.writeline("out_dtypes = (" + ", ".join(dtype_exprs) + ",)")
-            arg_name_map: dict[str, str] = {}
+            arg_name_map: Dict[str, str] = {}
             for alias_name in ctx.alias_params:
                 arg_name_map[alias_name] = f"{alias_name}_jax"
             for ptr in ctx.pointer_tail:
@@ -4861,7 +4847,7 @@ from torch._inductor.runtime.runtime_utils import (
         suffix = ".detach().contiguous()" if contiguous else ".detach()"
         code.writeline(f"{var_name}_jax = jax.dlpack.from_dlpack({var_name}{suffix})")
 
-    def call_kernel(self, name: str, node: IRNode | None = None) -> None:  # type: ignore[override]
+    def call_kernel(self, name: str, node: Optional[IRNode] = None) -> None:  # type: ignore[override]
         """Generate the Python code that calls this Pallas kernel."""
         wrapper = V.graph.wrapper_code
         arg_defs, call_args, _, _ = self.args.python_argdefs()

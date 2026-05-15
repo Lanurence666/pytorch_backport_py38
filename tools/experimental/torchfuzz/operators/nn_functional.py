@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 """Neural network functional operator implementations."""
 
 import math
@@ -26,7 +28,7 @@ class EmbeddingOperator(Operator):
         super().__init__("torch.nn.functional.embedding")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.embedding"
 
@@ -40,7 +42,7 @@ class EmbeddingOperator(Operator):
         # Embedding outputs are typically float tensors
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for embedding operation.
 
         Embedding requires:
@@ -89,7 +91,7 @@ class EmbeddingOperator(Operator):
         return tuple(reversed(stride))
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for embedding operation."""
         if len(input_names) != 2:
@@ -108,7 +110,7 @@ class LinearOperator(Operator):
         super().__init__("torch.nn.functional.linear")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.linear"
 
@@ -121,7 +123,7 @@ class LinearOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for linear operation.
 
         Linear transformation: y = xW^T + b
@@ -178,7 +180,7 @@ class LinearOperator(Operator):
         return tuple(reversed(stride))
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for linear operation."""
         if not isinstance(output_spec, TensorSpec):
@@ -206,7 +208,7 @@ class ReLUOperator(Operator):
         super().__init__("torch.nn.functional.relu")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.relu"
 
@@ -216,7 +218,7 @@ class ReLUOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for ReLU operation.
 
         ReLU is element-wise, so input shape matches output shape.
@@ -232,7 +234,7 @@ class ReLUOperator(Operator):
         return [input_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for ReLU operation."""
         if len(input_names) != 1:
@@ -249,7 +251,7 @@ class SoftmaxOperator(Operator):
         super().__init__("torch.nn.functional.softmax")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.softmax"
 
@@ -262,7 +264,7 @@ class SoftmaxOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for softmax operation.
 
         Softmax is element-wise along a dimension, input shape matches output shape.
@@ -278,7 +280,7 @@ class SoftmaxOperator(Operator):
         return [input_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for softmax operation."""
         if len(input_names) != 1:
@@ -296,7 +298,7 @@ class DropoutOperator(Operator):
         super().__init__("torch.nn.functional.dropout")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.dropout"
 
@@ -306,7 +308,7 @@ class DropoutOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for dropout operation.
 
         Dropout is element-wise, input shape matches output shape.
@@ -322,7 +324,7 @@ class DropoutOperator(Operator):
         return [input_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for dropout operation."""
         if len(input_names) != 1:
@@ -340,7 +342,7 @@ class LayerNormOperator(Operator):
         super().__init__("torch.nn.functional.layer_norm")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.layer_norm"
 
@@ -353,7 +355,7 @@ class LayerNormOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for layer_norm operation.
 
         LayerNorm normalizes over the last dimensions specified by normalized_shape.
@@ -394,10 +396,10 @@ class LayerNormOperator(Operator):
         # Cast to list[Spec] to fix type checking
         from typing import cast
 
-        return cast(list[Spec], specs)
+        return cast(List[Spec], specs)
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for layer_norm operation."""
         if len(input_names) < 1 or len(input_names) > 3:
@@ -437,7 +439,7 @@ class RMSNormOperator(Operator):
         self.weight = 5.0
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.rms_norm"
 
@@ -450,7 +452,7 @@ class RMSNormOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for RMSNorm operation.
 
         RMSNorm requires:
@@ -479,10 +481,10 @@ class RMSNormOperator(Operator):
 
         from typing import cast
 
-        return cast(list[Spec], specs)
+        return cast(List[Spec], specs)
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for RMSNorm operation."""
         if len(input_names) < 1 or len(input_names) > 2:
@@ -511,7 +513,7 @@ class GELUOperator(Operator):
         super().__init__("torch.nn.functional.gelu")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.gelu"
 
@@ -521,7 +523,7 @@ class GELUOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for GELU operation.
 
         GELU is element-wise, so input shape matches output shape.
@@ -536,7 +538,7 @@ class GELUOperator(Operator):
         return [input_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for GELU operation."""
         if len(input_names) != 1:
@@ -553,7 +555,7 @@ class SigmoidOperator(Operator):
         super().__init__("torch.sigmoid")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.sigmoid"
 
@@ -563,7 +565,7 @@ class SigmoidOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for sigmoid operation.
 
         Sigmoid is element-wise, so input shape matches output shape.
@@ -578,7 +580,7 @@ class SigmoidOperator(Operator):
         return [input_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for sigmoid operation."""
         if len(input_names) != 1:
@@ -595,7 +597,7 @@ class TanhOperator(Operator):
         super().__init__("torch.tanh")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.tanh"
 
@@ -605,7 +607,7 @@ class TanhOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for tanh operation.
 
         Tanh is element-wise, so input shape matches output shape.
@@ -620,7 +622,7 @@ class TanhOperator(Operator):
         return [input_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for tanh operation."""
         if len(input_names) != 1:
@@ -637,7 +639,7 @@ class BatchNormOperator(Operator):
         super().__init__("torch.nn.functional.batch_norm")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.batch_norm"
 
@@ -653,7 +655,7 @@ class BatchNormOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for batch_norm operation.
 
         BatchNorm requires:
@@ -703,10 +705,10 @@ class BatchNormOperator(Operator):
 
         from typing import cast
 
-        return cast(list[Spec], specs)
+        return cast(List[Spec], specs)
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for batch_norm operation."""
         if len(input_names) < 3 or len(input_names) > 5:
@@ -741,7 +743,7 @@ class GroupNormOperator(Operator):
         super().__init__("torch.nn.functional.group_norm")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.group_norm"
 
@@ -765,7 +767,7 @@ class GroupNormOperator(Operator):
 
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for group_norm operation.
 
         GroupNorm requires:
@@ -804,10 +806,10 @@ class GroupNormOperator(Operator):
 
         from typing import cast
 
-        return cast(list[Spec], specs)
+        return cast(List[Spec], specs)
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for group_norm operation."""
         if len(input_names) < 1 or len(input_names) > 3:
@@ -845,7 +847,7 @@ class LeakyReLUOperator(Operator):
         super().__init__("torch.nn.functional.leaky_relu")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.leaky_relu"
 
@@ -855,7 +857,7 @@ class LeakyReLUOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for LeakyReLU operation.
 
         LeakyReLU is element-wise, so input shape matches output shape.
@@ -870,7 +872,7 @@ class LeakyReLUOperator(Operator):
         return [input_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for LeakyReLU operation."""
         if len(input_names) != 1:
@@ -887,7 +889,7 @@ class ELUOperator(Operator):
         super().__init__("torch.nn.functional.elu")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.elu"
 
@@ -897,7 +899,7 @@ class ELUOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for ELU operation.
 
         ELU is element-wise, so input shape matches output shape.
@@ -912,7 +914,7 @@ class ELUOperator(Operator):
         return [input_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for ELU operation."""
         if len(input_names) != 1:
@@ -929,7 +931,7 @@ class SiLUOperator(Operator):
         super().__init__("torch.nn.functional.silu")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.silu"
 
@@ -939,7 +941,7 @@ class SiLUOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for SiLU operation.
 
         SiLU is element-wise, so input shape matches output shape.
@@ -954,7 +956,7 @@ class SiLUOperator(Operator):
         return [input_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for SiLU operation."""
         if len(input_names) != 1:
@@ -971,7 +973,7 @@ class ScaledDotProductAttentionOperator(Operator):
         super().__init__("torch.nn.functional.scaled_dot_product_attention")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.scaled_dot_product_attention"
 
@@ -984,7 +986,7 @@ class ScaledDotProductAttentionOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for scaled_dot_product_attention.
 
         SDPA requires:
@@ -1018,7 +1020,7 @@ class ScaledDotProductAttentionOperator(Operator):
         return [query_spec, key_spec, value_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for scaled_dot_product_attention operation."""
         if len(input_names) != 3:
@@ -1037,7 +1039,7 @@ class MultiHeadAttentionForwardOperator(Operator):
         super().__init__("torch.nn.functional.multi_head_attention_forward")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nn.functional.multi_head_attention_forward"
 
@@ -1053,7 +1055,7 @@ class MultiHeadAttentionForwardOperator(Operator):
             return False
         return is_float_dtype(output_spec.dtype)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for multi_head_attention_forward.
 
         MHA requires:
@@ -1119,7 +1121,7 @@ class MultiHeadAttentionForwardOperator(Operator):
 
         from typing import cast
 
-        return cast(list[Spec], specs)
+        return cast(List[Spec], specs)
 
     def _calculate_stride(self, size):
         """Calculate stride for a given size."""
@@ -1133,7 +1135,7 @@ class MultiHeadAttentionForwardOperator(Operator):
         return tuple(reversed(stride))
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for multi_head_attention_forward operation."""
         if len(input_names) != 5:

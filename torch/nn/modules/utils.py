@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import collections
 from itertools import repeat
-from typing import Any
+from typing import Any, Dict, List
 
 
 __all__ = ["consume_prefix_in_state_dict_if_present"]
@@ -32,7 +34,7 @@ def _reverse_repeat_tuple(t, n):
     return tuple(x for x in reversed(t) for _ in range(n))
 
 
-def _list_with_default(out_size: list[int], defaults: list[int]) -> list[int]:
+def _list_with_default(out_size: List[int], defaults: List[int]) -> List[int]:
     import torch
 
     if isinstance(out_size, (int, torch.SymInt)):
@@ -41,12 +43,12 @@ def _list_with_default(out_size: list[int], defaults: list[int]) -> list[int]:
         raise ValueError(f"Input dimension should be at least {len(out_size) + 1}")
     return [
         v if v is not None else d
-        for v, d in zip(out_size, defaults[-len(out_size) :], strict=False)
+        for v, d in zip(out_size, defaults[-len(out_size) :])
     ]
 
 
 def consume_prefix_in_state_dict_if_present(
-    state_dict: dict[str, Any],
+    state_dict: Dict[str, Any],
     prefix: str,
 ) -> None:
     r"""Strip the prefix in state_dict in place, if any.

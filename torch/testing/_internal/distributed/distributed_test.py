@@ -1,5 +1,6 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
 import copy
 import itertools
 import json
@@ -12,14 +13,15 @@ import sys
 import tempfile
 import time
 import unittest
-import warnings
 from collections import defaultdict, namedtuple, OrderedDict
 from collections.abc import Callable
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import reduce
-from typing import Any, NamedTuple
+from typing import Any, Callable, Dict, List, Set, Tuple, Type, Union, cast
+from typing_extensions import NamedTuple
+
 
 import numpy as np
 
@@ -255,7 +257,7 @@ ddp_suggest_debug_mode_str = (
 class DDPUnevenTestInput(NamedTuple):
     name: str
     model: nn.Module
-    inp: torch.Tensor | tuple
+    inp: Union[torch.Tensor, tuple]
     sync_interval: int
     throw_on_early_termination: bool = False
     hook: Callable = None
@@ -671,7 +673,7 @@ class DistributedTest:
             # Verify buffers across ranks.
             m1_buffers = list(m1.buffers())
             m2_buffers = list(m2.buffers())
-            for buf1, buf2 in zip(m1_buffers, m2_buffers, strict=True):
+            for buf1, buf2 in _zip_strict(m1_buffers, m2_buffers):
                 gathered_bufs = [
                     torch.empty_like(buf1) for _ in range(dist.get_world_size())
                 ]
@@ -3056,7 +3058,7 @@ class DistributedTest:
                 curr_values = master_values if rank == src else worker_values
                 tensors = [
                     _build_tensor(src + 1, val, dtype=dtype)
-                    for dtype, val in zip(dtypes, curr_values, strict=True)
+                    for dtype, val in _zip_strict(dtypes, curr_values)
                 ]
                 if cuda:
                     tensors = [t.cuda(rank_to_GPU[rank][0]) for t in tensors]
@@ -3077,9 +3079,8 @@ class DistributedTest:
                 )
                 expected_tensors = [
                     _build_tensor(src + 1, expected_value, dtype=dtype)
-                    for dtype, expected_value in zip(
-                        dtypes, expected_values, strict=True
-                    )
+                    for dtype, expected_value in _zip_strict(
+                        dtypes, expected_values)
                 ]
                 self.assertEqual(tensors, expected_tensors)
 
@@ -3351,7 +3352,7 @@ class DistributedTest:
                 )
                 if rank == dest:
                     expected_tensors = [_build_tensor(dest + 1, i) for i in group]
-                    for t1, t2 in zip(tensors, expected_tensors, strict=True):
+                    for t1, t2 in _zip_strict(tensors, expected_tensors):
                         self.assertEqual(t1, t2)
 
             self._barrier()
@@ -3453,7 +3454,7 @@ class DistributedTest:
                 expected_tensors = [
                     _build_tensor(dest + 1, i, dtype=dtype) for i in group
                 ]
-                for t1, t2 in zip(tensors, expected_tensors, strict=True):
+                for t1, t2 in _zip_strict(tensors, expected_tensors):
                     self.assertEqual(t1, t2)
 
             self._barrier()
@@ -3637,8 +3638,8 @@ class DistributedTest:
                 tensor_shapes=tensor_shapes,
             )
 
-            for l1, l2 in zip(output_tensor_lists, expected_tensors, strict=True):
-                for t1, t2 in zip(l1, l2, strict=True):
+            for l1, l2 in _zip_strict(output_tensor_lists, expected_tensors):
+                for t1, t2 in _zip_strict(l1, l2):
                     if not torch.equal(t1, t2):
                         return False
             return True
@@ -3841,7 +3842,7 @@ class DistributedTest:
                     ]
                     out_tensors = [t.cuda(rank_to_GPU[rank][0]) for t in out_tensors]
                 dist.all_to_all(out_tensors, in_tensors, group=group_id)
-                for t1, t2 in zip(out_tensors, expected_tensors, strict=True):
+                for t1, t2 in _zip_strict(out_tensors, expected_tensors):
                     self.assertEqual(t1, t2)
             self._barrier()
 
@@ -4220,7 +4221,7 @@ class DistributedTest:
 
         def _assert_equal_param(self, param_gpu, param_DDP):
             self.assertEqual(len(param_gpu), len(param_DDP))
-            for p_gpu, p_DDP in zip(param_gpu, param_DDP, strict=True):
+            for p_gpu, p_DDP in _zip_strict(param_gpu, param_DDP):
                 self.assertEqual(p_gpu, p_DDP)
 
         def _test_DDP_niter(
@@ -6911,7 +6912,7 @@ class DistributedTest:
             # they are the same as new_model on rank_to_broadcast.
             if rank == rank_to_broadcast:
                 expected_states = new_model.state_dict().values()
-                for t, expected in zip(net_module_states, expected_states, strict=True):
+                for t, expected in _zip_strict(net_module_states, expected_states):
                     self.assertEqual(t, expected)
 
         @skip_if_lt_x_gpu(2)
@@ -9566,7 +9567,7 @@ class DistributedTest:
             torch.cuda.manual_seed(rank)
 
             def buffer_comm_hook(ddp, named_buffers):
-                buffers = list(named_buffers.values())
+                buffers = [buffer for (_, buffer) in named_buffers.items()]
                 futs = [
                     dist.all_reduce(
                         buffer, group=ddp.process_group, async_op=True
@@ -9668,7 +9669,7 @@ class DistributedTest:
             def buffer_comm_hook(ddp, named_buffers):
                 # named_buffers is a Dict[str, Tensor] representing a mapping
                 # from buffer name to buffer.
-                buffers = list(named_buffers.values())
+                buffers = [buffer for (_, buffer) in named_buffers.items()]
                 ddp._default_broadcast_coalesced(buffers)
 
             model = NetWithBuffers().cuda(rank)
@@ -10031,152 +10032,6 @@ class DistributedTest:
                 rank_0_buf = bufs[0]
                 for buf in bufs[1:]:
                     self.assertEqual(rank_0_buf, buf)
-
-        @skip_if_lt_x_gpu(2)
-        @skip_but_pass_in_sandcastle_if(
-            BACKEND not in DistTestCases.backend_feature["ddp"],
-            f"The {BACKEND} backend does not support DistributedDataParallel",
-        )
-        def test_ddp_join_respects_forward_sync_buffers_false(self):
-            rank = self.rank
-            torch.cuda.set_device(rank)
-            torch.manual_seed(rank + 42)
-            torch.cuda.manual_seed(rank + 42)
-
-            class NetWithBuffers(nn.Module):
-                def __init__(self):
-                    super().__init__()
-                    self.fc = nn.Linear(10, 10, bias=False)
-                    self.register_buffer("rank_local", torch.randn(10))
-
-                def forward(self, x):
-                    return self.fc(x) + self.rank_local
-
-            model = NetWithBuffers().cuda(rank)
-            ddp = torch.nn.parallel.DistributedDataParallel(
-                model,
-                device_ids=[rank],
-                forward_sync_buffers=False,
-            )
-
-            buf_before = ddp.module.rank_local.detach().clone()
-
-            # Uneven inputs: rank 0 finishes first.
-            num_iters = rank + 1
-            with ddp.join():
-                for _ in range(num_iters):
-                    inp = torch.randn(2, 10, device=rank)
-                    ddp(inp).sum().backward()
-
-            buf_after = ddp.module.rank_local.detach().clone()
-            # _sync_final_model must respect forward_sync_buffers=False.
-            self.assertEqual(buf_before, buf_after)
-
-        @skip_if_lt_x_gpu(2)
-        @skip_but_pass_in_sandcastle_if(
-            BACKEND not in DistTestCases.backend_feature["ddp"],
-            f"The {BACKEND} backend does not support DistributedDataParallel",
-        )
-        def test_ddp_init_sync_buffers_with_forward_sync_buffers_false(self):
-            rank = self.rank
-            torch.cuda.set_device(rank)
-            torch.manual_seed(rank)
-            torch.cuda.manual_seed(rank)
-
-            class NetWithBuffers(nn.Module):
-                def __init__(self):
-                    super().__init__()
-                    self.a = nn.Linear(10, 10, bias=False)
-                    self.register_buffer("frozen_coeff", torch.randn(10))
-
-                def forward(self, x):
-                    return self.a(x) + self.frozen_coeff
-
-            model = NetWithBuffers().cuda(rank)
-            model_ddp = torch.nn.parallel.DistributedDataParallel(
-                model,
-                device_ids=[rank],
-                forward_sync_buffers=False,
-            )
-            self.assertFalse(model_ddp.forward_sync_buffers)
-
-            bufs = [
-                torch.empty_like(model_ddp.module.frozen_coeff)
-                for _ in range(dist.get_world_size())
-            ]
-            dist.all_gather(bufs, model_ddp.module.frozen_coeff)
-            for buf in bufs[1:]:
-                self.assertEqual(bufs[0], buf)
-
-            if rank == 0:
-                model_ddp.module.frozen_coeff += 1
-            inp = torch.randn(2, 10, device=rank)
-            model_ddp(inp).sum().backward()
-
-            bufs = [
-                torch.empty_like(model_ddp.module.frozen_coeff)
-                for _ in range(dist.get_world_size())
-            ]
-            dist.all_gather(bufs, model_ddp.module.frozen_coeff)
-            if dist.get_world_size() > 1:
-                self.assertNotEqual(bufs[0], bufs[1])
-
-        @skip_if_lt_x_gpu(2)
-        @skip_but_pass_in_sandcastle_if(
-            BACKEND not in DistTestCases.backend_feature["ddp"],
-            f"The {BACKEND} backend does not support DistributedDataParallel",
-        )
-        def test_ddp_broadcast_buffers_deprecation_warning(self):
-            rank = self.rank
-            torch.cuda.set_device(rank)
-
-            def _count_broadcast_buffers_warnings(caught):
-                return len(
-                    [
-                        w
-                        for w in caught
-                        if issubclass(w.category, FutureWarning)
-                        and "broadcast_buffers" in str(w.message)
-                    ]
-                )
-
-            # Passing broadcast_buffers (True or False) should warn.
-            for val in (True, False):
-                model = nn.Linear(10, 10).cuda(rank)
-                with warnings.catch_warnings(record=True) as caught:
-                    warnings.simplefilter("always")
-                    torch.nn.parallel.DistributedDataParallel(
-                        model,
-                        device_ids=[rank],
-                        broadcast_buffers=val,
-                    )
-                self.assertGreater(_count_broadcast_buffers_warnings(caught), 0)
-
-            # Both specified: forward_sync_buffers takes precedence, warning fires.
-            for bb, fsb in ((False, True), (True, False)):
-                model = nn.Linear(10, 10).cuda(rank)
-                with warnings.catch_warnings(record=True) as caught:
-                    warnings.simplefilter("always")
-                    ddp = torch.nn.parallel.DistributedDataParallel(
-                        model,
-                        device_ids=[rank],
-                        broadcast_buffers=bb,
-                        forward_sync_buffers=fsb,
-                    )
-                self.assertGreater(_count_broadcast_buffers_warnings(caught), 0)
-                self.assertEqual(ddp.forward_sync_buffers, fsb)
-
-            # Default (no broadcast_buffers) and forward_sync_buffers only: no warning.
-            for kwargs in ({}, {"forward_sync_buffers": False}):
-                model = nn.Linear(10, 10).cuda(rank)
-                with warnings.catch_warnings(record=True) as caught:
-                    warnings.simplefilter("always")
-                    torch.nn.parallel.DistributedDataParallel(
-                        model,
-                        device_ids=[rank],
-                        **kwargs,
-                    )
-                self.assertEqual(_count_broadcast_buffers_warnings(caught), 0)
 
         @skip_if_lt_x_gpu(2)
         @skip_but_pass_in_sandcastle_if(

@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 import math
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Optional
+from typing import List, Optional, Tuple, Type, Union
 
 import torch
 import torch.distributed._functional_collectives as funcol
@@ -63,7 +65,7 @@ def _mesh_get_process_group_fake(mesh, dim):
 
 @torch.library.register_fake("_dtensor::shard_dim_alltoall")
 def _shard_dim_alltoall_meta(
-    input, gather_dim, shard_dim, group_name: GroupName | ProcessGroup
+    input, gather_dim, shard_dim, group_name: Union[GroupName, ProcessGroup]
 ):
     if isinstance(group_name, str):
         # pyrefly: ignore[bad-argument-type]  # pyrefly bug
@@ -106,13 +108,13 @@ def shard_dim_alltoall(input, gather_dim, shard_dim, mesh, mesh_dim):
 
 def mesh_scatter(
     output: torch.Tensor,
-    scatter_list: list[torch.Tensor],
+    scatter_list: List[torch.Tensor],
     mesh: DeviceMesh,
     mesh_dim: int = 0,
     async_op: bool = False,
     *,
     group_src: int = 0,
-) -> Work | None:
+) -> Optional[Work]:
     """
     scatter a list of tensors to a device mesh dimension. We by default
     use the first rank of the mesh dimension as the source of truth, i.e
@@ -174,7 +176,7 @@ def mesh_broadcast(
     async_op: bool = False,
     *,
     group_src: int = 0,
-) -> Work | None:
+) -> Optional[Work]:
     """
     broadcast the tensor to a device mesh dimension. We by default
     use the first rank of the mesh dimension as the source of truth, i.e
@@ -258,8 +260,8 @@ def unpad_tensor(
 
 
 def fill_empty_tensor_to_shards(
-    shards: list[torch.Tensor], shard_dim: int, num_empty_tensors: int
-) -> list[torch.Tensor]:
+    shards: List[torch.Tensor], shard_dim: int, num_empty_tensors: int
+) -> List[torch.Tensor]:
     if num_empty_tensors == 0:
         return shards
     tensor_size = list(shards[0].size())
@@ -306,9 +308,9 @@ class MeshTopoInfo:
     """
 
     mesh: DeviceMesh
-    mesh_dim_devices: list[int]
-    mesh_dim_bandwidth: list[float]
-    mesh_dim_latency: list[float]
+    mesh_dim_devices: List[int]
+    mesh_dim_bandwidth: List[float]
+    mesh_dim_latency: List[float]
 
     @staticmethod
     @lru_cache(None)
@@ -386,7 +388,7 @@ def _compute_placement_transition_cost(
     mesh_topo: MeshTopoInfo,
     mesh_dim: int,
     comm_bytes_gb: float,
-) -> tuple[float, float]:
+) -> Tuple[float, float]:
     """
     Compute the cost of transitioning from one placement to another on a single mesh dimension.
 

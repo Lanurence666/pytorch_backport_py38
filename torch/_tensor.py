@@ -1,14 +1,19 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copyreg
 import enum
 import functools
 import itertools
 import warnings
 from collections import OrderedDict
-from collections.abc import Callable
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union, cast
 from copy import deepcopy
 from numbers import Number
-from typing import Any, cast, Concatenate, TypeVar, Union
+try:
+    from typing import Concatenate
+except ImportError:
+    from typing_extensions import Concatenate
 from typing_extensions import ParamSpec
 
 import torch
@@ -183,8 +188,8 @@ class Tensor(torch._C.TensorBase):
                 if self.is_quantized:
                     # quantizer_params can be different type based on torch attribute
                     quantizer_params: (
-                        tuple[torch.qscheme, float, int]
-                        | tuple[torch.qscheme, Tensor, Tensor, int]
+                        Tuple[torch.qscheme, float, int]
+                        | Tuple[torch.qscheme, Tensor, Tensor, int]
                     )
                     if self.qscheme() == torch.per_tensor_affine:
                         quantizer_params = (
@@ -327,7 +332,7 @@ class Tensor(torch._C.TensorBase):
 
         # See Note [Don't serialize hooks]
         warn_if_has_hooks(self)
-        backward_hooks: dict[Any, Any] = OrderedDict()
+        backward_hooks: Dict[Any, Any] = OrderedDict()
 
         skip_data = torch.serialization._serialization_tls.skip_data
         materialize_fake_tensors = (
@@ -369,7 +374,7 @@ class Tensor(torch._C.TensorBase):
                 )
             # quantizer_params can be different type based on torch attribute
             quantizer_params: (
-                tuple[torch.qscheme, float, int] | tuple[Any, Tensor, Tensor, int]
+                Union[Tuple[torch.qscheme, float, int], Tuple[Any, Tensor, Tensor, int]]
             )
             if self.qscheme() == torch.per_tensor_affine:
                 quantizer_params = (
@@ -613,12 +618,10 @@ class Tensor(torch._C.TensorBase):
             create_graph (bool, optional): If ``True``, graph of the derivative will
                 be constructed, allowing to compute higher order derivative
                 products. Defaults to ``False``.
-            inputs (Sequence[Tensor] or dict[str, Tensor], optional): Inputs w.r.t. which
-                the gradient will be accumulated into ``.grad``. All other tensors will be
-                ignored. If not provided, the gradient is accumulated into all the leaf
-                Tensors that were used to compute the :attr:`tensors`. A dict of tensors
-                (e.g. ``dict(model.named_parameters())``) is also accepted.
-                Defaults to ``None``.
+            inputs (Sequence[Tensor], optional): Inputs w.r.t. which the gradient will be
+                accumulated into ``.grad``. All other tensors will be ignored. If not
+                provided, the gradient is accumulated into all the leaf Tensors that were
+                used to compute the :attr:`tensors`. Defaults to ``None``.
         """
         if has_torch_function_unary(self):
             return handle_torch_function(
@@ -763,7 +766,7 @@ class Tensor(torch._C.TensorBase):
                 "post accumulate grad hooks cannot be registered on non-leaf tensors"
             )
         if self._post_accumulate_grad_hooks is None:
-            self._post_accumulate_grad_hooks: dict[Any, Any] = (
+            self._post_accumulate_grad_hooks: Dict[Any, Any] = (
                 # pyrefly: ignore [bad-assignment]
                 OrderedDict()
             )
@@ -897,7 +900,7 @@ class Tensor(torch._C.TensorBase):
 
     def norm(
         self,
-        p: float | str | None = "fro",
+        p: Optional[Union[float, str]]= "fro",
         dim=None,
         keepdim=False,
         dtype=None,
@@ -948,15 +951,15 @@ class Tensor(torch._C.TensorBase):
     def stft(
         self,
         n_fft: int,
-        hop_length: int | None = None,
-        win_length: int | None = None,
-        window: "Tensor | None" = None,
+        hop_length: Optional[int]= None,
+        win_length: Optional[int]= None,
+        window: Union["Tensor, None"]= None,
         center: bool = True,
         pad_mode: str = "reflect",
         normalized: bool = False,
-        onesided: bool | None = None,
-        return_complex: bool | None = None,
-        align_to_window: bool | None = None,
+        onesided: Optional[bool]= None,
+        return_complex: Optional[bool]= None,
+        align_to_window: Optional[bool]= None,
     ):
         r"""See :func:`torch.stft`
 
@@ -997,13 +1000,13 @@ class Tensor(torch._C.TensorBase):
     def istft(
         self,
         n_fft: int,
-        hop_length: int | None = None,
-        win_length: int | None = None,
-        window: "Tensor | None" = None,
+        hop_length: Optional[int]= None,
+        win_length: Optional[int]= None,
+        window: Union["Tensor, None"]= None,
         center: bool = True,
         normalized: bool = False,
-        onesided: bool | None = None,
-        length: int | None = None,
+        onesided: Optional[bool]= None,
+        length: Optional[int]= None,
         return_complex: bool = False,
     ):
         r"""See :func:`torch.istft`"""
@@ -1527,7 +1530,7 @@ class Tensor(torch._C.TensorBase):
         """
         return self.to_sparse()
 
-    def dim_order(self, *, ambiguity_check: bool | list[torch.memory_format] = False):
+    def dim_order(self, *, ambiguity_check: Union[bool, List[torch.memory_format]] = False):
         """
         dim_order(ambiguity_check=False) -> tuple
 
@@ -1615,7 +1618,7 @@ class Tensor(torch._C.TensorBase):
 
             The tensor is considered to have multiple legal dim orders if either of the following conditions is met:
 
-            * Singleton Dimensions: There's at least one singleton dimension in the tensor.
+            * Singleton Dimensions: There's at least one singleteon dimension in the tensor.
               Since their size is 1, they don't affect the memory offset (stride * index
               is zero because index is always zero). Therefore, they can be placed anywhere
               in the dimension order without changing how data is accessed.
@@ -1709,10 +1712,10 @@ class Tensor(torch._C.TensorBase):
     def __dlpack__(
         self,
         *,
-        stream: Any | None = -1,
-        max_version: tuple[int, int] | None = None,
-        dl_device: tuple[enum.IntEnum, int] | None = None,
-        copy: bool | None = None,
+        stream: Optional[Any]= -1,
+        max_version: Optional[Tuple[int, int]]= None,
+        dl_device: Optional[Tuple[enum.IntEnum, int]]= None,
+        copy: Optional[bool]= None,
     ):
         """
         Creates a DLpack `capsule https://data-apis.org/array-api/latest/design_topics/data_interchange.html#data-interchange`_
@@ -1734,11 +1737,11 @@ class Tensor(torch._C.TensorBase):
                 because many from_dlpack implementations intend stream preservation.
                 For non-CUDA devices, -1 is treated the same as None.
 
-            max_version (tuple[int, int] or None): An optional Python tuple with
+            max_version (Tuple[int, int] or None): An optional Python tuple with
                 2 integers, representing the maximum version the caller supports. If
                 None (default), PyTorch will fallback to DLPack 0.8.
 
-            dl_device (tuple[DLDeviceType, int] or None): An optional tuple specifying
+            dl_device (Tuple[DLDeviceType, int] or None): An optional tuple specifying
                 in which device the exported DLPack capsule should be on. If None (default),
                 the exported DLPack capsule will be on the same device as ``self``.
 
@@ -1837,7 +1840,7 @@ class Tensor(torch._C.TensorBase):
 
         return _C._to_dlpack_versioned(self, dl_device=dl_device, copy=copy)
 
-    def __dlpack_device__(self) -> tuple[enum.IntEnum, int]:
+    def __dlpack_device__(self) -> Tuple[enum.IntEnum, int]:
         if has_torch_function_unary(self):
             return handle_torch_function(Tensor.__dlpack_device__, (self,), self)
 

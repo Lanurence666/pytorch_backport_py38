@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, List, Optional, Tuple, Union
 from typing_extensions import deprecated
 
 import torch
@@ -9,13 +11,13 @@ from torch import Tensor
 from torch.utils._pytree import _broadcast_to_and_flatten, tree_flatten, tree_unflatten
 
 
-in_dims_t = int | tuple
-out_dims_t = int | tuple[int, ...]
+in_dims_t = Union[int, tuple]
+out_dims_t = Union[int, Tuple[int, ...]]
 
 
 # Checks that all args-to-be-batched have the same batch dim size
 def _validate_and_get_batch_size(
-    flat_in_dims: list[int | None],
+    flat_in_dims: List[Optional[int]],
     flat_args: list,
 ) -> int:
     batch_sizes = [
@@ -31,7 +33,7 @@ def _validate_and_get_batch_size(
     return batch_sizes[0]
 
 
-def _num_outputs(batched_outputs: Tensor | tuple[Tensor, ...]) -> int:
+def _num_outputs(batched_outputs: Union[Tensor, Tuple[Tensor, ...]]) -> int:
     if isinstance(batched_outputs, tuple):
         return len(batched_outputs)
     return 1
@@ -58,7 +60,7 @@ def _create_batched_inputs(
     args: tuple,
     vmap_level: int,
     func: Callable,
-) -> tuple[tuple, int]:
+) -> Tuple[tuple, int]:
     if not isinstance(in_dims, int) and not isinstance(in_dims, tuple):
         raise ValueError(
             f"vmap({_get_name(func)}, in_dims={in_dims}, ...)(<inputs>): "
@@ -115,7 +117,7 @@ def _create_batched_inputs(
 
 # Undos the batching (and any batch dimensions) associated with the `vmap_level`.
 def _unwrap_batched(
-    batched_outputs: Tensor | tuple[Tensor, ...],
+    batched_outputs: Union[Tensor, Tuple[Tensor, ...]],
     out_dims: out_dims_t,
     vmap_level: int,
     batch_size: int,

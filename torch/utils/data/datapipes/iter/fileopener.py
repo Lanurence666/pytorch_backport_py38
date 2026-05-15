@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from collections.abc import Iterable, Iterator
 from io import IOBase
 
 from torch.utils.data.datapipes._decorator import functional_datapipe
 from torch.utils.data.datapipes.datapipe import IterDataPipe
 from torch.utils.data.datapipes.utils.common import get_file_binaries_from_pathnames
+from typing import Iterable, Iterator, List, Optional, Tuple, Type
 
 
 __all__ = [
@@ -12,7 +15,7 @@ __all__ = [
 
 
 @functional_datapipe("open_files")
-class FileOpenerIterDataPipe(IterDataPipe[tuple[str, IOBase]]):
+class FileOpenerIterDataPipe(IterDataPipe[Tuple[str, IOBase]]):
     r"""
     Given pathnames, opens files and yield pathname and file stream in a tuple (functional name: ``open_files``).
 
@@ -47,13 +50,13 @@ class FileOpenerIterDataPipe(IterDataPipe[tuple[str, IOBase]]):
         self,
         datapipe: Iterable[str],
         mode: str = "r",
-        encoding: str | None = None,
+        encoding: Optional[str]= None,
         length: int = -1,
     ) -> None:
         super().__init__()
         self.datapipe: Iterable[str] = datapipe
         self.mode: str = mode
-        self.encoding: str | None = encoding
+        self.encoding: Optional[str] = encoding
 
         if self.mode not in ("b", "t", "rb", "rt", "r"):
             raise ValueError(f"Invalid mode {mode}")
@@ -68,7 +71,7 @@ class FileOpenerIterDataPipe(IterDataPipe[tuple[str, IOBase]]):
     # Remove annotation due to 'IOBase' is a general type and true type
     # is determined at runtime based on mode. Some `DataPipe` requiring
     # a subtype would cause mypy error.
-    def __iter__(self) -> Iterator[tuple[str, IOBase]]:
+    def __iter__(self) -> Iterator[Tuple[str, IOBase]]:
         yield from get_file_binaries_from_pathnames(
             self.datapipe, self.mode, self.encoding
         )

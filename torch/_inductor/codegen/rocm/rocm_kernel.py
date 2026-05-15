@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
-from collections.abc import Callable, Sequence
-from typing import Any, TYPE_CHECKING
+
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, TYPE_CHECKING, Type, Union
 
 import torch._inductor.config as config
 from torch._inductor.codegen.cpp_wrapper_cpu import CppWrapperCpu
@@ -46,8 +48,8 @@ class ROCmTemplateKernel(ROCmKernel):
     def __init__(
         self,
         kernel_name: str,
-        runtime_arg_info: list["ArgInfo"],
-        runtime_arg_values: list[Any],
+        runtime_arg_info: List["ArgInfo"],
+        runtime_arg_values: List[Any],
     ) -> None:
         """
         Initializes a new instance of the ROCmTemplateKernel class.
@@ -58,7 +60,7 @@ class ROCmTemplateKernel(ROCmKernel):
         super().__init__()
         self.kernel_name = kernel_name
         # Mapping from arg name to IRNode.
-        self.named_nodes: dict[str, IRNode] = {}
+        self.named_nodes: Dict[str, IRNode] = {}
         self.runtime_arg_info = runtime_arg_info
         self.runtime_arg_values = runtime_arg_values
 
@@ -67,11 +69,11 @@ class ROCmTemplateKernel(ROCmKernel):
 
     def def_kernel(
         self,
-        inputs: list[IRNode],
-        outputs: list[IRNode],
-        size_args: list[str],
+        inputs: List[IRNode],
+        outputs: List[IRNode],
+        size_args: List[str],
         names_str: str = "",
-        input_reorder: list[int] | None = None,
+        input_reorder: Optional[List[int]] = None,
     ) -> str:
         """
         Hook called from template code to generate function definition and
@@ -135,7 +137,7 @@ class ROCmTemplateKernel(ROCmKernel):
         """
         wrapper = V.graph.wrapper_code
 
-        arg_types: list[Any]
+        arg_types: List[Any]
         if V.graph.cpp_wrapper:
             # Make sure we initialize these kernels since they're exported as
             # C-style symbol names.
@@ -225,14 +227,14 @@ class ROCmTemplateCaller(ChoiceCaller):
         self,
         name: str,
         category: str,
-        input_nodes: list[Buffer],
+        input_nodes: List[Buffer],
         layout: Layout,
         make_kernel_render: Callable[
-            [ROCmTemplateBuffer, Sequence[IRNode] | None], str
+            [ROCmTemplateBuffer, Optional[Sequence[IRNode]]], str
         ],
         bmreq: ROCmBenchmarkRequest,
         template: "ROCmTemplate",  # type: ignore[name-defined]
-        info_kwargs: dict[str, PrimitiveInfoType | list[PrimitiveInfoType]] | None,  # type: ignore[type-arg]
+        info_kwargs: Dict[str, Union[PrimitiveInfoType, List[PrimitiveInfoType]]] | None,  # type: ignore[type-arg]
     ) -> None:
         super().__init__(name, input_nodes, layout, description="")
         self.category = category
@@ -266,7 +268,7 @@ class ROCmTemplateCaller(ChoiceCaller):
             ]
         )
 
-    def info_dict(self) -> dict[str, PrimitiveInfoType | list[PrimitiveInfoType]]:
+    def info_dict(self) -> Dict[str, Union[PrimitiveInfoType, List[PrimitiveInfoType]]]:
         """Information returned here is logged to the autotune log file when that is enabled."""
         return {
             "backend": "ROCm",

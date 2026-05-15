@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import importlib
 import itertools
 import logging
@@ -7,11 +9,13 @@ import signal
 import string
 import traceback
 import types
-from collections.abc import Callable, KeysView, Sequence
+from collections.abc import KeysView
 from enum import Enum
 from functools import partial, wraps
 from types import FrameType
-from typing import Any, get_args, get_origin, Literal, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union, get_args, get_origin
+from typing_extensions import Literal
+
 
 import torch
 from functorch.compile import min_cut_rematerialization_partition
@@ -62,7 +66,7 @@ class DummyPass(CustomGraphPass):
     def __call__(self, graph: torch.fx.graph.Graph) -> None:
         return None
 
-    def uuid(self) -> Any | None:
+    def uuid(self) -> Optional[Any]:
         return None
 
 
@@ -73,10 +77,10 @@ class DummyPartitionerFn(CustomPartitionerFn):
 
     def __call__(
         self, gm: torch.fx.GraphModule, joint_inputs: Sequence[object], **kwargs: Any
-    ) -> tuple[torch.fx.GraphModule, torch.fx.GraphModule]:
+    ) -> Tuple[torch.fx.GraphModule, torch.fx.GraphModule]:
         return min_cut_rematerialization_partition(gm, joint_inputs, **kwargs)
 
-    def uuid(self) -> Any | None:
+    def uuid(self) -> Optional[Any]:
         return None
 
 
@@ -88,7 +92,7 @@ class TypeExemplars:
     This class returns examples of a Type, given its class name.
     """
 
-    TYPE_EXEMPLARS: dict[str, Any] = {
+    TYPE_EXEMPLARS: Dict[str, Any] = {
         CustomGraphPass.__name__: DummyPass(),
         CustomPartitionerFn.__name__: DummyPartitionerFn(),
         torch.fx.graph.Graph.__name__: torch.fx.graph.Graph(),
@@ -96,7 +100,7 @@ class TypeExemplars:
     }
 
     @staticmethod
-    def example(t: type[T]) -> T | None:
+    def example(t: Type[T]) -> Optional[T]:
         """
         Return an example of a class.
         """
@@ -104,7 +108,7 @@ class TypeExemplars:
         return TypeExemplars.TYPE_EXEMPLARS.get(t.__name__, None)
 
     @staticmethod
-    def contains(t: type[T]) -> bool:
+    def contains(t: Type[T]) -> bool:
         return t.__name__ in TypeExemplars.TYPE_EXEMPLARS
 
 
@@ -157,7 +161,7 @@ class Status(Enum):
 # Sometime the types of configs aren't expressive enough to be captured by python type system, so the options can be
 # manually specified here:
 # TODO this needs to be indexed to the module, like inductor or dynamo, for name collisions
-TYPE_OVERRIDES: dict[str, list[Any]] = {
+TYPE_OVERRIDES: Dict[str, List[Any]] = {
     "cuda_backend": CUDA_BACKEND,
     "post_grad_fusion_options": [
         {
@@ -194,7 +198,7 @@ TYPE_OVERRIDES: dict[str, list[Any]] = {
     "traceable_tensor_subclasses": [OrderedSet()],
     "nontraceable_tensor_subclasses": [OrderedSet()],
 }
-SamplingType = Callable[[str, type[Any], Any], Any]
+SamplingType = Callable[[str, Type[Any], Any], Any]
 
 
 class SamplingMethod(Enum):
@@ -212,7 +216,7 @@ class SamplingMethod(Enum):
 
     @staticmethod
     def _generate_value_for_type(
-        random_sample: bool, field_name: str, type_hint: type[Any], default: Any
+        random_sample: bool, field_name: str, type_hint: Type[Any], default: Any
     ) -> Any:
         """
         Generates a value of a type based on the setting.
@@ -412,7 +416,7 @@ class Default:
 DEFAULT = Default()
 
 # The combination of config settings being set (based on their strings)
-ComboType = tuple[str, ...]
+ComboType = Tuple[str, ...]
 
 
 class ResultType:
@@ -420,7 +424,7 @@ class ResultType:
     The mapping of the combo strings to the result status after running the config fuzzer.
     """
 
-    _vals: dict[ComboType, Status]
+    _vals: Dict[ComboType, Status]
 
     def __repr__(self) -> str:
         return f"ResultType[{self._vals}]"
@@ -445,7 +449,7 @@ class ResultType:
         combo = tuple(sorted(combo))
         self._vals[combo] = status
 
-    def lookup(self, combo: ComboType) -> Status | None:
+    def lookup(self, combo: ComboType) -> Optional[Status]:
         combo = tuple(sorted(combo))
         return self._vals.get(combo, None)
 
@@ -454,7 +458,7 @@ class ResultType:
 
 
 # Type that maps config strings to their default value
-ConfigType = dict[str, Any]
+ConfigType = Dict[str, Any]
 # Callable that returns a bool
 FactoryOutputType = Callable[[], bool]
 # input function factory
@@ -474,7 +478,7 @@ FactoryType = Callable[[], FactoryOutputType]
 # Typing: disabled because the type annotation of the config isn't constrained enough to produce
 #   meaningful fuzz values. These could be improved.
 # Timing: These take too long to compile, feel free to enable.
-MODULE_DEFAULTS: dict[str, ConfigType] = {
+MODULE_DEFAULTS: Dict[str, ConfigType] = {
     "torch._inductor.config": {
         "force_disable_caches": True,  # Required
         "cpp.cxx": DEFAULT,  # Out of Scope
@@ -600,7 +604,7 @@ class ConfigFuzzer:
         config_module: ConfigModule,
         test_model_fn_factory: FactoryType,
         seed: int,
-        default: ConfigType | None = None,
+        default: Optional[ConfigType]= None,
         sm: SamplingMethod = SamplingMethod.TOGGLE,
         test_timeout: int = 3600,
     ):
@@ -616,10 +620,10 @@ class ConfigFuzzer:
         """
         self.seed = seed
         self.test_timeout = test_timeout
-        self.detailed_results: dict[ComboType, dict[str, Any]] = {}
+        self.detailed_results: Dict[ComboType, Dict[str, Any]] = {}
         self.config_module = config_module
         self.test_model_fn_factory = test_model_fn_factory
-        self.fields: dict[str, _ConfigEntry] = self.config_module._config
+        self.fields: Dict[str, _ConfigEntry] = self.config_module._config
         self.sample = SamplingMethod.dispatch(sm)
 
         if default is None:
@@ -730,7 +734,7 @@ class ConfigFuzzer:
             self.results = state["results"]
             self.detailed_results = state.get("detailed_results", {})
 
-    def timeout_handler(self, signum: int, frame: FrameType | None) -> None:
+    def timeout_handler(self, signum: int, frame: Optional[FrameType]) -> None:
         raise TimeoutError("Test execution timed out")
 
     def test_config(self, results: ResultType, config: ConfigType) -> Status:
@@ -749,7 +753,7 @@ class ConfigFuzzer:
             for field, value in config.items():
                 print(f"{field} = {value}")
 
-        def get_error_info(exc: Exception) -> dict[str, Any]:
+        def get_error_info(exc: Exception) -> Dict[str, Any]:
             return {
                 "exception": str(exc),
                 "traceback": traceback.format_exc(),
@@ -760,7 +764,7 @@ class ConfigFuzzer:
             message: str,
             return_status: Status,
             print_traceback: bool,
-            exc: Exception | None,
+            exc: Union[Exception, None,]
         ) -> Status:
             signal.signal(signal.SIGALRM, original_handler)
             print(f"{message} with config combination:")
@@ -815,7 +819,7 @@ class ConfigFuzzer:
         else:
             return handle_return("Function succeeded", Status.PASSED, False, None)
 
-    def bisect(self, num_attempts: int = 100, p: float = 0.5) -> list[ConfigType]:
+    def bisect(self, num_attempts: int = 100, p: float = 0.5) -> List[ConfigType]:
         """
         Test configs and bisect to minimal failing configuration.
         """
@@ -823,7 +827,7 @@ class ConfigFuzzer:
         random.seed(self.seed)
         self._reset_configs()
         results = ResultType()
-        ret: list[ConfigType] = []
+        ret: List[ConfigType] = []
 
         for attempt in range(num_attempts):
             print(f"Random attempt {attempt + 1}/{num_attempts}")
@@ -854,12 +858,12 @@ class ConfigFuzzer:
 
     def _bisect_failing_config(
         self, results: ResultType, failing_config: ConfigType
-    ) -> ConfigType | None:
+    ) -> Optional[ConfigType]:
         return self._bisect_failing_config_helper(results, list(failing_config.items()))
 
     def _bisect_failing_config_helper(
-        self, results: ResultType, failing_config: list[tuple[str, Any]]
-    ) -> ConfigType | None:
+        self, results: ResultType, failing_config: List[Tuple[str, Any]]
+    ) -> Optional[ConfigType]:
         """
         Bisect a failing configuration to find minimal set of configs that cause failure.
 
@@ -870,7 +874,7 @@ class ConfigFuzzer:
         if not failing_config:
             return None
 
-        def test(x: list[tuple[str, Any]]) -> Status:
+        def test(x: List[Tuple[str, Any]]) -> Status:
             d = dict(x)
             result = self.test_config(results, d)
             return result

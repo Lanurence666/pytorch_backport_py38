@@ -1,8 +1,11 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch._C import _get_privateuse1_backend_name, _rename_privateuse1_backend
 from torch.overrides import handle_torch_function, has_torch_function_unary
+from typing import List, Optional, Set, Type, Union
 
 
 __all__ = [
@@ -119,7 +122,7 @@ def _check_register_once(module, attr) -> None:
 
 
 def _normalization_device(
-    custom_backend_name: str, device: int | str | torch.device | None = None
+    custom_backend_name: Optional[Union[str, device: int, str, torch.device]]= None
 ) -> int:
     def _get_current_device_index():
         _get_device_index = "current_device"
@@ -166,7 +169,7 @@ def _generate_tensor_methods_for_privateuse1_backend(custom_backend_name: str) -
 
     def wrap_tensor_to(
         self: torch.Tensor,
-        device: int | torch.device | None = None,
+        device: Optional[Union[int, torch.device]]= None,
         non_blocking=False,
         **kwargs,
     ) -> torch.Tensor:
@@ -218,7 +221,7 @@ def _generate_module_methods_for_privateuse1_backend(custom_backend_name: str) -
     def wrap_module_to(
         # pyrefly: ignore [invalid-type-var]
         self: torch.nn.modules.module.T,
-        device: int | torch.device | None = None,
+        device: Optional[Union[int, torch.device]]= None,
     ) -> torch.nn.modules.module.T:  # pyrefly: ignore [invalid-type-var]
         r"""Move all model parameters and buffers to the custom device.
 
@@ -296,7 +299,7 @@ def _generate_packed_sequence_methods_for_privateuse1_backend(
 
 
 def _generate_storage_methods_for_privateuse1_backend(
-    custom_backend_name: str, unsupported_dtype: list[torch.dtype] | None = None
+    custom_backend_name: Optional[str, unsupported_dtype: List[torch.dtype]]= None
 ) -> None:
     # Attribute is registered in the _StorageBase class
     # and UntypedStorage obtains through inheritance.
@@ -383,7 +386,7 @@ def generate_methods_for_privateuse1_backend(
     for_module: bool = True,
     for_packed_sequence: bool = True,
     for_storage: bool = False,
-    unsupported_dtype: list[torch.dtype] | None = None,
+    unsupported_dtype: Optional[List[torch.dtype]]= None,
 ) -> None:
     r"""
     Automatically generate attributes and methods for the custom backend after rename privateuse1 backend.
@@ -527,11 +530,11 @@ def _setup_privateuseone_for_python_backend(
     See the unit test at test/test_privateuseone_python_backend.py for more details.
 
     Args:
-        rename: str | None, if passed in, we will rename privateuseone backend to
+        rename: Union[str, None, if passed in, we will rename privateuseone backend to]
            the name given.
-        backend_module: object | None, if passed in None, we will use DummyBackendModule
-        hook: object | None, if passed in None, we will use DummyPrivateUse1Hook
-        device_guard: object | None, if passed in None, we will use DummyDeviceGuard
+        backend_module: Union[object, None, if passed in None, we will use DummyBackendModule]
+        hook: Union[object, None, if passed in None, we will use DummyPrivateUse1Hook]
+        device_guard: Union[object, None, if passed in None, we will use DummyDeviceGuard]
     """
     # NOTE: the ordering of which these functions are called is important.
     if rename is not None:

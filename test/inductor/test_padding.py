@@ -1,4 +1,5 @@
 # Owner(s): ["module: inductor"]
+from __future__ import annotations
 import copy
 import functools
 import os

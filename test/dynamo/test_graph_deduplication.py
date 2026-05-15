@@ -1141,10 +1141,7 @@ def forward(self, L_x_ : torch.Tensor, L_y_ : torch.Tensor):
         self.assertEqual(result_compiled, result_eager)
 
     def test_tuple_inputs(self):
-        with (
-            torch._dynamo.config.patch("use_graph_deduplication", False),
-            torch._dynamo.config.patch("track_nodes_for_deduplication", True),
-        ):
+        with torch._dynamo.config.patch("use_graph_deduplication", False), torch._dynamo.config.patch("track_nodes_for_deduplication", True):
 
             def inner(x, y):
                 x0, x1 = torch.split(x, 5)

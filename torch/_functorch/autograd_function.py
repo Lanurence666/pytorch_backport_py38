@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, NamedTuple, TYPE_CHECKING
-from typing_extensions import ParamSpec, TypeVar
+from typing import Any, Callable, Iterable, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union
+from typing_extensions import NamedTuple, ParamSpec, TypeVar
 
 import torch
 import torch.utils._pytree as pytree
@@ -25,7 +25,7 @@ from torch.autograd.forward_ad import _set_fwd_grad_enabled
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Sequence
+    
 
     from torch._functorch.pyfunctorch import FuncTorchInterpreter, VmapInterpreter
 
@@ -46,7 +46,7 @@ class CustomFunctionHigherOrderOperator(HigherOrderOperator):
 
     def __call__(
         self,
-        autograd_function: type[torch.autograd.Function],
+        autograd_function: Type[torch.autograd.Function],
         *args: _P.args,
         **kwargs: _P.kwargs,
     ) -> Any:
@@ -106,7 +106,7 @@ custom_function_call = CustomFunctionHigherOrderOperator()
 @custom_function_call.py_impl(TransformType.Jvp)
 def custom_function_call_grad(
     interpreter: FuncTorchInterpreter,
-    autograd_function: type[torch.autograd.Function],
+    autograd_function: Type[torch.autograd.Function],
     *operands: Any,
 ) -> Any:
     Generated = generate_single_level_function(interpreter, autograd_function)
@@ -118,8 +118,8 @@ def custom_function_call_grad(
 
 def generate_single_level_function(
     interpreter: FuncTorchInterpreter,
-    autograd_function: type[torch.autograd.Function],
-) -> type[torch.autograd.function._SingleLevelFunction]:
+    autograd_function: Type[torch.autograd.Function],
+) -> Type[torch.autograd.function._SingleLevelFunction]:
     level = interpreter.level()
 
     def forward(*operands: Any) -> Any:
@@ -293,7 +293,7 @@ class VmapInfo(NamedTuple):
 
 
 def has_overridden_vmap_rule(
-    autograd_function: type[torch.autograd.Function],
+    autograd_function: Type[torch.autograd.Function],
 ) -> bool:
     return autograd_function.vmap is not torch.autograd.Function.vmap
 
@@ -312,7 +312,7 @@ def validate_vmap_returns_tuple_of_two_elements(result: Any) -> None:
 @custom_function_call.py_impl(TransformType.Vmap)
 def custom_function_call_vmap(
     interpreter: VmapInterpreter,
-    autograd_function: type[torch.autograd.Function],
+    autograd_function: Type[torch.autograd.Function],
     *operands: Any,
     **kwargs: Any,
 ) -> Any:
@@ -399,7 +399,7 @@ def custom_function_call_vmap_helper(
     unwrapped_output, out_dims = result
 
     # See NOTE [mark_dirty object identity check]
-    def wrap_fn(output: torch.Tensor, out_dim: int | None) -> torch.Tensor:
+    def wrap_fn(output: torch.Tensor, out_dim: Optional[int]) -> torch.Tensor:
         return (
             output
             if out_dim is None
@@ -411,7 +411,7 @@ def custom_function_call_vmap_helper(
     )
 
 
-def unpack_outputs(outputs: tuple[Any, ...]) -> tuple[Any, Any]:
+def unpack_outputs(outputs: Tuple[Any, ...]) -> Tuple[Any, Any]:
     out_dims = outputs[-1]
     if isinstance(out_dims, tuple):
         outputs = outputs[:-1]
@@ -422,7 +422,7 @@ def unpack_outputs(outputs: tuple[Any, ...]) -> tuple[Any, Any]:
 
 def custom_function_call_vmap_generate_rule(
     interpreter: VmapInterpreter,
-    autograd_function: type[torch.autograd.Function],
+    autograd_function: Type[torch.autograd.Function],
     *operands: Any,
 ) -> Any:
     unwrapped_operands, in_dims = unwrap_batched(operands, interpreter.level())
@@ -444,7 +444,7 @@ def custom_function_call_vmap_generate_rule(
 @custom_function_call.py_impl(TransformType.Functionalize)
 def custom_function_call_functionalize(
     interpreter: FuncTorchInterpreter,
-    autograd_function: type[torch.autograd.Function],
+    autograd_function: Type[torch.autograd.Function],
     generate_vmap_rule: bool,
     *operands: Any,
 ) -> Any:
@@ -452,11 +452,11 @@ def custom_function_call_functionalize(
 
 
 def vmapify_autograd_function(
-    autograd_function: type[torch.autograd.Function],
+    autograd_function: Type[torch.autograd.Function],
     in_dims: Any,
     batch_size: int,
     randomness: str,
-) -> type[torch.autograd.Function]:
+) -> Type[torch.autograd.Function]:
     def forward(*operands: Any) -> Any:
         outputs, out_dims = restore_vmap(
             autograd_function.forward, in_dims, batch_size, randomness
@@ -580,7 +580,7 @@ def vmapify_autograd_function(
 
 # tangents might be None, so we need to replace
 # the corresponding in_dims with None.
-def get_tangents_in_dims(input_dims: Any, tangents: tuple[Any, ...]) -> Any:
+def get_tangents_in_dims(input_dims: Any, tangents: Tuple[Any, ...]) -> Any:
     flat_in_dims, spec = pytree.tree_flatten(input_dims)
     flat_tangents = pytree.arg_tree_leaves(*tangents)
     result = [
@@ -644,7 +644,7 @@ def get_tangents_in_dims(input_dims: Any, tangents: tuple[Any, ...]) -> Any:
 # Wraps a ctx object. Forwards all attr accesses to the underlying object
 # except for the attrs in _pt_attrs
 class WrappedCtx:
-    _pt_reserved_attrs: tuple[str, ...] = ("_pt_reserved_attrs", "_pt_inner_ctx")
+    _pt_reserved_attrs: Tuple[str, ...] = ("_pt_reserved_attrs", "_pt_inner_ctx")
 
     def __init__(self, ctx: Any) -> None:
         if not isinstance(ctx, WrappedCtx):
@@ -691,7 +691,7 @@ class CtxCustomSave(WrappedCtx):
 
     def __init__(self, ctx: Any, current_level: int) -> None:
         super().__init__(ctx)
-        self._pt_saved_tensors_bdims: tuple[Any, ...] = ()
+        self._pt_saved_tensors_bdims: Tuple[Any, ...] = ()
         self._pt_current_level = current_level
 
     def save_for_backward(self, *tensors: torch.Tensor) -> None:
@@ -706,12 +706,12 @@ class CtxCustomSave(WrappedCtx):
 
 
 def reductify(
-    grad_input: torch.Tensor | tuple[torch.Tensor, ...],
-    grad_input_bdim: int | tuple[int, ...],
-    input_bdim: int | tuple[int, ...],
+    grad_input: Union[torch.Tensor, Tuple[torch.Tensor, ...]],
+    grad_input_bdim: Union[int, Tuple[int, ...]],
+    input_bdim: Union[int, Tuple[int, ...]],
     batch_size: int,
     target_shape_without_bdim_to_reduce_to: Any = None,
-) -> tuple[Any, ...]:
+) -> Tuple[Any, ...]:
     if not isinstance(grad_input, tuple):
         grad_input = (grad_input,)
     if not isinstance(grad_input_bdim, tuple):
@@ -734,12 +734,12 @@ def reductify(
 
 
 def reductify_leaf(
-    grad_input: torch.Tensor | None,
-    grad_input_bdim: int | None,
-    input_bdim: int | None,
+    grad_input: Optional[torch.Tensor],
+    grad_input_bdim: Optional[int],
+    input_bdim: Optional[int],
     batch_size: int,
     target_shape_without_bdim_to_reduce_to: Any = None,
-) -> torch.Tensor | None:
+) -> Optional[torch.Tensor]:
     if grad_input is None:
         return None
 
@@ -816,7 +816,7 @@ class AutogradFunctionApply(HigherOrderOperator):
         *fwd_args: Any,
         **fwd_kwargs: Any,
     ) -> Any:
-        saved_values: Iterable[Any] | None = None
+        saved_values: Optional[Iterable[Any]] = None
         non_differentiable_idx = fwd_kwargs["non_differentiable_idx"]
         saved_for_backward_idx = fwd_kwargs["saved_for_backward_idx"]
 
@@ -844,7 +844,7 @@ class AutogradFunctionApply(HigherOrderOperator):
                 return output
 
             @staticmethod
-            def setup_context(ctx: Any, inputs: tuple[Any, ...], output: Any) -> None:
+            def setup_context(ctx: Any, inputs: Tuple[Any, ...], output: Any) -> None:
                 # If users call ctx.mark_non_differentiable() in the original fwd function.
                 if len(non_differentiable_idx) > 0:
                     non_differentiable_output = []

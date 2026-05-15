@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import logging
-from collections.abc import Callable, Sequence
-from typing import Any
+
+from typing import Any, Callable, Dict, Optional, Sequence, Set, Union
 
 import torch
 from torch._inductor import config
@@ -21,7 +23,7 @@ log = torch._logging.getArtifactLogger(__name__, "auto_chunker")
 
 
 def set_chunking_meta(
-    node: Node, meta: ChunkingMeta | None = None, **kwargs: Any
+    node: Optional[Node, meta: ChunkingMeta]= None, **kwargs: Any
 ) -> bool:
     """
     kwargs can override fields in the passed in `meta`
@@ -61,7 +63,7 @@ def update_chunking_meta(node: Node, **kwargs: Any) -> bool:
 def set_chunking_meta_if_none(
     nodes: Sequence[Node],
     meta: ChunkingMeta,
-    filter_for_nop: Callable[[Node], bool] | None = None,
+    filter_for_nop: Optional[Callable[[Node], bool]] = None
 ) -> bool:
     """
     If filter_fop_nop returns true for a node, we set the chunking
@@ -78,7 +80,7 @@ def set_chunking_meta_if_none(
     return changed
 
 
-def copy_chunking_meta(dst_node: Node, src_node: Node | ChunkingMeta) -> bool:
+def copy_chunking_meta(dst_node: Node, src_node: Union[Node, ChunkingMeta]) -> bool:
     if isinstance(src_node, torch.fx.Node):
         src_meta = get_chunking_meta(src_node)
     else:
@@ -88,7 +90,7 @@ def copy_chunking_meta(dst_node: Node, src_node: Node | ChunkingMeta) -> bool:
     return set_chunking_meta(dst_node, src_meta)
 
 
-def get_chunking_meta(node: Node) -> ChunkingMeta | None:
+def get_chunking_meta(node: Node) -> Optional[ChunkingMeta]:
     return node.meta.get("chunking")
 
 
@@ -98,7 +100,7 @@ def has_nop_chunking_meta(node: Node) -> bool:
 
 def get_chunking_metas(
     nodes: Sequence[Node], skip_none: bool = False
-) -> Sequence[ChunkingMeta | None]:
+) -> Union[Sequence[ChunkingMeta, None]]:
     return [
         get_chunking_meta(node)
         for node in nodes
@@ -114,7 +116,7 @@ eligible_amplifier_node = OrderedSet(
 )
 
 
-def find_amplifier_node(graph: Graph) -> Node | None:
+def find_amplifier_node(graph: Graph) -> Optional[Node]:
     r"""
     Find the 'amplifier' node which is a node that generates large
     output with small/medium input.
@@ -190,7 +192,7 @@ def reorder_nodes(graph: Graph) -> Graph:
 
     # add pre_chunking_nodes
     new_graph = Graph()
-    env: dict[Node, Node] = {}
+    env: Dict[Node, Node] = {}
     for node in pre_chunking_nodes:
         _copy_node("prechunking", node)
 

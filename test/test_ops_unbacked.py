@@ -60,7 +60,7 @@ def apply_skip_decorators(all_opinfos, test_case_name, base_test_name, to_skip):
 
 
 apply_skip_decorators(
-    op_db, "TestOpsUnbacked", "test_unbacked_op_db", ops_dde_xfail | ops_unbacked_skip
+    op_db, "TestOpsUnbacked", "test_unbacked_op_db", {**ops_dde_xfail, **ops_unbacked_skip}
 )
 
 

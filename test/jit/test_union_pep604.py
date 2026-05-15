@@ -1,6 +1,7 @@
 # Owner(s): ["oncall: jit"]
 # ruff: noqa: F841
 
+from __future__ import annotations
 import io
 import os
 import sys
@@ -465,7 +466,7 @@ class TestUnion(JitTestCase):
 
     def test_union_type_refinement_union_rhs(self):
         def fn(x: int) -> str:
-            if torch.jit.isinstance(x, int | str):
+            if torch.jit.isinstance(x, (int, str)):
                 return "bar"
             else:
                 return "baz"
@@ -506,7 +507,7 @@ class TestUnion(JitTestCase):
     def test_union_type_refinement_tuple_rhs_union(self):
         @torch.jit.script
         def fn(x: int) -> str:
-            if torch.jit.isinstance(x, (int | str, float)):
+            if torch.jit.isinstance(x, ((int, str, float))):
                 y = x + x
                 return str(y)
             else:
@@ -521,7 +522,7 @@ class TestUnion(JitTestCase):
     def test_union_type_refinement_statically_false(self):
         @torch.jit.script
         def fn(x: int) -> str:
-            if torch.jit.isinstance(x, (str | float, List[str], str)):
+            if torch.jit.isinstance(x, ((str, float, List[str], str))):
                 z = x + "foo"
                 return z
             else:
@@ -561,7 +562,7 @@ class TestUnion(JitTestCase):
 
     def test_union_type_refinement_partial_static_refinement_union_rhs(self):
         def fn(x: List[int] | int) -> int:
-            if torch.jit.isinstance(x, int | float | str):
+            if torch.jit.isinstance(x, (int, float, str)):
                 # We should know that `x` is an `int` here
                 z = x + 1
                 return z

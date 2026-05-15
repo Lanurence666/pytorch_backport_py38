@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Error reproduction utilities for op consistency tests."""
 
-from __future__ import annotations
 
 import difflib
 import pathlib

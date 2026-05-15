@@ -1,15 +1,15 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Helpers for constructing ONNX operator signatures from Python functions."""
 
-from __future__ import annotations
 
 import collections.abc
 import inspect
 import logging
 import types
 import typing
-from collections.abc import Sequence
-from typing import Any, Optional, TypeVar, Union
+
+from typing import Any, Dict, List, Optional, Sequence, Set, Type, TypeVar, Union, overload
 
 from torch.onnx._internal._lazy_import import onnx_ir as ir, onnxscript
 
@@ -103,7 +103,7 @@ def _get_attr_type(type_: type) -> ir.AttributeType:
     return ir.AttributeType.UNDEFINED
 
 
-def _get_type_constraint_name(type_: TypeAnnotationValue) -> str | None:
+def _get_type_constraint_name(type_: TypeAnnotationValue) -> Optional[str]:
     """Returns the name of the type constraint for a given type annotation.
 
     Args:
@@ -132,13 +132,13 @@ def _get_type_constraint_name(type_: TypeAnnotationValue) -> str | None:
 
 def _get_allowed_types_from_type_annotation(
     type_: TypeAnnotationValue,
-) -> set[ir.TypeProtocol]:
+) -> Set[ir.TypeProtocol]:
     """Obtain the allowed types from a type annotation."""
     if type_ is onnxscript.onnx_types.TensorType:
         # Any tensor type
         return {ir.TensorType(dtype) for dtype in ir.DataType}
 
-    allowed_types: set[ir.TypeProtocol]
+    allowed_types: Set[ir.TypeProtocol]
 
     if isinstance(type_, TypeVar):
         allowed_types = set()
@@ -193,7 +193,7 @@ def _get_allowed_types_from_type_annotation(
 def op_signature_from_function(
     func,
     domain: str,
-    name: str | None = None,
+    name: Optional[str]= None,
     overload: str = "",
     *,
     since_version: int = 1,
@@ -205,9 +205,9 @@ def op_signature_from_function(
     # https://github.com/python/cpython/issues/102405
     type_hints = typing.get_type_hints(func)
 
-    params: list[ir.schemas.Parameter | ir.schemas.AttributeParameter] = []
+    params: Union[List[ir.schemas.Parameter, ir.schemas.AttributeParameter]]= []
     # Create a mapping from type to a unique name
-    type_constraints: dict[str, ir.schemas.TypeConstraintParam] = {}
+    type_constraints: Dict[str, ir.schemas.TypeConstraintParam] = {}
 
     for param in py_signature.parameters.values():
         if param.name not in type_hints:
@@ -220,7 +220,7 @@ def op_signature_from_function(
                 f"T_{param.name}"
             )
             type_constraints[param.name] = type_constraint
-            kwargs: dict[str, Any] = {}
+            kwargs: Dict[str, Any] = {}
             if param.default is not inspect.Parameter.empty:
                 kwargs["default"] = param.default
             params.append(
@@ -271,7 +271,7 @@ def op_signature_from_function(
                     )
                     type_constraints[type_constraint_name] = type_constraint
                 # 4. Create Parameter
-                kwargs: dict[str, Any] = {}
+                kwargs: Dict[str, Any] = {}
                 if param.default is not inspect.Parameter.empty:
                     kwargs["default"] = param.default
                 params.append(

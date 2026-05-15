@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 
 import torch
@@ -8,6 +10,7 @@ from torch.distributions.distribution import Distribution
 from torch.distributions.multivariate_normal import _batch_mahalanobis, _batch_mv
 from torch.distributions.utils import _standard_normal, lazy_property
 from torch.types import _size
+from typing import Optional
 
 
 __all__ = ["LowRankMultivariateNormal"]
@@ -99,7 +102,7 @@ class LowRankMultivariateNormal(Distribution):
         loc: Tensor,
         cov_factor: Tensor,
         cov_diag: Tensor,
-        validate_args: bool | None = None,
+        validate_args: Optional[bool]= None,
     ) -> None:
         if loc.dim() < 1:
             raise ValueError("loc must be at least one-dimensional.")

@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import contextlib
-from typing import Any
+from typing import Any, Dict, Optional
 
 import torch
 import torch.utils._pytree as pytree
@@ -14,8 +16,8 @@ _EMPTY_NN_MODULE_STACK_KEY = "_empty_nn_module_stack_from_metadata_hook"
 
 def _node_metadata_hook(
     node: torch.fx.Node,
-    metadata: dict[str, Any] | None = None,
-    fake_mode: FakeTensorMode | None = None,
+    metadata: Optional[Dict[str, Any]]= None,
+    fake_mode: Optional[FakeTensorMode]= None,
 ) -> None:
     """
     Hook for adding the appropriate metadata to nodes that are created during a

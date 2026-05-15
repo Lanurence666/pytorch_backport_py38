@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Custom encoder functions
 
@@ -11,6 +12,7 @@ import torch
 from torch import Tensor
 from torch._inductor.pattern_matcher import Match
 from torch._inductor.runtime.caching.utils import _encode_tensor, EncodedTensor
+from typing import Dict, Optional, Type
 
 
 class ShouldPadEncodedParams(TypedDict):
@@ -19,7 +21,7 @@ class ShouldPadEncodedParams(TypedDict):
     mat1: EncodedTensor
     mat2: EncodedTensor
     op: str
-    input: EncodedTensor | None
+    input: Optional[EncodedTensor]
     mat1_exclude_padding_time: bool
     mat2_exclude_padding_time: bool
     tf32: bool
@@ -30,7 +32,7 @@ def should_pad_params_encoder(
     mat1: Tensor,
     mat2: Tensor,
     op: torch._ops.OpOverloadPacket,
-    input: Tensor | None = None,
+    input: Optional[Tensor] = None
 ) -> ShouldPadEncodedParams:
     """Encode parameters for _should_pad into a human-readable dict.
 

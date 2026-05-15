@@ -1,10 +1,16 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 import functools
 import itertools
 import operator
-from collections.abc import Callable, Iterable, Sequence
-from typing import TypeAlias, TypeVar
+
+from typing import Callable, Iterable, List, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 import torch
 from torch._prims_common import DimsSequenceType, DimsType
@@ -33,9 +39,9 @@ from torch.distributed.tensor.placement_types import (
 
 def _get_registration_wrapper(
     registration_fn,
-    op: torch._ops.OpOverload | list[torch._ops.OpOverload],
-    schema_info: RuntimeSchemaInfo | None,
-    arg_names_that_require_specializing_cache_strategy: list[str] | None,
+    op: Union[torch._ops.OpOverload, List[torch._ops.OpOverload]],
+    schema_info: Optional[RuntimeSchemaInfo],
+    arg_names_that_require_specializing_cache_strategy: Optional[List[str]],
 ):
     def wrapper(impl):
         overloads = op if isinstance(op, list) else [op]
@@ -64,8 +70,8 @@ def _get_registration_wrapper(
 
 # convenient wrapper to register sharding propagation rules
 def register_prop_rule(
-    op: torch._ops.OpOverload | list[torch._ops.OpOverload],
-    schema_info: RuntimeSchemaInfo | None = None,
+    op: Union[torch._ops.OpOverload, List[torch._ops.OpOverload]],
+    schema_info: Optional[RuntimeSchemaInfo] = None,
 ) -> Callable[
     [Callable[[OpSchema], OutputSharding]], Callable[[OpSchema], OutputSharding]
 ]:
@@ -88,8 +94,8 @@ _ShardingStrategyFunc: TypeAlias = Callable[[_OpSchemaT], _StrategyTypeT]
 
 
 def register_op_strategy(
-    op: torch._ops.OpOverload | list[torch._ops.OpOverload],
-    schema_info: RuntimeSchemaInfo | None = None,
+    op: Union[torch._ops.OpOverload, List[torch._ops.OpOverload]],
+    schema_info: Optional[RuntimeSchemaInfo] = None,
 ) -> Callable[[_ShardingStrategyFunc], _ShardingStrategyFunc]:
     # For every ATen op that accepts any args in this list,
     # the arg itself can impact the strides (and potentially the sharding strategy)
@@ -139,9 +145,9 @@ def replicate_op_strategy(op_schema: OpSchema) -> StrategyType:
 
 
 def as_list(
-    x: list[object] | object,
+    x: Union[List[object], object],
     # pyre-fixme[11]: Annotation `immutable_list` is not defined as a type.
-) -> list[object] | torch.fx.immutable_collections.immutable_list:  # type: ignore[valid-type]
+) -> Union[List[object], torch.fx.immutable_collections.immutable_list]:  # type: ignore[valid-type]
     # During tracing, `aten.sum.dim_IntList` uses `immutable_list` for its args,
     # which is an object but treated as a list by the tracer. Therefore, keep
     # `immutable_list` intact here as well.
@@ -173,7 +179,7 @@ def prod(xs: Iterable[int]) -> int:
 def is_tensor_shardable(
     shape: Sequence[int],
     spec: DTensorSpec,
-    allow_unbacked_sharding: bool | None = None,
+    allow_unbacked_sharding: Optional[bool] = None,
 ) -> bool:
     """
     Check if the shape is shardable according to the spec.
@@ -282,7 +288,7 @@ def is_tensor_partial(spec: DTensorSpec) -> bool:
 
 def infer_broadcast_dims_map(
     common_shape: torch.Size, input_shape: torch.Size
-) -> list[int]:
+) -> List[int]:
     # infer the broadcast dims map, where it maps from the common shape dim to the input shape dim
     # this is aligned with the broadcast semantics
     # e.g. if common_shape = [1, 2, 3, 4] and input_shape = [2, 3, 4],
@@ -300,13 +306,13 @@ def infer_broadcast_dims_map(
 
 
 def map_placements_after_broadcast(
-    placements: tuple[Placement, ...],
+    placements: Tuple[Placement, ...],
     shape: torch.Size,
-    broadcast_dims_map: list[int],
+    broadcast_dims_map: List[int],
     partial_to_replicate: bool = False,
-) -> tuple[Placement, ...]:
+) -> Tuple[Placement, ...]:
     """Map each placement based on the output shape after broadcast."""
-    new_placements: list[Placement] = []
+    new_placements: List[Placement] = []
     for placement in placements:
         if isinstance(placement, Partial):
             if partial_to_replicate:
@@ -347,13 +353,13 @@ def map_placements_after_broadcast(
 
 def generate_redistribute_costs(
     src_strategy: OpStrategy, dst_spec: DTensorSpec
-) -> list[float]:
+) -> List[float]:
     """Generates one row in the 'redistribute_costs' matrix in an OpSpec
     The length of the returned list will match the number of strategies in 'src_strategy'.
 
     Each value in the row is the cost of redistributing from a particular src_strategy to dst_spec.
     """
-    redistribute_costs: list[float] = [
+    redistribute_costs: List[float] = [
         redistribute_cost(strat.output_spec, dst_spec)
         for strat in src_strategy.strategies
     ]
@@ -364,18 +370,18 @@ def generate_redistribute_costs(
 def expand_to_full_mesh_op_strategy(
     mesh: DeviceMesh,
     op_schema: OpSchema,
-    single_mesh_dim_strategies: list[PlacementList],
+    single_mesh_dim_strategies: List[PlacementList],
     *,
-    output_tensor_meta: TensorMeta | Sequence[TensorMeta | None] | None = None,
+    output_tensor_meta: Union[TensorMeta, Sequence[TensorMeta, None]] | None = None,
     input_index: int = 1,
     inplace_op: bool = False,
-    allow_unbacked_sharding: bool | None = None,
+    allow_unbacked_sharding: Optional[bool] = None,
     allow_uneven_sharding: bool = False,
     is_valid_strategy_cb: Callable[
-        [list[DTensorSpec], DTensorSpec | tuple[DTensorSpec | None, ...]], bool
+        [List[DTensorSpec], Union[DTensorSpec, Tuple[DTensorSpec, None, ...]]], bool
     ]
     | None = None,
-    different_mesh_args: list[int] | None = None,
+    different_mesh_args: Optional[List[int]] = None,
 ) -> OpStrategy:
     """
     Convenience function to allow writing a sharding strategy considering only a single mesh dimension,
@@ -384,7 +390,7 @@ def expand_to_full_mesh_op_strategy(
     Args:
         mesh (DeviceMesh): the device mesh to expand the strategy to
         op_schema (OpSchema): the op schema
-        single_mesh_dim_strategies (list[PlacementList]): the sharding strategies to expand. The outer list is over
+        single_mesh_dim_strategies (List[PlacementList]): the sharding strategies to expand. The outer list is over
             different strategies.  The inner PlacementList is over the outputs and inputs of the op. If input_index is 1,
             a PlacementList looks like [output_placement, input_placement1, input_placement2, ...].
         output_tensor_meta: tensor metadata for the output(s), used to populate DTensorSpec.tensor_meta field
@@ -417,7 +423,7 @@ def expand_to_full_mesh_op_strategy(
     # strategy specs with _StridedShard get the correct flag (and thus
     # correct shard_order) at construction time, avoiding shard_order
     # mismatches in redistribute_cost computation.
-    _input_use_strided: bool | None = None
+    _input_use_strided: Optional[bool] = None
     for input_strat in input_args_strategy:
         input_spec = input_strat.strategies[0].output_spec
         if any(isinstance(p, _StridedShard) for p in input_spec.placements):
@@ -426,9 +432,9 @@ def expand_to_full_mesh_op_strategy(
 
     all_strategies = []
     # Track input placements if we skip strategies due to inplace placement mismatch
-    blocking_inplace_input_placements: tuple[Placement, ...] | None = None
+    blocking_inplace_input_placements: Optional[Tuple[Placement, ...]] = None
     for strategy_comb in strategy_combs:
-        spec_list: list[DTensorSpec | None] = []
+        spec_list: List[Optional[DTensorSpec]] = []
         # Track how many non-None output specs we've seen (for output_tensor_meta indexing).
         # This is needed because output_tensor_meta may contain only non-None entries,
         # so we can't use position directly when there are None entries in the output.
@@ -436,7 +442,7 @@ def expand_to_full_mesh_op_strategy(
         # Track input args separately since not all tensor inputs have OpStrategy
         # (e.g., philox_seed/offset in SDPA are scalar tensors without OpStrategy)
         input_strategy_counter = 0
-        for position, specs in enumerate(zip(*strategy_comb, strict=True)):
+        for position, specs in enumerate(_zip_strict(*strategy_comb)):
             if specs[0] is not None:
                 # Populate tensor_meta field for both output and input specs,
                 # including for tuple output cases
@@ -501,7 +507,7 @@ def expand_to_full_mesh_op_strategy(
         if has_mixed_partial:
             continue
 
-        input_specs: list[DTensorSpec] = [
+        input_specs: List[DTensorSpec] = [
             s for s in spec_list[input_index:] if isinstance(s, DTensorSpec)
         ]
 
@@ -582,7 +588,7 @@ def expand_to_full_mesh_op_strategy(
                 if spec_list[0].placements != out_kwarg_spec.placements:
                     continue
 
-        output_specs: tuple[DTensorSpec | None, ...] | DTensorSpec | None
+        output_specs: Union[Tuple[DTensorSpec, None, ...], Optional[DTensorSpec]]
         if input_index == 0:
             # No outputs (e.g., _linalg_check_errors)
             output_specs = None
@@ -642,7 +648,7 @@ def expand_to_full_mesh_op_strategy(
 def shift_shard_dims_after_insert(
     placements: Sequence[Placement], insert_dim: int = 0
 ) -> Sequence[Placement]:
-    normalized_placements: list[Placement] = []
+    normalized_placements: List[Placement] = []
     for placement in placements:
         if isinstance(placement, _StridedShard) and placement.dim >= insert_dim:
             normalized_placements.append(
@@ -658,7 +664,7 @@ def shift_shard_dims_after_insert(
 def shift_shard_dims_after_remove(
     placements: Sequence[Placement], remove_dim: int = 0
 ) -> Sequence[Placement]:
-    normalized_placements: list[Placement] = []
+    normalized_placements: List[Placement] = []
     for placement in placements:
         if isinstance(placement, _StridedShard) and placement.dim > remove_dim:
             normalized_placements.append(

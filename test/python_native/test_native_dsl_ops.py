@@ -44,7 +44,6 @@ class TestNativeDSLOps(TestCase):
 
     def setUp(self):
         """Clear all caches before each test to ensure test isolation."""
-        super().setUp()
         self._cache_functions_to_clear = [
             (
                 "torch._native.common_utils",
@@ -392,20 +391,7 @@ class TestNativeDSLOps(TestCase):
                     if hasattr(attr, "cache_clear"):
                         attr.cache_clear()
 
-            with (
-                patch.object(
-                    triton_utils,
-                    "_check_runtime_available",
-                    return_value=(True, fake_version),
-                ),
-                patch.object(
-                    cutedsl_utils,
-                    "_check_runtime_available",
-                    return_value=(True, fake_version),
-                ),
-                patch.object(triton_utils, "_register_op_override_impl") as triton_mock,
-                patch.object(cutedsl_utils, "_register_op_override_impl") as cute_mock,
-            ):
+            with patch.object( triton_utils, "_check_runtime_available", return_value=(True, fake_version), ), patch.object( cutedsl_utils, "_check_runtime_available", return_value=(True, fake_version), ), patch.object(triton_utils, "_register_op_override_impl") as triton_mock, patch.object(cutedsl_utils, "_register_op_override_impl") as cute_mock:
                 # Use unique operation names to avoid conflicts
                 op_name = f"test_version_skip_{uuid.uuid4().hex[:8]}.Tensor"
 

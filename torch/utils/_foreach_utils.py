@@ -1,16 +1,23 @@
-from typing import TypeAlias
+from __future__ import annotations
+
+
+from typing import Dict, List, Optional, Tuple, Type, Union
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 import torch
 from torch import Tensor
 from torch.autograd.grad_mode import no_grad
 
 
-def _get_foreach_kernels_supported_devices() -> list[str]:
+def _get_foreach_kernels_supported_devices() -> List[str]:
     r"""Return the device type list that supports foreach kernels."""
     return ["cuda", "xpu", "mtia", torch._C._get_privateuse1_backend_name()]
 
 
-def _get_fused_kernels_supported_devices() -> list[str]:
+def _get_fused_kernels_supported_devices() -> List[str]:
     r"""Return the device type list that supports fused kernels in optimizer."""
     return [
         "mps",
@@ -23,8 +30,8 @@ def _get_fused_kernels_supported_devices() -> list[str]:
     ]
 
 
-TensorListList: TypeAlias = list[list[Tensor | None]]
-Indices: TypeAlias = list[int]
+TensorListList: TypeAlias = List[List[Optional[Tensor]]]
+Indices: TypeAlias = List[int]
 _foreach_supported_types = [torch.Tensor]
 
 
@@ -43,7 +50,7 @@ _foreach_supported_types = [torch.Tensor]
 def _group_tensors_by_device_and_dtype(
     tensorlistlist: TensorListList,
     with_indices: bool = False,
-) -> dict[tuple[torch.device, torch.dtype], tuple[TensorListList, Indices]]:
+) -> Dict[Tuple[torch.device, torch.dtype], Tuple[TensorListList, Indices]]:
     return torch._C._group_tensors_by_device_and_dtype(tensorlistlist, with_indices)
 
 
@@ -54,7 +61,7 @@ def _device_has_foreach_support(device: torch.device) -> bool:
     )
 
 
-def _has_foreach_support(tensors: list[Tensor], device: torch.device) -> bool:
+def _has_foreach_support(tensors: List[Tensor], device: torch.device) -> bool:
     return _device_has_foreach_support(device) and all(
         t is None or type(t) in _foreach_supported_types for t in tensors
     )

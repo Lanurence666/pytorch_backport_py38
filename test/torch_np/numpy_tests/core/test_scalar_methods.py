@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: dynamo"]
 
 """
@@ -22,6 +23,8 @@ from torch.testing._internal.common_utils import (
 )
 
 
+def _int_bit_count(n):
+    return bin(n).count('1')
 if TEST_WITH_TORCHDYNAMO:
     import numpy as np
     from numpy.testing import assert_equal
@@ -262,7 +265,7 @@ class TestBitCount(TestCase):
     def test_small(self, itype):
         for a in range(max(np.iinfo(itype).min, 0), 128):
             msg = f"Smoke test for {itype}({a}).bit_count()"
-            if itype(a).bit_count() != a.bit_count():
+            if itype(a).bit_count() != _int_bit_count(a):
                 raise AssertionError(msg)
 
     def test_bit_count(self):

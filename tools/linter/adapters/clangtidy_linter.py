@@ -13,7 +13,7 @@ import time
 from enum import Enum
 from pathlib import Path
 from sysconfig import get_paths as gp
-from typing import NamedTuple
+from typing import List, NamedTuple, Union
 
 
 # PyTorch directory root
@@ -46,15 +46,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 # c10/core/DispatchKey.cpp:281:26: error: 'k' used after it was moved [bugprone-use-after-move]
@@ -73,7 +73,7 @@ RESULTS_RE: re.Pattern[str] = re.compile(
 
 
 def run_command(
-    args: list[str],
+    args: List[str],
 ) -> subprocess.CompletedProcess[bytes]:
     logging.debug("$ %s", " ".join(args))
     start_time = time.monotonic()
@@ -96,7 +96,7 @@ severities = {
 }
 
 
-def clang_search_dirs() -> list[str]:
+def clang_search_dirs() -> List[str]:
     # Compilers are ordered based on fallback preference
     # We pick the first one that is available on the system
     compilers = ["clang", "gcc", "cpp", "cc"]
@@ -146,8 +146,8 @@ def check_file(
     filename: str,
     binary: str,
     build_dir: Path,
-    std: str | None,
-) -> list[LintMessage]:
+    std: Union[str, None],
+) -> List[LintMessage]:
     # Explicitly pass include path for linters that only check headers.
     build_include_args = include_args + ["--extra-arg", f"-I{build_dir}"]
     cmd = [

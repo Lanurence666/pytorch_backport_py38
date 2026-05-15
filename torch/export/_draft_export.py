@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import getpass
 import json
 import logging
@@ -5,10 +7,10 @@ import os
 import re
 import tempfile
 import time
-from collections.abc import Callable, Mapping
+
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Any
+from typing import Any, Callable, Dict, List, Mapping, Optional, Set, Tuple, Type, Union
 
 import torch
 import torch._logging._internal
@@ -39,7 +41,7 @@ class FailureType(IntEnum):
         return self.name
 
 
-def prettify_stack(stack: list[dict[str, str]], str_to_filename: dict[int, str]) -> str:
+def prettify_stack(stack: List[Dict[str, str]], str_to_filename: Dict[int, str]) -> str:
     res = ""
     for frame in stack:
         if frame["filename"] not in str_to_filename:
@@ -53,7 +55,7 @@ def prettify_stack(stack: list[dict[str, str]], str_to_filename: dict[int, str])
 
 
 def prettify_frame_locals(
-    loc: str, locals: dict[str, Any], symbols: dict[str, Any]
+    loc: str, locals: Dict[str, Any], symbols: Dict[str, Any]
 ) -> str:
     local_str = "\n".join(f"            {k}: {v}" for k, v in locals.items())
     res = f"""
@@ -71,7 +73,7 @@ def prettify_frame_locals(
     return res
 
 
-def get_loc(filename: str, lineno: int) -> str | None:
+def get_loc(filename: str, lineno: int) -> Optional[str]:
     try:
         with open(filename) as f:
             for i, line in enumerate(f):
@@ -84,16 +86,16 @@ def get_loc(filename: str, lineno: int) -> str | None:
 
 class FailureReport:
     def __init__(
-        self, failure_type: FailureType, data: dict[str, Any], xfail: bool = False
+        self, failure_type: FailureType, data: Dict[str, Any], xfail: bool = False
     ) -> None:
         self.failure_type: FailureType = failure_type
-        self.data: dict[str, Any] = data
+        self.data: Dict[str, Any] = data
         self.xfail: bool = xfail
 
     def __repr__(self) -> str:
         return f"FailureReport(failure_type={self.failure_type}, xfail={self.xfail}, data={self.data})"
 
-    def print(self, str_to_filename: dict[int, str]) -> str:
+    def print(self, str_to_filename: Dict[int, str]) -> str:
         if self.failure_type == FailureType.MISSING_FAKE_KERNEL:
             op = self.data["op"]
 
@@ -159,14 +161,14 @@ class FailureReport:
 class DraftExportReport:
     def __init__(
         self,
-        failures: list[FailureReport],
-        str_to_filename: dict[int, str],
-        expressions_created: dict[int, dict[str, Any]],
-        op_profiles: dict[str, set[OpProfile]],
+        failures: List[FailureReport],
+        str_to_filename: Dict[int, str],
+        expressions_created: Dict[int, Dict[str, Any]],
+        op_profiles: Dict[str, Set[OpProfile]],
     ):
-        self.failures: list[FailureReport] = failures
+        self.failures: List[FailureReport] = failures
         self.str_to_filename = str_to_filename
-        self.expressions_created: dict[int, dict[str, Any]] = expressions_created
+        self.expressions_created: Dict[int, Dict[str, Any]] = expressions_created
         self.op_profiles = op_profiles
 
     def successful(self) -> bool:
@@ -210,17 +212,17 @@ Please follow the instructions to fix the errors.
 @dataclass
 class ExpressionCreatedNode:
     result_id: int
-    argument_ids: list[int]
-    record: dict[str, object]
+    argument_ids: List[int]
+    record: Dict[str, object]
     visited: bool = False
 
 
 class LogRecord:
     def __init__(self) -> None:
-        self.log_count: dict[int, int] = {}
-        self.logs: list[tuple[str, dict[str, Any]]] = []
+        self.log_count: Dict[int, int] = {}
+        self.logs: List[Tuple[str, Dict[str, Any]]] = []
 
-    def _hash(self, element: tuple[str, dict[str, Any]]) -> int:
+    def _hash(self, element: Tuple[str, Dict[str, Any]]) -> int:
         key, data = element
 
         if key == "missing_fake_kernel":
@@ -236,7 +238,7 @@ class LogRecord:
 
         return hash((key, json.dumps(data)))
 
-    def try_add(self, element: tuple[str, dict[str, str]]) -> bool:
+    def try_add(self, element: Tuple[str, Dict[str, str]]) -> bool:
         hash_value = self._hash(element)
         if hash_value in self.log_count:
             self.log_count[hash_value] += 1
@@ -246,7 +248,7 @@ class LogRecord:
         self.logs.append(element)
         return True
 
-    def get_log_count(self, element: tuple[str, dict[str, Any]]) -> int:
+    def get_log_count(self, element: Tuple[str, Dict[str, Any]]) -> int:
         return self.log_count[self._hash(element)]
 
 
@@ -263,8 +265,8 @@ class CaptureStructuredTrace(torch._logging._internal.LazyTraceHandler):
             "create_unbacked_symbol",
         ]
         self.log_record: LogRecord = LogRecord()
-        self.expression_created_logs: dict[int, ExpressionCreatedNode] = {}
-        self.symbol_to_expressions: dict[str, list[dict[str, Any]]] = {}
+        self.expression_created_logs: Dict[int, ExpressionCreatedNode] = {}
+        self.symbol_to_expressions: Dict[str, List[Dict[str, Any]]] = {}
         self.logger = logging.getLogger("torch.__trace")
         self.prev_get_dtrace = False
 
@@ -366,11 +368,11 @@ class CaptureStructuredTrace(torch._logging._internal.LazyTraceHandler):
 
 def draft_export(
     mod: torch.nn.Module,
-    args: tuple[Any, ...],
-    kwargs: Mapping[str, Any] | None = None,
+    args: Tuple[Any, ...],
+    kwargs: Optional[Mapping[str, Any]]= None,
     *,
-    dynamic_shapes: dict[str, Any] | tuple[Any] | list[Any] | None = None,
-    preserve_module_call_signature: tuple[str, ...] = (),
+    dynamic_shapes: Optional[Union[Dict[str, Any], Tuple[Any], List[Any]]]= None,
+    preserve_module_call_signature: Tuple[str, ...] = (),
     strict: bool = False,
     pre_dispatch: bool = True,
     prefer_deferred_runtime_asserts_over_guards: bool = False,
@@ -382,13 +384,7 @@ def draft_export(
     constraint_violation_msg = None
     capture_structured_log = CaptureStructuredTrace()
 
-    with (
-        torch._functorch.config.patch(
-            fake_tensor_propagate_real_tensors=True,
-            generate_fake_kernels_from_real_mismatches=True,
-        ),
-        capture_structured_log,
-    ):
+    with torch._functorch.config.patch( fake_tensor_propagate_real_tensors=True, generate_fake_kernels_from_real_mismatches=True, ), capture_structured_log:
         try:
             new_shapes = None
             ep = _export(
@@ -438,10 +434,10 @@ def draft_export(
 
         torch._logging.dtrace_structured("exported_program", payload_fn=lambda: str(ep))
 
-        str_to_filename: dict[int, str] = {}
-        failures: list[FailureReport] = []
-        incorrect_custom_ops: set[str] = set()
-        expressions_created: dict[int, dict[str, Any]] = {}
+        str_to_filename: Dict[int, str] = {}
+        failures: List[FailureReport] = []
+        incorrect_custom_ops: Set[str] = set()
+        expressions_created: Dict[int, Dict[str, Any]] = {}
 
         for log_name, log_contents in capture_structured_log.log_record.logs:
             failure_type = None

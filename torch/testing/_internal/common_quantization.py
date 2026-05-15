@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 r"""Importing this file includes common utility methods and base classes for
 checking quantization api and properties of resulting modules.
 """
@@ -74,7 +76,7 @@ import io
 import os
 
 import unittest
-from typing import Any
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 from collections.abc import Callable
 
 import numpy as np
@@ -87,7 +89,7 @@ class NodeSpec:
 
     def __init__(self, op, target):
         """
-        op: call_function | call_module
+        op: Union[call_function, call_module]
         target:
           for call_function, target would be a function
           for call_module, target would be the type of PyTorch module
@@ -1045,9 +1047,9 @@ class QuantizationTestCase(TestCase):
 
         def assert_types_for_matched_subgraph_pairs(
             self,
-            matched_subgraph_pairs: dict[str, tuple[NSSubgraph, NSSubgraph]],
-            expected_types: dict[
-                str, tuple[tuple[Callable, Callable], tuple[Callable, Callable]]
+            matched_subgraph_pairs: Dict[str, Tuple[NSSubgraph, NSSubgraph]],
+            expected_types: Dict[
+                str, Tuple[Tuple[Callable, Callable], Tuple[Callable, Callable]]
             ],
             gm_a: GraphModule,
             gm_b: GraphModule,
@@ -1067,7 +1069,7 @@ class QuantizationTestCase(TestCase):
 
             def _get_underlying_op_type(
                 node: Node, gm: GraphModule
-            ) -> Callable | str:
+            ) -> Union[Callable, str]:
                 if node.op == "call_module":
                     mod = getattr(gm, node.target)
                     return type(mod)
@@ -1104,7 +1106,7 @@ class QuantizationTestCase(TestCase):
 
         def assert_ns_compare_dict_valid(
             self,
-            act_compare_dict: dict[str, dict[str, dict[str, Any]]],
+            act_compare_dict: Dict[str, Dict[str, Dict[str, Any]]],
         ) -> None:
             """
             Verifies that the act_compare_dict (output of Numeric Suite APIs) is valid:
@@ -1432,7 +1434,7 @@ class QuantizationTestCase(TestCase):
 
 
 class QuantizationLiteTestCase(QuantizationTestCase):
-    def _create_quantized_model(self, model_class: type[torch.nn.Module], **kwargs):
+    def _create_quantized_model(self, model_class: Type[torch.nn.Module], **kwargs):
         # Creates quantized model for testing mobile script modules
         qengine = "qnnpack"
         with override_quantized_engine(qengine):
@@ -1496,7 +1498,7 @@ class SingleLayerLinearModel(torch.nn.Module):
         x = self.fc1(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5),)
 
 
@@ -1510,7 +1512,7 @@ class AnnotatedSingleLayerLinearModel(torch.nn.Module):
         x = self.fc1(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5),)
 
 
@@ -1524,7 +1526,7 @@ class SingleLayerLinearDynamicModel(torch.nn.Module):
         x = self.fc1(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5),)
 
 
@@ -1540,7 +1542,7 @@ class LinearAddModel(nn.Module):
         x = self.fc2(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5),)
 
 
@@ -1596,7 +1598,7 @@ class ConvModel(torch.nn.Module):
         x = self.conv(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -1609,7 +1611,7 @@ class ConvTransposeModel(torch.nn.Module):
         x = self.conv(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -1627,7 +1629,7 @@ class AnnotatedConvModel(torch.nn.Module):
         x = self.dequant(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -1645,7 +1647,7 @@ class AnnotatedConvTransposeModel(torch.nn.Module):
         x = self.dequant(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -1660,7 +1662,7 @@ class ConvBnModel(torch.nn.Module):
         x = self.bn(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -1680,7 +1682,7 @@ class AnnotatedConvBnModel(torch.nn.Module):
         x = self.dequant(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -1697,7 +1699,7 @@ class ConvBnReLUModel(torch.nn.Module):
         x = self.relu(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -1730,7 +1732,7 @@ class AnnotatedConvBnReLUModel(torch.nn.Module):
                 self, [["conv", "bn", "relu"]], inplace=True
             )
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -1745,7 +1747,7 @@ class TwoLayerConvModel(torch.nn.Module):
         x = self.conv2(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -1760,7 +1762,7 @@ class TwoLayerLinearModel(torch.nn.Module):
         x = self.fc2(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5),)
 
 
@@ -1775,7 +1777,7 @@ class LinearModelWithSubmodule(nn.Module):
         x = self.fc(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return self.subm.get_example_inputs()
 
 
@@ -1791,7 +1793,7 @@ class AnnotatedTwoLayerLinearModel(torch.nn.Module):
         x = self.fc2(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5),)
 
 
@@ -1822,7 +1824,7 @@ class LinearReluModel(torch.nn.Module):
         x = self.relu(self.fc(x))
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5),)
 
 
@@ -1839,7 +1841,7 @@ class LinearReluLinearModel(torch.nn.Module):
         x = self.fc2(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5),)
 
 
@@ -1858,7 +1860,7 @@ class LinearReluAddModel(torch.nn.Module):
         self.relu = torch.nn.ReLU()
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5),)
 
 
@@ -1877,7 +1879,7 @@ class LinearBnLeakyReluModel(torch.nn.Module):
         x = self.leaky_relu(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5),)
 
 
@@ -1892,7 +1894,7 @@ class LinearTanhModel(torch.nn.Module):
         x = self.tanh(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5),)
 
 
@@ -1955,7 +1957,7 @@ class ConvBnAddReluModel(torch.nn.Module):
             x = self.relu(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5, 3, 3), torch.rand(1, 5, 2, 2))
 
 
@@ -1970,7 +1972,7 @@ class ConvReluModel(torch.nn.Module):
         x = self.relu(self.fc(x))
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -1988,7 +1990,7 @@ class ConvReluConvModel(torch.nn.Module):
         x = self.fc2(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -2008,7 +2010,7 @@ class ConvReluAddModel(torch.nn.Module):
         self.relu = torch.nn.ReLU()
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -2162,7 +2164,7 @@ class FunctionalLinear(torch.nn.Module):
     def forward(self, x):
         return F.linear(x, self.weight, self.bias)
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 5),)
 
 
@@ -2175,7 +2177,7 @@ class SingleLayerFunctionalLinearModel(torch.nn.Module):
         x = self.linear1(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return self.linear1.get_example_inputs()
 
 
@@ -2190,7 +2192,7 @@ class TwoLayerFunctionalLinearModel(torch.nn.Module):
         x = self.linear2(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return self.linear1.get_example_inputs()
 
 
@@ -2206,7 +2208,7 @@ class FunctionalLinearAddModel(torch.nn.Module):
         x = self.linear2(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return self.linear1.get_example_inputs()
 
 
@@ -2220,7 +2222,7 @@ class FunctionalLinearReluModel(nn.Module):
         x = F.relu(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return self.linear.get_example_inputs()
 
 
@@ -2237,7 +2239,7 @@ class FunctionalLinearReluLinearModel(nn.Module):
         x = self.linear2(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return self.linear1.get_example_inputs()
 
 
@@ -2262,7 +2264,7 @@ class FunctionalConv2d(torch.nn.Module):
             self.groups,
         )
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return (torch.rand(1, 3, 5, 5),)
 
 
@@ -2275,7 +2277,7 @@ class SingleLayerFunctionalConvModel(torch.nn.Module):
         x = self.conv1(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return self.conv1.get_example_inputs()
 
 
@@ -2290,7 +2292,7 @@ class TwoLayerFunctionalConvModel(torch.nn.Module):
         x = self.conv2(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return self.conv1.get_example_inputs()
 
 
@@ -2304,7 +2306,7 @@ class FunctionalConvReluModel(nn.Module):
         x = F.relu(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return self.conv.get_example_inputs()
 
 
@@ -2321,7 +2323,7 @@ class FunctionalConvReluConvModel(nn.Module):
         x = self.conv2(x)
         return x
 
-    def get_example_inputs(self) -> tuple[Any, ...]:
+    def get_example_inputs(self) -> Tuple[Any, ...]:
         return self.conv1.get_example_inputs()
 
 
@@ -2478,8 +2480,8 @@ class ManualEmbeddingBagLinear(nn.Module):
     def forward(
         self,
         input: torch.Tensor,
-        offsets: torch.Tensor | None = None,
-        per_sample_weights: torch.Tensor | None = None,
+        offsets: Optional[torch.Tensor]= None,
+        per_sample_weights: Optional[torch.Tensor]= None,
     ):
         x = self.emb(input, offsets, per_sample_weights)
         x = self.quant(x)

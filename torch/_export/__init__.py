@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
 import dataclasses
 import functools
@@ -16,7 +18,7 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from functools import lru_cache
 
-from typing import Any, Optional, TYPE_CHECKING, Union
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Tuple, Union
 from collections.abc import Callable
 from unittest.mock import patch
 
@@ -79,15 +81,15 @@ def aot_compile_warning():
 
 def aot_compile(
     f: Callable,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any] | None = None,
+    args: Tuple[Any, ...],
+    kwargs: Optional[Dict[str, Any]]= None,
     *,
-    dynamic_shapes: dict[str, Any] | None = None,
-    options: dict[str, Any] | None = None,
+    dynamic_shapes: Optional[Dict[str, Any]]= None,
+    options: Optional[Dict[str, Any]]= None,
     remove_runtime_assertions: bool = False,
     disable_constraint_solver: bool = False,
     same_signature: bool = True,
-) -> list[Any] | str:
+) -> Union[List[Any], str]:
     """
     Note: this function is not stable yet
 

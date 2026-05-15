@@ -12,9 +12,10 @@
 
 #if IS_PYTHON_3_14_PLUS && defined(_WIN32)
 #define Py_BUILD_CORE
+#include <internal/pycore_stackref.h>
 #include <internal/pycore_code.h>
 #include <internal/pycore_interpframe.h>
-#include <internal/pycore_stackref.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 #undef Py_BUILD_CORE
 #endif
 
@@ -675,7 +676,8 @@ static PyObject* set_skip_guard_eval_unsafe(
 static PyObject* get_eval_frame_callback_py(PyObject* dummy, PyObject* args) {
   // New reference
   PyObject* callback = eval_frame_callback_get();
-  return Py_NewRef(callback);
+  Py_INCREF(callback);
+  return callback;
 }
 
 static PyObject* reset_code(PyObject* dummy, PyObject* code) {
@@ -697,7 +699,8 @@ static PyObject* unsupported(PyObject* dummy, PyObject* args) {
   if (!PyArg_ParseTuple(args, "OO", &obj1, &obj2)) {
     return NULL;
   }
-  return Py_NewRef(obj2);
+  Py_INCREF(obj2);
+  return obj2;
 }
 
 static PyObject* set_guard_error_hook(PyObject* dummy, PyObject* obj) {
@@ -858,7 +861,14 @@ PyObject* torch_c_dynamo_eval_frame_init(void) {
   PyUnstable_Module_SetGIL(module, Py_MOD_GIL_NOT_USED);
 #endif
 
-  if (PyModule_AddType(module, &THPPyInterpreterFrameType) < 0) {
+  if (PyType_Ready(&THPPyInterpreterFrameType) < 0) {
+    return NULL;
+  }
+  Py_INCREF(&THPPyInterpreterFrameType);
+  if (PyModule_AddObject(
+          module,
+          "_PyInterpreterFrame",
+          (PyObject*)&THPPyInterpreterFrameType) != 0) {
     return NULL;
   }
 

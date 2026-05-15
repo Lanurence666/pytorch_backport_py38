@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Dict, List, Union
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -11,9 +13,9 @@ _DATA_MODEL_VERSION = 1.5
 # data model for test log usage
 @dataclass
 class UtilizationStats:
-    avg: float | None = None
-    max: float | None = None
-    raw: list[float] | None = None
+    avg: Union[float, None] = None
+    max: Union[float, None] = None
+    raw: Union[List[float], None] = None
 
 
 @dataclass
@@ -26,38 +28,38 @@ class UtilizationMetadata(DataClassJsonMixin):  # type: ignore[misc, no-any-unim
     usage_collect_interval: float
     data_model_version: float
     start_at: int
-    gpu_count: int | None = None
-    cpu_count: int | None = None
-    gpu_type: str | None = None
-    error: str | None = None
+    gpu_count: Union[int, None] = None
+    cpu_count: Union[int, None] = None
+    gpu_type: Union[str, None] = None
+    error: Union[str, None] = None
 
 
 @dataclass
 class GpuUsage(DataClassJsonMixin):  # type: ignore[misc, no-any-unimported]
-    uuid: str | None = None
-    util_percent: UtilizationStats | None = None
-    mem_util_percent: UtilizationStats | None = None
-    allocated_mem_percent: UtilizationStats | None = None
-    allocated_mem_value: UtilizationStats | None = None
-    total_mem_value: float | None = None
+    uuid: Union[str, None] = None
+    util_percent: Union[UtilizationStats, None] = None
+    mem_util_percent: Union[UtilizationStats, None] = None
+    allocated_mem_percent: Union[UtilizationStats, None] = None
+    allocated_mem_value: Union[UtilizationStats, None] = None
+    total_mem_value: Union[float, None] = None
 
 
 @dataclass
 class RecordData(DataClassJsonMixin):  # type: ignore[misc, no-any-unimported]
-    cpu: UtilizationStats | None = None
-    memory: UtilizationStats | None = None
-    gpu_usage: list[GpuUsage] | None = None
+    cpu: Union[UtilizationStats, None] = None
+    memory: Union[UtilizationStats, None] = None
+    gpu_usage: Union[List[GpuUsage], None] = None
 
 
 @dataclass
 class UtilizationRecord(DataClassJsonMixin):  # type: ignore[misc, no-any-unimported]
     level: str
     timestamp: int
-    data: RecordData | None = None
-    cmd_names: list[str] | None = None
-    error: str | None = None
-    log_duration: str | None = None
-    logs: list[str] | None = None
+    data: Union[RecordData, None] = None
+    cmd_names: Union[List[str], None] = None
+    error: Union[str, None] = None
+    log_duration: Union[str, None] = None
+    logs: Union[List[str], None] = None
 
 
 # the db schema related to this is:
@@ -68,7 +70,7 @@ class OssCiSegmentV1(DataClassJsonMixin):  # type: ignore[misc, no-any-unimporte
     name: str
     start_at: int
     end_at: int
-    extra_info: dict[str, str]
+    extra_info: Dict[str, str]
 
 
 @dataclass
@@ -87,8 +89,8 @@ class OssCiUtilizationMetadataV1:
     gpu_type: str
     start_at: int
     end_at: int
-    segments: list[OssCiSegmentV1]
-    tags: list[str] = field(default_factory=list)
+    segments: List[OssCiSegmentV1]
+    tags: List[str] = field(default_factory=list)
 
 
 # this data model is for the time series data:
@@ -97,7 +99,7 @@ class OssCiUtilizationMetadataV1:
 class OssCiUtilizationTimeSeriesV1:
     created_at: int
     type: str
-    tags: list[str]
+    tags: List[str]
     time_stamp: int
     repo: str
     workflow_id: int

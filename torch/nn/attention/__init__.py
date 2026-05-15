@@ -1,9 +1,10 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """This module contains functions and classes that alter the behavior of torch.nn.functional.scaled_dot_product_attention"""
 
 import contextlib
 from collections.abc import Iterable
-from typing import Union
+from typing import Iterable, List, Union
 from warnings import warn
 
 import torch.backends.cuda
@@ -15,7 +16,7 @@ from torch.backends.cuda import (
 )
 
 
-__all__: list[str] = [
+__all__: List[str] = [
     "SDPBackend",
     "sdpa_kernel",
     "WARN_FOR_UNFUSED_KERNELS",
@@ -111,7 +112,7 @@ def _sdpa_kernel(backends: Iterable, set_priority: bool = False) -> None:
 
 
 @contextlib.contextmanager
-def sdpa_kernel(backends: list[SDPBackend] | SDPBackend, set_priority: bool = False):
+def sdpa_kernel(backends: Union[List[SDPBackend], SDPBackend], set_priority: bool = False):
     r"""
     Context manager to select which backend to use for scaled dot product attention.
 

@@ -4,6 +4,7 @@
 import torch._C
 from torch._C import _add_docstr as add_docstr
 from torch._torch_docs import parse_kwargs, reproducibility_notes
+from typing import Any, List, Set, cast, overload
 
 
 def add_docstr_all(method: str, docstr: str) -> None:
@@ -6301,7 +6302,7 @@ Args:
 add_docstr_all(
     "expand",
     r"""
-expand(*size) -> Tensor
+expand(*sizes) -> Tensor
 
 Returns a new view of the :attr:`self` tensor with singleton dimensions expanded
 to a larger size.
@@ -6320,7 +6321,7 @@ of size 1 can be expanded to an arbitrary value without allocating new
 memory.
 
 Args:
-    *size (torch.Size or int...): the desired expanded size
+    *sizes (torch.Size or int...): the desired expanded size
 
 .. warning::
 

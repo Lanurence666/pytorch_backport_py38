@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 """Constant operator implementation."""
 
 from torchfuzz.operators.base import Operator
@@ -21,7 +23,7 @@ class ConstantOperator(Operator):
         self.template = None
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Constant is not a torch operation, it generates constant values."""
         return None
 
@@ -39,12 +41,12 @@ class ConstantOperator(Operator):
         """Constant can produce any type of output."""
         return True
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Constant requires no inputs for fuzzing."""
         return []
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for constant creation."""
         # Create constant by calling fuzzing functions during codegen with deterministic seed

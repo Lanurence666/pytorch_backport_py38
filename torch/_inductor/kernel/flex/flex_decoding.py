@@ -1,8 +1,9 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Triton Implementation of the flex_attention Kernel for short query length (FlexDecoding)"""
 
 import logging
-from typing import Any
+from typing import Any, List
 
 import sympy
 
@@ -234,7 +235,7 @@ def create_flex_decoding_kernel(*args, **kwargs):
     freeze_irnodes(score_mod_other_buffers)
     freeze_irnodes(mask_mod_other_buffers)
 
-    choices: list[Any] = []
+    choices: List[Any] = []
     dtype = key.get_dtype()
     head_dim = V.graph.sizevars.guard_int(key.get_size()[-1])
     configs = V.choices.get_flex_decode_configs(
@@ -385,10 +386,10 @@ def create_flex_decoding_kernel(*args, **kwargs):
         )
 
     filtered_score_mod_buffers = [
-        buf for buf in score_mod_other_buffers if not isinstance(buf, sympy.Expr)
+        buf for buf in score_mod_other_buffers if not isinstance(buf, sympy.Symbol)
     ]
     filtered_mask_mod_buffers = [
-        buf for buf in mask_mod_other_buffers if not isinstance(buf, sympy.Expr)
+        buf for buf in mask_mod_other_buffers if not isinstance(buf, sympy.Symbol)
     ]
 
     inputs_for_flex_decoding = (

@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
-from collections.abc import Sequence
+
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Sequence, Tuple
 
 import torch
 from torch._inductor.select_algorithm import realize_inputs, SymbolicGridFn
@@ -29,7 +31,7 @@ def mm_grid(m, n, meta, *, cdiv):
 
 
 @SymbolicGridFn
-def persistent_mm_grid(M: int, N: int, meta: dict[str, Any], *, cdiv, min):
+def persistent_mm_grid(M: int, N: int, meta: Dict[str, Any], *, cdiv, min):
     """Defines the grid for persistent kernels."""
     return (
         min(meta["NUM_SMS"], cdiv(M, meta["BLOCK_M"]) * cdiv(N, meta["BLOCK_N"])),
@@ -191,7 +193,7 @@ def use_native_matmul(mat1, mat2):
     return True
 
 
-def _is_static_problem(layout: Layout) -> tuple[bool, bool]:
+def _is_static_problem(layout: Layout) -> Tuple[bool, bool]:
     """
     Check if input tensors and output layout have static shapes and non-zero sizes.
 

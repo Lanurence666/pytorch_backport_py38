@@ -2,6 +2,7 @@
 # Owner(s): ["oncall: mobile"]
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
 import io
 import textwrap
 

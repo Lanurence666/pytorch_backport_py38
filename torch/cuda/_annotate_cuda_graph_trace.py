@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Post-process a profiler trace to add CUDA graph kernel annotations.
 
 Reads a profiler trace (gzipped or plain JSON) and a kernel annotations
@@ -29,7 +30,7 @@ import re
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 
 _WORK_CATEGORIES = {"kernel", "gpu_memcpy", "gpu_memset"}
@@ -85,7 +86,7 @@ def _fix_overlapping_timestamps(trace: dict, max_adjust_us: float = 1.0) -> int:
 
     Returns the number of events adjusted.
     """
-    per_stream: dict[int, list[dict]] = defaultdict(list)
+    per_stream: Dict[int, List[dict]] = defaultdict(list)
     for event in trace["traceEvents"]:
         if (
             event.get("cat") in _WORK_CATEGORIES
@@ -117,7 +118,7 @@ def _fix_overlapping_timestamps(trace: dict, max_adjust_us: float = 1.0) -> int:
 
 def annotate_trace(
     trace: dict,
-    annotations: dict[int, list[Any]],
+    annotations: Dict[int, List[Any]],
     default_stream: int = 7,
 ) -> int:
     """Add annotation fields to kernel events matching the annotations dict.
@@ -140,7 +141,7 @@ def annotate_trace(
     """
     # Build an index of ac2g 'f' events keyed by (tid, ts) so we can
     # move them together with the kernel events they correspond to.
-    ac2g_f_index: dict[tuple, list] = {}
+    ac2g_f_index: Dict[tuple, list] = {}
     for event in trace["traceEvents"]:
         if event.get("cat") == "ac2g" and event.get("ph") == "f":
             key = (event.get("tid"), event.get("ts"))
@@ -261,7 +262,7 @@ def save_trace(trace: dict, path: Path) -> None:
             json.dump(trace, f)
 
 
-def _find_annotations_pkl(trace_file: Path) -> Path | None:
+def _find_annotations_pkl(trace_file: Path) -> Optional[Path]:
     """Auto-discover the annotations pickle from the trace file location.
 
     Trace files live in e.g. ``traces/step_000000000014/000000.<id>.pt.trace.json.gz``

@@ -1,10 +1,12 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Dict, Set
 
 
 NodeMetadataValue = Any
 
 
-PROTECTED_KEYS: set[str] = {
+PROTECTED_KEYS: Set[str] = {
     "val",
     "stack_trace",
     "nn_module_stack",
@@ -14,8 +16,8 @@ PROTECTED_KEYS: set[str] = {
 
 
 class NodeMetadata:
-    def __init__(self, data: dict[str, Any]) -> None:
-        self.data: dict[str, Any] = data.copy()
+    def __init__(self, data: Dict[str, Any]) -> None:
+        self.data: Dict[str, Any] = data.copy()
 
     def __getitem__(self, key: str) -> NodeMetadataValue:
         return self.data[key]

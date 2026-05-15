@@ -1,12 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import math
 import traceback
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import auto, Enum
-from typing import Any, TypeVar
-from typing_extensions import ParamSpec
+from typing import Any, List, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -18,15 +18,11 @@ from torch.distributed.tensor._dtensor_spec import DTensorSpec
 from ._fsdp_api import DataParallelMeshDims
 
 
-_P = ParamSpec("_P")
-_R = TypeVar("_R")
-
-
-def _dynamo_disable(func: Callable[_P, _R]) -> Callable[_P, _R]:
+def _dynamo_disable(func):
     """Disable dynamo tracing for FSDP hooks."""
 
     @functools.wraps(func)
-    def wrapper(*args: _P.args, **kwargs: _P.kwargs):
+    def wrapper(*args, **kwargs):
         return torch._dynamo.disable(
             func, recursive=True, reason="skipping FSDP hooks"
         )(*args, **kwargs)
@@ -34,27 +30,16 @@ def _dynamo_disable(func: Callable[_P, _R]) -> Callable[_P, _R]:
     return wrapper
 
 
-def _disable_functorch_if_active(func: Callable[_P, _R]) -> Callable[_P, _R]:
-    @functools.wraps(func)
-    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-        if torch._C._are_functorch_transforms_active():
-            with torch._C._DisableFuncTorch():
-                return func(*args, **kwargs)
-        return func(*args, **kwargs)
-
-    return wrapper
-
-
 @dataclass
 class DataParallelMeshInfo:
     mesh: DeviceMesh
-    shard_mesh_dim: int | None = None
-    replicate_mesh_dim: int | None = None
-    dp_mesh_dims: DataParallelMeshDims | None = None
+    shard_mesh_dim: Optional[int]= None
+    replicate_mesh_dim: Optional[int]= None
+    dp_mesh_dims: Optional[DataParallelMeshDims]= None
     # The full SPMD mesh (excluding PP dims) that params are distributed on.
     # Must include all non-PP SPMD dims (e.g. DP + TP); passing a submesh
     # that omits dims like TP will lead to incorrect behavior.
-    spmd_mesh: DeviceMesh | None = field(default=None, repr=False)
+    spmd_mesh: Optional[DeviceMesh]= field(default=None, repr=False)
     is_spmd_mesh: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self):
@@ -129,7 +114,7 @@ def _get_dim0_padded_size(tensor_size: torch.Size, dim0_factor: int) -> torch.Si
 
 def _chunk_with_empty(
     tensor: torch.Tensor, num_chunks: int, dim: int
-) -> list[torch.Tensor]:
+) -> List[torch.Tensor]:
     chunks = list(torch.chunk(tensor, num_chunks, dim=dim))
     while len(chunks) < num_chunks:
         chunks.append(chunks[0].new_empty(0))
@@ -167,7 +152,7 @@ def _from_local_no_grad(
 
 
 def _to_dtype_if_needed(
-    tensor: torch.Tensor, dtype: torch.dtype | None
+    tensor: Optional[torch.Tensor, dtype: torch.dtype]
 ) -> torch.Tensor:
     if dtype is not None and tensor.dtype != dtype:
         return tensor.to(dtype)
@@ -190,11 +175,11 @@ def is_bw() -> bool:
 
 @dataclass
 class ShardPlacementResult:
-    placement: Shard | None
+    placement: Optional[Shard]
     mesh_info: FSDPMeshInfo
 
 
-ShardPlacementFnResult = Shard | ShardPlacementResult | None
+ShardPlacementFnResult = Optional[Union[Shard, ShardPlacementResult]]
 
 
 def resolve_shard_placement(

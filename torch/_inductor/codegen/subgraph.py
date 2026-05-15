@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import contextlib
 import functools
 import itertools
 import logging
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 import sympy
 
@@ -36,7 +38,7 @@ log = logging.getLogger(__name__)
 
 
 def inline_subgraph_to_ir_nodes(
-    gm: torch.fx.GraphModule, inputs: list[Any], name: str
+    gm: torch.fx.GraphModule, inputs: List[Any], name: str
 ) -> Any:
     """Inline a subgraph by converting its FX operations to individual IR nodes.
 
@@ -66,11 +68,11 @@ class SubgraphChoiceCaller(ir.ChoiceCaller):
     def __init__(
         self,
         name: str,
-        input_nodes: list[Buffer],
+        input_nodes: List[Buffer],
         layout: Layout,
         description: str,
         make_fx_graph: Callable[..., Any],
-        input_gen_fns: dict[int, Callable[[Any], torch.Tensor]] | None = None,
+        input_gen_fns: Optional[Dict[int, Callable[[Any], torch.Tensor]]]= None,
     ) -> None:
         super().__init__(name, input_nodes, layout, description)
 
@@ -111,15 +113,15 @@ class SubgraphChoiceCaller(ir.ChoiceCaller):
         self.sym_input_values = self._compute_sym_input_values()
 
         # Cached decomposition info for range-based dispatch (set via cache_decomposition)
-        self.decomposition: Callable[..., Any] | None = None
-        self.decomposition_kwargs: dict[str, Any] = {}
+        self.decomposition: Optional[Callable[..., Any]] = None
+        self.decomposition_kwargs: Dict[str, Any] = {}
         # Config patches to apply during kernel codegen (e.g., coordinate_descent_tuning)
-        self.config_patches: dict[str, Any] = {}
+        self.config_patches: Dict[str, Any] = {}
         # Cache compiled module to avoid recompiling on every benchmark call
         self._compiled_module: Any = None
         # Cache benchmark request for async autotuning
         self._bmreq: (
-            SubgraphGPUBenchmarkRequest | SubgraphCPUBenchmarkRequest | None
+            Union[SubgraphGPUBenchmarkRequest, Optional[SubgraphCPUBenchmarkRequest]]
         ) = None
 
         # Pre-compile only if using async pipelined autotuning
@@ -129,7 +131,7 @@ class SubgraphChoiceCaller(ir.ChoiceCaller):
                 self._compiled_module = self._compile_for_benchmarking()
                 self._bmreq = self._create_benchmark_request()
 
-    def _compute_sym_input_values(self) -> list[int]:
+    def _compute_sym_input_values(self) -> List[int]:
         """Extract concrete dimension values for sym_inputs from benchmark_inputs.
 
         The compiled module expects symbolic dimension values as runtime arguments.
@@ -141,7 +143,7 @@ class SubgraphChoiceCaller(ir.ChoiceCaller):
         )
 
         # Build mapping: symbolic dimension name -> concrete value
-        sym_name_to_value: dict[str, int] = {}
+        sym_name_to_value: Dict[str, int] = {}
         for inp_node, benchmark_inp in zip(self.input_nodes, self.benchmark_inputs):
             if isinstance(benchmark_inp, torch.Tensor):
                 for sym_dim, actual_dim in zip(
@@ -162,7 +164,7 @@ class SubgraphChoiceCaller(ir.ChoiceCaller):
         return result
 
     def cache_decomposition(
-        self, decomposition: Callable[..., Any], kwargs: dict[str, Any]
+        self, decomposition: Callable[..., Any], kwargs: Dict[str, Any]
     ) -> None:
         """Cache decomposition function and kwargs for range-based dispatch lookup."""
         self.decomposition = decomposition
@@ -205,7 +207,7 @@ class SubgraphChoiceCaller(ir.ChoiceCaller):
         with V.set_graph_handler(bm_graph_lowering):
             # Apply config_patches during benchmarking (e.g., coordinate_descent_tuning)
             # Also disable max_autotune to avoid nested autotuning
-            benchmark_config: dict[str, Any] = {
+            benchmark_config: Dict[str, Any] = {
                 "max_autotune": False,
                 "max_autotune_gemm": False,
                 "max_autotune_gemm_backends": "ATEN",
@@ -219,7 +221,7 @@ class SubgraphChoiceCaller(ir.ChoiceCaller):
 
     def _create_benchmark_request(
         self,
-    ) -> SubgraphGPUBenchmarkRequest | SubgraphCPUBenchmarkRequest:
+    ) -> Union[SubgraphGPUBenchmarkRequest, SubgraphCPUBenchmarkRequest]:
         """Create a benchmark request for async autotuning."""
         assert self._compiled_module is not None, (
             "Module must be compiled before creating benchmark request"
@@ -245,7 +247,7 @@ class SubgraphChoiceCaller(ir.ChoiceCaller):
     @property
     def bmreq(
         self,
-    ) -> SubgraphGPUBenchmarkRequest | SubgraphCPUBenchmarkRequest:
+    ) -> Union[SubgraphGPUBenchmarkRequest, SubgraphCPUBenchmarkRequest]:
         """Benchmark request for async autotuning. Pre-compiled when pipeline_max_autotune_gemm is enabled."""
         assert self._bmreq is not None, (
             "bmreq accessed but pipeline_max_autotune_gemm was not enabled during __init__"
@@ -257,7 +259,7 @@ class SubgraphChoiceCaller(ir.ChoiceCaller):
         if self._compiled_module is None:
             self._compiled_module = self._compile_for_benchmarking()
 
-    def benchmark(self, *args: list[Any], out: torch.Tensor) -> float:
+    def benchmark(self, *args: List[Any], out: torch.Tensor) -> float:
         """Regular benchmarking: compile if needed, then use benchmarker."""
         self._ensure_compiled()
         bm_func = self._compiled_module.call
@@ -276,7 +278,7 @@ class SubgraphChoiceCaller(ir.ChoiceCaller):
             device=benchmarker.infer_device(*sym_inputs, *args),
         )
 
-    def benchmark_collective(self, *args: list[Any], out: torch.Tensor) -> None:
+    def benchmark_collective(self, *args: List[Any], out: torch.Tensor) -> None:
         """Run once for collective benchmarking (barrier sync handled by caller)."""
         self._ensure_compiled()
         self._compiled_module.call([*self.sym_input_values, *args])
@@ -305,7 +307,7 @@ class SubgraphChoiceCaller(ir.ChoiceCaller):
             )
         )
 
-    def info_dict(self) -> dict[str, Any]:
+    def info_dict(self) -> Dict[str, Any]:
         """Information returned here is logged to the autotune log file when that is enabled."""
         return {
             "backend": "subgraph",
@@ -343,11 +345,11 @@ class SubgraphTemplate(KernelTemplate):
     def generate(  # type: ignore[override]
         self,
         name: str,
-        input_nodes: list[Buffer],
+        input_nodes: List[Buffer],
         layout: Layout,
         make_fx_graph: Callable[..., Any],
         description: str = "",
-        input_gen_fns: dict[int, Callable[[Any], torch.Tensor]] | None = None,
+        input_gen_fns: Optional[Dict[int, Callable[[Any], torch.Tensor]]]= None,
         **kwargs: Any,
     ) -> SubgraphChoiceCaller:
         """
@@ -378,13 +380,13 @@ class SubgraphTemplate(KernelTemplate):
     def generate_custom_op_choices(
         self,
         name: str,
-        decompositions: list[Callable[..., Any]],
-        input_nodes: list[Buffer],
-        non_tensor_args: list[dict[str, Any]],
-        default_impl: Callable[..., Any] | None = None,
-        input_gen_fns: dict[int, Callable[[Any], torch.Tensor]] | None = None,
-        config_patches_list: list[dict[str, Any]] | None = None,
-    ) -> list[SubgraphChoiceCaller]:
+        decompositions: List[Callable[..., Any]],
+        input_nodes: List[Buffer],
+        non_tensor_args: List[Dict[str, Any]],
+        default_impl: Optional[Callable[..., Any]]= None,
+        input_gen_fns: Optional[Dict[int, Callable[[Any], torch.Tensor]]]= None,
+        config_patches_list: Optional[List[Dict[str, Any]]]= None,
+    ) -> List[SubgraphChoiceCaller]:
         """
         Generate multiple SubgraphChoiceCaller instances for custom op autotuning.
 
@@ -427,7 +429,7 @@ class SubgraphTemplate(KernelTemplate):
         self._validate_layout_equivalence(name, decompositions, layouts)
         layout = layouts[0]  # All layouts are now validated to be equivalent
 
-        choices: list[SubgraphChoiceCaller] = []
+        choices: List[SubgraphChoiceCaller] = []
         for decomp, decomp_kwargs, config_patches in zip(
             decompositions, non_tensor_args, config_patches_list
         ):
@@ -438,7 +440,7 @@ class SubgraphTemplate(KernelTemplate):
             def make_fx_graph(
                 *args: Any,
                 decomp: Callable[..., Any] = decomp,
-                decomp_kwargs: dict[str, Any] = decomp_kwargs,
+                decomp_kwargs: Dict[str, Any] = decomp_kwargs,
             ) -> Any:
                 # decomp_kwargs contains all merged parameters: CustomOpConfig params + runtime kwargs
 
@@ -492,7 +494,7 @@ class SubgraphTemplate(KernelTemplate):
         return choices
 
     def _generate_variant_name(
-        self, decomp: Callable[..., Any], kwargs: dict[str, Any]
+        self, decomp: Callable[..., Any], kwargs: Dict[str, Any]
     ) -> str:
         """Generate a descriptive name for a decomposition variant with its parameters."""
         import re
@@ -516,7 +518,7 @@ class SubgraphTemplate(KernelTemplate):
         )
         return f"{base_name}_{param_suffix}"
 
-    def _validate_non_tensor_kwargs(self, kwargs: dict[str, Any]) -> None:
+    def _validate_non_tensor_kwargs(self, kwargs: Dict[str, Any]) -> None:
         """Validate that kwargs contains only non-tensor arguments."""
         for key, value in kwargs.items():
             assert not isinstance(value, (torch.Tensor, Buffer)), (
@@ -528,8 +530,8 @@ class SubgraphTemplate(KernelTemplate):
     def _validate_layout_equivalence(
         self,
         op_name: str,
-        decompositions: list[Callable[..., Any]],
-        layouts: list[Layout],
+        decompositions: List[Callable[..., Any]],
+        layouts: List[Layout],
     ) -> None:
         """Ensure all layouts have consistent stride, device, dtype, and sizes for fair autotuning."""
         if not layouts:
@@ -553,11 +555,11 @@ class SubgraphTemplate(KernelTemplate):
 
     def _infer_custom_op_layout(
         self,
-        input_nodes: list[Buffer],
+        input_nodes: List[Buffer],
         function_decomposition: Callable[..., Any],
-        kwargs: dict[str, Any],
-        default_impl: Callable[..., Any] | None = None,
-        input_gen_fns: dict[int, Callable[[Any], torch.Tensor]] | None = None,
+        kwargs: Dict[str, Any],
+        default_impl: Optional[Callable[..., Any]]= None,
+        input_gen_fns: Optional[Dict[int, Callable[[Any], torch.Tensor]]]= None,
     ) -> Layout:
         """Infer output layout for custom ops using the default implementation when available.
         Note that the Subgraph assumes custom ops return exactly one tensor output.

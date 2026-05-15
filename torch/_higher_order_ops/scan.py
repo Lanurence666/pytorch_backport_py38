@@ -1,10 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import enum
 import functools
 import itertools
 import logging
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, List, Tuple, Type, Union, cast
 
 import torch
 import torch._prims_common as utils
@@ -56,7 +58,7 @@ def wrap_combine_fn_flat(
     return combine_fn(carry, xs)
 
 
-def _extract_carry_and_out(flat_out: list[Any], num_carry: int):
+def _extract_carry_and_out(flat_out: List[Any], num_carry: int):
     return split_into_chunks(flat_out, [num_carry, len(flat_out) - num_carry])
 
 
@@ -77,14 +79,14 @@ def call_operator(operator, *args):
 
 def scan(
     combine_fn: Callable[
-        [pytree.PyTree, pytree.PyTree], tuple[pytree.PyTree, pytree.PyTree]
+        [pytree.PyTree, pytree.PyTree], Tuple[pytree.PyTree, pytree.PyTree]
     ],
     init: pytree.PyTree,
     xs: pytree.PyTree,
     *,
     dim: int = 0,
     reverse: bool = False,
-) -> tuple[pytree.PyTree, pytree.PyTree]:
+) -> Tuple[pytree.PyTree, pytree.PyTree]:
     r"""
     Performs an inclusive scan with a combine function.
 
@@ -374,9 +376,9 @@ def trace_scan(
     proxy_mode,
     func_overload,
     combine_fn: Callable,
-    init: list[torch.Tensor],
-    xs: list[torch.Tensor],
-    additional_inputs: tuple[torch.Tensor],
+    init: List[torch.Tensor],
+    xs: List[torch.Tensor],
+    additional_inputs: Tuple[torch.Tensor],
 ):
     from torch._dynamo.utils import clone_input
 
@@ -406,10 +408,10 @@ def trace_scan(
         raise AssertionError("no output node found in combine_graph")
 
     carry, output = _extract_carry_and_out(outputs, len(init))
-    init_fake_tensors: list[torch.Tensor | torch.SymInt | int] = [
+    init_fake_tensors: Union[List[torch.Tensor, torch.SymInt, int]]= [
         i.clone() for i in init
     ]
-    carry_fake_tensors: list[torch.Tensor | torch.SymInt | int] = [
+    carry_fake_tensors: Union[List[torch.Tensor, torch.SymInt, int]]= [
         c.meta["val"] for c in carry
     ]
     check_meta_consistency(
@@ -532,12 +534,12 @@ class ScanAutogradImpl:
         self.init = init
         self.xs = xs
         self.additional_inputs = additional_inputs
-        self.forward_intermediates_handling_policies: list[
+        self.forward_intermediates_handling_policies: List[
             ScanForwardIntermediatesHandlingPolicy
         ] = []
-        self.saved_fw_xs: list[Any] = []
-        self.saved_fw_additional_inputs: list[Any] = []
-        self.saved_intermediates: list[Any] = []
+        self.saved_fw_xs: List[Any] = []
+        self.saved_fw_additional_inputs: List[Any] = []
+        self.saved_intermediates: List[Any] = []
         self.fw_spec = pytree.tree_flatten((init, xs, additional_inputs))[1]
         self._optimize_forward_intermediates()
 
@@ -653,7 +655,7 @@ class ScanAutogradImpl:
             )
 
     def call_forward(self):
-        fw_outputs_and_intermediates: tuple[Any] = scan_op(
+        fw_outputs_and_intermediates: Tuple[Any] = scan_op(
             self.hop_partitioned_graph.fw_gm, self.init, self.xs, self.additional_inputs
         )  # type: ignore[return-type]
         fw_outs = fw_outputs_and_intermediates[

@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
 # mypy: disable-error-code=arg-type
@@ -7,14 +8,13 @@ Opset 9 is supported by ONNX release 1.4.1
 release on 01/23/19
 """
 
-from __future__ import annotations
 
 import builtins
 import functools
 import math
 import sys
 import warnings
-from typing import TYPE_CHECKING
+from typing import Callable, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union, cast, overload
 
 import torch
 import torch._C._onnx as _C_onnx
@@ -32,7 +32,7 @@ from torch.onnx._internal.torchscript_exporter._globals import GLOBALS
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable
 
     from torch.types import Number
 
@@ -1561,7 +1561,7 @@ def _avg_pool(name, tuple_fn):
         input: _C.Value,
         kernel_size: Sequence[int],
         stride: Sequence[int],
-        padding: int | Sequence[int],
+        padding: Union[int, Sequence[int]],
         ceil_mode: int,
         count_include_pad: int,
         divisor_override=None,
@@ -2717,7 +2717,7 @@ def native_layer_norm(
     weight: _C.Value,
     bias: _C.Value,
     eps: float,
-) -> tuple[_C.Value, _C.Value, _C.Value]:
+) -> Tuple[_C.Value, _C.Value, _C.Value]:
     axes = [-i for i in range(len(normalized_shape), 0, -1)]
 
     two_cst = symbolic_helper._generate_wrapped_number(g, 2.0)
@@ -5436,7 +5436,7 @@ def linalg_norm(
     g: jit_utils.GraphContext,
     self: torch._C.Value,
     ord: torch._C.Value,
-    dim: Sequence[int] | None,
+    dim: Optional[Sequence[int]],
     keepdim: bool,
     dtype: torch._C.Value,
 ):
@@ -5471,7 +5471,7 @@ def linalg_vector_norm(
     g: jit_utils.GraphContext,
     self: torch._C.Value,
     ord: float,
-    dim: Sequence[int] | None,
+    dim: Optional[Sequence[int]],
     keepdim: bool,
     dtype: torch._C.Value,
 ):
@@ -5484,7 +5484,7 @@ def linalg_matrix_norm(
     g: jit_utils.GraphContext,
     self: torch._C.Value,
     ord: torch._C.Value,
-    dim: list[int],
+    dim: List[int],
     keepdim: bool,
     dtype: torch._C.Value,
 ):
@@ -5599,7 +5599,7 @@ def baddbmm(g: jit_utils.GraphContext, self, batch1, batch2, beta, alpha):
 
 @_onnx_symbolic("aten::meshgrid")
 @symbolic_helper.parse_args("v", "s")
-def meshgrid(g: jit_utils.GraphContext, tensor_list, indexing: str | None = None):
+def meshgrid(g: jit_utils.GraphContext, tensor_list, indexing: Optional[str] = None):
     if indexing is None:
         indexing = "ij"
     elif indexing not in {"ij", "xy"}:
@@ -5864,7 +5864,7 @@ def as_strided(g: jit_utils.GraphContext, self, sizes, strides, offset=None):
     self_1d = symbolic_helper._reshape_helper(
         g, self, g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64))
     )
-    ind: torch.Tensor | None
+    ind: Optional[torch.Tensor]
     if not symbolic_helper._is_value(sizes):
         ind = torch.tensor([0], dtype=torch.long)
         for i, (size, stride) in enumerate(zip(sizes, strides)):
@@ -5946,7 +5946,7 @@ def hann_window(
     g: jit_utils.GraphContext,
     window_length,
     periodic=True,
-    dtype: int | None = None,
+    dtype: Optional[int] = None,
     layout=None,
     device=None,
     pin_memory=None,
@@ -6345,7 +6345,7 @@ def prim_list_construct(g: jit_utils.GraphContext, *inputs, **kwargs) -> None:
 @_onnx_symbolic("prim::ListUnpack")
 def prim_list_unpack(
     g: jit_utils.GraphContext, *inputs, **kwargs
-) -> list[_C.Value] | None:
+) -> Optional[List[_C.Value]]:
     if len(inputs) == 1 and inputs[0].node().kind() == "prim::ListConstruct":
         # Cancel the previous node if it is ListConstruct by returning its inputs
         # TODO(justinchuby): Use a public method in the helper module
@@ -6412,7 +6412,7 @@ def prim_device(g: jit_utils.GraphContext, *inputs, **kwargs) -> None:
 
 
 @_onnx_symbolic("prim::Loop")
-def prim_loop(g: jit_utils.GraphContext, *inputs, **attrs) -> list[_C.Value]:
+def prim_loop(g: jit_utils.GraphContext, *inputs, **attrs) -> List[_C.Value]:
     node = g.original_node
     env = g.env
     values_in_env = g.values_in_env
@@ -6465,7 +6465,7 @@ def prim_loop(g: jit_utils.GraphContext, *inputs, **attrs) -> list[_C.Value]:
 
 
 @_onnx_symbolic("prim::If")
-def prim_if(g: jit_utils.GraphContext, *inputs, **attrs) -> list[_C.Value]:
+def prim_if(g: jit_utils.GraphContext, *inputs, **attrs) -> List[_C.Value]:
     n = g.original_node
     block = g.block
     env = g.env

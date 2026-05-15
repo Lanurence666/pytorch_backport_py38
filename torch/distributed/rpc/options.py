@@ -1,10 +1,13 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import torch
 
 from . import _is_tensorpipe_available, constants as rpc_contants
+from typing import Dict, List, Optional, Set, Type, Union
 
 
-DeviceType = int | str | torch.device
+DeviceType = Union[int, str, torch.device]
 
 __all__ = ["TensorPipeRpcBackendOptions"]
 
@@ -20,10 +23,10 @@ def _to_device(device: DeviceType) -> torch.device:
 
 
 def _to_device_map(
-    device_map: dict[DeviceType, DeviceType],
-) -> dict[torch.device, torch.device]:
-    full_device_map: dict[torch.device, torch.device] = {}
-    reverse_map: dict[torch.device, torch.device] = {}
+    device_map: Dict[DeviceType, DeviceType],
+) -> Dict[torch.device, torch.device]:
+    full_device_map: Dict[torch.device, torch.device] = {}
+    reverse_map: Dict[torch.device, torch.device] = {}
     for k, v in device_map.items():
         k, v = torch.device(k), torch.device(v)
         if v in reverse_map:
@@ -36,7 +39,7 @@ def _to_device_map(
     return full_device_map
 
 
-def _to_device_list(devices: list[DeviceType]) -> list[torch.device]:
+def _to_device_list(devices: List[DeviceType]) -> List[torch.device]:
     return list(map(_to_device, devices))
 
 
@@ -87,10 +90,10 @@ class TensorPipeRpcBackendOptions(_TensorPipeRpcBackendOptionsBase):
         num_worker_threads: int = rpc_contants.DEFAULT_NUM_WORKER_THREADS,
         rpc_timeout: float = rpc_contants.DEFAULT_RPC_TIMEOUT_SEC,
         init_method: str = rpc_contants.DEFAULT_INIT_METHOD,
-        device_maps: dict[str, dict[DeviceType, DeviceType]] | None = None,
-        devices: list[DeviceType] | None = None,
-        _transports: list | None = None,
-        _channels: list | None = None,
+        device_maps: Optional[Dict[str, Dict[DeviceType, DeviceType]]]= None,
+        devices: Optional[List[DeviceType]]= None,
+        _transports: Optional[list]= None,
+        _channels: Optional[list]= None,
     ):
         full_device_maps = (
             {}
@@ -108,7 +111,7 @@ class TensorPipeRpcBackendOptions(_TensorPipeRpcBackendOptionsBase):
             full_device_list,
         )
 
-    def set_device_map(self, to: str, device_map: dict[DeviceType, DeviceType]):
+    def set_device_map(self, to: str, device_map: Dict[DeviceType, DeviceType]):
         r"""
         Set device mapping between each RPC caller and callee pair. This
         function can be called multiple times to incrementally add
@@ -166,7 +169,7 @@ class TensorPipeRpcBackendOptions(_TensorPipeRpcBackendOptionsBase):
 
         super()._set_device_map(to, full_device_map)
 
-    def set_devices(self, devices: list[DeviceType]):
+    def set_devices(self, devices: List[DeviceType]):
         r"""
         Set local devices used by the TensorPipe RPC agent. When processing
         CUDA RPC requests, the TensorPipe RPC agent will properly synchronize

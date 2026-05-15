@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import math
 from enum import IntEnum
@@ -35,9 +37,9 @@ def sac_milp(
     graph: Graph,
     memory_budget: float,
     world_size: int = 1,
-    ac_units: list[str] | None = None,
-    fsdp_units: list[str] | None = None,
-) -> tuple[dict[str, float], float, int]:
+    ac_units: Optional[List[str]]= None,
+    fsdp_units: Optional[List[str]]= None,
+) -> Tuple[Dict[str, float], float, int]:
     """
     MILP to decide which modules to AC and how much memory to discard.
     The objective is to minimize recomputation time.
@@ -61,10 +63,7 @@ def sac_milp(
 
     """
     num_nodes = len(graph.nodes)
-    max_runtime = max(
-        (graph.nodes[i]["sac_runtime"] for i in range(num_nodes)), default=1
-    )
-    M = max(10**2, 2 * max_runtime)
+    M = 10**2  # note: numerical issue may occur if M is too big
     MEM_MULTIPLIER = 2**30
 
     # Create a MILP problem
@@ -226,7 +225,7 @@ class SACDecision(IntEnum):
 
 def get_optimal_checkpointing_policy_per_module(
     sac_stats: SACStats, memory_budget: float
-) -> list[int]:
+) -> List[int]:
     """
     This is adapted from --
     https://github.com/facebookresearch/xformers/blob/c6c0ac31f1b08542a0bc27278c6ed10f825f6963/xformers/checkpoint.py#L375

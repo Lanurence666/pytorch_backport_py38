@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import math
 
 import torch
@@ -32,7 +34,7 @@ def conv_args_and_kwargs(kwarg_names, expanded_args_and_kwargs):
     kwargs = expanded_args_and_kwargs[
         len(expanded_args_and_kwargs) - len(kwarg_names) :
     ]
-    kwargs = dict(zip(kwarg_names, kwargs, strict=True))
+    kwargs = dict(_zip_strict(kwarg_names, kwargs))
 
     return conv_normalizer(*args, **kwargs)
 
@@ -70,7 +72,7 @@ def int_padding_for_string_padding(func, padding_style, dilation, kernel_size):
         return dilation[i] if isinstance(dilation, tuple) else dilation
 
     if padding_style == "same":
-        padding: list[int] = []
+        padding: List[int] = []
         # F.pad needs the padding in reverse order from what conv expects
         for i in range(conv_picker(func, 0, 1, 2), -1, -1):
             padding += conv_padding_for_same(get_dilation(i), kernel_size[i])
@@ -147,7 +149,7 @@ def conv_backward(func, ctx, grad_output):
     kernel_size = [weight_shape[i] for i in range(2, conv_picker(func, 3, 4, 5))]
 
     batch_size = ctx.batch_size
-    results: list[torch.Tensor | None] = []
+    results: Union[List[torch.Tensor, None]]= Union[[]]
     results.append(None)  # for kwarg names
     results.append(None)  # for op reference
 

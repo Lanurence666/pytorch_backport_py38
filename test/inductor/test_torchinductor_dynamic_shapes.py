@@ -1,4 +1,5 @@
 # Owner(s): ["module: inductor"]
+from __future__ import annotations
 import contextlib
 import importlib
 import math

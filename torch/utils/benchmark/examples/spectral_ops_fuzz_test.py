@@ -8,6 +8,7 @@ import torch
 import torch.fft
 from torch.utils import benchmark
 from torch.utils.benchmark.op_fuzzers.spectral import SpectralOpFuzzer
+from typing import Iterable
 
 
 def _dim_options(ndim):

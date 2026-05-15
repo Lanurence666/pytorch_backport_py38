@@ -1,6 +1,7 @@
 # Owner(s): ["module: mps"]
 # Collection of op level benchmarks for MPS
 # Useful as reference tool when migrating ops from MPS to Metal
+from __future__ import annotations
 import itertools
 import sys
 import timeit

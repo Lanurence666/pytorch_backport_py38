@@ -12,6 +12,7 @@
 #include <c10/util/irange.h>
 
 #include <sstream>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 using namespace torch::autograd;
 using namespace torch::jit;

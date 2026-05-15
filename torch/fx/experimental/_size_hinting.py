@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Size hinting utilities for symbolic shape expressions.
 
@@ -10,11 +11,10 @@ concrete integer hints. Two strategies are provided:
   symbols. Use for performance optimization decisions.
 """
 
-from __future__ import annotations
 
 import logging
 import sys
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import sympy
 
@@ -32,13 +32,13 @@ if TYPE_CHECKING:
     from torch.fx.experimental.symbolic_shapes import ShapeEnv
 
 
-def _sympy_subs(expr: sympy.Basic, replacements: dict[sympy.Expr, Any]) -> sympy.Basic:
+def _sympy_subs(expr: sympy.Basic, replacements: Dict[sympy.Expr, Any]) -> sympy.Basic:
     """
     When the passed replacement symbol v is a string, it is converted to a symbol with name v that
     have the same replaced expression integer and nonnegative properties.
     """
 
-    def to_symbol(replaced: sympy.Expr, replacement: sympy.Expr | str) -> sympy.Symbol:
+    def to_symbol(replaced: sympy.Expr, replacement: Union[sympy.Expr, str]) -> sympy.Symbol:
         if not isinstance(replaced, sympy.Expr):
             raise AssertionError(
                 f"Expected sympy.Expr key, got {type(replaced)}: {replaced}"
@@ -59,8 +59,8 @@ def _sympy_subs(expr: sympy.Basic, replacements: dict[sympy.Expr, Any]) -> sympy
 
 
 def _maybe_realize_expr(
-    expr: sympy.Basic, nan_fallback: int | None
-) -> int | bool | None:
+    expr: sympy.Basic, nan_fallback: Optional[int]
+) -> Union[int, Optional[bool]]:
     """
     Handle special sympy values in hinting APIs.
 
@@ -100,9 +100,9 @@ def _maybe_realize_expr(
 
 def _guarding_hint_or_throw_base(
     shape_env: ShapeEnv,
-    expr: sympy.Expr | sympy.Basic | int | bool,
-    precomputed_replacements: dict[sympy.Expr, sympy.Symbol],
-) -> int | bool:
+    expr: Union[Union[sympy.Expr, sympy.Basic], Union[int, bool]],
+    precomputed_replacements: Dict[sympy.Expr, sympy.Symbol],
+) -> Union[int, bool]:
     """
     Return a concrete integer hint for an expression that is safe to use for guarding.
 
@@ -170,7 +170,7 @@ def _guarding_hint_or_throw_base(
     return result
 
 
-def _get_unbacked_replacements(shape_env: ShapeEnv) -> dict[sympy.Expr, sympy.Expr]:
+def _get_unbacked_replacements(shape_env: ShapeEnv) -> Dict[sympy.Expr, sympy.Expr]:
     """Builds a mapping from unbacked expressions to canonical equivalents
     using a union-find algorithm over deferred runtime asserts.
     Used by optimization_hint to resolve unbacked symbols to consistent values."""
@@ -191,7 +191,7 @@ def _get_unbacked_replacements(shape_env: ShapeEnv) -> dict[sympy.Expr, sympy.Ex
         expression becomes the canonical expression.
         """
 
-        def __init__(self, eq_graph: dict[sympy.Expr, OrderedSet[sympy.Expr]]) -> None:
+        def __init__(self, eq_graph: Dict[sympy.Expr, OrderedSet[sympy.Expr]]) -> None:
             self.eq_graph = eq_graph
             self.expressions = list(eq_graph.keys())
             self.reverse_expressions = {
@@ -228,7 +228,7 @@ def _get_unbacked_replacements(shape_env: ShapeEnv) -> dict[sympy.Expr, sympy.Ex
                 self.leader[x] = self.find(self.leader[x])
             return self.leader[x]
 
-        def choose_leader(self, a: int, b: int) -> tuple[int, int]:
+        def choose_leader(self, a: int, b: int) -> Tuple[int, int]:
             """
             The leader will become the canonical expression.
             Returns a (leader, follower) tuple.
@@ -317,9 +317,9 @@ def _sub_unbacked_exprs(shape_env: ShapeEnv, expr: sympy.Expr) -> sympy.Expr:
 
 def _optimization_hint_base(
     shape_env: ShapeEnv,
-    expr: sympy.Expr | int,
-    precomputed_replacements: dict[sympy.Expr, sympy.Symbol],
-    fallback: int | None = None,
+    expr: Union[sympy.Expr, int],
+    precomputed_replacements: Dict[sympy.Expr, sympy.Symbol],
+    fallback: Optional[int] = None
 ) -> int:
     """
     Return a concrete integer hint for an expression using heuristics.

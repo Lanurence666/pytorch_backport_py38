@@ -1,14 +1,14 @@
+from __future__ import annotations
 # Owner(s): ["module: pytree"]
 
 """
 Python polyfills for torch.utils.pytree
 """
 
-from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, TYPE_CHECKING, Tuple, Type, TypeVar, Union
 
 import optree
 import optree._C
@@ -33,7 +33,7 @@ from ..decorators import substitute_in_graph
 
 if TYPE_CHECKING:
     import builtins
-    from collections.abc import Callable, Iterable, Mapping
+    
     from typing_extensions import Self, TypeIs
 
     from torch.utils._cxx_pytree import PyTree
@@ -102,7 +102,7 @@ del __name
 def tree_is_leaf(
     tree: PyTree,
     /,
-    is_leaf: Callable[[PyTree], bool] | None = None,
+    is_leaf: Optional[Callable[[PyTree], bool]]= None,
     *,
     none_is_leaf: bool = False,
     namespace: str = "",
@@ -118,7 +118,7 @@ def tree_is_leaf(
 def tree_iter(
     tree: PyTree,
     /,
-    is_leaf: Callable[[PyTree], bool] | None = None,
+    is_leaf: Optional[Callable[[PyTree], bool]]= None,
     *,
     none_is_leaf: bool = False,
     namespace: str = "",
@@ -148,11 +148,11 @@ def tree_iter(
 def tree_leaves(
     tree: PyTree,
     /,
-    is_leaf: Callable[[PyTree], bool] | None = None,
+    is_leaf: Optional[Callable[[PyTree], bool]]= None,
     *,
     none_is_leaf: bool = False,
     namespace: str = "",
-) -> list[Any]:
+) -> List[Any]:
     return list(
         tree_iter(
             tree,
@@ -177,15 +177,15 @@ _asterisk = _Asterisk()
 del _Asterisk
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class PyTreeSpec:
     """Analog for :class:`optree.PyTreeSpec` in Python."""
 
-    _children: tuple[PyTreeSpec, ...]
-    _type: builtins.type | None
+    _children: Tuple[PyTreeSpec, ...]
+    _type: Optional[builtins.type]
     _metadata: Any
-    _entries: tuple[Any, ...]
-    _unflatten_func: Callable[[Any | None, Iterable[PyTree]], PyTree] | None
+    _entries: Tuple[Any, ...]
+    _unflatten_func: Optional[Union[Callable[[Any, None, Iterable[PyTree]], PyTree]]]
     none_is_leaf: bool
     namespace: str
 
@@ -195,22 +195,15 @@ class PyTreeSpec:
 
     def __post_init__(self, /) -> None:
         if self._type is None:
-            if len(self._children) != 0:
-                raise AssertionError("Leaf node must have no children")
-            if self._metadata is not None:
-                raise AssertionError("Leaf node must have no metadata")
-            if self._entries != ():
-                raise AssertionError("Leaf node must have no entries")
-            if self._unflatten_func is not None:
-                raise AssertionError("Leaf node must have no unflatten_func")
+            assert len(self._children) == 0
+            assert self._metadata is None
+            assert self._entries == ()
+            assert self._unflatten_func is None
             num_nodes = 1
             num_leaves = 1
             num_children = 0
         else:
-            if not callable(self._unflatten_func):
-                raise AssertionError(
-                    "Non-leaf node must have a callable unflatten_func"
-                )
+            assert callable(self._unflatten_func)
             num_nodes = 1
             num_leaves = 0
             for child in self._children:
@@ -225,16 +218,11 @@ class PyTreeSpec:
     def __repr__(self, /) -> str:
         def helper(treespec: PyTreeSpec) -> str:
             if treespec.is_leaf():
-                if treespec.type is not None:
-                    raise AssertionError("Leaf treespec must have type None")
+                assert treespec.type is None
                 return _asterisk
 
-            if treespec.type is None:
-                raise AssertionError("Non-leaf treespec must have a type")
-            if not callable(treespec._unflatten_func):
-                raise AssertionError(
-                    "Non-leaf treespec must have a callable unflatten_func"
-                )
+            assert treespec.type is not None
+            assert callable(treespec._unflatten_func)
             children_representations = [
                 helper(subspec) for subspec in treespec._children
             ]
@@ -264,80 +252,74 @@ class PyTreeSpec:
         return self.num_leaves
 
     @property
-    def type(self, /) -> builtins.type | None:
+    def type(self, /) -> Optional[builtins.type]:
         return self._type
 
     def is_leaf(self, /) -> bool:
         return self.num_nodes == 1 and self.num_leaves == 1
 
-    def paths(self, /) -> list[tuple[Any, ...]]:
-        def helper(treespec: PyTreeSpec, path_prefix: list[Any]) -> None:
+    def paths(self, /) -> List[Tuple[Any, ...]]:
+        def helper(treespec: PyTreeSpec, path_prefix: List[Any]) -> None:
             if treespec.is_leaf():
                 paths.append(path_prefix)
                 return
 
-            for entry, subspec in zip(
+            for entry, subspec in _zip_strict(
                 treespec._entries,
-                treespec._children,
-                strict=True,
-            ):
+                treespec._children):
                 helper(subspec, path_prefix + [entry])
 
-        paths: list[list[Any]] = []
+        paths: List[List[Any]] = []
         helper(self, [])
         return [tuple(path) for path in paths]
 
-    def accessors(self, /) -> list[optree.PyTreeAccessor]:
+    def accessors(self, /) -> List[optree.PyTreeAccessor]:
         def helper(
             treespec: PyTreeSpec,
-            entry_path_prefix: list[optree.PyTreeEntry],
+            entry_path_prefix: List[optree.PyTreeEntry],
         ) -> None:
             if treespec.is_leaf():
                 entry_paths.append(entry_path_prefix)
                 return
 
             node_type = treespec.type
-            if node_type is None:
-                raise AssertionError("Non-leaf treespec must have a type")
+            assert node_type is not None
             handler = optree.register_pytree_node.get(
                 node_type, namespace=treespec.namespace
             )
-            if handler is None:
-                raise AssertionError(f"No pytree handler registered for {node_type}")
+            assert handler is not None
             kind: optree.PyTreeKind = handler.kind
-            path_entry_type: type[optree.PyTreeEntry] = handler.path_entry_type
+            path_entry_type: Type[optree.PyTreeEntry] = handler.path_entry_type
 
-            for entry, subspec in zip(
+            for entry, subspec in _zip_strict(
                 treespec._entries,
-                treespec._children,
-                strict=True,
-            ):
+                treespec._children):
                 helper(
                     subspec,
                     entry_path_prefix + [path_entry_type(entry, node_type, kind)],
                 )
 
-        entry_paths: list[list[optree.PyTreeEntry]] = []
+        entry_paths: List[List[optree.PyTreeEntry]] = []
         helper(self, [])
         return [optree.PyTreeAccessor(path) for path in entry_paths]
 
-    def children(self, /) -> list[PyTreeSpec]:
+    def children(self, /) -> List[PyTreeSpec]:
         return list(self._children)
 
     def child(self, index: int, /) -> PyTreeSpec:
         return self._children[index]
 
-    def entries(self, /) -> list[Any]:
+    def entries(self, /) -> List[Any]:
         return list(self._entries)
 
     def entry(self, index: int, /) -> Any:
         return self._entries[index]
 
-    def flatten_up_to(self, tree: PyTree, /) -> list[PyTree]:
+    def flatten_up_to(self, tree: PyTree, /) -> List[PyTree]:
         def helper(
             treespec: PyTreeSpec,
             node: PyTree,
-            subtrees: list[PyTree],
+            subtrees: List[PyTree],
         ) -> None:
             if treespec.is_leaf():
                 subtrees.append(node)
@@ -414,10 +396,10 @@ class PyTreeSpec:
                             f"expected {treespec._metadata!r}, but got {metadata!r}.",  # namedtuple type mismatch
                         )
 
-            for subtree, subspec in zip(children, treespec._children, strict=True):
+            for subtree, subspec in _zip_strict(children, treespec._children):
                 helper(subspec, subtree, subtrees)
 
-        subtrees: list[PyTree] = []
+        subtrees: List[PyTree] = []
         helper(self, tree, subtrees)
         return subtrees
 
@@ -442,12 +424,11 @@ class PyTreeSpec:
             subtrees.append(subspec.unflatten(leaves[start:end]))
             start = end
 
-        if not callable(self._unflatten_func):
-            raise AssertionError("Non-leaf node must have a callable unflatten_func")
+        assert callable(self._unflatten_func)
         return self._unflatten_func(self._metadata, subtrees)
 
 
-def _is_pytreespec_instance(obj: Any, /) -> TypeIs[PyTreeSpec | python_pytree.TreeSpec]:
+def _is_pytreespec_instance(obj: Any, /) -> Union[TypeIs[PyTreeSpec, python_pytree.TreeSpec]]:
     return isinstance(obj, (PyTreeSpec, python_pytree.TreeSpec))
 
 
@@ -500,8 +481,7 @@ def treespec_tuple(
             f"as the parent; expected {namespace!r}, got: {children!r}.",
         )
     handler = optree.register_pytree_node.get(tuple, namespace=namespace)
-    if handler is None:
-        raise AssertionError("No pytree handler registered for tuple")
+    assert handler is not None
     return PyTreeSpec(
         tuple(children),
         tuple,
@@ -520,7 +500,7 @@ def treespec_tuple(
     can_constant_fold_through=False,
 )
 def treespec_dict(
-    mapping: Mapping[Any, PyTreeSpec] | Iterable[tuple[Any, PyTreeSpec]] = (),
+    mapping: Union[Mapping[Any, PyTreeSpec], Iterable[Tuple[Any, PyTreeSpec]]]= (),
     /,
     *,
     none_is_leaf: bool = False,
@@ -571,12 +551,12 @@ def treespec_dict(
 def tree_flatten(
     tree: PyTree,
     /,
-    is_leaf: Callable[[PyTree], bool] | None = None,
+    is_leaf: Optional[Callable[[PyTree], bool]]= None,
     *,
     none_is_leaf: bool = False,
     namespace: str = "",
-) -> tuple[list[Any], PyTreeSpec]:
-    def helper(node: PyTree, leaves: list[Any]) -> PyTreeSpec:
+) -> Tuple[List[Any], PyTreeSpec]:
+    def helper(node: PyTree, leaves: List[Any]) -> PyTreeSpec:
         if tree_is_leaf(
             node,
             is_leaf=is_leaf,
@@ -618,7 +598,7 @@ def tree_flatten(
             namespace=namespace,
         )  # type: ignore[arg-type]
 
-    leaves: list[Any] = []
+    leaves: List[Any] = []
     treespec = helper(tree, leaves)
     return leaves, treespec
 
@@ -632,10 +612,10 @@ def tree_flatten(
 def _C_flatten(
     tree: PyTree,
     /,
-    leaf_predicate: Callable[[PyTree], bool] | None = None,
+    leaf_predicate: Optional[Callable[[PyTree], bool]]= None,
     none_is_leaf: bool = False,
     namespace: str = "",
-) -> tuple[list[Any], PyTreeSpec]:
+) -> Tuple[List[Any], PyTreeSpec]:
     return tree_flatten(  # type: ignore[return-value]
         tree,
         is_leaf=leaf_predicate,
@@ -653,11 +633,11 @@ def _C_flatten(
 def tree_flatten_with_path(
     tree: PyTree,
     /,
-    is_leaf: Callable[[PyTree], bool] | None = None,
+    is_leaf: Optional[Callable[[PyTree], bool]]= None,
     *,
     none_is_leaf: bool = False,
     namespace: str = "",
-) -> tuple[list[tuple[Any, ...]], list[Any], PyTreeSpec]:
+) -> Tuple[List[Tuple[Any, ...]], List[Any], PyTreeSpec]:
     leaves, treespec = tree_flatten(
         tree,
         is_leaf=is_leaf,
@@ -676,10 +656,10 @@ def tree_flatten_with_path(
 def _C_flatten_with_path(
     tree: PyTree,
     /,
-    leaf_predicate: Callable[[PyTree], bool] | None = None,
+    leaf_predicate: Optional[Callable[[PyTree], bool]]= None,
     none_is_leaf: bool = False,
     namespace: str = "",
-) -> tuple[list[tuple[Any, ...]], list[Any], PyTreeSpec]:
+) -> Tuple[List[Tuple[Any, ...]], List[Any], PyTreeSpec]:
     return tree_flatten_with_path(  # type: ignore[return-value]
         tree,
         is_leaf=leaf_predicate,
@@ -697,7 +677,7 @@ def _C_flatten_with_path(
 def tree_structure(
     tree: PyTree,
     /,
-    is_leaf: Callable[[PyTree], bool] | None = None,
+    is_leaf: Optional[Callable[[PyTree], bool]]= None,
     *,
     none_is_leaf: bool = False,
     namespace: str = "",
@@ -726,8 +706,7 @@ def tree_unflatten(treespec: PyTreeSpec, leaves: Iterable[Any]) -> PyTree:
 
 
 _none_registration = optree.register_pytree_node.get(type(None))
-if _none_registration is None:
-    raise AssertionError("No pytree handler registered for NoneType")
+assert _none_registration is not None
 
 
 @substitute_in_graph(  # type: ignore[arg-type]
@@ -743,8 +722,7 @@ def none_unflatten(_: None, children: Iterable[_T], /) -> None:
 
 with optree.dict_insertion_ordered(False, namespace="torch"):
     _dict_registration = optree.register_pytree_node.get(dict)
-    if _dict_registration is None:
-        raise AssertionError("No pytree handler registered for dict")
+    assert _dict_registration is not None
 
 
 @substitute_in_graph(  # type: ignore[arg-type]
@@ -753,8 +731,8 @@ with optree.dict_insertion_ordered(False, namespace="torch"):
     skip_signature_check=True,
 )
 def dict_flatten(
-    dct: dict[_KT, _VT], /
-) -> tuple[list[_VT], tuple[list[_KT], list[_KT]], tuple[_KT, ...]]:
+    dct: Dict[_KT, _VT], /
+) -> Tuple[List[_VT], Tuple[List[_KT], List[_KT]], Tuple[_KT, ...]]:
     sorted_keys = optree.utils.total_order_sorted(dct)
     values = [dct[key] for key in sorted_keys]
     original_keys = list(dct)
@@ -767,11 +745,11 @@ def dict_flatten(
     skip_signature_check=True,
 )
 def dict_unflatten(
-    metadata: tuple[list[_KT], list[_KT]],
+    metadata: Tuple[List[_KT], List[_KT]],
     values: Iterable[_VT],
     /,
-) -> dict[_KT, _VT]:
+) -> Dict[_KT, _VT]:
     original_keys, sorted_keys = metadata
     d = dict.fromkeys(original_keys)
-    d.update(zip(sorted_keys, values, strict=True))
+    d.update(_zip_strict(sorted_keys, values))
     return d  # type: ignore[return-value]

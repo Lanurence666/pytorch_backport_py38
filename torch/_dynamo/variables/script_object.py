@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module implements variable tracking for TorchScript objects during Dynamo tracing.
 
@@ -22,8 +23,8 @@ import enum
 import functools
 import inspect
 import types
-from collections.abc import Callable, Iterable, Sequence
-from typing import Any, TYPE_CHECKING, TypeVar
+
+from typing import Any, Callable, Dict, Iterable, Optional, Sequence, TYPE_CHECKING, Tuple, Type, TypeVar, Union, overload
 from typing_extensions import ParamSpec
 
 import torch
@@ -90,11 +91,10 @@ class OpaqueObjectClassVariable(UserDefinedVariable):
     """
 
     def __init__(self, value: Any, **kwargs: Any) -> None:
-        if isinstance(value, type) and issubclass(value, enum.Enum):
-            raise AssertionError(
-                f"Enum class {value} should use UserDefinedClassVariable, "
-                "not OpaqueObjectClassVariable"
-            )
+        assert not (isinstance(value, type) and issubclass(value, enum.Enum)), (
+            f"Enum class {value} should use UserDefinedClassVariable, "
+            "not OpaqueObjectClassVariable"
+        )
         super().__init__(**kwargs)
         self.value = value
 
@@ -107,10 +107,11 @@ class OpaqueObjectClassVariable(UserDefinedVariable):
         # allowing for proper validation and error handling
         return False
 
-    def hash_impl(self, tx: Any) -> tuple[int, bool]:
-        # OpaqueObjectClassVariable wraps the CLASS, not an instance.
-        # Classes are always hashable in CPython (type.__hash__ = object.__hash__).
-        return hash(self.value), False
+    def is_python_hashable(self) -> bool:
+        return is_opaque_value_type(self.value)  # pyrefly: ignore[bad-argument-type]
+
+    def get_python_hash(self) -> int:
+        return hash(self.value)
 
     def nb_or_impl(
         self,
@@ -178,7 +179,7 @@ class OpaqueObjectClassVariable(UserDefinedVariable):
         self,
         tx: "InstructionTranslator",
         args: Sequence[VariableTracker],
-        kwargs: dict[str, VariableTracker],
+        kwargs: Dict[str, VariableTracker],
     ) -> VariableTracker:
         # disallow creating reference-type opaque objects in the middle of the
         # program
@@ -237,7 +238,7 @@ class OpaqueObjectClassVariable(UserDefinedVariable):
 
 
 class TorchScriptObjectVariable(UserDefinedObjectVariable):
-    _fake_script_object_cache: dict[int, "TorchScriptObjectVariable"] = {}
+    _fake_script_object_cache: Dict[int, "TorchScriptObjectVariable"] = {}
 
     @classmethod
     def is_matching_cls(cls, user_cls: type) -> bool:
@@ -252,13 +253,12 @@ class TorchScriptObjectVariable(UserDefinedObjectVariable):
         proxy: Proxy,
         value: Any,
         ctor_args_kwargs: Any = None,
-        ctor_arg_sources: tuple[Source | None, ...] | None = None,
+        ctor_arg_sources: Optional[Union[Tuple[Source, None, ...]]]= None,
         **options: Any,
     ) -> "TorchScriptObjectVariable":
-        if isinstance(value, enum.Enum):
-            raise AssertionError(
-                f"Enum {type(value)} should use UserDefinedObjectVariable, not TorchScriptObjectVariable"
-            )
+        assert not isinstance(value, enum.Enum), (
+            f"Enum {type(value)} should use UserDefinedObjectVariable, not TorchScriptObjectVariable"
+        )
         out = TorchScriptObjectVariable(
             proxy, value, ctor_args_kwargs, ctor_arg_sources=ctor_arg_sources, **options
         )
@@ -274,8 +274,8 @@ class TorchScriptObjectVariable(UserDefinedObjectVariable):
         proxy: Proxy,
         value: Any,
         ctor_args_kwargs: Any = None,
-        source: Source | None = None,
-        ctor_arg_sources: tuple[Source | None, ...] | None = None,
+        source: Optional[Source]= None,
+        ctor_arg_sources: Optional[Union[Tuple[Source, None, ...]]]= None,
         **kwargs: Any,
     ) -> None:
         super().__init__(value, **kwargs)
@@ -294,10 +294,7 @@ class TorchScriptObjectVariable(UserDefinedObjectVariable):
         if not isinstance(self.proxy, torch.fx.Proxy):
             # If we have a hoisted value type, then lazily lift it to be a graph
             # input when as_proxy() is called.
-            if not is_opaque_value_type(type(self.proxy)):
-                raise AssertionError(
-                    f"Expected opaque value type, got {type(self.proxy)}"
-                )
+            assert is_opaque_value_type(type(self.proxy))
             if should_hoist(type(self.proxy)):
                 from torch._dynamo.symbolic_convert import InstructionTranslator
 
@@ -407,10 +404,7 @@ class TorchScriptObjectVariable(UserDefinedObjectVariable):
                 ],
             )
 
-        if self.source is None:
-            raise AssertionError(
-                "TorchScriptObjectVariable requires a source for var_getattr"
-            )
+        assert self.source is not None
         return TorchHigherOrderOperatorVariable.make(
             call_torchbind,
             source=AttrSource(self.source, name),
@@ -439,7 +433,7 @@ class TorchScriptObjectVariable(UserDefinedObjectVariable):
         tx: "InstructionTranslator",
         name: str,
         args: Iterable[Any],
-        kwargs: dict[str, Any],
+        kwargs: Dict[str, Any],
     ) -> VariableTracker:
         from .builder import wrap_fx_proxy
 
@@ -537,18 +531,19 @@ class TorchScriptObjectVariable(UserDefinedObjectVariable):
             return self.value
         return super().as_python_constant()
 
-    def hash_impl(self, tx: Any) -> tuple[int, bool]:
-        from ..exc import raise_type_error
-
-        real_obj = self.as_python_constant()
+    def is_python_hashable(self) -> bool:
         try:
-            return hash(real_obj), False
+            self.get_python_hash()
+            return True
         except TypeError:
-            raise_type_error(tx, f"unhashable type: '{type(real_obj).__name__}'")
+            return False
+
+    def get_python_hash(self) -> int:
+        real_obj = self.as_python_constant()
+        return hash(real_obj)
 
     def is_python_equal(self, other: object) -> bool:
-        if not isinstance(other, VariableTracker):
-            raise AssertionError(f"Expected VariableTracker, got {type(other)}")
+        assert isinstance(other, VariableTracker)
         real_self = self.as_python_constant()
         real_other = other.as_python_constant()
         return real_self == real_other

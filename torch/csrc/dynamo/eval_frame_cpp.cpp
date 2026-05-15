@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <optional>
 #include <unordered_set>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 extern "C" {
 extern PyObject* guard_complete_hook;

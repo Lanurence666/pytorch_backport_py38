@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import inspect
 import sys
 import typing
@@ -94,7 +96,7 @@ if _IS_MONKEYTYPE_INSTALLED:
             # A dictionary keeping all collected CallTrace
             # key is fully qualified name of called function
             # value is list of all CallTrace
-            self.trace_records: dict[str, list] = defaultdict(list)
+            self.trace_records: Dict[str, list] = defaultdict(list)
 
         def add(self, traces: Iterable[CallTrace]) -> None:
             for t in traces:
@@ -104,9 +106,9 @@ if _IS_MONKEYTYPE_INSTALLED:
         def filter(
             self,
             qualified_name: str,
-            qualname_prefix: str | None = None,
+            qualname_prefix: Optional[str]= None,
             limit: int = 2000,
-        ) -> list[CallTraceThunk]:
+        ) -> List[CallTraceThunk]:
             return self.trace_records[qualified_name]
 
         def analyze(self, qualified_name: str) -> dict:
@@ -153,7 +155,7 @@ if _IS_MONKEYTYPE_INSTALLED:
         def trace_store(self) -> CallTraceStore:
             return self.s
 
-        def code_filter(self) -> CodeFilter | None:
+        def code_filter(self) -> Optional[CodeFilter]:
             return jit_code_filter
 
 else:

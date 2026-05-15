@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Core graph building functionality for PyTorch's Dynamo system. This module contains
 the essential components for constructing and managing FX graphs during compilation:
@@ -35,10 +36,10 @@ import traceback
 import types
 import warnings
 import weakref
-from collections.abc import Callable, Generator, Sequence
+
 from dataclasses import dataclass, field as dc_field
 from types import CodeType
-from typing import Any, cast, Optional, TYPE_CHECKING, Union
+from typing import Any, Callable, Dict, Generator, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union, cast, overload
 from typing_extensions import ParamSpec, TypeVar
 
 import sympy
@@ -200,7 +201,7 @@ og_module_named_parameters_fn_ptr = torch.nn.Module.named_parameters
 
 
 def _wrap_with_inductor_config(
-    compiler_fn: Any, config_patches: dict[str, Any]
+    compiler_fn: Any, config_patches: Dict[str, Any]
 ) -> Callable[..., Any]:
     """
     Wrap a compiler function to apply inductor config patches during compilation.
@@ -228,13 +229,13 @@ class AliasingInfo:
 class MutationInfo:
     has_mutation: bool
     msg: str
-    mutated_input_indices: tuple[int, ...] = ()
+    mutated_input_indices: Tuple[int, ...] = ()
 
 
 def collect_reachable_grad_fns(
-    tensors_with_sources: list[tuple[torch.Tensor, str | None]],
-    stop_at: set[torch.autograd.graph.Node] | None = None,
-) -> set[torch.autograd.graph.Node]:
+    tensors_with_sources: List[Tuple[torch.Tensor, Optional[str]]],
+    stop_at: Optional[Set[torch.autograd.graph.Node]] = None,
+) -> Set[torch.autograd.graph.Node]:
     """Collect all grad_fns reachable from tensors' autograd graphs.
 
     Performs a DFS traversal and collects all visited grad_fns.
@@ -251,8 +252,8 @@ def collect_reachable_grad_fns(
     if stop_at is None:
         stop_at = set()
 
-    visited: set[torch.autograd.graph.Node] = set()
-    stack: list[torch.autograd.graph.Node] = []
+    visited: Set[torch.autograd.graph.Node] = set()
+    stack: List[torch.autograd.graph.Node] = []
 
     for tensor, _ in tensors_with_sources:
         if isinstance(tensor, torch.Tensor):
@@ -275,7 +276,7 @@ def collect_reachable_grad_fns(
     return visited
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _step_logger() -> Any:
     return torchdynamo_logging.get_step_logger(log)
 
@@ -285,7 +286,7 @@ class GraphCompileReason:
     """Stores why a given output graph was compiled; i.e. what caused the graph break."""
 
     reason: str
-    user_stack: list[traceback.FrameSummary]
+    user_stack: List[traceback.FrameSummary]
 
     # Indicates if this was a graph break reason due to graph break.
     graph_break: bool = True
@@ -295,8 +296,8 @@ class GraphCompileReason:
             graph_break_reasons.append(self)
 
 
-def _get_gen_rand_values_fn(random_calls: Any) -> Callable[[], list[Any]]:
-    def _gen_rand_values() -> list[Any]:
+def _get_gen_rand_values_fn(random_calls: Any) -> Callable[[], List[Any]]:
+    def _gen_rand_values() -> List[Any]:
         return [fn(*args, **kwargs) for fn, args, kwargs in random_calls]
 
     return _gen_rand_values
@@ -305,7 +306,7 @@ def _get_gen_rand_values_fn(random_calls: Any) -> Callable[[], list[Any]]:
 class FakeRootModule(torch.nn.Module):
     """Trick the constructor of fx.GraphModule"""
 
-    def __init__(self, nn_modules: dict[str, torch.nn.Module]) -> None:
+    def __init__(self, nn_modules: Dict[str, torch.nn.Module]) -> None:
         super().__init__()
         for k, v in nn_modules.items():
             setattr(self, k, v)
@@ -313,7 +314,7 @@ class FakeRootModule(torch.nn.Module):
     def __repr__(self) -> str:
         return "FakeRootModule(...)"
 
-    def add_nn_modules(self, nn_modules: dict[str, torch.nn.Module]) -> None:
+    def add_nn_modules(self, nn_modules: Dict[str, torch.nn.Module]) -> None:
         for k, v in nn_modules.items():
             setattr(self, k, v)
 
@@ -323,7 +324,7 @@ class WrapperBackend:
         self.backend: CompilerFn = backend
 
     def __call__(
-        self, gm: torch.fx.GraphModule, example_inputs: list[torch.Tensor]
+        self, gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]
     ) -> CompiledFn:
         self.restore = checkpoint_params(gm)
         self.gm = gm
@@ -354,7 +355,7 @@ class WrapperBackend:
             self.restore()
 
 
-Scope = dict[str, object]
+Scope = Dict[str, object]
 
 
 @dataclass
@@ -379,7 +380,7 @@ class BytecodeTracingTimings:
         for f in dataclasses.fields(self):
             ns_val = getattr(self, f.name)
             if ns_val > 0:
-                key = f.name.removesuffix("_ns")
+                key = f.name[:-len("_ns")] if f.name.endswith("_ns") else f.name
                 event_data[f"{key}_time_s"] = ns_val / 1e9
                 compilation_time_metrics.setdefault(key, []).append(ns_val / 1e9)
                 setattr(self, f.name, 0)
@@ -400,23 +401,23 @@ class OutputGraphGuardsState:
     local_scope: Scope
     global_scope: Scope
     # This records the initial torch function mode stack for guarding
-    torch_function_mode_stack: list[torch.overrides.TorchFunctionMode]
-    guard_on_key_order: set[Source]
+    torch_function_mode_stack: List[torch.overrides.TorchFunctionMode]
+    guard_on_key_order: Set[Source]
     # Map from graph input's `Source` to sizes / strides metadata
-    input_source_to_sizes_strides: dict[Source, dict[str, Any]]
+    input_source_to_sizes_strides: Dict[Source, Dict[str, Any]]
     dual_level: int
-    functorch_layers: list[torch._functorch.pyfunctorch.FuncTorchInterpreter]
-    current_device: torch.device | None
+    functorch_layers: List[torch._functorch.pyfunctorch.FuncTorchInterpreter]
+    current_device: Optional[torch.device]
     global_state_guard: torch._C._dynamo.guards.GlobalStateGuard
     _guards: torch._guards.GuardsSet
-    _aotautograd_guards: list[torch._guards.GuardEnvExpr]
+    _aotautograd_guards: List[torch._guards.GuardEnvExpr]
 
     # Whether or not the guards should be checked for correctness
 
     export: bool = False
     skip_guards_check: bool = False
     export_constraints: bool = False
-    name_of_builtins_dict_key_in_fglobals: str | None = None
+    name_of_builtins_dict_key_in_fglobals: Optional[str] = None
 
     @property
     def shape_env(self) -> ShapeEnv:
@@ -427,7 +428,7 @@ class OutputGraphGuardsState:
         return self._guards
 
     @property
-    def aotautograd_guards(self) -> list[torch._guards.GuardEnvExpr]:
+    def aotautograd_guards(self) -> List[torch._guards.GuardEnvExpr]:
         return self._aotautograd_guards
 
     def dump_guards_state(self) -> "OutputGraphGuardsState":
@@ -458,14 +459,14 @@ class StackLocalsMetadata:
     """
 
     num_stack: int = 0  # number of stack elements, minus removed NULLs
-    locals_names: dict[str, int] = dc_field(
+    locals_names: Dict[str, int] = dc_field(
         default_factory=dict
     )  # order of locals codegen'd to the stack
-    stack_null_idxes: list[int] = dc_field(default_factory=list)
-    locals_null_keys: list[str] = dc_field(default_factory=list)
-    stack_ctx_args: list[tuple[int, tuple[Any, ...]]] = dc_field(default_factory=list)
-    stack_ctx_idxes_orig: list[int] = dc_field(default_factory=list)
-    locals_ctx_args: list[tuple[str, tuple[Any, ...]]] = dc_field(default_factory=list)
+    stack_null_idxes: List[int] = dc_field(default_factory=list)
+    locals_null_keys: List[str] = dc_field(default_factory=list)
+    stack_ctx_args: List[Tuple[int, Tuple[Any, ...]]] = dc_field(default_factory=list)
+    stack_ctx_idxes_orig: List[int] = dc_field(default_factory=list)
+    locals_ctx_args: List[Tuple[str, Tuple[Any, ...]]] = dc_field(default_factory=list)
 
 
 # TODO we should expand this to make it work for atribtrary in/out
@@ -474,25 +475,25 @@ class ExportMetaData:
     # maps graph input index to its' source which is later
     # used in export to map to correct user input. In its' flat form,
     # just looks like GetItem(base=LocalSource("foo", idx=0))
-    graph_input_idx_to_local_source: dict[int, Source | None] = dc_field(
+    graph_input_idx_to_local_source: Dict[int, Optional[Source]] = dc_field(
         default_factory=dict
     )
     # maps user output idx to what type of output it is. There are 3 options:
     # 1) graph out
     # 2) user input
     # 3) constants
-    output_return_type: dict[int, tuple[str, Any]] = dc_field(default_factory=dict)
+    output_return_type: Dict[int, Tuple[str, Any]] = dc_field(default_factory=dict)
     # output spec of the traced function
-    out_spec: torch.utils._pytree.TreeSpec | torch.utils._pytree.LeafSpec = (
+    out_spec: Union[torch.utils._pytree.TreeSpec, torch.utils._pytree.LeafSpec] = (
         torch.utils._pytree._LEAF_SPEC
     )
-    module_call_spec: dict[
+    module_call_spec: Dict[
         str,
-        dict[str, torch.utils._pytree.TreeSpec | torch.utils._pytree.LeafSpec],
+        Dict[str, Union[torch.utils._pytree.TreeSpec, torch.utils._pytree.LeafSpec]],
     ] = dc_field(default_factory=dict)
 
 
-def get_builtins_dict(global_scope: Scope) -> dict[str, Any]:
+def get_builtins_dict(global_scope: Scope) -> Dict[str, Any]:
     # f_globals["__builtins__"] can be a dict or a module. This is an
     # implementation detail -
     # https://docs.python.org/3/library/builtins.html.
@@ -539,11 +540,10 @@ class OutputGraphCommon(OutputGraphGuardsState):
     def __init__(
         self,
         output_graph_guards_state: OutputGraphGuardsState,
-        import_sources: dict[str, str] | None = None,
-        shape_env: ShapeEnv | None = None,
-        export_metadata: ExportMetaData | None = None,
-        tracked_fakes_id_to_source: dict[int, list[Source]] | None = None,
-        output_pycode: list[list[str] | None] | None = None,
+        import_sources: Optional[Dict[str, str]] = None,
+        shape_env: Optional[ShapeEnv] = None,
+        export_metadata: Optional[ExportMetaData] = None,
+        tracked_fakes_id_to_source: Dict[int, List[Source]] | None = None,
     ) -> None:
         super().__init__(
             output_graph_guards_state.local_scope,
@@ -571,10 +571,9 @@ class OutputGraphCommon(OutputGraphGuardsState):
         # - tracked_fakes_id_to_source, for processing tensor dim constraints
         self._shape_env = shape_env or ShapeEnv()  # private for inheritance
         self.export_metadata = export_metadata or ExportMetaData()
-        self.tracked_fakes_id_to_source: dict[int, list[Source]] = (
+        self.tracked_fakes_id_to_source: Dict[int, List[Source]] = (
             tracked_fakes_id_to_source or {}
         )
-        self.output_pycode = output_pycode or []
 
     @property
     def shape_env(self) -> ShapeEnv:
@@ -602,8 +601,8 @@ class OutputGraph(OutputGraphCommon):
 
     def __init__(
         self,
-        code_options: dict[str, Any],
-        compiler_fn: CompilerFn | None,
+        code_options: Dict[str, Any],
+        compiler_fn: Optional[CompilerFn],
         root_tx: "InstructionTranslatorBase",
         export: bool,
         export_constraints: Sequence[_ConstraintTarget],
@@ -611,7 +610,7 @@ class OutputGraph(OutputGraphCommon):
         local_scope: Scope,
         global_scope: Scope,
         f_code: CodeType,
-        torch_function_mode_stack: list[torch.overrides.TorchFunctionMode],
+        torch_function_mode_stack: List[torch.overrides.TorchFunctionMode],
         package: Optional["CompilePackage"],
         one_graph: bool = False,
     ) -> None:
@@ -635,19 +634,19 @@ class OutputGraph(OutputGraphCommon):
         self.tracers = [SubgraphTracer(self, is_export=export)]
         # Map from graph input's `Source` to its `VariableTracker` to
         # de-duplicate graph inputs by source and reuse the tracker
-        self.input_source_to_var: dict[Source, VariableTracker] = {}
+        self.input_source_to_var: Dict[Source, VariableTracker] = {}
         # List of TensorVariables that are leaf tensors created in-graph
         # (e.g., nn.Parameter via tracable_create_parameter). These need to be
         # tracked separately from input_source_to_var for backward() auto-detection.
-        self.leaf_var_creation_order: list[VariableTracker] = []
+        self.leaf_var_creation_order: List[VariableTracker] = []
         self.export = export
         self.export_constraints = export_constraints  # type: ignore[assignment]
         self.frame_state = frame_state
-        self.cleanup_hooks: list[Callable[[], Any]] = []
+        self.cleanup_hooks: List[Callable[[], Any]] = []
         # compile_id is an id number for the current torch.compile
         self.compile_id: int = next(_compile_id_counter)
         # Set of globals installed via install_global* APIs
-        self.installed_globals: set[str] = set()
+        self.installed_globals: Set[str] = set()
 
         # TODO: maybe should just pass the entire f_code in here?  Not
         # sure...
@@ -660,7 +659,7 @@ class OutputGraph(OutputGraphCommon):
         # Cudagraph annotation is set during inlining in
         # InliningInstructionTranslator.build_inline_tracer when a decorated
         # function is inlined.
-        self.cudagraph_annotation: _CudagraphAnnotation | None = None
+        self.cudagraph_annotation: Optional[_CudagraphAnnotation] = None
 
         self.region_tracker = GraphRegionTracker()
         self._emit_debugger_breakpoint: bool = False
@@ -670,7 +669,7 @@ class OutputGraph(OutputGraphCommon):
         # will get added to TrackedFakes, but TrackedFakes also contains
         # GraphArgs that got pruned, and things like Tensor attributes which
         # aren't explicit graph inputs.  Used by shape guard
-        self.tracked_fakes: list[TrackedFake] = []
+        self.tracked_fakes: List[TrackedFake] = []
 
         shape_env = ShapeEnv(
             # Reference Cycle!
@@ -704,7 +703,7 @@ class OutputGraph(OutputGraphCommon):
         self.tracing_context.traced_code.append(f_code)
         self.tracing_context.cudagraph_annotation = self.cudagraph_annotation
         self.traced_code = self.tracing_context.traced_code
-        self.dynamo_compile_id: CompileId | None = CompileContext.current_compile_id()
+        self.dynamo_compile_id: Optional[CompileId] = CompileContext.current_compile_id()
         self.init_ambient_guards()
 
         # Map each tensor id to a list of sources. This is necessary because
@@ -712,15 +711,15 @@ class OutputGraph(OutputGraphCommon):
         # We use this map to interpret (i.e., check for violations of) constraints,
         # specifically equality constraints, which have shared tensor ids in them.
         # This map should also be generally useful, e.g., for (de)serialization.
-        self.tracked_fakes_id_to_source: dict[int, list[Source]] = (
+        self.tracked_fakes_id_to_source: Dict[int, List[Source]] = (
             collections.defaultdict(list)
         )
         # Stores the full fqn of a param or buffer to the relevant source.
-        self.param_name_to_source: dict[str, Source] | None = {}
+        self.param_name_to_source: Optional[Dict[str, Source]] = {}
         self.side_effects = SideEffects(self)
         # Cached variable trackers. This makes symbolic analysis of LOAD_GLOBAL
         # and LOAD_ATTR for same python objects free.
-        self.variable_tracker_cache: dict[Source, VariableTracker] = {}
+        self.variable_tracker_cache: Dict[Source, VariableTracker] = {}
         # Cache for sources resolved via MRO walk, keyed by id(obj).
         # When the same descriptor (e.g. property) is reached from multiple
         # subclasses, we reuse the first source to avoid redundant guards.
@@ -730,18 +729,17 @@ class OutputGraph(OutputGraphCommon):
         # are same, we dont want OBJECT_ALIASING guards on them. For these
         # objects, we have DICT_CONTAINS absent guards on the mro walk, so there
         # is no need of the OBJECT_ALIASING guards.
-        self.mro_source_cache: dict[tuple[int, str], DictGetItemSource] = {}
+        self.mro_source_cache: Dict[Tuple[int, str], DictGetItemSource] = {}
         # Tracks (id(klass), attr_name) pairs that already have a
         # DICT_CONTAINS absent guard installed during MRO walks.  When
         # multiple subclasses share the same intermediate MRO class, we
         # only need to guard the absence once per (class, attr) pair.
-        self.guarded_mro_absent_keys: set[tuple[int, str]] = set()
+        self.guarded_mro_absent_keys: Set[Tuple[int, str]] = set()
         # Cache for inspect.signature results: function -> VariableTracker
-        self.signature_cache: dict[Any, VariableTracker] = {}
+        self.signature_cache: Dict[Any, VariableTracker] = {}
         self.unique_var_id = itertools.count()
-        self.code_options: dict[str, Any] = dict(code_options)
-        self.output_instructions: list[Instruction] = []
-        self.output_pycode: list[list[str] | None] = []
+        self.code_options: Dict[str, Any] = dict(code_options)
+        self.output_instructions: List[Instruction] = []
         # used to track nodes that are added between calls of copy_graphstate
         # and restore_graphstate
         self.timestamp = 0
@@ -751,18 +749,18 @@ class OutputGraph(OutputGraphCommon):
         # stream that already has an input mutation (the epilogue copy_()
         # wouldn't be captured).  We key by id() of the underlying
         # torch.Stream so we can peek lazy variables without realizing them.
-        self._input_mutation_streams: dict[int, traceback.StackSummary] = {}
-        self._last_checked_input_versions: dict[int, int] | None = None
+        self._input_mutation_streams: Dict[int, traceback.StackSummary] = {}
+        self._last_checked_input_versions: Optional[Dict[int, int]] = None
 
         # A list of register_finalizer_fns to apply to the output graph module
-        self.register_finalizer_fns: list[Callable[[fx.GraphModule], None]] = []
+        self.register_finalizer_fns: List[Callable[[fx.GraphModule], None]] = []
 
         # Not checkpointed
-        self.compiler_fn: CompilerFn | None = compiler_fn
+        self.compiler_fn: Optional[CompilerFn] = compiler_fn
         self.root_tx = root_tx
 
         # Profiler state for tracking function trace timings
-        self.profiler_state: DynamoProfilerState | None = None
+        self.profiler_state: Optional[DynamoProfilerState] = None
 
         self.package = package
         # Given a source, what are the user stacks of all locations that
@@ -775,12 +773,12 @@ class OutputGraph(OutputGraphCommon):
         # Feel free to populate this more frequently if other use-cases arise,
         # but be aware that we have to generate full stacks for each
         # recording!
-        self.source_to_user_stacks: dict[Source, list[traceback.StackSummary]] = {}
+        self.source_to_user_stacks: Dict[Source, List[traceback.StackSummary]] = {}
 
-        self._current_tx: list[InstructionTranslatorBase] = []
-        self.cleanups: list[CleanupHook] = []
+        self._current_tx: List[InstructionTranslatorBase] = []
+        self.cleanups: List[CleanupHook] = []
         self.should_exit = False
-        self.unspec_variable_map: dict[str, UnspecializedPythonVariable] = {}
+        self.unspec_variable_map: Dict[str, UnspecializedPythonVariable] = {}
 
         # This returns false if TF Overall (both mode and subclass) is disabled OR that TF Mode stack is empty
         self.torch_function_mode_enabled = torch._C._is_torch_function_mode_enabled()
@@ -801,15 +799,15 @@ class OutputGraph(OutputGraphCommon):
         # (since autograd.grad stops at inputs without consuming them).
         # Used to detect returning tensors connected to consumed grad_fns (would cause
         # "backward through graph a second time" error in aot_autograd).
-        self.autograd_grad_consumed_grad_fns: set[torch.autograd.graph.Node] = set()
+        self.autograd_grad_consumed_grad_fns: Set[torch.autograd.graph.Node] = set()
 
         # Tracks a list of called ops that were not tagged with "pt2_compliant_tag".
         # This information is useful for logging.
-        self.non_compliant_ops: set[torch._ops.OpOverload] = set({})
+        self.non_compliant_ops: Set[torch._ops.OpOverload] = set({})
 
         # Tracks a list of called custom ops that were tagged with "pt2_compliant_tag".
         # This information is useful for logging.
-        self.compliant_custom_ops: set[torch._ops.OpOverload] = set({})
+        self.compliant_custom_ops: Set[torch._ops.OpOverload] = set({})
 
         # We save the global torch state here to be restored in case of graph
         # breaks. The relevant issue is seen here
@@ -820,35 +818,35 @@ class OutputGraph(OutputGraphCommon):
 
         # Tracks the original FQNs of the constant tensors from the original graph,
         # i.e. buffers and parameters.
-        self.dynamo_flat_name_to_original_fqn: dict[str, str] = {}
+        self.dynamo_flat_name_to_original_fqn: Dict[str, str] = {}
 
         # All calls to random() are replaced with a single call to __gen_rand_values
         # functions that returns a tuple of random values for each original call.
         # random_calls tracks calls to random() and random_values_var stores the name of
         # the variable that stores __gen_rand_values results.
-        self.random_calls: list[
-            tuple[Callable[..., object], tuple[object, ...], dict[str, object]]
+        self.random_calls: List[
+            Tuple[Callable[..., object], Tuple[object, ...], Dict[str, object]]
         ] = []
         self.random_values_var: Any = None
 
         # Bytecode to insert right before we call the graph
-        self.pregraph_bytecode: list[Instruction] = []
+        self.pregraph_bytecode: List[Instruction] = []
 
         # Maps SyntheticLocalSource → (fn, args, arg_sources) for hoisted
         # graph inputs created by synthetic_graph_input, so invoke_subgraph
         # reuse can recreate them on cache hit. arg_sources allows stamp-out
         # to resolve new ctor arg values via source replacement.
-        self.synthetic_source_ctor_info: dict[
+        self.synthetic_source_ctor_info: Dict[
             SyntheticLocalSource,
-            tuple[
-                Callable[..., Any], tuple[Any, ...], tuple[Source | None, ...] | None
+            Tuple[
+                Callable[..., Any], Tuple[Any, ...], Union[Tuple[Source, None, ...], None]
             ],
         ] = {}
 
         # Use to pass values to backward hooks when using compiled autograd
-        self.backward_state: dict[str, VariableTracker] = {}
-        self.backward_state_proxy: torch.fx.Proxy | None = None
-        self.backward_state_var: str | None = None
+        self.backward_state: Dict[str, VariableTracker] = {}
+        self.backward_state_proxy: Optional[torch.fx.Proxy] = None
+        self.backward_state_var: Optional[str] = None
 
         # pyrefly: ignore [bad-override]
         self.name_of_builtins_dict_key_in_fglobals: str = (
@@ -863,12 +861,12 @@ class OutputGraph(OutputGraphCommon):
         # that are set for the entire duration of the compiled region.
         # This is an invariant today because we graph break on the saved_tensor_hook
         # context manager inside a compiled region
-        self.saved_tensors_hooks_subgraph_names: list[str] | None = (
+        self.saved_tensors_hooks_subgraph_names: Optional[List[str]] = (
             self.maybe_install_saved_tensors_hooks_subgraphs()
         )
 
         # mangled alias -> module fqn name
-        self.import_sources: dict[str, str] = {}
+        self.import_sources: Dict[str, str] = {}
 
         self.export_metadata = ExportMetaData()
 
@@ -876,12 +874,12 @@ class OutputGraph(OutputGraphCommon):
         # dynamo_flat_name_to_original_fqn mapping.
         self.used_inlined_inbuilt_modules_names: OrderedSet[str] = OrderedSet()
 
-        self.attr_source_cache: dict[tuple[Source, str], AttrSource] = {}
-        self._cached_replayed_side_effect_source_refs: tuple[str, ...] | None = None
+        self.attr_source_cache: Dict[Tuple[Source, str], AttrSource] = {}
+        self._cached_replayed_side_effect_source_refs: Optional[Tuple[str, ...]] = None
 
     def get_replayed_side_effect_source_refs(
         self, *, populate_export_metadata: bool = False
-    ) -> list[str]:
+    ) -> List[str]:
         """Return Python-side effect sources that Dynamo replays outside the FX graph."""
         if (
             not populate_export_metadata
@@ -905,8 +903,7 @@ class OutputGraph(OutputGraphCommon):
                         var.value, _ExportModuleSpecTrackerDict
                     ):
                         if populate_export_metadata:
-                            if var._base_vt is None:
-                                raise AssertionError("var._base_vt must not be None")
+                            assert var._base_vt is not None
                             for (
                                 k,
                                 v,
@@ -920,10 +917,7 @@ class OutputGraph(OutputGraphCommon):
                                     specs[k_spec.vt.as_python_constant()] = (
                                         val.as_python_constant()
                                     )
-                                if ["in_spec", "out_spec"] != list(specs.keys()):
-                                    raise AssertionError(
-                                        f"Expected specs keys to be ['in_spec', 'out_spec'], got {list(specs.keys())}"
-                                    )
+                                assert ["in_spec", "out_spec"] == list(specs.keys())
                                 self.export_metadata.module_call_spec[
                                     # pyrefly: ignore[missing-attribute]
                                     k.vt.as_python_constant()
@@ -1021,12 +1015,9 @@ class OutputGraph(OutputGraphCommon):
 
     def add_backward_state_hook(
         self, hook: VariableTracker, prefix: str = "hook"
-    ) -> tuple[str, torch.fx.Proxy]:
+    ) -> Tuple[str, torch.fx.Proxy]:
         name = f"{prefix}{len(self.backward_state)}"
-        if name in self.backward_state:
-            raise AssertionError(
-                f"backward_state hook name '{name}' already registered"
-            )
+        assert name not in self.backward_state
         self.backward_state[name] = hook
         return name, self.get_backward_state_proxy()
 
@@ -1081,7 +1072,7 @@ class OutputGraph(OutputGraphCommon):
                 )
             )
 
-    def maybe_install_saved_tensors_hooks_subgraphs(self) -> list[str] | None:
+    def maybe_install_saved_tensors_hooks_subgraphs(self) -> Optional[List[str]]:
         if torch._dynamo.compiled_autograd.in_compiled_autograd_region:
             return None
 
@@ -1106,21 +1097,15 @@ class OutputGraph(OutputGraphCommon):
             "saved_tensors_hooks_unpack",
             torch.fx.GraphModule(self.nn_modules, unpack_gm.graph),
         )
-        if pack_subgraph_name != "saved_tensors_hooks_pack_0":
-            raise AssertionError(
-                f"Expected pack_subgraph_name to be 'saved_tensors_hooks_pack_0', got '{pack_subgraph_name}'"
-            )
-        if unpack_subgraph_name != "saved_tensors_hooks_unpack_0":
-            raise AssertionError(
-                f"Expected unpack_subgraph_name to be 'saved_tensors_hooks_unpack_0', got '{unpack_subgraph_name}'"
-            )
+        assert pack_subgraph_name == "saved_tensors_hooks_pack_0"
+        assert unpack_subgraph_name == "saved_tensors_hooks_unpack_0"
         return [pack_subgraph_name, unpack_subgraph_name]
 
     def synthetic_graph_input(
         self,
         fn: Callable[..., Any],
-        args: tuple[Any, ...],
-        ctor_arg_sources: tuple[Source | None, ...] | None = None,
+        args: Tuple[Any, ...],
+        ctor_arg_sources: Union[Tuple[Source, None, ...], None] = None,
     ) -> VariableTracker:
         """
         call fn(*args) before the graph runs and turn the result into a fake input.
@@ -1253,15 +1238,15 @@ class OutputGraph(OutputGraphCommon):
         self.current_tracer.graph = value
 
     @property
-    def input_name_to_proxy(self) -> dict[str, fx.Proxy]:
+    def input_name_to_proxy(self) -> Dict[str, fx.Proxy]:
         return self.current_tracer.input_name_to_proxy
 
     @property
-    def real_value_cache(self) -> dict[fx.Node, torch.Tensor]:
+    def real_value_cache(self) -> Dict[fx.Node, torch.Tensor]:
         return self.current_tracer.real_value_cache
 
     @property
-    def bound_symbols(self) -> dict[sympy.Symbol, Union[torch.fx.Proxy, "LazyProxy"]]:
+    def bound_symbols(self) -> Dict[sympy.Symbol, Union[torch.fx.Proxy, "LazyProxy"]]:
         return self.current_tracer.bound_symbols
 
     # If you are here, and you're looking for create_graph_input,
@@ -1282,18 +1267,15 @@ class OutputGraph(OutputGraphCommon):
     @contextlib.contextmanager
     def subtracer(
         self,
-        source_target: Target | None,
+        source_target: Optional[Target],
         prior_tracer: Optional["SubgraphTracer"],
-        description: str | None = None,
+        description: Optional[str] = None,
     ) -> Generator["SubgraphTracer", None, None]:
         new_scope_ctx = enter_new_scope()
         try:
             if prior_tracer:
                 # Lineage MUST stay preserved
-                if prior_tracer.parent is not self.current_tracer:
-                    raise AssertionError(
-                        "prior_tracer.parent must be the current tracer to preserve lineage"
-                    )
+                assert prior_tracer.parent is self.current_tracer
             new_scope_ctx.__enter__()
             tracer = (
                 prior_tracer
@@ -1318,16 +1300,13 @@ class OutputGraph(OutputGraphCommon):
 
     @property
     def fake_mode(self) -> torch._subclasses.FakeTensorMode:
-        if self.tracing_context.fake_mode is None:
-            raise AssertionError("tracing_context.fake_mode must not be None")
+        assert self.tracing_context.fake_mode is not None
         return self.tracing_context.fake_mode
 
     @property
     def shape_env(self) -> ShapeEnv:
-        if self.tracing_context.fake_mode is None:
-            raise AssertionError("tracing_context.fake_mode must not be None")
-        if self.tracing_context.fake_mode.shape_env is None:
-            raise AssertionError("tracing_context.fake_mode.shape_env must not be None")
+        assert self.tracing_context.fake_mode is not None
+        assert self.tracing_context.fake_mode.shape_env is not None
         return self.tracing_context.fake_mode.shape_env
 
     @property
@@ -1335,21 +1314,21 @@ class OutputGraph(OutputGraphCommon):
         return self.tracing_context.guards_context.dynamo_guards
 
     @property
-    def nn_modules(self) -> dict[str, Any]:
+    def nn_modules(self) -> Dict[str, Any]:
         return self.tracing_context.module_context.nn_modules
 
     @property
-    def aotautograd_guards(self) -> list[torch._guards.GuardEnvExpr]:
+    def aotautograd_guards(self) -> List[torch._guards.GuardEnvExpr]:
         return self.tracing_context.guards_context.aotautograd_guards
 
     def save_global_state(
-        self, out: dict[str, tuple[Callable[..., Any], bool]] | None = None
+        self, out: Dict[str, Tuple[Callable[..., Any], bool]] | None = None
     ) -> None:
         """
         Saves to out if it is provided. Else saves to the tracing context's global_state.
         """
         global_state = cast(
-            dict[str, tuple[Callable[..., Any], bool]],
+            Dict[str, Tuple[Callable[..., Any], bool]],
             (
                 out
                 if out is not None
@@ -1415,10 +1394,9 @@ class OutputGraph(OutputGraphCommon):
     def has_outputs(self) -> bool:
         return len([x for x in self.graph.nodes if x.op == "output"]) > 0
 
-    def get_submodule(self, keys: str) -> torch.nn.Module | Any:
-        if not keys:
-            raise AssertionError("keys must be a non-empty string")
-        obj: torch.nn.Module | dict[str, torch.nn.Module] = self.nn_modules
+    def get_submodule(self, keys: str) -> Union[torch.nn.Module, Any]:
+        assert keys
+        obj: Union[torch.nn.Module, Dict[str, torch.nn.Module]] = self.nn_modules
         for k in keys.split("."):
             if isinstance(obj, dict):
                 obj = obj[k]
@@ -1485,7 +1463,7 @@ class OutputGraph(OutputGraphCommon):
 
     def register_attr_or_module(
         self,
-        target: torch.nn.Module | torch.Tensor | Any,
+        target: Union[Union[torch.nn.Module, torch.Tensor], Any],
         *names: Any,
         **options: Any,
     ) -> VariableTracker:
@@ -1495,13 +1473,9 @@ class OutputGraph(OutputGraphCommon):
             return VariableTracker.build(self.current_tx, target, **options)
 
         options = dict(options)
-        if "source" not in options:
-            raise AssertionError("'source' must be provided in options")
+        assert "source" in options
         source = options["source"]
-        if isinstance(source, ParamBufferSource):
-            raise AssertionError(
-                f"source must not be a ParamBufferSource, got {source}"
-            )
+        assert not isinstance(source, ParamBufferSource)
 
         if isinstance(target, torch.Tensor):
             tracer = self.current_tracer
@@ -1520,14 +1494,12 @@ class OutputGraph(OutputGraphCommon):
                 tracer = self.root_tracer
 
             def wrap_name(module_key: str) -> VariableTracker:
-                if self.param_name_to_source is None:
-                    raise AssertionError("param_name_to_source must not be None")
+                assert self.param_name_to_source is not None
                 self.param_name_to_source[module_key] = source
 
                 # Check if the attr has already been registered. This can happen
                 # when two different sources point to the same tensor.
-                if self.root_tx is None:
-                    raise AssertionError("root_tx must not be None")
+                assert self.root_tx is not None
                 if target in self.root_tx.output.side_effects:
                     return self.root_tx.output.side_effects[target]
 
@@ -1549,20 +1521,14 @@ class OutputGraph(OutputGraphCommon):
                 # different sources pointing to the same tensor object.
                 vt = self.root_tx.output.side_effects.track_object_existing(target, vt)
 
-                if "tensor_dict" in vt.as_proxy().node.meta:
-                    raise AssertionError(
-                        "'tensor_dict' already exists in proxy node meta"
-                    )
+                assert "tensor_dict" not in vt.as_proxy().node.meta
                 # pyrefly: ignore [bad-argument-type]
                 vt.as_proxy().node.meta["tensor_dict"] = _extract_tensor_dict(target)
 
                 return vt
 
         elif isinstance(target, torch.nn.Module):
-            if not isinstance(target, torch.nn.Module):
-                raise AssertionError(
-                    f"target must be a torch.nn.Module, got {type(target)}"
-                )
+            assert isinstance(target, torch.nn.Module)
 
             if source:
                 install_guard(source.make_guard(GuardBuilder.NN_MODULE))
@@ -1640,8 +1606,7 @@ class OutputGraph(OutputGraphCommon):
         if isinstance(target, torch.nn.Module):
 
             def register_leaf_name(leaf_name: str) -> None:
-                if self.param_name_to_source is None:
-                    raise AssertionError("param_name_to_source must not be None")
+                assert self.param_name_to_source is not None
                 new_source = self.get_chained_param_buffer_source(source, leaf_name)
                 new_name = f"{name}.{leaf_name}"
                 self.param_name_to_source[new_name] = new_source
@@ -1663,7 +1628,7 @@ class OutputGraph(OutputGraphCommon):
 
     def handle_aliases_for_stolen_lists(
         self, tx: "InstructionTranslatorBase"
-    ) -> tuple[list[Instruction], dict[Source, Source]]:
+    ) -> Tuple[List[Instruction], Dict[Source, Source]]:
         # If list inputs are stolen, but still needed after the function call, create aliases to keep them alive
         maybe_gm = self.local_scope.get("self")
         stolen_list_names = get_locals_to_steal(maybe_gm)
@@ -1671,7 +1636,7 @@ class OutputGraph(OutputGraphCommon):
             return [], {}
 
         alias_insts = []
-        needs_alias: dict[str, list[VariableTracker]] = {}
+        needs_alias: Dict[str, List[VariableTracker]] = {}
 
         queue = [
             *tx.stack,
@@ -1682,8 +1647,7 @@ class OutputGraph(OutputGraphCommon):
         while queue:
             x = queue.pop()
             if isinstance(x, BaseListVariable):
-                if not isinstance(x.items, list):
-                    raise AssertionError(f"x.items must be a list, got {type(x.items)}")
+                assert isinstance(x.items, list)
                 queue += x.items
                 continue
 
@@ -1705,7 +1669,7 @@ class OutputGraph(OutputGraphCommon):
 
         # pyrefly: ignore [implicit-any]
         visited = {}
-        overridden_sources: dict[Source, Source] = {}
+        overridden_sources: Dict[Source, Source] = {}
         for arg in self.graphargs:
             if not (
                 isinstance(arg._example, list)
@@ -1716,8 +1680,7 @@ class OutputGraph(OutputGraphCommon):
 
             # arg is a list that will be cleared by the compiled function
             list_name = arg.source.local_name
-            if list_name not in self.code_options["co_varnames"]:
-                raise AssertionError(f"'{list_name}' not found in co_varnames")
+            assert list_name in self.code_options["co_varnames"]
             for x in needs_alias[list_name]:
                 # Skip if already handled.
                 if x.source in overridden_sources:
@@ -1725,8 +1688,7 @@ class OutputGraph(OutputGraphCommon):
 
                 # A small codegen optimization because we might have different
                 # VariableTrackers that share the same source.
-                if x.source is None:
-                    raise AssertionError("x.source must not be None")
+                assert x.source is not None
                 list_idx = x.source.index  # type: ignore[attr-defined]
                 if list_idx not in visited:
                     alias_name = self.new_var(
@@ -1745,8 +1707,7 @@ class OutputGraph(OutputGraphCommon):
                     )
 
                 # operate on alias, handled by suffix codegen
-                if x.source is None:
-                    raise AssertionError("x.source must not be None")
+                assert x.source is not None
                 old_source = x.source
                 overridden_sources[old_source] = LocalSource(visited[list_idx])
 
@@ -1758,7 +1719,7 @@ class OutputGraph(OutputGraphCommon):
 
     def _get_stack_values_to_restore(
         self, tx: "InstructionTranslatorBase", stack_pops: int
-    ) -> tuple[list[VariableTracker], StackLocalsMetadata]:
+    ) -> Tuple[List[VariableTracker], StackLocalsMetadata]:
         """
         Gets the stack + locals values belonging to tx that need to be restored.
 
@@ -1851,10 +1812,7 @@ class OutputGraph(OutputGraphCommon):
                     continue
             else:
                 # A variable should never be NULL in < 3.12
-                if type.__instancecheck__(NullVariable, v):
-                    raise AssertionError(
-                        "variable should never be NULL in Python < 3.12"
-                    )
+                assert not type.__instancecheck__(NullVariable, v)
             meta.locals_names[k] = len(meta.locals_names)
             if isinstance(v, ContextWrappingVariable):
                 target_values = (
@@ -1870,7 +1828,7 @@ class OutputGraph(OutputGraphCommon):
         tx: "InstructionTranslatorBase",
         reason: GraphCompileReason,
         stack_pops: int = 0,
-    ) -> list[StackLocalsMetadata]:
+    ) -> List[StackLocalsMetadata]:
         """
         Compiles the current subgraph, with inputs w.r.t. self.root_tx, and codegens:
             - Call the compiled subgraph
@@ -1886,15 +1844,11 @@ class OutputGraph(OutputGraphCommon):
         Returns stack indices and locals keys where we dropped NULLs, and where we found inactive context manager objects.
         """
 
-        if self.root_tx is None:
-            raise AssertionError("root_tx must not be None")
+        assert self.root_tx is not None
 
         if not config.nested_graph_breaks:
             # expect to only compile 1 frame
-            if self.root_tx is not tx:
-                raise AssertionError(
-                    "root_tx must be tx when nested_graph_breaks is disabled"
-                )
+            assert self.root_tx is tx
 
         # bytecode tracing has finished. Pop the context manager for dynamo_timed
         self.mark_bytecode_tracing_stop()
@@ -1905,7 +1859,7 @@ class OutputGraph(OutputGraphCommon):
         log.debug("COMPILING GRAPH due to %s", reason)
 
         # prefix instructions (Python 3.11+)
-        prefix_insts: list[Instruction] = []
+        prefix_insts: List[Instruction] = []
         if sys.version_info >= (3, 11):
             for inst in self.root_tx.prefix_insts:
                 if inst.opname == "COPY_FREE_VARS":
@@ -1924,13 +1878,10 @@ class OutputGraph(OutputGraphCommon):
         all_stack_values = []
         # pyrefly: ignore [implicit-any]
         all_stack_locals_metas = []
-        cur_tx: InstructionTranslatorBase | None = tx
+        cur_tx: Optional[InstructionTranslatorBase] = tx
         while cur_tx is not None:
             # this should have been checked by the caller
-            if not all(block.can_restore() for block in cur_tx.block_stack):
-                raise AssertionError(
-                    "all blocks in cur_tx.block_stack must be restorable"
-                )
+            assert all(block.can_restore() for block in cur_tx.block_stack)
 
             stack_values, meta = self._get_stack_values_to_restore(
                 cur_tx, stack_pops if cur_tx is tx else 0
@@ -1955,8 +1906,9 @@ class OutputGraph(OutputGraphCommon):
             self.add_output_instructions(create_breakpoint())
             self._emit_debugger_breakpoint = False
 
-        if self.pregraph_bytecode and self.export:
-            raise AssertionError("export does not support pregraph_bytecode")
+        assert not (self.pregraph_bytecode and self.export), (
+            "export does not support pregraph_bytecode"
+        )
         self.add_output_instructions(self.pregraph_bytecode)
 
         alias_insts, overridden_sources = self.handle_aliases_for_stolen_lists(
@@ -2051,18 +2003,16 @@ class OutputGraph(OutputGraphCommon):
             # no side effects, so no new cells created - no need to call side_effects.codegen_save_tempvars
             cell_cg = PyCodegen(self.root_tx)
             self.codegen_cells(tx, cell_cg)
-            instructions, pycode = self.compile_and_call_fx_graph(
-                tx, list(reversed(stack_values_flat)), root
-            )
             self.add_output_instructions(
                 [
                     # load in reverse since UNPACK_SEQUENCE will reverse
-                    *instructions,
+                    *self.compile_and_call_fx_graph(
+                        tx, list(reversed(stack_values_flat)), root
+                    ),
                     *cell_cg.get_instructions(),
                     *create_swap(2),
                     create_instruction("UNPACK_SEQUENCE", arg=len(stack_values_flat)),
-                ],
-                pycode=pycode,
+                ]
             )
             # function output will be moved to the correct places below
         else:
@@ -2108,19 +2058,13 @@ class OutputGraph(OutputGraphCommon):
                 ):
                     flat_returns = vt.items[0]
                     out_spec = vt.items[1]
-                    if not isinstance(
+                    assert isinstance(
                         flat_returns, torch._dynamo.variables.ListVariable
-                    ):
-                        raise AssertionError("flat_returns must be a ListVariable")
+                    )
 
-                    vt_to_graph_out_idx: dict[VariableTracker, int] = {}
+                    vt_to_graph_out_idx: Dict[VariableTracker, int] = {}
                     for value in pass2.graph_outputs.values():
-                        if not isinstance(
-                            value, torch._dynamo.codegen.GraphOutputEntry
-                        ):
-                            raise AssertionError(
-                                f"graph output value must be a GraphOutputEntry, got {type(value)}"
-                            )
+                        assert isinstance(value, torch._dynamo.codegen.GraphOutputEntry)
                         variable: VariableTracker = value.variable
                         vt_to_graph_out_idx[variable] = value.index
 
@@ -2166,12 +2110,10 @@ class OutputGraph(OutputGraphCommon):
                         )
 
             output = []
-            subgraph_pycode = None
             if count_calls(self.graph) != 0 or len(pass2.graph_outputs) != 0:
-                instructions, subgraph_pycode = self.compile_and_call_fx_graph(
-                    tx, pass2.graph_output_vars(), root
+                output.extend(
+                    self.compile_and_call_fx_graph(tx, pass2.graph_output_vars(), root)
                 )
-                output.extend(instructions)
 
                 if len(pass2.graph_outputs) != 0:
                     output.append(pass2.create_store(graph_output_var))
@@ -2182,10 +2124,7 @@ class OutputGraph(OutputGraphCommon):
                 # NB: Important to run compiler collective even when there is
                 # a graph break
                 self.run_compiler_collective()
-            self.add_output_instructions(output, pycode=subgraph_pycode)
-            self.add_output_instructions(
-                pass2.get_instructions(), pycode=pass2.get_pycode()
-            )
+            self.add_output_instructions(output + pass2.get_instructions())
 
         # store all stack and locals for each frame
         # current state of the stack:
@@ -2243,7 +2182,7 @@ class OutputGraph(OutputGraphCommon):
             # add root frame's unmodified locals here
             if i == len(all_stack_locals_metas) - 1:
                 root_cg = PyCodegen(self.root_tx)
-                unmodified_locals_names: dict[str, int] = {}
+                unmodified_locals_names: Dict[str, int] = {}
                 for k, v in self.root_tx.symbolic_locals.items():
                     if isinstance(v.source, LocalSource) and v.source.local_name == k:
                         root_cg.append_output(root_cg.create_load(k))
@@ -2318,7 +2257,7 @@ class OutputGraph(OutputGraphCommon):
         # no need to codegen if reason.graph_break is False (since we won't resume)
         if self.compile_subgraph_reason.graph_break:
             tx_cnt = 0
-            cur_tx: InstructionTranslatorBase | None = tx
+            cur_tx: Optional[InstructionTranslatorBase] = tx
             while cur_tx is not None:
                 # NOTE: we generate cells in the same order as resume_execution.py: sorted freevars + cellvars
                 # Emitting `LOAD_FAST/LOAD_CLOSURE` with names in `co_freevars`
@@ -2330,10 +2269,7 @@ class OutputGraph(OutputGraphCommon):
                     if cur_tx is self.root_tx:  # root frame
                         cg.append_output(cg.create_load_closure(cell))
                     else:  # nested frame
-                        if not cur_tx.post_prune_cell_and_freevars:
-                            raise AssertionError(
-                                "cur_tx.post_prune_cell_and_freevars must be set for nested frames"
-                            )
+                        assert cur_tx.post_prune_cell_and_freevars
                         cg(cur_tx.post_prune_cell_and_freevars[cell])
                 cg.append_output(create_build_tuple(len(freevars)))
                 cur_tx = cur_tx.parent
@@ -2345,7 +2281,7 @@ class OutputGraph(OutputGraphCommon):
     def codegen_suffix(
         self,
         tx: "InstructionTranslatorBase",
-        stack_values: list[VariableTracker],
+        stack_values: List[VariableTracker],
         cg: PyCodegen,
         log_side_effects: bool,
     ) -> None:
@@ -2354,14 +2290,10 @@ class OutputGraph(OutputGraphCommon):
         # `reconstruct` themselves.
         self.side_effects.codegen_save_tempvars(cg)
         if self.backward_state:
-            if self.export:
-                raise AssertionError("backward_state is not supported in export mode")
+            assert not self.export
             for name, val in self.backward_state.items():
                 cg(val)
-                if self.backward_state_var is None:
-                    raise AssertionError(
-                        "backward_state_var must not be None when backward_state is set"
-                    )
+                assert self.backward_state_var is not None
                 cg.append_output(cg.create_load(self.backward_state_var))
                 cg.store_attr(name)
         if config.replay_side_effects:
@@ -2390,8 +2322,7 @@ class OutputGraph(OutputGraphCommon):
             torch._C._set_grad_enabled(False)
             torch._C._set_grad_enabled(True)
         """
-        if not self.should_exit:
-            raise AssertionError("should_exit must be True before cleanup_graph")
+        assert self.should_exit
         nodes = list(self.graph.nodes)
         for node in nodes:
             node.meta.pop("creation_timestamp", None)
@@ -2439,8 +2370,8 @@ class OutputGraph(OutputGraphCommon):
         self.package.bypass_current_entry()
         self.package = None
 
-    def get_graph_sizes_structured(self) -> dict[str, list[int | str]]:
-        ret: dict[str, list[int | str]] = {}
+    def get_graph_sizes_structured(self) -> Dict[str, List[Union[int, str]]]:
+        ret: Dict[str, List[Union[int, str]]] = {}
         for node in self.graph.nodes:
             example_value = node.meta.get("example_value", None)
             if isinstance(example_value, torch._subclasses.FakeTensor):
@@ -2479,7 +2410,7 @@ class OutputGraph(OutputGraphCommon):
         Momentarily restores the global state to what it was prior to tracing the current output
         """
         prior_global_state = self.tracing_context.global_context.copy_graphstate()
-        current_global_state: dict[str, tuple[Any, bool]] = {}
+        current_global_state: Dict[str, Tuple[Any, bool]] = {}
         self.save_global_state(out=current_global_state)
         try:
             # Set to state prior to tracing the graph
@@ -2493,8 +2424,7 @@ class OutputGraph(OutputGraphCommon):
 
     def run_compiler_collective(self) -> None:
         tx = self.root_tx
-        if tx is None:
-            raise AssertionError("root_tx must not be None")
+        assert tx is not None
         if (ds := tx.distributed_state) is not None and ds.all_states is None:
             compile_pg = ds.compile_pg
 
@@ -2508,19 +2438,11 @@ class OutputGraph(OutputGraphCommon):
                 payload_fn=lambda: ds.local_state.render(),
             )
             device_types = compile_pg._device_types
-            if len(device_types) != 1:
-                raise AssertionError(
-                    "Expect only one device type but got {}".format(
-                        "+".join(device_types)
-                    )
-                )
-            with (
-                get_interface_for_device(device_types.pop()).device(  # type: ignore[attr-defined]
-                    compile_pg.rank() % torch.accelerator.device_count()
-                ),
-                dynamo_timed("compiler_collective", log_pt2_compile_event=True),
-            ):
-                all_states: list[Any] = [None] * compile_pg.size()
+            assert len(device_types) == 1, (
+                "Expect only one device type but got {}".format("+".join(device_types))
+            )
+            with get_interface_for_device(device_types.pop()).device(compile_pg.rank() % torch.accelerator.device_count()), dynamo_timed("compiler_collective", log_pt2_compile_event=True):  # type: ignore[attr-defined]
+                all_states: List[Any] = [None] * compile_pg.size()
 
                 dist.all_gather_object(all_states, ds.local_state, group=compile_pg)
 
@@ -2531,7 +2453,7 @@ class OutputGraph(OutputGraphCommon):
             raise exc.CompileCollectiveRestartAnalysis
 
     def _validate_outputs_safe_for_autograd_nodes(
-        self, rv: list["VariableTracker"], tx: "InstructionTranslatorBase"
+        self, rv: List["VariableTracker"], tx: "InstructionTranslatorBase"
     ) -> None:
         """
         Validate that if torch.autograd.grad is used in the graph and outputs
@@ -2552,10 +2474,7 @@ class OutputGraph(OutputGraphCommon):
                 continue
 
             fake_tensor = var.as_proxy().node.meta.get("example_value")
-            if not isinstance(fake_tensor, torch._subclasses.fake_tensor.FakeTensor):
-                raise AssertionError(
-                    f"expected example_value to be a FakeTensor, got {type(fake_tensor)}"
-                )
+            assert isinstance(fake_tensor, torch._subclasses.fake_tensor.FakeTensor)
             if fake_tensor.grad_fn is None:
                 continue
 
@@ -2575,7 +2494,7 @@ class OutputGraph(OutputGraphCommon):
             )
 
     def _check_requires_grad_intermediate_outputs(
-        self, rv: list["VariableTracker"], tx: "InstructionTranslatorBase"
+        self, rv: List["VariableTracker"], tx: "InstructionTranslatorBase"
     ) -> None:
         """Skip frame if a source-less requires_grad_() intermediate leaks as output.
 
@@ -2587,7 +2506,7 @@ class OutputGraph(OutputGraphCommon):
         from .variables.tensor import TensorVariable
 
         # Collect FX nodes for source-less requires_grad_() intermediates
-        tainted_nodes: set[torch.fx.Node] = set()
+        tainted_nodes: Set[torch.fx.Node] = set()
         for v in self.leaf_var_creation_order:
             if isinstance(v, TensorVariable) and not v.source:
                 tainted_nodes.add(v.as_proxy().node)
@@ -2641,38 +2560,29 @@ class OutputGraph(OutputGraphCommon):
     def compile_and_call_fx_graph(
         self,
         tx: "InstructionTranslatorBase",
-        rv: list[VariableTracker],
+        rv: List[VariableTracker],
         root: FakeRootModule,
-    ) -> tuple[list[Instruction], list[str] | None]:
+    ) -> List[Instruction]:
         """
         Generate code from self.graph and return the Instruction()s to
         call that generated code.
 
         Code is generated w.r.t. self.root_tx.
         tx is only used for preserving GraphModule metadata
-
-        Returns a tuple of (instructions, pycode) where pycode is a string
-        representation of the generated Python code if generate_pycode_prologue
-        is enabled, otherwise None.
         """
         with torch._guards.TracingContext.clear_frame():
             from .decorators import disable
 
-            if not self.should_exit:
-                raise AssertionError(
-                    "should_exit must be True before call_user_compiler"
-                )
+            assert self.should_exit
 
             self.run_compiler_collective()
             if count_calls(self.graph) == 0 and len(rv) == 0:
-                return [], None
+                return []
 
             name = unique_id("__compiled_fn", with_uuid=True)
 
-            if not isinstance(rv, list):
-                raise AssertionError(f"rv must be a list, got {type(rv)}")
-            if not isinstance(root, FakeRootModule):
-                raise AssertionError(f"root must be a FakeRootModule, got {type(root)}")
+            assert isinstance(rv, list)
+            assert isinstance(root, FakeRootModule)
 
             # Error on source-less requires_grad_() outputs.
             # Must run before autograd validation since detaching resolves the
@@ -2784,8 +2694,7 @@ class OutputGraph(OutputGraphCommon):
             )
             self.call_cleanup_hooks()
             old_fake_mode = self.tracing_context.fake_mode
-            if old_fake_mode is None:
-                raise AssertionError("old_fake_mode must not be None")
+            assert old_fake_mode is not None
             # Store old_fake_mode so it can be cleared at end of compile
             self._old_fake_mode = old_fake_mode
             if not self.export:
@@ -2861,11 +2770,10 @@ class OutputGraph(OutputGraphCommon):
             )
 
             counters["stats"]["unique_graphs"] += 1
-            if old_fake_mode.shape_env is None:
-                raise AssertionError("old_fake_mode.shape_env must not be None")
+            assert old_fake_mode.shape_env is not None
             if specializations := old_fake_mode.shape_env.specializations:
                 specialization_guards = []
-                specialization_cache: dict[Specialization, Callable[[Any], Any]] = {}
+                specialization_cache: Dict[Specialization, Callable[[Any], Any]] = {}
                 sources = [a.source for a in self.graphargs]
                 for specialization in specializations:
                     source_index = sources.index(specialization.source)
@@ -2910,7 +2818,7 @@ class OutputGraph(OutputGraphCommon):
                             ):
                                 # Modify gm so AOTAutogradCache key changes per specialization
                                 gm.meta["specialization"] = specialization
-                                example_inputs: list[Tensor] = list(args)
+                                example_inputs: List[Tensor] = list(args)
                                 with tracing(self.tracing_context):
                                     specialization_cache[specialization] = (
                                         self.call_user_compiler(gm, example_inputs)
@@ -2925,8 +2833,7 @@ class OutputGraph(OutputGraphCommon):
                 # This is safe because we pre-process name to be unique
                 self.install_global_unsafe(name, compiled_fn)
 
-            if self.root_tx is None:
-                raise AssertionError("root_tx must not be None")
+            assert self.root_tx is not None
             cg = PyCodegen(self.root_tx)
 
             if has_user_objects():
@@ -2962,19 +2869,18 @@ class OutputGraph(OutputGraphCommon):
                 self.export_metadata.graph_input_idx_to_local_source[idx] = arg.source
 
             cg.make_call_generated_code(name)
-
-            return cg.get_instructions(), cg.get_pycode()
+            return cg.get_instructions()
 
     @property
-    def placeholders(self) -> list[fx.Node]:
+    def placeholders(self) -> List[fx.Node]:
         return self.graph.find_nodes(op="placeholder")
 
     @property
-    def graphargs(self) -> list[GraphArg]:
+    def graphargs(self) -> List[GraphArg]:
         return [node.meta["grapharg"] for node in self.placeholders]
 
     def call_user_compiler(
-        self, gm: fx.GraphModule, example_inputs: list[Tensor]
+        self, gm: fx.GraphModule, example_inputs: List[Tensor]
     ) -> CompiledFn:
         with dynamo_timed(
             "OutputGraph.call_user_compiler",
@@ -2987,10 +2893,9 @@ class OutputGraph(OutputGraphCommon):
             return self._call_user_compiler(gm, example_inputs)
 
     def _call_user_compiler(
-        self, gm: fx.GraphModule, example_inputs: list[Tensor]
+        self, gm: fx.GraphModule, example_inputs: List[Tensor]
     ) -> CompiledFn:
-        if self.compiler_fn is None:
-            raise AssertionError("compiler_fn must not be None")
+        assert self.compiler_fn is not None
         tot = 0
         placeholders = []
         for node in gm.graph.nodes:
@@ -3048,8 +2953,7 @@ class OutputGraph(OutputGraphCommon):
                 compiler_fn = WrapperBackend(compiler_fn)
             compiled_fn = compiler_fn(gm, example_inputs)
             _step_logger()(logging.INFO, f"done compiler function {name}")
-            if not callable(compiled_fn):
-                raise AssertionError("compiler_fn did not return callable")
+            assert callable(compiled_fn), "compiler_fn did not return callable"
         except (TensorifyScalarRestartAnalysis, ShortenTraceback):
             raise
         except exceptions_allowed_to_be_fallback as e:
@@ -3090,7 +2994,7 @@ class OutputGraph(OutputGraphCommon):
         # pyrefly: ignore [bad-return]
         return compiled_fn
 
-    def dedup_pass(self) -> dict[str, torch.fx.GraphModule]:
+    def dedup_pass(self) -> Dict[str, torch.fx.GraphModule]:
         if torch._dynamo.config.use_graph_deduplication:
             return apply_graph_deduplication(self)
         else:
@@ -3105,7 +3009,7 @@ class OutputGraph(OutputGraphCommon):
         self.register_attr_or_module(sub_gm, next_name, source=None)
         return next_name
 
-    def example_inputs(self) -> list[torch.Tensor]:
+    def example_inputs(self) -> List[torch.Tensor]:
         result = [arg.example for arg in self.graphargs]
         # pyrefly: ignore[bad-return]
         return result
@@ -3126,8 +3030,7 @@ class OutputGraph(OutputGraphCommon):
         # ShapeEnv guards to go into C++ guards, this will stop being a thing
         # though!
 
-        if not self.should_exit:
-            raise AssertionError("should_exit must be True before finalize")
+        assert self.should_exit
 
         # Miniature DCE pass, but only for obviously trivial operations
         def is_static_true(b_node: fx.node.Argument) -> bool:
@@ -3195,7 +3098,7 @@ class OutputGraph(OutputGraphCommon):
                 ):
                     self.remove_node(node)
 
-        def placeholder_binds_symbol(node: fx.Node) -> sympy.Symbol | None:
+        def placeholder_binds_symbol(node: fx.Node) -> Optional[sympy.Symbol]:
             arg = node.meta["grapharg"]
             example = arg.example
             if isinstance(example, torch.SymInt) and isinstance(
@@ -3212,10 +3115,10 @@ class OutputGraph(OutputGraphCommon):
             self.remove_node(node)
             self.real_value_cache.pop(node, None)
 
-        used_symbols: set[sympy.Symbol] = set()
+        used_symbols: Set[sympy.Symbol] = set()
 
         def update_used_symbols(
-            used_symbols: set[sympy.Symbol], fake: torch.SymInt | torch.Tensor
+            used_symbols: Set[sympy.Symbol], fake: Union[torch.SymInt, torch.Tensor]
         ) -> None:
             used_symbols |= free_symbols(fake)
 
@@ -3304,27 +3207,19 @@ class OutputGraph(OutputGraphCommon):
                     self.remove_node(u)
                 self.remove_node(node)
 
-    def add_output_instructions(
-        self, prefix: list[Instruction], pycode: list[str] | None = None
-    ) -> None:
+    def add_output_instructions(self, prefix: List[Instruction]) -> None:
         """
         We call this on the creation of a new compiled subgraph that is inserted
         before user code.
-        An optional pycode argument can be passed to add python codegen along with
-        the bytecode. The generated python code should match the bytecode behavior
-        from the `prefix` argument.
         """
         self.output_instructions.extend(prefix)
-        if not isinstance(pycode, (list, type(None))):
-            raise AssertionError("pycode must be a list of python code or None")
-        self.output_pycode.append(pycode)
         self.should_exit = True
 
     def install_resume_function_global(
         self,
         name: str,
         code: types.CodeType,
-        f_globals: dict[str, Any],
+        f_globals: Dict[str, Any],
     ) -> None:
         """Install a resume function as a global.
 
@@ -3337,7 +3232,7 @@ class OutputGraph(OutputGraphCommon):
         if code.co_freevars:
 
             def _make_fn(
-                closure: tuple[types.CellType, ...],
+                closure: Tuple[types.CellType, ...],
             ) -> types.FunctionType:
                 return types.FunctionType(code, f_globals, name, None, closure)
 
@@ -3356,8 +3251,7 @@ class OutputGraph(OutputGraphCommon):
         a global installed by another instance. This can happen if we mangle
         a global the same way across both instances.
         """
-        if name in self.installed_globals:
-            raise AssertionError(f"global '{name}' is already installed")
+        assert name not in self.installed_globals
         self.installed_globals.add(name)
         self.cleanups.append(CleanupHook.create(self.global_scope, name, value))
 
@@ -3425,8 +3319,7 @@ class OutputGraph(OutputGraphCommon):
         """Extract the non-fake example tensor"""
         if node.op == "placeholder":
             return node.meta["grapharg"].example
-        if node.op != "get_attr":
-            raise AssertionError(f"expected node.op to be 'get_attr', got '{node.op}'")
+        assert node.op == "get_attr"
         return self.nn_modules[node.target]  # type: ignore[index]
 
     def add_fqn_info_for_inlined_modules(
@@ -3439,8 +3332,7 @@ class OutputGraph(OutputGraphCommon):
         self.used_inlined_inbuilt_modules_names.add(name)
 
         def register_leaf_name(leaf_name: str) -> None:
-            if self.param_name_to_source is None:
-                raise AssertionError("param_name_to_source must not be None")
+            assert self.param_name_to_source is not None
             new_source = self.get_chained_param_buffer_source(source, leaf_name)
             new_name = f"{name}.{leaf_name}"
             self.param_name_to_source[new_name] = new_source
@@ -3472,15 +3364,15 @@ class OutputGraph(OutputGraphCommon):
 class DynamoTracerOutput:
     error_on_graph_break: bool
     is_tracing_resume_prologue: bool
-    output_graph: OutputGraph | None
+    output_graph: Optional[OutputGraph]
     # output_graph_for_cleanup is set even when there's an error, to allow
     # cleanup of graph nodes to break reference cycles
-    output_graph_for_cleanup: OutputGraph | None
-    closure: tuple[Any, ...] | None
-    f_globals: dict[str, Any]
+    output_graph_for_cleanup: Optional[OutputGraph]
+    closure: Optional[Tuple[Any, ...]]
+    f_globals: Dict[str, Any]
 
     def __init__(
-        self, tracer: "InstructionTranslatorBase", error: Any | None = None
+        self, tracer: "InstructionTranslatorBase", error: Optional[Any] = None
     ) -> None:
         self.error_on_graph_break = tracer.error_on_graph_break
         self.is_tracing_resume_prologue = tracer.is_tracing_resume_prologue
@@ -3626,8 +3518,8 @@ class SubgraphTracer(fx.Tracer):
         output_graph: "OutputGraph",
         parent: Optional["SubgraphTracer"] = None,
         is_export: bool = False,
-        source_target: Target | None = None,
-        description: str | None = None,
+        source_target: Optional[Target] = None,
+        description: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.output_graph = weakref.proxy(output_graph)
@@ -3638,9 +3530,9 @@ class SubgraphTracer(fx.Tracer):
         # Map from graph input name to its placeholder proxy object, where the
         # map's keys give all current placeholder node names and can be used to
         # create unique node names
-        self.input_name_to_proxy: dict[str, fx.Proxy] = {}
+        self.input_name_to_proxy: Dict[str, fx.Proxy] = {}
         # Node => computed real value (see utils.get_real_value)
-        self.real_value_cache: dict[fx.Node, torch.Tensor] = {}
+        self.real_value_cache: Dict[fx.Node, torch.Tensor] = {}
 
         # SubgraphTracers can be nested. See NOTE [HigherOrderOperator tracing design]
         self.parent = parent
@@ -3659,7 +3551,7 @@ class SubgraphTracer(fx.Tracer):
         # need to keep track of what free variables were lifted so we can
         # rewrite the HigherOrderOperator call using the traced body_fn.
         # Dicts maintain the order of args for the HigherOrderOperator call.
-        self.lifted_freevars: dict[fx.Proxy, fx.Proxy] = {}
+        self.lifted_freevars: Dict[fx.Proxy, fx.Proxy] = {}
 
         # map basic symbols (unbacked and unbacked) to their bound proxies.
         # There are only two cases where bound_symbols will be recorded:
@@ -3667,10 +3559,10 @@ class SubgraphTracer(fx.Tracer):
         # 2. when we track_produced_symints for intermediate results
         # bound_symbols always map the symbol to the proxy whose
         # tracer is the current tracer that's readily accessible in current tracer's graph.
-        self.bound_symbols: dict[sympy.Symbol, torch.fx.Proxy | LazyProxy] = {}
+        self.bound_symbols: Dict[sympy.Symbol, Union[torch.fx.Proxy, LazyProxy]] = {}
 
         # Maps _DynamicScalar object ids to allocated SymInt nodes, for symbol reuse
-        self.dynamic_scalar_nodes: dict[int, torch.SymInt] = {}
+        self.dynamic_scalar_nodes: Dict[int, torch.SymInt] = {}
 
         self.prev_inst = None
         # True if we want to allow externally visible side-effects (doesn't throw error on their existence)
@@ -3686,7 +3578,7 @@ class SubgraphTracer(fx.Tracer):
         # User code stack at the point where an externally-visible side effect
         # was first detected and allowed (not raised).  None means no side
         # effect; non-None means one occurred.
-        self.side_effect_stack: traceback.StackSummary | None = None
+        self.side_effect_stack: Optional[traceback.StackSummary] = None
         # All sources accessed via VariableBuilder (and cell loads) during
         # this subtracer's trace. Used by invoke_subgraph reuse to collect
         # guards and detect mutations on captured variables.
@@ -3698,17 +3590,15 @@ class SubgraphTracer(fx.Tracer):
         self.debug_level: int = parent.debug_level + 1 if parent is not None else 0
 
         self._cur_code = None
-        self._orig_gm_meta: list[Any] | None = None
-        self._orig_gm_lineno_map: dict[int, int | None] | None = None
-        self._orig_gm_firstlineno: int | None = None
+        self._orig_gm_meta: Optional[List[Any]] = None
+        self._orig_gm_lineno_map: Union[Dict[int, int, None], None] = None
+        self._orig_gm_firstlineno: Optional[int] = None
         # Each SubgraphTracer is associated with a source target, which indicates
         # which operator this subgraph is attached to. We compute a source_fn_stack
         # based on the source target. For the root tracer, it's set to [].
         # This is useful for debugging and transforming the exported graph.
         if self.parent is None:
-            self.source_fn_stack: list[Any] = []
-        elif source_target is None:
-            self.source_fn_stack = self.parent.source_fn_stack[:]
+            self.source_fn_stack: List[Any] = []
         else:
             self.source_fn_stack = self.parent.source_fn_stack + [
                 (self.graph._target_to_str(source_target), source_target)
@@ -3718,7 +3608,7 @@ class SubgraphTracer(fx.Tracer):
         self._used_names: OrderedSet[str] = OrderedSet()
         # Stores the versions of the input tensors at the time they are inserted
         # as placeholders in the graph. This is used to track input mutation.
-        self._input_versions_at_beginning: list[int] = []
+        self._input_versions_at_beginning: List[int] = []
         if torch.is_inference_mode_enabled():
             raise RuntimeError(
                 "Inference mode is supposed to be disabled during compilation. Please open an issue."
@@ -3758,8 +3648,8 @@ class SubgraphTracer(fx.Tracer):
         target: Any,
         args: Any,
         kwargs: Any,
-        name: str | None = None,
-        type_expr: Any | None = None,
+        name: Optional[str] = None,
+        type_expr: Optional[Any] = None,
         proxy_factory_fn: Callable[[fx.Node], fx.Proxy] | None = None,
     ) -> fx.Proxy:
         _t0 = time.time_ns()
@@ -3778,8 +3668,8 @@ class SubgraphTracer(fx.Tracer):
         target: Any,
         args: Any,
         kwargs: Any,
-        name: str | None = None,
-        type_expr: Any | None = None,
+        name: Optional[str] = None,
+        type_expr: Optional[Any] = None,
         proxy_factory_fn: Callable[[fx.Node], fx.Proxy] | None = None,
     ) -> fx.Proxy:
         # NOTE: [Nested SubgraphTracer and free_variable handling]
@@ -3948,7 +3838,7 @@ class SubgraphTracer(fx.Tracer):
                     ]
 
         if "stack_trace" not in rv.node.meta:
-            frame_summaries: list[traceback.FrameSummary] = []
+            frame_summaries: List[traceback.FrameSummary] = []
             while tx:
                 # Avoid frame summaries from inside the torch/nn/modules. This ensures that we keep the stack trace of
                 # the user code.
@@ -3984,8 +3874,8 @@ class SubgraphTracer(fx.Tracer):
         target: Target,
         args: Any = None,
         kwargs: Any = None,
-        name: str | None = None,
-        type_expr: Any | None = None,
+        name: Optional[str] = None,
+        type_expr: Optional[Any] = None,
     ) -> fx.Node:
         check_pt2_compliant_op(self.output_graph, kind, target, args, kwargs)
         if self.parent is not None:
@@ -3993,10 +3883,9 @@ class SubgraphTracer(fx.Tracer):
             for arg in flat_args:
                 if not isinstance(arg, torch.fx.Node):
                     continue
-                if arg.graph != self.graph:
-                    raise AssertionError(
-                        "create_node using arg not from this SubgraphTracer"
-                    )
+                assert arg.graph == self.graph, (
+                    "create_node using arg not from this SubgraphTracer"
+                )
 
         node = super().create_node(kind, target, args, kwargs, name, type_expr)
         node.meta["creation_timestamp"] = self.output_graph.timestamp
@@ -4007,7 +3896,7 @@ class SubgraphTracer(fx.Tracer):
     # we call self.graph.erase_node elsewhere
     def remove_node(self, node: fx.Node) -> None:
         if len(node.users) > 0:
-            user_graph_nodes: list[torch.fx.Node] = []
+            user_graph_nodes: List[torch.fx.Node] = []
             for user in node.users:
                 # For the case where user.graph == self.graph, that is a real bug and will raise
                 # properly.
@@ -4033,7 +3922,7 @@ class SubgraphTracer(fx.Tracer):
         type_expr: Any,
         example_value: Any,
         before: bool = False,
-        source: Source | None = None,
+        source: Optional[Source] = None,
     ) -> fx.Proxy:
         if isinstance(example_value, torch.Tensor):
             self._input_versions_at_beginning.append(example_value._version)
@@ -4046,10 +3935,9 @@ class SubgraphTracer(fx.Tracer):
             before,
         )
         if source is None:
-            if self.parent is None:
-                raise AssertionError(
-                    f"you are required to provide a source for inputs {name} example_val {example_value} on the root tracer"
-                )
+            assert self.parent is not None, (
+                f"you are required to provide a source for inputs {name} example_val {example_value} on the root tracer"
+            )
 
         # Note [Export inputs must be explicitly passed in]
         # In eager, we are generally OK with adding graph inputs whenever we
@@ -4061,10 +3949,7 @@ class SubgraphTracer(fx.Tracer):
         # So we are a bit more strict about what sources can become inputs
         # in export
         if self.is_export and self.parent is None:
-            if source is None:
-                raise AssertionError(
-                    "source must not be None for export root tracer inputs"
-                )
+            assert source is not None
             if not is_from_local_source(source, only_allow_input=True):
                 self.output_graph.source_to_user_stacks.setdefault(source, []).append(
                     TracingContext.extract_stack()
@@ -4156,13 +4041,12 @@ class SubgraphTracer(fx.Tracer):
             return proxy
 
     # See NOTE: [Nested SubgraphTracer and free_variable handling] for more details
-    def lift_tracked_freevar_to_input(self, proxy: fx.Proxy) -> LazyProxy | fx.Proxy:
+    def lift_tracked_freevar_to_input(self, proxy: fx.Proxy) -> Union[LazyProxy, fx.Proxy]:
         # You're doing something wrong if we are the root SubgraphTracer because
         # Dynamo adds tensors to graph inputs before creating a proxy for them.
-        if self.parent is None:
-            raise AssertionError(
-                "lift_tracked_freevar_to_input should not be called on root SubgraphTracer"
-            )
+        assert self.parent is not None, (
+            "lift_tracked_freevar_to_input should not be called on root SubgraphTracer"
+        )
 
         example_value = proxy.node.meta["example_value"]
 
@@ -4243,7 +4127,7 @@ class SubgraphTracer(fx.Tracer):
     # for symbols that're not going to be used, the LazyProxy will be turned into a proxy
     # when it's lifted as input to subgraph.
     def track_produced_symints(
-        self, example_value: Any, e_proxy: LazyProxy | torch.fx.Proxy
+        self, example_value: Any, e_proxy: Union[LazyProxy, torch.fx.Proxy]
     ) -> None:
         # When binding the symbols in an example_value, we bind the symbols
         # to the proxy's associated Tracer instead of current tracer.
@@ -4259,8 +4143,7 @@ class SubgraphTracer(fx.Tracer):
         # sees are from parent tracer (i.e. the forward tracer). (e.g. t[0].item())
         # See test_validate_outputs_unbacked for repro on 2.
         tracer = e_proxy.tracer
-        if not isinstance(tracer, SubgraphTracer):
-            raise AssertionError(f"tracer must be a SubgraphTracer, got {type(tracer)}")
+        assert isinstance(tracer, SubgraphTracer)
 
         def need_bind(s: Any) -> bool:
             from torch.fx.experimental.symbolic_shapes import is_symbolic
@@ -4277,10 +4160,7 @@ class SubgraphTracer(fx.Tracer):
             # We need to insert proxy for creating sym_size/sym_stride/sym_storage right after e_proxy
             nonlocal e_proxy
             e_proxy = e_proxy() if isinstance(e_proxy, LazyProxy) else e_proxy
-            if not isinstance(e_proxy, torch.fx.Proxy):
-                raise AssertionError(
-                    f"e_proxy must be an fx.Proxy, got {type(e_proxy)}"
-                )
+            assert isinstance(e_proxy, torch.fx.Proxy)
             with tracer.graph.inserting_after(e_proxy.node):
                 proxy = tracer.create_proxy(*args, **kwargs)
                 set_example_value(proxy.node, example_value)
@@ -4371,22 +4251,21 @@ class SubgraphTracer(fx.Tracer):
 
     # See Note [Auto lift basic free symbols when create_graph_input]
     def _lift_basic_symbols(
-        self, example_value: torch.SymInt | torch.Tensor, src: Source | None
+        self, example_value: Union[torch.SymInt, torch.Tensor], src: Optional[Source]
     ) -> None:
         # The before arg is for inserting symints in the sizes/strides of a tensor
         # before the tensor. This ordering ensures that when we look at the tensor's
         # symbols, they're already lifted/tracked. E.g. this assumption is used
         # in insert_deferred_runtime_asserts.
         def _lift_symbols_in_symint(
-            s: int | torch.SymInt,
-            source: Source | None,
+            s: Union[int, torch.SymInt],
+            source: Optional[Source],
             before: bool = False,
         ) -> None:
             if not is_symbolic(s):
                 return
 
-            if not isinstance(s, torch.SymInt):
-                raise AssertionError(f"s must be a SymInt, got {type(s)}")
+            assert isinstance(s, torch.SymInt)
             self_to_be_bound = self.lookup_unbound_symbols(s)
             if len(self_to_be_bound) == 0:
                 return
@@ -4398,10 +4277,7 @@ class SubgraphTracer(fx.Tracer):
                 for s0 in self_to_be_bound:
                     parent_proxy = self.parent.bound_symbols[s0]
                     example_val = parent_proxy.node.meta["example_value"]  # type: ignore[union-attr]
-                    if not isinstance(example_val, torch.SymInt):
-                        raise AssertionError(
-                            f"example_val must be a SymInt, got {type(example_val)}"
-                        )
+                    assert isinstance(example_val, torch.SymInt)
                     ph = self.create_graph_input(
                         str(s0),
                         type(example_val),
@@ -4418,17 +4294,15 @@ class SubgraphTracer(fx.Tracer):
                     self.lifted_freevars[parent_proxy] = ph  # type: ignore[index]
             # For root_tracer:
             else:
-                if len(self_to_be_bound) != 1:
-                    raise AssertionError(
-                        f"For root tracer, we only expect to bind basic symbols (compound symbols "
-                        f"should be cached before) but got unbound symbols {self_to_be_bound} in {s}"
-                    )
-                if source is None:
-                    raise AssertionError(
-                        f"Source of '{s}' is None when lifting it to input of top-level. If it's an unbacked symbol, "
-                        "this could be because it's not tracked with lazy_bind_unbacked_symbols. "
-                        f"Otherwise, should provide a source when create_graph_input for `{s}` at root tracer."
-                    )
+                assert len(self_to_be_bound) == 1, (
+                    f"For root tracer, we only expect to bind basic symbols (compound symbols "
+                    f"should be cached before) but got unbound symbols {self_to_be_bound} in {s}"
+                )
+                assert source is not None, (
+                    f"Source of '{s}' is None when lifting it to input of top-level. If it's an unbacked symbol, "
+                    "this could be because it's not tracked with lazy_bind_unbacked_symbols. "
+                    f"Otherwise, should provide a source when create_graph_input for `{s}` at root tracer."
+                )
                 s0 = next(iter(self_to_be_bound))
                 ph = self.create_graph_input(
                     str(s0),
@@ -4506,7 +4380,7 @@ class SubgraphTracer(fx.Tracer):
 
     # Lookup the proxy in current tracer for each symbol in expressions of s,
     # See Note [Auto lift basic free symbols when create_graph_input]
-    def lookup_unbound_symbols(self, s: torch.SymInt) -> list[sympy.Symbol]:
+    def lookup_unbound_symbols(self, s: torch.SymInt) -> List[sympy.Symbol]:
         free_symbols = s.node.expr.free_symbols
         if len(free_symbols) == 0:
             return []
@@ -4521,10 +4395,9 @@ class SubgraphTracer(fx.Tracer):
             if isinstance(proxy, LazyProxy):
                 proxy = proxy()
                 self.bound_symbols[s0] = proxy
-            if not isinstance(proxy, torch.fx.Proxy) or proxy.tracer is not self:
-                raise AssertionError(
-                    f"The proxy of symbol {s0} doesn't belong to current tracer."
-                )
+            assert isinstance(proxy, torch.fx.Proxy) and proxy.tracer is self, (
+                f"The proxy of symbol {s0} doesn't belong to current tracer."
+            )
         # Sort the symbols so that we can have a deterministic lifting order
         return sorted(to_be_bound, key=lambda s: s.name)
 
@@ -4566,7 +4439,7 @@ class SubgraphTracer(fx.Tracer):
         from torch._dynamo.variables.higher_order_ops import get_tensor_storages
         from torch._higher_order_ops.utils import _collect_fake_inputs
 
-        input_storages: dict[StorageWeakRef, torch.fx.Node] = dict()
+        input_storages: Dict[StorageWeakRef, torch.fx.Node] = dict()
 
         for node in self.graph.nodes:
             if node.op == "placeholder":
@@ -4581,13 +4454,12 @@ class SubgraphTracer(fx.Tracer):
             else:
                 break
 
-        output_storages: dict[StorageWeakRef, torch.fx.Node] = dict()
+        output_storages: Dict[StorageWeakRef, torch.fx.Node] = dict()
         out_nodes = self.graph.find_nodes(op="output")[0]
         for out_node in pytree.tree_leaves(out_nodes.args[0]):
             if out_node:
                 example_value = _collect_fake_inputs([out_node])[0]
-                if isinstance(example_value, list):
-                    raise AssertionError("example_value must not be a list")
+                assert not isinstance(example_value, list)
                 if isinstance(example_value, torch.Tensor):
                     for storage in get_tensor_storages(example_value):
                         if storage in output_storages:

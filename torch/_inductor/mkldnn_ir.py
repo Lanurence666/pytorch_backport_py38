@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
-from collections.abc import Sequence
-from typing import Any, Optional
+from __future__ import annotations
+
+
+from typing import Any, List, Optional, Sequence, Set, Type
 
 import sympy
 
@@ -38,8 +40,8 @@ def _prepare_convolution_fusion_create(
     dilation: Sequence[int],
     groups: int,
     transposed: bool = False,
-    output_padding: Sequence[int] | None = None,
-    quantize_args: list["TensorBox"] | None = None,
+    output_padding: Optional[Sequence[int]] = None,
+    quantize_args: Optional[List["TensorBox"]] = None,
     other: Optional["TensorBox"] = None,
 ):
     """
@@ -230,7 +232,7 @@ def _prepare_linear_fusion_create(
     x: "TensorBox",
     weight: "TensorBox",
     bias: "TensorBox",
-    quantize_args: list["TensorBox"] | None = None,
+    quantize_args: Optional[List["TensorBox"]] = None,
     other: Optional["TensorBox"] = None,
     binary_sum: bool = False,
 ):
@@ -279,7 +281,7 @@ def _prepare_linear_fusion_create(
         output_size,
         output_stride,
     )
-    constant_args: list[Any] = []
+    constant_args: List[Any] = []
 
     if bias is not None:
         inputs.append(bias)
@@ -328,12 +330,12 @@ class ConvolutionUnary(ExternKernelAlloc):
         x: "TensorBox",
         weight: "TensorBox",
         bias: "TensorBox",
-        padding_: list[int],
-        stride_: list[int],
-        dilation_: list[int],
+        padding_: List[int],
+        stride_: List[int],
+        dilation_: List[int],
         groups: int,
         attr,
-        scalars: list[Any] | None,
+        scalars: Optional[List[Any]],
         algorithm,
     ):
         (
@@ -390,15 +392,15 @@ class ConvolutionBinary(ExternKernelAlloc):
         other: "TensorBox",
         weight: "TensorBox",
         bias: "TensorBox",
-        padding_: list[int],
-        stride_: list[int],
-        dilation_: list[int],
+        padding_: List[int],
+        stride_: List[int],
+        dilation_: List[int],
         groups: int,
         binary_attr: str,
-        binary_alpha: float | None,
-        unary_attr: str | None,
-        unary_scalars: list[Any] | None,
-        unary_algorithm: str | None,
+        binary_alpha: Optional[float],
+        unary_attr: Optional[str],
+        unary_scalars: Optional[List[Any]],
+        unary_algorithm: Optional[str],
     ):
         (
             inputs,
@@ -468,15 +470,15 @@ class ConvolutionBinaryInplace(ExternKernelAlloc):
         other: "TensorBox",
         weight: "TensorBox",
         bias: "TensorBox",
-        padding_: list[int],
-        stride_: list[int],
-        dilation_: list[int],
+        padding_: List[int],
+        stride_: List[int],
+        dilation_: List[int],
         groups: int,
         binary_attr: str,
-        binary_alpha: float | None,
-        unary_attr: str | None,
-        unary_scalars: list[Any] | None,
-        unary_algorithm: str | None,
+        binary_alpha: Optional[float],
+        unary_attr: Optional[str],
+        unary_scalars: Optional[List[Any]],
+        unary_algorithm: Optional[str],
     ):
         (
             inputs,
@@ -537,13 +539,13 @@ class ConvolutionTransposeUnary(ExternKernelAlloc):
         x: "TensorBox",
         weight: "TensorBox",
         bias: "TensorBox",
-        padding_: list[int],
-        output_padding_: list[int],
-        stride_: list[int],
-        dilation_: list[int],
+        padding_: List[int],
+        output_padding_: List[int],
+        stride_: List[int],
+        dilation_: List[int],
         groups_: int,
         attr,
-        scalars: list[Any] | None,
+        scalars: Optional[List[Any]],
         algorithm,
     ):
         transposed = True
@@ -624,9 +626,9 @@ class QConvPointWisePT2E(ExternKernelAlloc):
         w_scale: "TensorBox",
         w_zero_point,
         bias: "TensorBox",
-        stride: list[int],
-        padding: list[int],
-        dilation: list[int],
+        stride: List[int],
+        padding: List[int],
+        dilation: List[int],
         groups: int,
         output_scale: float,
         output_zero_point: int,
@@ -741,9 +743,9 @@ class QConvPointWiseBinaryPT2E(ExternKernelAlloc):
         w_zero_point,
         qaccum: "TensorBox",
         bias: "TensorBox",
-        stride: list[int],
-        padding: list[int],
-        dilation: list[int],
+        stride: List[int],
+        padding: List[int],
+        dilation: List[int],
         groups: int,
         output_scale: "TensorBox",
         output_zero_point: "TensorBox",
@@ -1209,7 +1211,7 @@ class MkldnnRnnLayer(ExternKernelAlloc):
         hx: "TensorBox",
         cx: "TensorBox",
         reverse: bool,
-        batch_sizes: list[int],
+        batch_sizes: List[int],
         mode: int,
         hidden_size: int,
         num_layers: int,

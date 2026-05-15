@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import typing
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Generator, List, Optional, Set, TYPE_CHECKING, Type, Union
 
 import sympy
 
@@ -33,7 +33,7 @@ from .virtualized import V
 
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    
     from functools import partial
 
     from triton import Config as TritonConfig
@@ -110,7 +110,7 @@ class InductorChoices:
     """
 
     def get_config_heuristics(
-        self, device_type: str | None = "cuda"
+        self, device_type: Optional[str] = "cuda"
     ) -> BaseConfigHeuristic:
         if device_type == "cuda":
             if torch.version.hip is None:
@@ -128,43 +128,43 @@ class InductorChoices:
 
     # Conv configs
     def get_conv_configs(
-        self, device_type: str | None = "cuda"
+        self, device_type: Optional[str] = "cuda"
     ) -> partial[Generator[TritonConfig, None, None]]:
         conv_heuristics = self.get_config_heuristics(device_type)
         return conv_heuristics.get_conv_configs()
 
-    def get_depthwise_conv_configs(self, device_type: str | None = "cuda") -> list[Any]:
+    def get_depthwise_conv_configs(self, device_type: Optional[str] = "cuda") -> List[Any]:
         heuristics = self.get_config_heuristics(device_type)
         return heuristics.get_depthwise_conv_configs()
 
     # Flex attention configs
     # TODO(coconutruben): break out flexattention/decode configs into the new retrieval mechanism
     def get_flex_attention_fwd_configs(
-        self, head_dim: int, dtype: torch.dtype, device_type: str | None = "cuda"
-    ) -> list[Any]:
+        self, head_dim: int, dtype: torch.dtype, device_type: Optional[str] = "cuda"
+    ) -> List[Any]:
         flex_heuristics = self.get_config_heuristics(device_type)
         return flex_heuristics.get_flex_attn_fwd_configs(head_dim, dtype)
 
     def get_flex_attention_bwd_configs(
-        self, head_dim: int, dtype: torch.dtype, device_type: str | None = "cuda"
-    ) -> list[Any]:
+        self, head_dim: int, dtype: torch.dtype, device_type: Optional[str] = "cuda"
+    ) -> List[Any]:
         flex_heuristics = self.get_config_heuristics(device_type)
         return flex_heuristics.get_flex_attn_bwd_configs(head_dim, dtype)
 
     def get_flex_decode_configs(
-        self, head_dim: int, dtype: torch.dtype, device_type: str | None = "cuda"
-    ) -> list[Any]:
+        self, head_dim: int, dtype: torch.dtype, device_type: Optional[str] = "cuda"
+    ) -> List[Any]:
         flex_heuristics = self.get_config_heuristics(device_type)
         return flex_heuristics.get_flex_decode_configs(head_dim, dtype)
 
     def _finalize_template_configs(
         self,
-        template_choices: dict[str, Generator[KernelTemplateChoice, None, None]],
+        template_choices: Dict[str, Generator[KernelTemplateChoice, None, None]],
         kernel_inputs: KernelInputs,
-        templates: list[KernelTemplate | ExternKernelChoice],
+        templates: List[Union[KernelTemplate, ExternKernelChoice]],
         op_name: str,
-        kwarg_overrides: dict[str, dict[str, Any]] | None = None,
-    ) -> list[KernelTemplateChoice]:
+        kwarg_overrides: Dict[str, Dict[str, Any]] | None = None,
+    ) -> List[KernelTemplateChoice]:
         """
         This method can be subclassed to perform any override/modification of the choices.
         The incoming parameters are cheap (generators), so you can do any overrides without
@@ -184,7 +184,7 @@ class InductorChoices:
         Returns:
             Flattened list of KernelTemplateChoice objects across all templates
         """
-        choices: list[KernelTemplateChoice] = []
+        choices: List[KernelTemplateChoice] = []
         for choice_gen in template_choices.values():
             choices.extend(choice_gen)
         return choices
@@ -192,9 +192,9 @@ class InductorChoices:
     def get_ktc(
         self,
         kernel_inputs: KernelInputs,
-        template: KernelTemplate | ExternKernelChoice,
+        template: Union[KernelTemplate, ExternKernelChoice],
         op_name: str,
-        kwarg_overrides: dict[str, Any] | None = None,
+        kwarg_overrides: Optional[Dict[str, Any]] = None,
     ) -> Generator[KernelTemplateChoice, None, None]:
         """
         Utility to get the KernelTemplateChoice generator for a specific input.
@@ -231,7 +231,7 @@ class InductorChoices:
 
     def _need_to_fix_layout(
         self,
-        adjusted_choices: list[KernelTemplateChoice],
+        adjusted_choices: List[KernelTemplateChoice],
         op_name: str,
     ) -> bool:
         """
@@ -287,10 +287,10 @@ class InductorChoices:
     def get_template_configs(
         self,
         kernel_inputs: KernelInputs,
-        templates: list[KernelTemplate | ExternKernelChoice],
+        templates: List[Union[KernelTemplate, ExternKernelChoice]],
         op_name: str,
-        kwarg_overrides: dict[str, dict[str, Any]] | None = None,
-    ) -> list[ChoiceCaller]:
+        kwarg_overrides: Dict[str, Dict[str, Any]] | None = None,
+    ) -> List[ChoiceCaller]:
         """
         Get list of ChoiceCallers for MM templates using template-specific heuristics.
 
@@ -342,18 +342,18 @@ class InductorChoices:
 
     def triton_kernel_kwargs(
         self,
-        kernel_cls: type[TritonKernel],
+        kernel_cls: Type[TritonKernel],
         features: SIMDKernelFeatures,
-        groups: list[sympy.Expr],
-        kernel_kwargs: dict[str, Any],
-    ) -> dict[str, Any]:
+        groups: List[sympy.Expr],
+        kernel_kwargs: Dict[str, Any],
+    ) -> Dict[str, Any]:
         """Hook to change the kwargs passed to TritonKernel, used to apply fixed configurations"""
         return kernel_kwargs
 
     def override_best_choice(
         self,
         best_choice: ChoiceCaller,
-        timings: dict[ChoiceCaller, float],
+        timings: Dict[ChoiceCaller, float],
     ) -> ChoiceCaller:
         """Hook to override the autotuning best choice after benchmarking."""
         return best_choice

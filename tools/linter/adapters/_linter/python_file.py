@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import token
-from functools import cached_property
+from functools import lru_cached_property
 from pathlib import Path
 from tokenize import generate_tokens, TokenInfo
-from typing import TYPE_CHECKING
+from typing import Dict, List, Set, TYPE_CHECKING, Union
 
 from . import is_empty, NO_TOKEN, ParseError, ROOT
 from .sets import LineWithSets
@@ -18,15 +18,15 @@ if TYPE_CHECKING:
 
 
 class PythonFile:
-    path: Path | None
+    path: Union[Path, None]
     linter_name: str
 
     def __init__(
         self,
         linter_name: str,
         *,
-        contents: str | None = None,
-        path: Path | None = None,
+        contents: Union[str, None] = None,
+        path: Union[Path, None] = None,
     ) -> None:
         self.linter_name = linter_name
         self._contents = contents
@@ -39,11 +39,11 @@ class PythonFile:
         return self.path.read_text() if self.path else ""
 
     @cached_property
-    def lines(self) -> list[str]:
+    def lines(self) -> List[str]:
         return self.contents.splitlines(keepends=True)
 
     @classmethod
-    def make(cls, linter_name: str, pc: Path | str | None = None) -> Self:
+    def make(cls, linter_name: str, pc: Union[Path, str, None] = None) -> Self:
         if isinstance(pc, Path):
             return cls(linter_name, path=pc)
         else:
@@ -59,14 +59,14 @@ class PythonFile:
         return OmittedLines(self.lines, self.linter_name)
 
     @cached_property
-    def tokens(self) -> list[TokenInfo]:
+    def tokens(self) -> List[TokenInfo]:
         """This file, tokenized. Raises IndentationError on badly indented code."""
         return list(generate_tokens(iter(self.lines).__next__))
 
     @cached_property
-    def token_lines(self) -> list[list[TokenInfo]]:
+    def token_lines(self) -> List[List[TokenInfo]]:
         """Returns lists of TokenInfo segmented by token.NEWLINE"""
-        token_lines: list[list[TokenInfo]] = [[]]
+        token_lines: List[List[TokenInfo]] = [[]]
 
         for t in self.tokens:
             if t.type not in (token.COMMENT, token.ENDMARKER, token.NL):
@@ -78,7 +78,7 @@ class PythonFile:
         return token_lines
 
     @cached_property
-    def import_lines(self) -> list[list[int]]:
+    def import_lines(self) -> List[List[int]]:
         froms, imports = [], []
         for i, (t, *_) in enumerate(self.token_lines):
             if t.type == token.INDENT:
@@ -97,7 +97,7 @@ class PythonFile:
         it = (i for i, s in enumerate(self.lines) if not s.startswith("#"))
         return next(it, 0)
 
-    def __getitem__(self, i: int | slice) -> TokenInfo | Sequence[TokenInfo]:
+    def __getitem__(self, i: Union[int, slice]) -> Union[TokenInfo, Sequence[TokenInfo]]:
         return self.tokens[i]
 
     def next_token(self, start: int, token_type: int, error: str) -> int:
@@ -116,9 +116,9 @@ class PythonFile:
         return ""
 
     @cached_property
-    def indent_to_dedent(self) -> dict[int, int]:
-        dedents = dict[int, int]()
-        stack = list[int]()
+    def indent_to_dedent(self) -> Dict[int, int]:
+        dedents = Dict[int, int]()
+        stack = List[int]()
 
         for i, t in enumerate(self.tokens):
             if t.type == token.INDENT:
@@ -129,17 +129,17 @@ class PythonFile:
         return dedents
 
     @cached_property
-    def braced_sets(self) -> list[Sequence[TokenInfo]]:
+    def braced_sets(self) -> List[Sequence[TokenInfo]]:
         lines = [t for tl in self._lines_with_sets for t in tl.braced_sets]
         return [s for s in lines if not self.omitted(s)]
 
     @cached_property
-    def sets(self) -> list[TokenInfo]:
+    def sets(self) -> List[TokenInfo]:
         tokens = [t for tl in self._lines_with_sets for t in tl.sets]
         return [t for t in tokens if not self.omitted([t])]
 
     @cached_property
-    def insert_import_line(self) -> int | None:
+    def insert_import_line(self) -> Union[int, None]:
         froms, imports = self.import_lines
         for i in froms + imports:
             tl = self.token_lines[i]
@@ -150,11 +150,11 @@ class PythonFile:
         return self.opening_comment_lines + 1
 
     @cached_property
-    def _lines_with_sets(self) -> list[LineWithSets]:
+    def _lines_with_sets(self) -> List[LineWithSets]:
         return [LineWithSets(tl) for tl in self.token_lines]
 
     @cached_property
-    def blocks(self) -> list[Block]:
+    def blocks(self) -> List[Block]:
         from .blocks import blocks
 
         return blocks(self)
@@ -163,7 +163,7 @@ class PythonFile:
 class OmittedLines:
     """Read lines textually and find comment lines that end in 'noqa {linter_name}'"""
 
-    omitted: set[int]
+    omitted: Set[int]
 
     def __init__(self, lines: Sequence[str], linter_name: str) -> None:
         self.lines = lines

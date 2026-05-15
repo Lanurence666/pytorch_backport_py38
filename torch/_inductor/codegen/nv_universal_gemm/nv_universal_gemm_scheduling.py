@@ -5,8 +5,8 @@ NVIDIA Universal GEMM scheduling for PyTorch Inductor.
 
 import hashlib
 import logging
-from collections.abc import Sequence
-from typing import cast
+
+from typing import Sequence, Set, cast
 
 from torch._inductor.utils import (
     get_fused_kernel_name,

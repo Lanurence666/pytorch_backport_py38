@@ -1,4 +1,8 @@
-from typing import TypeAlias
+from __future__ import annotations
+try:
+    from typing import TypeAlias
+except ImportError:
+    from typing_extensions import TypeAlias
 from typing_extensions import assert_type
 
 from torch import randn, Tensor

@@ -1,4 +1,5 @@
 # Owner(s): ["module: unknown"]
+from __future__ import annotations
 import contextlib
 import copy
 import inspect
@@ -2956,11 +2957,7 @@ class TestFakeTensor(TestCase):
                 with torch._subclasses.CrossRefFakeMode(
                     ignore_op_fn=lambda fn: fn in common_skip_ops, check_aliasing=True
                 ):
-                    with (
-                        warnings.catch_warnings(),
-                        context(),
-                        torch.autograd.set_multithreading_enabled(False),
-                    ):
+                    with warnings.catch_warnings(), context(), torch.autograd.set_multithreading_enabled(False):
                         composite_compliance.compute_expected_grads(
                             op.get_op(),
                             args,
@@ -2984,7 +2981,7 @@ class TestFakeTensor(TestCase):
     @skipOps(
         "TestFakeTensor",
         "test_fake_crossref_backward_amp",
-        fake_backward_xfails | fake_autocast_backward_xfails,
+        {**fake_backward_xfails, **fake_autocast_backward_xfails},
     )
     def test_fake_crossref_backward_amp(self, device, dtype, op):
         self._test_fake_crossref_helper(device, dtype, op, torch.cuda.amp.autocast)

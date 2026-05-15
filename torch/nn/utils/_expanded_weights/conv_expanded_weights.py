@@ -1,5 +1,7 @@
-from collections.abc import Callable
-from typing import Any, TypeVar
+from __future__ import annotations
+
+
+from typing import Any, Callable, List, Type, TypeVar
 from typing_extensions import ParamSpec
 
 import torch
@@ -27,7 +29,7 @@ class ConvPerSampleGrad(torch.autograd.Function):
     # pyrefly: ignore [bad-override]
     def forward(
         ctx: Any,
-        kwarg_names: list[str],
+        kwarg_names: List[str],
         conv_fn: Callable[_P, _R],
         *expanded_args_and_kwargs: Any,
     ) -> torch.Tensor:

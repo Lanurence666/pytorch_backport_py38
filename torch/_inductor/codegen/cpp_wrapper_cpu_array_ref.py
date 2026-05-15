@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
-from collections.abc import Callable, Sequence
-from typing import Any
+from __future__ import annotations
+
+
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, Union
 
 import sympy
 
@@ -46,16 +48,16 @@ class CppWrapperCpuArrayRef(CppWrapperCpu):
         super().__init__()
         assert self.device == "cpu", "ArrayRefTensor only supported on CPU!"
         self.allow_stack_allocation = config.aot_inductor.allow_stack_allocation
-        self.stack_allocated_buffers: dict[BufferName, BufferLike] = {}
+        self.stack_allocated_buffers: Dict[BufferName, BufferLike] = {}
         self.v2_raw_wrapper_body = IndentedBuffer()
-        self.v2_raw_output_refs: list[str] | None = None
+        self.v2_raw_output_refs: Optional[List[str]] = None
 
     @staticmethod
     def create(
         is_subgraph: bool,
-        subgraph_name: str | None,
-        parent_wrapper: PythonWrapperCodegen | None,
-        partition_signatures: ir.GraphPartitionSignature | None = None,
+        subgraph_name: Optional[str],
+        parent_wrapper: Optional[PythonWrapperCodegen],
+        partition_signatures: Optional[ir.GraphPartitionSignature] = None,
     ):
         # TODO - support subgraph codegen by lifting functions. Check the
         # comment at CppWrapperCpu `codegen_subgraph` function.
@@ -84,14 +86,11 @@ class CppWrapperCpuArrayRef(CppWrapperCpu):
         return DTYPE_TO_CPP[input.get_dtype()]
 
     @staticmethod
-    def get_device_include_path_jit(device: str) -> str:
+    def get_device_include_path(device: str) -> str:
         assert device == "cpu", "ArrayRef only supported on CPU!"
+        if V.graph.aot_mode:
+            return "#include <torch/csrc/inductor/aoti_include/array_ref.h>"
         return "#include <torch/csrc/inductor/cpp_wrapper/array_ref.h>"
-
-    @staticmethod
-    def get_device_include_path_aot(device: str) -> str:
-        assert device == "cpu", "ArrayRef only supported on CPU!"
-        return "#include <torch/csrc/inductor/aoti_include/array_ref.h>"
 
     def codegen_input_numel_asserts(self, indented_buffer=None):
         writer = indented_buffer or self.prefix
@@ -181,7 +180,7 @@ class CppWrapperCpuArrayRef(CppWrapperCpu):
         )
 
     def _codegen_v2_raw_outputs(
-        self, code: IndentedBuffer, output_refs: list[str]
+        self, code: IndentedBuffer, output_refs: List[str]
     ) -> None:
         cst_names = V.graph.constants.keys()
 
@@ -582,7 +581,7 @@ class CppWrapperCpuArrayRef(CppWrapperCpu):
                     "[[maybe_unused]] auto& kernels = static_cast<AOTInductorModelKernels&>(*this->kernels_.get());"
                 )
 
-    def generate_return(self, output_refs: list[str]):
+    def generate_return(self, output_refs: List[str]):
         cst_names = V.graph.constants.keys()
         arr_iface = (
             not V.graph.is_const_graph
@@ -627,7 +626,7 @@ class CppWrapperCpuArrayRef(CppWrapperCpu):
                 "AOTInductorModelOutputs output_arrayref_tensors;"
             )
 
-        output2idx: dict[str, int] = {}
+        output2idx: Dict[str, int] = {}
         for idx, output in enumerate(output_refs):
             if output == "nullptr":
                 continue
@@ -1005,7 +1004,7 @@ class CppWrapperCpuArrayRef(CppWrapperCpu):
         self.writeline("}")
 
     def generate_c_shim_extern_kernel_call(
-        self, kernel: str, args: list[str], device: str, **_
+        self, kernel: str, args: List[str], device: str, **_
     ) -> None:
         # In the abi_compatible mode, we call fallback aten ops through a C shim layer
         # Setting self.allow_stack_allocation to False because the exchange between
@@ -1106,7 +1105,7 @@ class CppWrapperCpuArrayRef(CppWrapperCpu):
         buf_name: str,
         python_kernel_name: str,
         get_args: Callable[[], Sequence[str]],
-        op_overload: torch._ops.OpOverload | torch._ops.HigherOrderOperator,
+        op_overload: Union[torch._ops.OpOverload, torch._ops.HigherOrderOperator],
         raw_args: Sequence[Any],
         outputs: Sequence[ir.Buffer],
     ) -> None:
@@ -1116,13 +1115,7 @@ class CppWrapperCpuArrayRef(CppWrapperCpu):
             buf_name, python_kernel_name, get_args, op_overload, raw_args, outputs
         )
 
-    def codegen_runtime_lookup_tensor_call_args(
-        self, tensor_call_args: Sequence[str]
-    ) -> Sequence[str]:
-        self._assert_safe_to_use_borrow_arrayref_tensor_as_tensor()
-        return [f"borrow_arrayref_tensor_as_tensor({arg})" for arg in tensor_call_args]
-
-    def codegen_device_copy(self, src, dst, non_blocking: bool | str):
+    def codegen_device_copy(self, src, dst, non_blocking: Union[bool, str]):
         # aoti_torch_tensor_copy_ takes AtenTensorHandle as input,
         # while stack-allocation results in ArrayRefTensor
         # so disable stack allocation here
@@ -1165,7 +1158,7 @@ class CppWrapperCpuArrayRef(CppWrapperCpu):
             ]
             return f"wrap_with_raii_handle_if_needed(reinterpret_tensor_wrapper({', '.join(args)}))"
 
-        def create_new_tensor_handle() -> tuple[str, list[str]]:
+        def create_new_tensor_handle() -> Tuple[str, List[str]]:
             # Calling reset() on ArrayRefTensor does nothing, since the array is
             # const-allocated on the stack.  Thus, it's safe to return a reference to
             # the original array.

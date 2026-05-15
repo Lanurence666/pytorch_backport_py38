@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Test torch.onnx.ops."""
 
-from __future__ import annotations
 
 import onnx_ir as ir
 import onnx_ir.passes.common as common_passes

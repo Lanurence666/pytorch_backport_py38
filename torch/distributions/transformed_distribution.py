@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch import Tensor
 from torch.distributions import constraints
@@ -8,6 +10,7 @@ from torch.distributions.independent import Independent
 from torch.distributions.transforms import ComposeTransform, Transform
 from torch.distributions.utils import _sum_rightmost
 from torch.types import _size
+from typing import Dict, List, Optional, Union
 
 
 __all__ = ["TransformedDistribution"]
@@ -47,13 +50,13 @@ class TransformedDistribution(Distribution):
     :class:`~torch.distributions.relaxed_categorical.RelaxedOneHotCategorical`
     """
 
-    arg_constraints: dict[str, constraints.Constraint] = {}
+    arg_constraints: Dict[str, constraints.Constraint] = {}
 
     def __init__(
         self,
         base_distribution: Distribution,
-        transforms: Transform | list[Transform],
-        validate_args: bool | None = None,
+        transforms: Union[Transform, List[Transform]],
+        validate_args: Optional[bool] = None,
     ) -> None:
         if isinstance(transforms, Transform):
             self.transforms = [
@@ -173,7 +176,7 @@ class TransformedDistribution(Distribution):
         if self._validate_args:
             self._validate_sample(value)
         event_dim = len(self.event_shape)
-        log_prob: Tensor | float = 0.0
+        log_prob: Union[Tensor, float] = 0.0
         y = value
         for transform in reversed(self.transforms):
             x = transform.inv(y)

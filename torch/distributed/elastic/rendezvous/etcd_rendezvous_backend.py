@@ -5,9 +5,11 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import binascii
 from base64 import b64decode, b64encode
-from typing import cast
+from typing import Optional, Tuple, Union, cast
 
 import urllib3.exceptions  # type: ignore[import]
 
@@ -49,8 +51,8 @@ class EtcdRendezvousBackend(RendezvousBackend):
         self,
         client: etcd.Client,
         run_id: str,
-        key_prefix: str | None = None,
-        ttl: int | None = None,
+        key_prefix: Optional[str]= None,
+        ttl: Optional[int]= None,
     ) -> None:
         if not run_id:
             raise ValueError("The run id must be a non-empty string.")
@@ -72,7 +74,7 @@ class EtcdRendezvousBackend(RendezvousBackend):
         """See base class."""
         return "etcd-v2"
 
-    def get_state(self) -> tuple[bytes, Token] | None:
+    def get_state(self) -> Optional[Tuple[bytes, Token]]:
         """See base class."""
         try:
             result = self._client.read(self._key)
@@ -86,8 +88,8 @@ class EtcdRendezvousBackend(RendezvousBackend):
         return self._decode_state(result)
 
     def set_state(
-        self, state: bytes, token: Token | None = None
-    ) -> tuple[bytes, Token, bool] | None:
+        self, state: bytes, token: Optional[Token] = None
+    ) -> Optional[Tuple[bytes, Token, bool]]:
         """See base class."""
         base64_state = b64encode(state).decode()
 
@@ -125,7 +127,7 @@ class EtcdRendezvousBackend(RendezvousBackend):
         tmp = *self._decode_state(result), True
         return tmp
 
-    def _decode_state(self, result: etcd.EtcdResult) -> tuple[bytes, Token]:
+    def _decode_state(self, result: etcd.EtcdResult) -> Tuple[bytes, Token]:
         # pyrefly: ignore [missing-attribute]
         base64_state = result.value.encode()
 
@@ -181,25 +183,25 @@ def _create_etcd_client(params: RendezvousParameters) -> etcd.Client:
         ) from exc
 
 
-def create_backend(params: RendezvousParameters) -> tuple[EtcdRendezvousBackend, Store]:
+def create_backend(params: RendezvousParameters) -> Tuple[EtcdRendezvousBackend, Store]:
     """Create a new :py:class:`EtcdRendezvousBackend` from the specified parameters.
 
     +--------------+-----------------------------------------------------------+
-    | Parameter    | Description                                               |
+    | Union[Parameter, Description]                                               |
     +==============+===========================================================+
-    | read_timeout | The read timeout, in seconds, for etcd operations.        |
+    | Union[read_timeout, The] read timeout, in seconds, for etcd operations.        |
     |              | Defaults to 60 seconds.                                   |
     +--------------+-----------------------------------------------------------+
-    | protocol     | The protocol to use to communicate with etcd. Valid       |
+    | Union[protocol, The] protocol to use to communicate with etcd. Valid       |
     |              | values are "http" and "https". Defaults to "http".        |
     +--------------+-----------------------------------------------------------+
-    | ssl_cert     | The path to the SSL client certificate to use along with  |
+    | Union[ssl_cert, The] path to the SSL client certificate to use along with  |
     |              | HTTPS. Defaults to ``None``.                              |
     +--------------+-----------------------------------------------------------+
-    | ssl_cert_key | The path to the private key of the SSL client certificate |
+    | Union[ssl_cert_key, The] path to the private key of the SSL client certificate |
     |              | to use along with HTTPS. Defaults to ``None``.            |
     +--------------+-----------------------------------------------------------+
-    | ca_cert      | The path to the rool SSL authority certificate. Defaults  |
+    | Union[ca_cert, The] path to the rool SSL authority certificate. Defaults  |
     |              | to ``None``.                                              |
     +--------------+-----------------------------------------------------------+
     """

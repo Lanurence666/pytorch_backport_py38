@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Logging utilities for Dynamo and Inductor.
 
 This module provides specialized logging functionality including:
@@ -11,8 +12,8 @@ logging output for debugging and monitoring.
 
 import itertools
 import logging
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, List
 
 from torch.hub import _Faketqdm, tqdm
 
@@ -22,7 +23,7 @@ disable_progress = True
 
 
 # Return all loggers that torchdynamo/torchinductor is responsible for
-def get_loggers() -> list[logging.Logger]:
+def get_loggers() -> List[logging.Logger]:
     return [
         logging.getLogger("torch.fx.experimental.symbolic_shapes"),
         logging.getLogger("torch._dynamo"),
@@ -34,7 +35,7 @@ def get_loggers() -> list[logging.Logger]:
 # get_step_logger should be lazily called (i.e. at runtime, not at module-load time)
 # so that step numbers are initialized properly. e.g.:
 
-# @functools.cache
+# @functools.lru_cache(maxsize=None)
 # def _step_logger():
 #     return get_step_logger(logging.getLogger(...))
 

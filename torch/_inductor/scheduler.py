@@ -11,24 +11,17 @@ import math
 import operator
 import os
 import pprint
-import sys
 import textwrap
-import time
 import traceback
 import typing
 from collections import Counter, defaultdict
 from concurrent.futures import as_completed, Future
-from typing import (
-    Any,
-    Generic,
-    Literal,
-    NamedTuple,
-    overload,
-    TYPE_CHECKING,
-    TypeAlias,
-    TypeVar,
-)
-from typing_extensions import ParamSpec
+from typing import Any, Callable, Dict, Generic, Iterator, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union, overload
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
+from typing_extensions import Literal, ParamSpec
 
 from torch.utils._ordered_set import OrderedSet
 
@@ -36,7 +29,7 @@ from .ir import ComputedBuffer, Pointwise
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    
     from types import ModuleType
 
     from torch._inductor.codegen.wrapper import EnterCudaStreamContextLine
@@ -112,16 +105,16 @@ compute_dependencies_log = torch._logging.getArtifactLogger(
 )
 cudagraphs_log = torch._logging.getArtifactLogger(__name__, "cudagraphs")
 
-PartitionType: TypeAlias = list["BaseSchedulerNode"]
+PartitionType: TypeAlias = List["BaseSchedulerNode"]
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
 
 @dataclasses.dataclass
 class FusionResult:
-    should_fuse: bool | None = None
-    callable_fn: Callable[[], bool] | None = None
-    future: LambdaFuture | None = None
+    should_fuse: Optional[bool] = None
+    callable_fn: Optional[Callable[[], bool]] = None
+    future: Optional[LambdaFuture] = None
 
     def __post_init__(self):
         assert (self.should_fuse is not None) ^ (self.callable_fn is not None), (
@@ -134,7 +127,7 @@ class FusionResult:
 
     @classmethod
     def from_callable(
-        cls, callable_fn: Callable[[], bool], future: LambdaFuture | None = None
+        cls, callable_fn: Callable[[], bool], future: Optional[LambdaFuture] = None
     ):
         return FusionResult(callable_fn=callable_fn, future=future)
 
@@ -144,45 +137,10 @@ class PendingFusion:
     callable_fn: Callable[[], bool]
     node1: BaseSchedulerNode
     node2: BaseSchedulerNode
-    future: LambdaFuture | None = None
+    future: Optional[LambdaFuture] = None
 
-    def get_fusion_nodes(self) -> tuple[BaseSchedulerNode, BaseSchedulerNode]:
+    def get_fusion_nodes(self) -> Tuple[BaseSchedulerNode, BaseSchedulerNode]:
         return (self.node1, self.node2)
-
-
-class _LocalEntry(NamedTuple):
-    """One row of the post-rewrite slice the gate builds.
-
-    `cur` is the step the node currently wants to run at, `baseline`
-    is its original index (used to break ties when sorting), and
-    `node` is the slice member itself.
-    """
-
-    cur: int
-    baseline: int
-    node: BaseSchedulerNode
-
-
-@dataclasses.dataclass(slots=True)
-class ComboKernelMemoryContext:
-    """Shared state used by the memory-aware combo gate.
-
-    Candidate windows are evaluated independently against the original
-    schedule. Earlier accepted combos only contribute through `running_peak`,
-    which caps the cumulative peak drift from the original graph.
-    """
-
-    graph_outputs: OrderedSet[str]
-    node_to_idx: dict[BaseSchedulerNode, int]
-    baseline_peak: int = 0
-    # Running peak after earlier accepts. Bumped on each accept; the
-    # gate's threshold check still compares against `baseline_peak`
-    # (the original) so total drift is capped.
-    running_peak: int = 0
-    # Live bytes before each step in the original schedule. Combo windows
-    # are evaluated independently, so a window's entry memory is the
-    # precomputed baseline live-in at `region_start`.
-    baseline_live_before: list[int] = dataclasses.field(default_factory=list)
 
 
 class MixOrderReduction:
@@ -202,7 +160,7 @@ class MixOrderReduction:
         )
 
     @classmethod
-    def get_numel_rnumel(cls, node: BaseSchedulerNode) -> tuple[sympy.Expr, sympy.Expr]:
+    def get_numel_rnumel(cls, node: BaseSchedulerNode) -> Tuple[sympy.Expr, sympy.Expr]:
         if cls.is_split_reduction(node):
             xnumel = None
             rnumel = None
@@ -288,7 +246,7 @@ class MixOrderReduction:
     @classmethod
     def get_common_read(
         cls, node1: BaseSchedulerNode, node2: BaseSchedulerNode
-    ) -> list[str]:
+    ) -> List[str]:
         out = []
         common_reads = node1.used_buffer_names() & node2.used_buffer_names()
         for buf in common_reads:
@@ -473,8 +431,8 @@ class MixOrderReduction:
 class SchedulerBuffer:
     scheduler: Scheduler
     node: ir.Buffer
-    defining_op: BaseSchedulerNode | None
-    users: list[NodeUser] = dataclasses.field(default_factory=list)
+    defining_op: Optional[BaseSchedulerNode]
+    users: List[NodeUser] = dataclasses.field(default_factory=list)
     mpi_buffer: MemoryPlanningInfoForBuffer = dataclasses.field(
         default_factory=MemoryPlanningInfoForBuffer
     )
@@ -528,7 +486,7 @@ class SchedulerBuffer:
             hasattr(V.kernel, "args")
             and self.get_name() in V.kernel.inplace_update_buffers
         ):
-            input_buffer: ir.DonatedBuffer | ir.Buffer
+            input_buffer: Union[ir.DonatedBuffer, ir.Buffer]
             input_buffer_name = V.kernel.inplace_update_buffers[self.get_name()]
             if input_buffer_name in self.scheduler.name_to_donated_buffer:
                 input_buffer = self.scheduler.name_to_donated_buffer[
@@ -555,9 +513,9 @@ class SchedulerBuffer:
                 return False
         return True
 
-    def set_users(self, users: list[NodeUser]) -> None:
+    def set_users(self, users: List[NodeUser]) -> None:
         # deduplicate
-        result: dict[int, NodeUser] = {}
+        result: Dict[int, NodeUser] = {}
         for use in users:
             if id(use.node) in result:
                 result[id(use.node)] = use.merge(result[id(use.node)])
@@ -573,18 +531,18 @@ class SchedulerBuffer:
         assert self.node is not None
         return self.node.get_mutation_names()
 
-    def get_device(self) -> torch.device | None:
+    def get_device(self) -> Optional[torch.device]:
         return self.node.get_output_spec().get_device()
 
 
 @dataclasses.dataclass
 class SchedulerDonatedBuffer(SchedulerBuffer):
-    defining_op: BaseSchedulerNode | None = None
+    defining_op: Optional[BaseSchedulerNode] = None
 
 
 class BaseSchedulerNode:
     ancestors: OrderedSet[str]
-    group: tuple[torch.device, tuple[tuple[sympy.Expr, ...], ...]]
+    group: Tuple[torch.device, Tuple[Tuple[sympy.Expr, ...], ...]]
     last_usage: OrderedSet[str]
     # .min_order and .max_order are only relevant for "grouped" nodes such as FusedSchedulerNode.
     # e.g. if the FusedSchedulerNode includes nodes (op_1, op_2, op_3), and op_X is X-th node
@@ -596,18 +554,18 @@ class BaseSchedulerNode:
     min_order: int
     max_order: int
     mpi_node: MemoryPlanningInfoForNode
-    mutation_renames: dict[str, str]
-    node: ir.Operation | None = None
-    outputs: list[SchedulerBuffer]
-    outputs_by_name: dict[str, SchedulerBuffer]
-    override_estimated_runtime: float | None = None
+    mutation_renames: Dict[str, str]
+    node: Optional[ir.Operation] = None
+    outputs: List[SchedulerBuffer]
+    outputs_by_name: Dict[str, SchedulerBuffer]
+    override_estimated_runtime: Optional[float] = None
     read_writes: dependencies.ReadWrites
     unmet_dependencies: OrderedSet[Dep]
     written: bool = False
 
     def __init__(self, scheduler: Scheduler) -> None:
         self.scheduler: Scheduler = scheduler
-        self.debug_device_str: Callable[[BaseSchedulerNode], list[str]] = (
+        self.debug_device_str: Callable[[BaseSchedulerNode], List[str]] = (
             lambda *args, **kwargs: []
         )
 
@@ -670,7 +628,7 @@ class BaseSchedulerNode:
     def debug_str_extra(self) -> str:
         return ""
 
-    def _debug_str_for_device(self) -> list[str]:
+    def _debug_str_for_device(self) -> List[str]:
         return self.debug_device_str(self)
 
     def debug_str_short(self) -> str:
@@ -701,7 +659,7 @@ class BaseSchedulerNode:
     ) -> bool:
         return False
 
-    def update_mutated_names(self, renames: dict[str, str]) -> None:
+    def update_mutated_names(self, renames: Dict[str, str]) -> None:
         self.mutation_renames = {
             name: renames[name]
             for name in (dep.name for dep in self.read_writes.reads_and_writes())
@@ -723,7 +681,7 @@ class BaseSchedulerNode:
         self.prune_deps()
 
     def set_last_usage(
-        self, future_used_buffers: OrderedSet[str], mutation_real_name: dict[str, str]
+        self, future_used_buffers: OrderedSet[str], mutation_real_name: Dict[str, str]
     ) -> None:
         used_buffers = self.used_or_aliased_buffer_names()
         used_buffers = OrderedSet(mutation_real_name.get(k, k) for k in used_buffers)
@@ -790,7 +748,7 @@ class BaseSchedulerNode:
         self.set_read_writes(self.read_writes.remove_reads(to_remove))
 
     def prune_redundant_deps(
-        self, name_to_fused_node: dict[str, BaseSchedulerNode]
+        self, name_to_fused_node: Dict[str, BaseSchedulerNode]
     ) -> None:
         _prune_redundant_deps(self, name_to_fused_node, self.scheduler.name_to_buf)
 
@@ -833,7 +791,7 @@ class BaseSchedulerNode:
     def get_output(self, buf_name: str) -> SchedulerBuffer:
         return self.outputs_by_name[buf_name]
 
-    def get_device(self) -> torch.device | None:
+    def get_device(self) -> Optional[torch.device]:
         assert self.node is not None
         return self.node.get_device()
 
@@ -945,7 +903,7 @@ class BaseSchedulerNode:
                 continue
 
             for read in self.read_writes.reads:
-                input_buf: SchedulerBuffer | SchedulerDonatedBuffer | None
+                input_buf: Union[SchedulerBuffer, Optional[SchedulerDonatedBuffer]]
                 if read.name in self.scheduler.name_to_donated_buffer:
                     input_buf = self.scheduler.name_to_donated_buffer[read.name]
                 else:
@@ -1085,7 +1043,7 @@ class BaseSchedulerNode:
 
     def get_read_write_buffer_accesses(
         self, include_reads: bool, include_writes: bool
-    ) -> dict[str, int]:
+    ) -> Dict[str, int]:
         """
         Counting the number of bytes accessed for a kernel is
         surprisingly tricky. In particular, there is a differentiation
@@ -1168,11 +1126,11 @@ class BaseSchedulerNode:
             writes = writes - removed_buffers
             reads = reads - removed_buffers
 
-        buf_byte_accesses: dict[str, int] = {}
+        buf_byte_accesses: Dict[str, int] = {}
 
-        for buf_name in reads | writes:
+        for buf_name in Union[reads, writes]:
             buf_accessed_elems = sum(node_numel for dep in buf_accesses[buf_name])
-            buf: ir.Buffer | ir.TensorBox | ir.TorchBindObject
+            buf: Union[Union[ir.Buffer, ir.TensorBox], ir.TorchBindObject]
             if buf_name in V.graph.name_to_buffer:
                 buf = V.graph.name_to_buffer[buf_name]
             elif buf_name in V.graph.graph_inputs:
@@ -1181,7 +1139,7 @@ class BaseSchedulerNode:
                 continue
 
             def get_buf_bytes(
-                buf: ir.Buffer | ir.TensorBox | ir.TorchBindObject | None,
+                buf: Union[Union[ir.Buffer, ir.TensorBox], Optional[ir.TorchBindObject]],
             ) -> int:
                 if not buf:
                     return 0
@@ -1226,7 +1184,7 @@ class BaseSchedulerNode:
         return buf_byte_accesses
 
     @cache_on_self
-    def estimate_flops(self) -> int | None:
+    def estimate_flops(self) -> Optional[int]:
         if self.node is None:
             return None
         fx_node = self.node.get_origin_node()
@@ -1338,7 +1296,7 @@ class BaseSchedulerNode:
         ms = ns / 1e6
         return ms
 
-    def get_template_node(self) -> ir.TemplateBuffer | None:
+    def get_template_node(self) -> Optional[ir.TemplateBuffer]:
         return None
 
     def get_template_node_or_throw(self) -> ir.TemplateBuffer:
@@ -1348,8 +1306,8 @@ class BaseSchedulerNode:
 
     @staticmethod
     def get_prologue_template_epilogue(
-        nodes: list[BaseSchedulerNode],
-    ) -> tuple[list[BaseSchedulerNode], BaseSchedulerNode, list[BaseSchedulerNode]]:
+        nodes: List[BaseSchedulerNode],
+    ) -> Tuple[List[BaseSchedulerNode], BaseSchedulerNode, List[BaseSchedulerNode]]:
         """
         For the list of nodes, get the prologue, template, and epilogue
         """
@@ -1361,7 +1319,7 @@ class BaseSchedulerNode:
         return prologue, template_node, epilogue
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def get_estimate_runtime_cache() -> torch._inductor.codecache.LocalCache:
     return torch._inductor.codecache.LocalCache()
 
@@ -1404,7 +1362,7 @@ def _get_mm_like_fn(snode: BaseSchedulerNode) -> Callable[[Any], Any] | None:
     return mms_fns[python_kernel_name]
 
 
-def maybe_estimate_runtime_benchmark(snode: BaseSchedulerNode) -> float | None:
+def maybe_estimate_runtime_benchmark(snode: BaseSchedulerNode) -> Optional[float]:
     bench_fn = None
     args_kwargs_fn = None
     if config.runtime_estimations_mms_benchmark:
@@ -1442,12 +1400,12 @@ def maybe_estimate_runtime_benchmark(snode: BaseSchedulerNode) -> float | None:
     return ms
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass()
 class WhyNoFuse:
     name1: str
     name2: str
     reason: str
-    args: tuple[Any, ...]
+    args: Tuple[Any, ...]
 
     def __init__(self, node1: BaseSchedulerNode, node2: BaseSchedulerNode) -> None:
         self.name1 = node1.get_name()
@@ -1492,8 +1450,8 @@ class OutputNode:
 
 def _prune_redundant_deps(
     node: BaseSchedulerNode,
-    name_to_fused_node: dict[str, BaseSchedulerNode],
-    name_to_buf: dict[str, SchedulerBuffer],
+    name_to_fused_node: Dict[str, BaseSchedulerNode],
+    name_to_buf: Dict[str, SchedulerBuffer],
 ) -> None:
     """
     Prunes weakdeps intended for mutation ordering
@@ -1585,13 +1543,13 @@ class SchedulerNode(BaseSchedulerNode):
     a ComputedBuffer or a TemplateBuffer.
     """
 
-    _sizes: tuple[Sequence[sympy.Expr], ...]
+    _sizes: Tuple[Sequence[sympy.Expr], ...]
     _body: LoopBody
 
     def __init__(
         self,
         scheduler: Scheduler,
-        node: ir.ComputedBuffer | ir.TemplateBuffer,
+        node: Union[ir.ComputedBuffer, ir.TemplateBuffer],
     ) -> None:
         super().__init__(scheduler)
         self._init_from_node(node)
@@ -1599,8 +1557,8 @@ class SchedulerNode(BaseSchedulerNode):
 
     def _compute_attrs(
         self,
-        extra_indexing_constraints: tuple[dict[Any, Any], list[Any]] | None = None,
-        recompute_sizes_body_func: Callable[_P, _T] | None = None,
+        extra_indexing_constraints: Tuple[Dict[Any, Any], List[Any]] | None = None,
+        recompute_sizes_body_func: Optional[Callable[_P, _T]] = None,
     ) -> None:
         assert isinstance(self.node, (ir.ComputedBuffer, ir.TemplateBuffer))
         self._sizes, body = self.node.simplify_and_reorder(
@@ -1632,8 +1590,8 @@ class SchedulerNode(BaseSchedulerNode):
 
     def recompute_size_and_body(
         self,
-        extra_indexing_constraints: tuple[dict[Any, Any], list[Any]] | None = None,
-        recompute_sizes_body_func: Callable[..., Any] | None = None,
+        extra_indexing_constraints: Tuple[Dict[Any, Any], List[Any]] | None = None,
+        recompute_sizes_body_func: Optional[Callable[..., Any]] = None,
     ) -> None:
         fake_deps: OrderedSet[Dep] = OrderedSet(
             dep for dep in self.read_writes.reads if isinstance(dep, (WeakDep, StarDep))
@@ -1677,7 +1635,7 @@ class SchedulerNode(BaseSchedulerNode):
             # lru_cache.
             SIMDScheduling.candidate_tilings.cache_clear()
 
-    def snapshot_loop_state(self) -> tuple[Any, ...]:
+    def snapshot_loop_state(self) -> Tuple[Any, ...]:
         """Snapshot mutable state modified by loop transformations
         (apply_new_loop_order, apply_loop_reindexing). Must be kept
         in sync with those methods and restore_loop_state."""
@@ -1689,7 +1647,7 @@ class SchedulerNode(BaseSchedulerNode):
             self.unmet_dependencies,
         )
 
-    def restore_loop_state(self, state: tuple[Any, ...]) -> None:
+    def restore_loop_state(self, state: Tuple[Any, ...]) -> None:
         """Restore state from snapshot_loop_state."""
         from .codegen.simd import SIMDScheduling
 
@@ -1849,7 +1807,7 @@ class SchedulerNode(BaseSchedulerNode):
     def is_template(self) -> bool:
         return isinstance(self.node, ir.TemplateBuffer)
 
-    def get_template_node(self) -> ir.TemplateBuffer | None:
+    def get_template_node(self) -> Optional[ir.TemplateBuffer]:
         return self.node if isinstance(self.node, ir.TemplateBuffer) else None
 
     def run(self, *index_vars: Sequence[sympy.Expr]) -> None:
@@ -1859,7 +1817,7 @@ class SchedulerNode(BaseSchedulerNode):
 
     def ranges_from_index_vars(
         self, index_vars: Sequence[Sequence[sympy.Expr]]
-    ) -> dict[sympy.Expr, sympy.Expr]:
+    ) -> Dict[sympy.Expr, sympy.Expr]:
         sizes = self._sizes
         assert sum(map(len, sizes)) == sum(map(len, index_vars))
         var_ranges = dict(
@@ -1884,10 +1842,7 @@ class SchedulerNode(BaseSchedulerNode):
         """
         var_ranges = self.ranges_from_index_vars(index_vars)
         try:
-            with (
-                V.set_ops_handler(SimplifyIndexing(V.get_ops_handler(), var_ranges)),
-                V.kernel.set_current_node(self),
-            ):
+            with V.set_ops_handler(SimplifyIndexing(V.get_ops_handler(), var_ranges)), V.kernel.set_current_node(self):
                 self._body(*index_vars)
         except Exception:
             log.fatal("Error in codegen for %s", self.node)
@@ -1960,7 +1915,7 @@ class SchedulerNode(BaseSchedulerNode):
 
 
 def refresh_group_node_dependencies(
-    group_snode: FusedSchedulerNode | GroupedSchedulerNode,
+    group_snode: Union[FusedSchedulerNode, GroupedSchedulerNode],
 ) -> None:
     snodes = group_snode.snodes
     group_snode.set_read_writes(
@@ -1978,9 +1933,9 @@ def refresh_group_node_dependencies(
 
 
 def init_group_node(
-    group_snode: FusedSchedulerNode | GroupedSchedulerNode,
+    group_snode: Union[FusedSchedulerNode, GroupedSchedulerNode],
     scheduler: Scheduler,
-    snodes: list[BaseSchedulerNode],
+    snodes: List[BaseSchedulerNode],
 ) -> None:
     assert isinstance(group_snode, (FusedSchedulerNode, GroupedSchedulerNode))
     group_snode.snodes = snodes
@@ -2012,7 +1967,7 @@ class FusedSchedulerNode(BaseSchedulerNode):
     its unmet dependencies as the union of its constituent nodes.
     """
 
-    snodes: list[BaseSchedulerNode]
+    snodes: List[BaseSchedulerNode]
 
     @classmethod
     def fuse(
@@ -2040,7 +1995,7 @@ class FusedSchedulerNode(BaseSchedulerNode):
             subnode.swap_pw_red_dimension()
 
     @cache_on_self
-    def estimate_flops(self) -> int | None:
+    def estimate_flops(self) -> Optional[int]:
         # don't increment counters in fused methods so we don't double count
         fps = list(
             filter(
@@ -2100,10 +2055,10 @@ class FusedSchedulerNode(BaseSchedulerNode):
         refresh_group_node_dependencies(self)
         return True
 
-    def __init__(self, scheduler: Scheduler, snodes: list[BaseSchedulerNode]) -> None:
+    def __init__(self, scheduler: Scheduler, snodes: List[BaseSchedulerNode]) -> None:
         super().__init__(scheduler)
         init_group_node(self, scheduler, snodes)
-        self.users: list[NodeUser] = []
+        self.users: List[NodeUser] = []
         self.group = max(snodes, key=lambda x: int(x.is_reduction())).group
 
     @cache_on_self
@@ -2117,8 +2072,8 @@ class FusedSchedulerNode(BaseSchedulerNode):
     def get_buffer_names(self) -> OrderedSet[str]:
         return OrderedSet.union(*[x.get_buffer_names() for x in self.snodes])
 
-    def get_outputs(self) -> list[SchedulerBuffer]:
-        result: list[SchedulerBuffer] = []
+    def get_outputs(self) -> List[SchedulerBuffer]:
+        result: List[SchedulerBuffer] = []
         for node in self.snodes:
             result.extend(node.get_outputs())
         return result
@@ -2139,7 +2094,7 @@ class FusedSchedulerNode(BaseSchedulerNode):
         return f"{self}, snodes: {snodes_str}"
 
     def set_last_usage(
-        self, future_used_buffers: OrderedSet[str], mutation_real_name: dict[str, str]
+        self, future_used_buffers: OrderedSet[str], mutation_real_name: Dict[str, str]
     ) -> None:
         # Set self.last_usage using the global information
         # This will be used for inter-kernel optimisations
@@ -2184,7 +2139,7 @@ class FusedSchedulerNode(BaseSchedulerNode):
         return any(x.is_template() for x in self.snodes)
 
     @cache_on_self
-    def get_template_node(self) -> ir.TemplateBuffer | None:
+    def get_template_node(self) -> Optional[ir.TemplateBuffer]:
         for node in self.snodes:
             if node.is_template():
                 return node.get_template_node()
@@ -2199,7 +2154,7 @@ class FusedSchedulerNode(BaseSchedulerNode):
 
     # None of these need to be implemented, as a FusedSchedulerNode is just an
     # abstraction for scheduling purposes
-    def update_mutated_names(self, renames: dict[str, str]) -> None:
+    def update_mutated_names(self, renames: Dict[str, str]) -> None:
         raise NotImplementedError
 
     def add_fake_dep(self, name: Dep) -> None:
@@ -2262,7 +2217,7 @@ class FusedMixOrderReductions(FusedSchedulerNode):
         self,
         node1: BaseSchedulerNode,
         node2: BaseSchedulerNode,
-        other_nodes: tuple[BaseSchedulerNode, ...],
+        other_nodes: Tuple[BaseSchedulerNode, ...],
     ):
         """
         node1 is from the current mix order reduction; node2 is another node we want to fuse in.
@@ -2286,12 +2241,12 @@ class FusedMixOrderReductions(FusedSchedulerNode):
         ) and not MixOrderReduction.is_contiguous_node(node2):
             return False
 
-        def _get_ancestors(nodes: tuple[BaseSchedulerNode, ...]) -> OrderedSet[str]:
+        def _get_ancestors(nodes: Tuple[BaseSchedulerNode, ...]) -> OrderedSet[str]:
             out = OrderedSet()
             return out.union(*(n.ancestors for n in nodes))
 
         def _get_operation_names(
-            nodes: tuple[BaseSchedulerNode, ...],
+            nodes: Tuple[BaseSchedulerNode, ...],
         ) -> OrderedSet[str]:
             out = OrderedSet()
             return out.union(*(n.get_operation_names() for n in nodes))
@@ -2358,7 +2313,7 @@ class FusedExternTritonKernelSchedulerNode(FusedSchedulerNode):
         fused_epilogue: SchedulerNode,
     ) -> None:
         assert isinstance(kernel_node.node, ir.UserDefinedTritonKernel)
-        snodes = typing.cast(list[BaseSchedulerNode], [kernel_node, fused_epilogue])
+        snodes = typing.cast(List[BaseSchedulerNode], [kernel_node, fused_epilogue])
         super().__init__(scheduler, snodes)
         self.kernel_node = kernel_node
         self.fused_epilogue = fused_epilogue
@@ -2421,7 +2376,7 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
 
     def get_consumer_subnode_for(
         self, producer: BaseSchedulerNode
-    ) -> BaseSchedulerNode | None:
+    ) -> Optional[BaseSchedulerNode]:
         for buf in producer.get_outputs():
             if buf.get_name() in self.read_to_node:
                 return self.read_to_node[buf.get_name()]
@@ -2430,7 +2385,7 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
 
     def get_producer_subnode_for(
         self, consumer: BaseSchedulerNode
-    ) -> BaseSchedulerNode | None:
+    ) -> Optional[BaseSchedulerNode]:
         producers = OrderedSet[BaseSchedulerNode]()
         for rd in consumer.read_writes.reads:
             if rd.name not in self.scheduler.name_to_buf:
@@ -2509,7 +2464,7 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
             enable_autotune = consumer.enable_autotune
         prev_node_1 = None
         prev_node_2 = None
-        fused_nodes: list[BaseSchedulerNode]
+        fused_nodes: List[BaseSchedulerNode]
         if producer.is_foreach() and consumer.is_foreach():
             producer = typing.cast(ForeachKernelSchedulerNode, producer)
             consumer = typing.cast(ForeachKernelSchedulerNode, consumer)
@@ -2562,10 +2517,10 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
     def __init__(
         self,
         scheduler: Scheduler,
-        snodes: list[BaseSchedulerNode],
+        snodes: List[BaseSchedulerNode],
         use_custom_partition_algo: bool,
-        prev_node_1: BaseSchedulerNode | None = None,
-        prev_node_2: BaseSchedulerNode | None = None,
+        prev_node_1: Optional[BaseSchedulerNode] = None,
+        prev_node_2: Optional[BaseSchedulerNode] = None,
         enable_autotune: bool = False,
     ) -> None:
         self.read_to_node = {}
@@ -2584,7 +2539,7 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
             self.scheduler = scheduler
             self.snodes = snodes
             self.node = None
-            self.users: list[NodeUser] = []
+            self.users: List[NodeUser] = []
 
             self.set_read_writes(
                 dependencies.ReadWrites.merge_list(
@@ -2626,7 +2581,7 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
             for name in other_node.get_operation_names():
                 self.name_to_node[name] = other_node
 
-            self.outputs_by_name: dict[str, SchedulerBuffer] = {
+            self.outputs_by_name: Dict[str, SchedulerBuffer] = {
                 k: v for snode in self.snodes for k, v in snode.outputs_by_name.items()
             }
 
@@ -2639,8 +2594,8 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
 
     @classmethod
     def combinable_nodes(
-        cls, nodes: list[BaseSchedulerNode]
-    ) -> list[BaseSchedulerNode]:
+        cls, nodes: List[BaseSchedulerNode]
+    ) -> List[BaseSchedulerNode]:
         extern = [x for x in nodes if isinstance(x, ExternKernelSchedulerNode)]
         if extern:
             log.debug(
@@ -2706,7 +2661,7 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
     @staticmethod
     def _default_group_nodes_for_combo_kernels(
         scheduler: Scheduler,
-    ) -> list[list[BaseSchedulerNode]]:
+    ) -> List[List[BaseSchedulerNode]]:
         """
         Returns a list of lists of nodes that are to be grouped together.
         """
@@ -2725,7 +2680,7 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
         )
         for nodes in sorted_nodes:
             # Group nodes by device first to avoid mixed-device fusion
-            device_groups: dict[torch.device | None, list[BaseSchedulerNode]] = (
+            device_groups: Dict[Optional[torch.device], List[BaseSchedulerNode]] = (
                 defaultdict(list)
             )
             for node in nodes:
@@ -2742,7 +2697,7 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
             # boundaries.  When multi-stream scheduling is inactive every
             # node maps to DEFAULT_STREAM_IDX so this is a no-op.
             for device_nodes in device_groups.values():
-                stream_groups: dict[int, list[BaseSchedulerNode]] = defaultdict(list)
+                stream_groups: Dict[int, List[BaseSchedulerNode]] = defaultdict(list)
                 for node in device_nodes:
                     stream_groups[scheduler.node_to_stream.get(node, 0)].append(node)
                 for stream_nodes in stream_groups.values():
@@ -2755,12 +2710,12 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
         return grouped_nodes
 
     group_algorithm_for_combo_kernels: Callable[
-        [Scheduler], list[list[BaseSchedulerNode]]
+        [Scheduler], List[List[BaseSchedulerNode]]
     ] = _default_group_nodes_for_combo_kernels
 
     @staticmethod
     def set_group_algorithm_for_combo_kernels(
-        custom_group_algorithm: Callable[[Scheduler], list[list[BaseSchedulerNode]]],
+        custom_group_algorithm: Callable[[Scheduler], List[List[BaseSchedulerNode]]],
     ) -> None:
         ForeachKernelSchedulerNode.group_algorithm_for_combo_kernels = (
             custom_group_algorithm
@@ -2769,7 +2724,7 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
     @staticmethod
     def group_nodes_for_combo_kernels(
         scheduler: Scheduler,
-    ) -> list[list[BaseSchedulerNode]]:
+    ) -> List[List[BaseSchedulerNode]]:
         return ForeachKernelSchedulerNode.group_algorithm_for_combo_kernels(scheduler)
 
     def mark_run(self) -> None:
@@ -2781,7 +2736,7 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
     def is_foreach(self) -> bool:
         return True
 
-    def get_subkernel_nodes(self) -> list[BaseSchedulerNode]:
+    def get_subkernel_nodes(self) -> List[BaseSchedulerNode]:
         """Returns a list of nodes which comprise the combo kernel.
         These nodes may be vertically fused."""
         return list(self.snodes)
@@ -2795,7 +2750,7 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
         return self.snodes[0].get_first_name()
 
     def prune_redundant_deps(
-        self, name_to_fused_node: dict[str, BaseSchedulerNode]
+        self, name_to_fused_node: Dict[str, BaseSchedulerNode]
     ) -> None:
         _prune_redundant_deps(self, name_to_fused_node, self.scheduler.name_to_buf)
 
@@ -2813,10 +2768,10 @@ class GroupedSchedulerNode(BaseSchedulerNode):
     At codegen time, this scheduler node will be unpacked and codegen is called on each constituent node.
     """
 
-    snodes: list[BaseSchedulerNode]
+    snodes: List[BaseSchedulerNode]
 
     @classmethod
-    def create(cls, snodes: list[BaseSchedulerNode]) -> GroupedSchedulerNode:
+    def create(cls, snodes: List[BaseSchedulerNode]) -> GroupedSchedulerNode:
         scheduler = snodes[0].scheduler
         assert all(node.scheduler is scheduler for node in snodes)
         grouped_snode = cls(scheduler, snodes)
@@ -2828,7 +2783,7 @@ class GroupedSchedulerNode(BaseSchedulerNode):
     def __init__(
         self,
         scheduler: Scheduler,
-        snodes: list[BaseSchedulerNode],
+        snodes: List[BaseSchedulerNode],
         temp_grouping: bool = False,
     ) -> None:
         super().__init__(scheduler)
@@ -2840,7 +2795,7 @@ class GroupedSchedulerNode(BaseSchedulerNode):
         # No fusion logic in this case.
         self.temp_grouping = temp_grouping
 
-    def unpack(self) -> list[BaseSchedulerNode]:
+    def unpack(self) -> List[BaseSchedulerNode]:
         """
         Do fusion among nodes within this GroupedSchedulerNode,
         and then unpack this GroupedSchedulerNode into regular nodes.
@@ -2868,14 +2823,14 @@ class GroupedSchedulerNode(BaseSchedulerNode):
     def get_buffer_names(self) -> OrderedSet[str]:
         return OrderedSet.union(*[x.get_buffer_names() for x in self.snodes])
 
-    def get_outputs(self) -> list[SchedulerBuffer]:
-        result: list[SchedulerBuffer] = []
+    def get_outputs(self) -> List[SchedulerBuffer]:
+        result: List[SchedulerBuffer] = []
         for node in self.snodes:
             result.extend(node.get_outputs())
         return result
 
     @cache_on_self
-    def estimate_flops(self) -> int | None:
+    def estimate_flops(self) -> Optional[int]:
         # don't increment counters in fused methods so we don't double count
         fps = list(
             filter(
@@ -2895,7 +2850,7 @@ class GroupedSchedulerNode(BaseSchedulerNode):
     def get_nodes(self) -> Sequence[BaseSchedulerNode]:
         return self.snodes
 
-    def get_device(self) -> torch.device | None:
+    def get_device(self) -> Optional[torch.device]:
         return self.snodes[0].get_device() if self.snodes else None
 
     @classmethod
@@ -2905,10 +2860,10 @@ class GroupedSchedulerNode(BaseSchedulerNode):
 
 
 def pick_loop_order(
-    stride_lengths: list[list[int]],
+    stride_lengths: List[List[int]],
     sizes: Sequence[sympy.Expr],
     priority_idx: Sequence[int] = (),
-) -> list[int]:
+) -> List[int]:
     """
     A heuristic to decide loop iteration orders.  This has not been well
     tuned and may be something we should autotune.
@@ -2997,7 +2952,7 @@ def _occupancy_before_and_after_fusion(
     fused_n_spills: int,
     num_warps: int,
     device_props: DeviceProperties,
-) -> tuple[int, int]:
+) -> Tuple[int, int]:
     if fused_n_spills >= 8:
         return 0, -1
 
@@ -3052,7 +3007,7 @@ def _fuse_epilogue(
 
 @dataclasses.dataclass
 class NodeUser:
-    node: BaseSchedulerNode | OutputNode
+    node: Union[BaseSchedulerNode, OutputNode]
     can_inplace: bool = False
 
     # A weak user must be scheduled after a given node, but doesn't actually
@@ -3168,14 +3123,14 @@ class Scheduler:
     optimizations such as fusion, reorder, and graph partition.
     """
 
-    def __init__(self, nodes: list[ir.Operation]) -> None:
+    def __init__(self, nodes: List[ir.Operation]) -> None:
         with dynamo_timed("Scheduler.__init__"):
             self._init(nodes)
 
-    def _init(self, nodes: list[ir.Operation]) -> None:
+    def _init(self, nodes: List[ir.Operation]) -> None:
         super().__init__()
         V.graph.scheduler = self
-        self.backends: dict[torch.device, BaseScheduling] = {}
+        self.backends: Dict[torch.device, BaseScheduling] = {}
         self.post_grad_graph_id = next(_post_grad_graph_counter)
         self._graph_partition_counter = itertools.count()
 
@@ -3188,8 +3143,8 @@ class Scheduler:
             ]
         )
         self.nodes = [self.create_scheduler_node(n) for n in nodes]
-        self.previous_node: BaseSchedulerNode | None = None
-        self.current_node: BaseSchedulerNode | None = None
+        self.previous_node: Optional[BaseSchedulerNode] = None
+        self.current_node: Optional[BaseSchedulerNode] = None
         self.update_zero_dim_cpu_tensor()
         # some new constants could have been created above
         self.available_buffer_names.update(V.graph.constants.keys())
@@ -3197,26 +3152,26 @@ class Scheduler:
             node.prune_deps()
 
         # See [Note: Graph Partition Device Contexts]
-        self.default_device_context: torch.device | None = None
+        self.default_device_context: Optional[torch.device] = None
 
-        self.name_to_donated_buffer: dict[str, SchedulerDonatedBuffer] = (
+        self.name_to_donated_buffer: Dict[str, SchedulerDonatedBuffer] = (
             self.get_donated_buffers()
         )
-        self.name_to_node: dict[str, BaseSchedulerNode] = {
+        self.name_to_node: Dict[str, BaseSchedulerNode] = {
             n.get_name(): n for n in self.nodes
         }
 
-        self.name_to_buf: dict[str, SchedulerBuffer] = {
+        self.name_to_buf: Dict[str, SchedulerBuffer] = {
             buf.get_name(): buf for node in self.nodes for buf in node.get_outputs()
         }
-        self.name_to_fused_node: dict[str, BaseSchedulerNode] = self.name_to_node.copy()
+        self.name_to_fused_node: Dict[str, BaseSchedulerNode] = self.name_to_node.copy()
 
         # mutation_real_name: Maps back to the original name for codegen
         # Example:
         # If you mutate buf0 inside of buf1's kernel, then:
         # mutation_real_name = {"buf0" : "buf1"}
         # all subsequent uses of buf0 become buf1's usage in dependency graph
-        self.mutation_real_name: dict[str, str] = {}
+        self.mutation_real_name: Dict[str, str] = {}
 
         # We handle mutation by renaming modified versions of the same
         # buffer in the dependency graph to prevent cycles.
@@ -3226,10 +3181,10 @@ class Scheduler:
         # If you mutate buf0 inside of buf1's kernel, then:
         # mutation_renames = {"buf1" : "buf0"}
         # in codegen we only use buf0, never buf1
-        self.mutation_renames: dict[str, str] = {}
+        self.mutation_renames: Dict[str, str] = {}
 
         self.seen_template_fusions: OrderedSet[
-            tuple[BaseSchedulerNode, BaseSchedulerNode]
+            Tuple[BaseSchedulerNode, BaseSchedulerNode]
         ] = OrderedSet()
         # Must run first to correctly set dependencies, before all other passes that rely on
         # reading from .read_writes.reads or .unmet_dependencies
@@ -3254,7 +3209,7 @@ class Scheduler:
         self.num_orig_nodes = len(self.nodes)
         self.create_foreach_nodes()
         self.nodes = self.topological_sort_schedule(self.nodes)
-        self.logged_slow_fusion = OrderedSet[tuple[str, str]]()
+        self.logged_slow_fusion = OrderedSet[Tuple[str, str]]()
         if config._pre_fusion_custom_pass is not None:
             self.nodes = config._pre_fusion_custom_pass(self.nodes)
 
@@ -3266,11 +3221,11 @@ class Scheduler:
 
         # Stream assignments must be populated BEFORE fusion
         # to prevent fusing nodes across stream boundaries
-        self.node_to_stream: dict[BaseSchedulerNode, int] = {}
-        self.buff_to_stream: dict[str, int] = {}
+        self.node_to_stream: Dict[BaseSchedulerNode, int] = {}
+        self.buff_to_stream: Dict[str, int] = {}
         self._multi_stream_nodes: bool = False
         # Maps stream_idx → user_object_index for retrieving user stream objects
-        self.stream_idx_to_user_obj_idx: dict[int, int] = {}
+        self.stream_idx_to_user_obj_idx: Dict[int, int] = {}
         self._populate_stream_assignments()
 
         self.nodes = self.fuse_nodes(self.nodes)
@@ -3389,10 +3344,10 @@ class Scheduler:
 
         # fx graph node to the position it appears in the graph
         # for debug attribution
-        self.origin_to_index: dict[torch.fx.Node, int] = {}
+        self.origin_to_index: Dict[torch.fx.Node, int] = {}
 
         # The only source of which stream context we are currently in during the codegen phase.
-        self._current_stream_ctx: EnterCudaStreamContextLine | None = None
+        self._current_stream_ctx: Optional[EnterCudaStreamContextLine] = None
 
         get_metric_table("graph_stats").add_row(
             lambda: {
@@ -3406,7 +3361,7 @@ class Scheduler:
         # we still need the buffer (generated in alternative ways)
         self.removed_ops: OrderedSet[str] = OrderedSet()
 
-    def get_donated_buffers(self) -> dict[str, SchedulerDonatedBuffer]:
+    def get_donated_buffers(self) -> Dict[str, SchedulerDonatedBuffer]:
         name_to_donated_buf = {}
         for name in V.graph.graph_inputs_original:
             if isinstance(V.graph.graph_inputs_original[name], ir.DonatedBuffer):
@@ -3427,7 +3382,7 @@ class Scheduler:
         from .stream_constants import DEFAULT_STREAM_IDX
 
         # Map user_object_index to stream index (1-indexed for side streams)
-        user_obj_to_stream_idx: dict[int, int] = {}
+        user_obj_to_stream_idx: Dict[int, int] = {}
         stream_idx_counter = itertools.count(1)  # 0 is reserved for default stream
 
         for node in self.nodes:
@@ -3493,11 +3448,11 @@ class Scheduler:
         return self.get_buf_stream(buf_name) != self.node_to_stream.get(node, 0)
 
     @property
-    def current_device(self) -> torch.device | None:
+    def current_device(self) -> Optional[torch.device]:
         return V.graph.current_device
 
     @current_device.setter
-    def current_device(self, device: torch.device | None) -> None:
+    def current_device(self, device: Optional[torch.device]) -> None:
         V.graph.current_device = device
 
     def debug_draw_graph(self) -> None:
@@ -3580,8 +3535,8 @@ class Scheduler:
 
             def __init__(
                 self,
-                items: list[_T] | None = None,
-                membership: OrderedSet[_T] | None = None,
+                items: Optional[List[_T]] = None,
+                membership: Optional[OrderedSet[_T]] = None,
             ) -> None:
                 self.items = items or []
                 self.membership = membership or OrderedSet()
@@ -3600,7 +3555,7 @@ class Scheduler:
                 return DedupList(new_items, new_membership)
 
         # pyrefly: ignore [not-a-type]
-        name_to_users: defaultdict[str, DedupList[NodeUser]] = collections.defaultdict(
+        name_to_users: defaultDict[str, DedupList[NodeUser]] = collections.defaultdict(
             DedupList
         )
 
@@ -3645,7 +3600,7 @@ class Scheduler:
         def add_user(
             # pyrefly: ignore [not-a-type]
             used_by_name: str,
-            user_node: BaseSchedulerNode | OutputNode,
+            user_node: Union[BaseSchedulerNode, OutputNode],
             can_inplace: bool = False,
             is_weak: bool = False,
         ) -> None:
@@ -3654,7 +3609,7 @@ class Scheduler:
             )
 
         # pyrefly: ignore [not-a-type, unsupported-operation]
-        unbacked_symbol_to_origin_node: dict[sympy.Symbol, str | None] = {}
+        unbacked_symbol_to_origin_node: Dict[sympy.Symbol, Optional[str]] = {}
 
         # NB: None means that the dependency is on an input.  Don't actually
         # generate a dependency because if we do, Inductor will start trying
@@ -3842,7 +3797,7 @@ class Scheduler:
         )
 
         graph_inputs: OrderedSet[str] = OrderedSet(V.graph.graph_inputs.keys())
-        name_to_freeable_input_buf: dict[str, FreeableInputBuffer] = (
+        name_to_freeable_input_buf: Dict[str, FreeableInputBuffer] = (
             get_freeable_input_buf(self.nodes, graph_inputs)
         )
 
@@ -3858,7 +3813,7 @@ class Scheduler:
             graph_outputs,
         )
 
-        step_allocs_deallocs: list[tuple[list[str], list[str]]] = [
+        step_allocs_deallocs: List[Tuple[List[str], List[str]]] = [
             ([], []) for _ in range(len(self.nodes))
         ]
         for buf_info in buf_info_list:
@@ -3955,19 +3910,19 @@ class Scheduler:
         for node in self.nodes:
             node.prune_weak_deps()
 
-    def mode_requires_synchronization(self, mode: str | None) -> bool:
+    def mode_requires_synchronization(self, mode: Optional[str]) -> bool:
         """Check if store mode requires cross-thread synchronization."""
         return mode is not None  # Currently all non-None modes need sync
 
     def topological_sort_schedule(
-        self, nodes: list[BaseSchedulerNode]
-    ) -> list[BaseSchedulerNode]:
+        self, nodes: List[BaseSchedulerNode]
+    ) -> List[BaseSchedulerNode]:
         """
         Ensure nodes is in topologically sorted order
         """
         seen = OrderedSet[BaseSchedulerNode]()
-        name_to_node: dict[str, BaseSchedulerNode] = dict()
-        result: list[BaseSchedulerNode] = []
+        name_to_node: Dict[str, BaseSchedulerNode] = dict()
+        result: List[BaseSchedulerNode] = []
 
         def visit(n: BaseSchedulerNode) -> None:
             if n not in seen:
@@ -3997,7 +3952,7 @@ class Scheduler:
                 WeakDep(prev_buf, mutating_buf=mutating_buf, is_fake=True)
             )
 
-    def _get_unmet_dep_nodes(self, snode: BaseSchedulerNode) -> list[BaseSchedulerNode]:
+    def _get_unmet_dep_nodes(self, snode: BaseSchedulerNode) -> List[BaseSchedulerNode]:
         unmet_deps: OrderedSet[str] = OrderedSet()
         if isinstance(
             snode,
@@ -4018,13 +3973,13 @@ class Scheduler:
         unmet_dep_ops = (self.name_to_buf[dep].defining_op_name() for dep in unmet_deps)
         return list(OrderedSet(self.name_to_fused_node[n] for n in unmet_dep_ops))
 
-    def _topological_sort_nodes(self) -> list[list[BaseSchedulerNode]]:
+    def _topological_sort_nodes(self) -> List[List[BaseSchedulerNode]]:
         """
         Sort nodes by their topological order, return a list of node lists.
         """
         order = []
         nodes = dict.fromkeys(self.nodes, 0)
-        children: dict[Any, Any] = {}
+        children: Dict[Any, Any] = {}
         for node in self.nodes:
             deps = self._get_unmet_dep_nodes(node)
             nodes[node] = len(deps)
@@ -4049,7 +4004,7 @@ class Scheduler:
         Populate each node.ancestors
         """
         # note self.nodes is topologically sorted
-        name_to_ancestors: dict[str, OrderedSet[str]] = {}
+        name_to_ancestors: Dict[str, OrderedSet[str]] = {}
         for node in self.nodes:
             ancestors: OrderedSet[str] = OrderedSet()
             for dep in node.unmet_dependencies:
@@ -4069,8 +4024,8 @@ class Scheduler:
         inputs, measured as dependency hops before fusion. Nodes whose
         dependencies are all satisfied by graph inputs/constants have depth 0.
         """
-        name_to_min_distance: dict[str, int] = {}
-        name_to_max_distance: dict[str, int] = {}
+        name_to_min_distance: Dict[str, int] = {}
+        name_to_max_distance: Dict[str, int] = {}
         for node in self.nodes:
             if not node.unmet_dependencies:
                 min_dist = 0
@@ -4120,7 +4075,7 @@ class Scheduler:
                 # FusedSchedulerNode having different merged loops.
                 # Skip CPU backend for now.
 
-    def fuse_nodes(self, nodes: list[BaseSchedulerNode]) -> list[BaseSchedulerNode]:
+    def fuse_nodes(self, nodes: List[BaseSchedulerNode]) -> List[BaseSchedulerNode]:
         """
         Combine eligible nodes into FusedSchedulerNodes.
         """
@@ -4159,7 +4114,7 @@ class Scheduler:
         """
         Unpack GroupedSchedulerNode into regular nodes.
         """
-        new_nodes: list[BaseSchedulerNode] = []
+        new_nodes: List[BaseSchedulerNode] = []
         for node in self.nodes:
             new_nodes.extend(
                 node.unpack() if isinstance(node, GroupedSchedulerNode) else [node]
@@ -4168,7 +4123,7 @@ class Scheduler:
 
     def benchmark_fused_nodes(
         self, nodes: Sequence[BaseSchedulerNode]
-    ) -> tuple[float, str]:
+    ) -> Tuple[float, str]:
         """
         Benchmark fused list of nodes and return the execution time
         in milliseconds on randomly generated inputs.
@@ -4188,7 +4143,7 @@ class Scheduler:
         self,
         nodes: Sequence[BaseSchedulerNode],
         benchmark_kernel: bool,
-        hint_override: int | None = None,
+        hint_override: Optional[int] = None,
     ) -> str:
         """
         Benchmark fused list of nodes and return the execution time
@@ -4205,7 +4160,7 @@ class Scheduler:
 
     def benchmark_codegened_module(
         self, module: ModuleType, device: torch.device
-    ) -> tuple[float, str]:
+    ) -> Tuple[float, str]:
         """
         Benchmark fused list of nodes and return the execution time
         in milliseconds on randomly generated inputs.
@@ -4230,18 +4185,20 @@ class Scheduler:
         for inp in multi_node.inputs:
             # pyrefly: ignore [missing-attribute]
             inp_name = inp.get_name()
-
-            if not torch._inductor.select_algorithm.should_use_layout_constraints(inp):
+            # View has its own fixed layout that is not constrained
+            if (
+                not getattr(inp, "layout", None)
+                or inp_name not in constraints
+                or isinstance(inp, ir.ReinterpretView)
+            ):
                 continue
 
-            # pyrefly: ignore [missing-attribute]
             layout = inp.layout
             expected_layout = constraints[inp_name]
             if isinstance(layout, ir.FlexibleLayout):
                 # Freeze to the expected layout to avoid conflicts
                 # pyrefly: ignore [missing-attribute]
                 inp.freeze_layout_with_exact_strides(expected_layout.stride)
-                # pyrefly: ignore [missing-attribute]
                 layout = inp.layout
 
             if isinstance(layout, ir.FixedLayout) and expected_layout != layout:
@@ -4271,27 +4228,40 @@ class Scheduler:
                 node.node, ir.MultiTemplateBuffer
             ):
                 multi_node = node.node
-                if (
-                    not config.test_configs.force_extern_kernel_in_multi_template
-                    and not self._has_layout_conflict_for_template(multi_node)
-                ):
-                    # TODO (PaulZhang12): Potentially support recompilation/benchmark for new strides
+                if not config.test_configs.force_extern_kernel_in_multi_template:
                     min_node_unfused, _ = multi_node.get_min_choice()
                 else:
-                    extern_choices = [
-                        c
-                        for c in multi_node.choices
-                        if isinstance(
-                            c,
-                            torch._inductor.select_algorithm.ExternKernelCaller,
+                    min_node_unfused = next(
+                        (
+                            timing
+                            for timing in multi_node.choice_timings()
+                            if isinstance(
+                                timing,
+                                torch._inductor.select_algorithm.ExternKernelCaller,
+                            )
+                        ),
+                    )
+
+                if isinstance(
+                    min_node_unfused,
+                    torch._inductor.ir.TritonTemplateCallerBase,
+                ):
+                    # Check for layout conflicts before committing to Triton template
+                    if self._has_layout_conflict_for_template(multi_node):
+                        # Fall back to first ExternKernelCaller (ATen)
+                        for choice in multi_node.choice_timings():
+                            if isinstance(
+                                choice,
+                                torch._inductor.select_algorithm.ExternKernelCaller,
+                            ):
+                                min_node_unfused = choice
+                                break
+
+                        assert isinstance(
+                            choice, torch._inductor.select_algorithm.ExternKernelCaller
+                        ), (
+                            "No extern kernel detected to fallback to when layout constraints fail for Triton templates"
                         )
-                    ]
-                    assert extern_choices, "No extern kernel detected for fallback"
-                    if len(extern_choices) > 1:
-                        timings = multi_node.choice_timings()
-                        min_node_unfused = min(extern_choices, key=lambda c: timings[c])
-                    else:
-                        min_node_unfused = extern_choices[0]
 
                 if isinstance(
                     min_node_unfused,
@@ -4299,7 +4269,7 @@ class Scheduler:
                 ):
                     # pyrefly: ignore [unbound-name]
                     if config.multi_kernel_hints:
-                        callers: dict[int | None, TritonTemplateCallerBase] = {}
+                        callers: Dict[Optional[int], TritonTemplateCallerBase] = {}
                         callers[None] = min_node_unfused
 
                         # pyrefly: ignore [unbound-name]
@@ -4382,8 +4352,8 @@ class Scheduler:
         )
 
     def compile_kernel(
-        self, nodes: Sequence[BaseSchedulerNode], hint_override: int | None = None
-    ) -> tuple[LambdaFuture | None, ModuleType]:
+        self, nodes: Sequence[BaseSchedulerNode], hint_override: Optional[int] = None
+    ) -> Tuple[Optional[LambdaFuture], ModuleType]:
         src_code = self.generate_kernel_code_from_nodes(
             nodes, benchmark_kernel=True, hint_override=hint_override
         )
@@ -4477,10 +4447,10 @@ class Scheduler:
             if self._has_layout_conflict_for_template(multi_node):
                 return FusionResult.fuse(False)
 
-            hint_override_best_fusion_choice: dict[
-                int | None, TritonTemplateCallerBase
+            hint_override_best_fusion_choice: Dict[
+                Optional[int], TritonTemplateCallerBase
             ] = {}
-            future_choices: list[tuple[Any, LambdaFuture | None, ModuleType]] = []
+            future_choices: List[Tuple[Any, Optional[LambdaFuture], ModuleType]] = []
             for hint_override in config.multi_kernel_hints:
                 choice_timings = multi_node.choice_timings(hint_override)
                 for choice, _ in sorted(choice_timings.items(), key=lambda x: x[1]):
@@ -4499,7 +4469,7 @@ class Scheduler:
                         )
 
                 min_ms_fused = float("inf")
-                ms_fused_choice: TritonTemplateCallerBase | None = None
+                ms_fused_choice: Optional[TritonTemplateCallerBase] = None
                 new_timings = {}
                 for choice, future, mod_fused in future_choices:
                     try:
@@ -4537,7 +4507,7 @@ class Scheduler:
             )
 
             ms1, ms2 = float("inf"), float("inf")
-            min_choice: ir.ChoiceCaller | None = None
+            min_choice: Optional[ir.ChoiceCaller] = None
             if not get_choice_timings_async:
                 # Eagerly compile and benchmark non-template nodes
                 choice_timings = multi_node.choice_timings()
@@ -4567,7 +4537,7 @@ class Scheduler:
             # Start compiling choices in parallel
             from torch._inductor.codegen.simd import CantSplit
 
-            future_choices: list[tuple[Any, LambdaFuture | None, ModuleType]] = []
+            future_choices: List[Tuple[Any, Optional[LambdaFuture], ModuleType]] = []
             triton_choices = 0
             for choice, unfused_time in choice_timings_iter:
                 if not isinstance(choice, TritonTemplateCallerBase):
@@ -4846,7 +4816,7 @@ class Scheduler:
 
     def _evaluate_pending_template_fusions(
         self,
-        template_fusion_candidates: dict[BaseSchedulerNode, list[PendingFusion]],
+        template_fusion_candidates: Dict[BaseSchedulerNode, List[PendingFusion]],
         fused_nodes: OrderedSet[BaseSchedulerNode],
     ) -> None:
         """
@@ -4856,9 +4826,9 @@ class Scheduler:
         """
 
         while template_fusion_candidates:
-            template_futures: list[Future] = []
-            future_to_pending_fusion: dict[
-                Future, tuple[PendingFusion, BaseSchedulerNode]
+            template_futures: List[Future] = []
+            future_to_pending_fusion: Dict[
+                Future, Tuple[PendingFusion, BaseSchedulerNode]
             ] = {}
             fusions_to_remove: OrderedSet[BaseSchedulerNode] = OrderedSet()
             for candidate in template_fusion_candidates:
@@ -4916,9 +4886,9 @@ class Scheduler:
 
     def _try_fusion_pairs(
         self,
-        possible_fusion_pairs: list[tuple[BaseSchedulerNode, BaseSchedulerNode]],
-        pending_fusions: dict[BaseSchedulerNode, PendingFusion],
-        template_fusion_nodes: dict[BaseSchedulerNode, list[PendingFusion]],
+        possible_fusion_pairs: List[Tuple[BaseSchedulerNode, BaseSchedulerNode]],
+        pending_fusions: Dict[BaseSchedulerNode, PendingFusion],
+        template_fusion_nodes: Dict[BaseSchedulerNode, List[PendingFusion]],
         fused_nodes: OrderedSet[BaseSchedulerNode],
         is_reorder_round: bool,
     ):
@@ -4998,7 +4968,7 @@ class Scheduler:
     def _finish_pending_fusions(
         self,
         fused_nodes: OrderedSet[BaseSchedulerNode],
-        pending_fusions: dict[BaseSchedulerNode, PendingFusion],
+        pending_fusions: Dict[BaseSchedulerNode, PendingFusion],
     ):
         seen_pair_speedup_fn: OrderedSet[Callable[[], bool]] = OrderedSet()
 
@@ -5021,8 +4991,8 @@ class Scheduler:
 
     def _handle_template_overlap(
         self,
-        possible_fusions: list[tuple[BaseSchedulerNode, BaseSchedulerNode]],
-        deferred_prologue_fusions: list[tuple[BaseSchedulerNode, BaseSchedulerNode]],
+        possible_fusions: List[Tuple[BaseSchedulerNode, BaseSchedulerNode]],
+        deferred_prologue_fusions: List[Tuple[BaseSchedulerNode, BaseSchedulerNode]],
     ):
         # Potentially a prologue fusion might have the same template as an epilogue
         # the prologue fusion therefore has to be evaluated on the potential
@@ -5041,9 +5011,9 @@ class Scheduler:
 
     def fuse_nodes_once(
         self,
-        nodes: list[BaseSchedulerNode],
+        nodes: List[BaseSchedulerNode],
         is_reorder_round: bool,
-    ) -> list[BaseSchedulerNode]:
+    ) -> List[BaseSchedulerNode]:
         """
         Combine eligible nodes into FusedSchedulerNodes.
 
@@ -5062,14 +5032,14 @@ class Scheduler:
         # and which we will benchmark profitability of.
         # Maps node -> (is_speedup_fn, LambdaFuture, node1, node2)
         # Only used in the case of benchmark_kernel=True
-        pending_fusions: dict[
+        pending_fusions: Dict[
             BaseSchedulerNode,
             PendingFusion,
         ] = {}
 
-        template_fusion_nodes: dict[BaseSchedulerNode, list[PendingFusion]] = {}
-        deferred_prologue_fusions: list[
-            tuple[BaseSchedulerNode, BaseSchedulerNode]
+        template_fusion_nodes: Dict[BaseSchedulerNode, List[PendingFusion]] = {}
+        deferred_prologue_fusions: List[
+            Tuple[BaseSchedulerNode, BaseSchedulerNode]
         ] = []
 
         possible_fusions = self.get_possible_fusions(
@@ -5108,122 +5078,49 @@ class Scheduler:
         nodes = self.topological_sort_schedule(nodes)
         return nodes
 
-    @staticmethod
-    def _distance_windows(
-        nodes: list[BaseSchedulerNode],
-        node_to_idx: dict[BaseSchedulerNode, int],
-        max_distance: int,
-    ) -> Iterator[list[BaseSchedulerNode]]:
-        """Sort `nodes` by baseline index, then yield groups whose span
-        is at most `max_distance`. Start a new window whenever the next
-        node would push the span past the limit. Negative `max_distance`
-        means "no limit" — yield everything as one window.
+    def create_combo_kernel_nodes(self, num_ck_nodes: Optional[int] = None) -> None:
         """
-        ordered = sorted(nodes, key=lambda n: node_to_idx[n])
-        if max_distance < 0:
-            if ordered:
-                yield ordered
-            return
-        window: list[BaseSchedulerNode] = []
-        window_min = -1
-        for n in ordered:
-            idx = node_to_idx[n]
-            if window and idx - window_min > max_distance:
-                yield window
-                window = []
-            if not window:
-                window_min = idx
-            window.append(n)
-        if window:
-            yield window
-
-    def create_combo_kernel_nodes(self, num_ck_nodes: int | None = None) -> None:
-        """Group parallel nodes into combo kernels.
-
-        Each parallel group is split into windows whose baseline-index
-        span is at most `combo_kernel_max_distance` (set the config to a
-        negative value to disable splitting). If a peak-memory threshold is set,
-        each window goes through the gate, which simulates the
-        post-fusion peak and accepts the combo only if the peak stays
-        under the threshold; rejected windows are halved and retried.
-        Without a threshold, every window becomes a combo directly.
+        Groups parallel nodes
         """
         fused_nodes = OrderedSet(self.nodes)
         count = 0
         num_nodes_orig = len(self.nodes)
         log.debug("ComboKernels: Generating with num_ck_nodes = %s...", num_ck_nodes)
-        enable_autotune = config.combo_kernels_autotune > 0
-
-        abs_thr_gb = config.combo_kernel_peak_memory_increase_gb
-        pct_thr = config.combo_kernel_peak_memory_pct_threshold
-        memory_check = abs_thr_gb is not None or pct_thr is not None
-        max_distance = config.combo_kernel_max_distance
-        memory_sim_time = 0.0
-        mem_ctx: ComboKernelMemoryContext | None = None
-        if memory_check:
-            mem_ctx = self._init_peak_memory_context()
-            node_to_idx = mem_ctx.node_to_idx
-        else:
-            node_to_idx = {n: i for i, n in enumerate(self.nodes)}
-
-        def _register_accept(
-            combo_node: ForeachKernelSchedulerNode,
-            accepted: list[BaseSchedulerNode],
-            num: int,
-        ) -> None:
-            nonlocal count
-            count += 1
-            log.info(
-                "ComboKernels: Combining %d nodes for %d-th group",
-                len(accepted),
-                num,
-            )
-            for node in accepted:
-                fused_nodes.remove(node)
-            fused_nodes.add(combo_node)
-            self.name_to_fused_node.update(
-                {n.get_name(): combo_node for n in combo_node.get_nodes()}
-            )
-            stream = self.node_to_stream.get(accepted[0])
-            if stream is not None:
-                self.node_to_stream[combo_node] = stream
-
         for num, node_list in enumerate(
             ForeachKernelSchedulerNode.group_nodes_for_combo_kernels(self)
         ):
+            node_list = ForeachKernelSchedulerNode.combinable_nodes(node_list)
+            if len(node_list) < 2:
+                continue
             if num_ck_nodes is not None and count > num_ck_nodes:
                 break
-            members = ForeachKernelSchedulerNode.combinable_nodes(node_list)
-            if len(members) < 2:
+            if not self.speedup_by_combo_kernel(node_list):
+                log.debug("ComboKernels: Not speeding up %d-th group", num)
                 continue
-
-            for window in Scheduler._distance_windows(
-                members, node_to_idx, max_distance
-            ):
-                if num_ck_nodes is not None and count > num_ck_nodes:
-                    break
-                if len(window) < 2 or not self.speedup_by_combo_kernel(window):
-                    continue
-                if memory_check:
-                    assert mem_ctx is not None
-                    sim_start = time.perf_counter()
-                    self._try_combo_with_halving(
-                        window,
-                        num,
-                        mem_ctx,
-                        enable_autotune=enable_autotune,
-                        on_accept=_register_accept,
-                    )
-                    memory_sim_time += time.perf_counter() - sim_start
-                else:
-                    combo_node = ForeachKernelSchedulerNode(
-                        window[0].scheduler,
-                        window,
-                        use_custom_partition_algo=True,
-                        enable_autotune=enable_autotune,
-                    )
-                    _register_accept(combo_node, window, num)
-
+            count += 1
+            enable_autotune = config.combo_kernels_autotune > 0
+            group_snode = ForeachKernelSchedulerNode(
+                node_List[0].scheduler,
+                node_list,
+                use_custom_partition_algo=True,
+                enable_autotune=enable_autotune,
+            )
+            log.info(
+                "ComboKernels: Combining %d nodes for %d-th group",
+                len(node_list),
+                num,
+            )
+            for node in node_list:
+                fused_nodes.remove(node)
+            fused_nodes.add(group_snode)
+            self.name_to_fused_node.update(
+                {n.get_name(): group_snode for n in group_snode.get_nodes()}
+            )
+            # Propagate stream assignment so codegen can place the combo
+            # kernel in the correct stream context.
+            stream = self.node_to_stream.get(node_List[0])
+            if stream is not None:
+                self.node_to_stream[group_snode] = stream
         self.nodes = sorted(fused_nodes, key=lambda x: x.min_order)
         self.nodes = self.topological_sort_schedule(self.nodes)
         log.info(
@@ -5232,244 +5129,24 @@ class Scheduler:
             num_nodes_orig,
             len(self.nodes),
         )
-        if memory_check:
-            log.info(
-                "ComboKernels memory-aware: %.3fs spent in peak simulation",
-                memory_sim_time,
-            )
         self.prune_redundant_deps(self.nodes)
 
-    def _init_peak_memory_context(self) -> ComboKernelMemoryContext:
-        """Build the immutable baseline state the gate compares against:
-        original buffer lifetimes, original peak, and step indices.
-        """
-        from .memory import (
-            assign_memory_planning_info_for_scheduler_buffers,
-            assign_memory_planning_info_for_scheduler_nodes,
-            compute_memory_timeline,
-            get_freeable_input_buf,
-            live_memory_before_steps_from_buf_info_list,
-            peak_memory_from_buf_info_list,
-        )
-
-        graph_inputs = OrderedSet(V.graph.graph_inputs.keys())
-        graph_outputs = OrderedSet(V.graph.get_output_names())
-
-        name_to_freeable = get_freeable_input_buf(self.nodes, graph_inputs)
-        assign_memory_planning_info_for_scheduler_buffers(self.nodes, self.name_to_buf)
-        assign_memory_planning_info_for_scheduler_nodes(
-            self.nodes,
-            self.name_to_fused_node,
-            self.name_to_buf,
-            name_to_freeable,
-        )
-        buf_info_list, _, _ = compute_memory_timeline(
-            self.nodes, name_to_freeable, graph_outputs
-        )
-        baseline_peak, _ = peak_memory_from_buf_info_list(
-            buf_info_list, len(self.nodes)
-        )
-        baseline_live_before = live_memory_before_steps_from_buf_info_list(
-            buf_info_list, len(self.nodes)
-        )
-
-        return ComboKernelMemoryContext(
-            graph_outputs=graph_outputs,
-            node_to_idx={node: idx for idx, node in enumerate(self.nodes)},
-            baseline_peak=baseline_peak,
-            running_peak=baseline_peak,
-            baseline_live_before=baseline_live_before,
-        )
-
-    def _try_combo_with_memory_check(
-        self,
-        group_nodes: list[BaseSchedulerNode],
-        mem_ctx: ComboKernelMemoryContext,
-        enable_autotune: bool,
-    ) -> tuple[ForeachKernelSchedulerNode | None, int]:
-        """The gate: does fusing `group_nodes` into one combo keep peak
-        memory under the threshold?
-
-        Returns `(combo_node, combo_step)` if accepted, or `(None, 0)`
-        if rejected. The running peak lives on `mem_ctx.running_peak`.
-
-        The pretend rewrite only changes node order inside the window
-        `[region_start, region_end]` (the smallest range containing all
-        members). Inside that window:
-          - the members collapse into one combo node, all at `combo_step`,
-          - everything else is evaluated from the original schedule.
-        Outside the window, nothing moves. Earlier accepts are accounted
-        for only by `mem_ctx.running_peak`. The threshold is checked
-        against `mem_ctx.baseline_peak` (the original graph peak) so total
-        peak drift is capped.
-        """
-        from .memory import estimate_region_peak_memory
-
-        combo_node = ForeachKernelSchedulerNode(
-            group_nodes[0].scheduler,
-            group_nodes,
-            use_custom_partition_algo=True,
-            enable_autotune=enable_autotune,
-        )
-        # Wire the combo's pred_buffers from its members so the gate
-        # simulator can read `node.mpi_node.pred_buffers` uniformly.
-        combo_pred_buffers = OrderedSet()
-        for m in group_nodes:
-            combo_pred_buffers.update(m.mpi_node.pred_buffers)
-        combo_node.mpi_node = MemoryPlanningInfoForNode(
-            pred_buffers=combo_pred_buffers,
-        )
-
-        node_to_idx = mem_ctx.node_to_idx
-
-        # Single pass over group_nodes: build the set and find the
-        # min/max baseline index together.
-        group_set: OrderedSet[BaseSchedulerNode] = OrderedSet()
-        region_start = sys.maxsize
-        region_end = -1
-        for n in group_nodes:
-            group_set.add(n)
-            idx = node_to_idx[n]
-            if idx < region_start:
-                region_start = idx
-            if idx > region_end:
-                region_end = idx
-
-        # Build the post-rewrite slice for [region_start, region_end].
-        local_entries: list[_LocalEntry] = []
-        inserted_combo = False
-
-        def add_local(node: BaseSchedulerNode, cur: int, baseline: int) -> None:
-            local_entries.append(_LocalEntry(cur, baseline, node))
-
-        for i in range(region_start, region_end + 1):
-            n = self.nodes[i]
-            if n in group_set:
-                if not inserted_combo:
-                    add_local(combo_node, region_start, i)
-                    inserted_combo = True
-                continue
-            add_local(n, i, i)
-
-        local_nodes = [
-            e.node for e in sorted(local_entries, key=lambda e: (e.cur, e.baseline))
-        ]
-        local_nodes = self.topological_sort_schedule(local_nodes)
-
-        new_step = {n: region_start + i for i, n in enumerate(local_nodes)}
-        combo_step = new_step[combo_node]
-        for n in group_nodes:
-            new_step[n] = combo_step
-
-        def step_of(node: BaseSchedulerNode) -> int:
-            if node in new_step:
-                return new_step[node]
-            return node_to_idx[node]
-
-        # Combo windows are evaluated independently. The entry live set is
-        # therefore the original-schedule live memory before this region starts.
-        cur_memory = mem_ctx.baseline_live_before[region_start]
-
-        region_peak = estimate_region_peak_memory(
-            local_nodes,
-            region_start=region_start,
-            region_end=region_end,
-            step_of=step_of,
-            graph_outputs=mem_ctx.graph_outputs,
-            cur_memory=cur_memory,
-        )
-
-        # Compare against the *original* baseline peak (not the running
-        # peak) to cap total drift across many accepts.
-        original_peak = mem_ctx.baseline_peak
-        new_peak = max(mem_ctx.running_peak, region_peak)
-        delta = new_peak - original_peak
-        abs_thr_gb = config.combo_kernel_peak_memory_increase_gb
-        pct_thr = config.combo_kernel_peak_memory_pct_threshold
-        limits = [float(abs_thr_gb) * (1024**3)] if abs_thr_gb is not None else []
-        if pct_thr is not None:
-            limits.append(pct_thr * original_peak)
-        assert limits
-        accept = delta <= min(limits)
-
-        pct = (100.0 * delta / original_peak) if original_peak > 0 else 0.0
-        if not accept:
-            log.debug(
-                "ComboKernels memory-aware: rejected %d nodes "
-                "(peak delta %+d bytes = %.3f%%)",
-                len(group_nodes),
-                delta,
-                pct,
-            )
-            return None, 0
-
-        log.info(
-            "ComboKernels memory-aware: accepted %d nodes "
-            "(peak delta %+d bytes = %.3f%%)",
-            len(group_nodes),
-            delta,
-            pct,
-        )
-        mem_ctx.running_peak = new_peak
-        return combo_node, combo_step
-
-    def _try_combo_with_halving(
-        self,
-        candidate: list[BaseSchedulerNode],
-        num: int,
-        mem_ctx: ComboKernelMemoryContext,
-        *,
-        enable_autotune: bool,
-        on_accept: Callable[
-            [ForeachKernelSchedulerNode, list[BaseSchedulerNode], int], None
-        ],
-    ) -> None:
-        """Try the full candidate; on reject, halve at the
-        baseline-index midpoint and try each half.
-        """
-        n2i = mem_ctx.node_to_idx
-        # Push late then early so early pops first.
-        stack: list[list[BaseSchedulerNode]] = [candidate]
-        while stack:
-            subset = stack.pop()
-            if len(subset) < 2 or not self.speedup_by_combo_kernel(subset):
-                continue
-
-            combo_node, combo_step = Scheduler._try_combo_with_memory_check(
-                self, subset, mem_ctx, enable_autotune
-            )
-            if combo_node is not None:
-                on_accept(combo_node, subset, num)
-                continue
-
-            idxs = [n2i[n] for n in subset]
-            lo, hi = min(idxs), max(idxs)
-            if lo == hi:
-                continue
-            mid = (lo + hi) // 2
-            early = [n for n in subset if n2i[n] <= mid]
-            late = [n for n in subset if n2i[n] > mid]
-            if 2 <= len(late) < len(subset):
-                stack.append(late)
-            if 2 <= len(early) < len(subset):
-                stack.append(early)
-
-    def prune_redundant_deps(self, nodes: list[BaseSchedulerNode]) -> None:
+    def prune_redundant_deps(self, nodes: List[BaseSchedulerNode]) -> None:
         for node in nodes:
             node.prune_redundant_deps(self.name_to_fused_node)
 
     def get_possible_fusions(
         self,
-        nodes: list[BaseSchedulerNode],
+        nodes: List[BaseSchedulerNode],
         is_reorder_round: bool,
-    ) -> list[tuple[BaseSchedulerNode, BaseSchedulerNode]]:
+    ) -> List[Tuple[BaseSchedulerNode, BaseSchedulerNode]]:
         """
         Helper to find all legal fusion opportunities, sorted by self.score_fusion()
         """
         possible_fusions = []
-        seen = OrderedSet[tuple[BaseSchedulerNode, BaseSchedulerNode]]()
+        seen = OrderedSet[Tuple[BaseSchedulerNode, BaseSchedulerNode]]()
 
-        def check_all_pairs(nodes: list[BaseSchedulerNode]) -> None:
+        def check_all_pairs(nodes: List[BaseSchedulerNode]) -> None:
             for node1_index, node1 in enumerate(nodes):
                 for node2 in nodes[
                     node1_index + 1 : node1_index
@@ -5585,7 +5262,7 @@ class Scheduler:
 
         def _find_single_user_inputs(
             node: BaseSchedulerNode,
-        ) -> list[ir.Buffer]:
+        ) -> List[ir.Buffer]:
             output = []
             for rd in node.read_writes.reads:
                 buf = self.name_to_buf.get(rd.name)
@@ -5661,7 +5338,7 @@ class Scheduler:
         unique_writes = all_write_names - writes_removed_through_fusion
 
         # Get all unique buffer names (reads and writes combined, but no double counting)
-        unique_io_buffers = unique_reads | unique_writes
+        unique_io_buffers = Union[unique_reads, unique_writes]
 
         return len(unique_io_buffers) > threshold
 
@@ -5696,7 +5373,7 @@ class Scheduler:
         self,
         node1: BaseSchedulerNode,
         node2: BaseSchedulerNode,
-        common_buf_names: tuple[str, ...] | OrderedSet[str],
+        common_buf_names: Union[Tuple[str, ...], OrderedSet[str]],
     ) -> str:
         """
         Try to decide reasons why fusion fail due to no shared memory even though
@@ -6077,7 +5754,7 @@ class Scheduler:
 
         if not all(isinstance(sn, SchedulerNode) for sn in pw_node.get_nodes()):
             return False
-        snodes = typing.cast(list[SchedulerNode], pw_node.get_nodes())
+        snodes = typing.cast(List[SchedulerNode], pw_node.get_nodes())
 
         # All snodes must have the same total iteration numel matching
         # the reduction's numel * rnumel so they can be reindexed identically.
@@ -6220,7 +5897,7 @@ class Scheduler:
 
     def get_expand_dim_for_pointwise_nodes(
         self, node1: BaseSchedulerNode, node2: BaseSchedulerNode
-    ) -> tuple[int, SchedulerNode, sympy.Expr] | None:
+    ) -> Tuple[int, SchedulerNode, sympy.Expr] | None:
         """
         Fusing two small pointwise nodes significantly reduces kernel overhead
         and launch overhead. However, slightly different sizes would prevent fusion.
@@ -6267,7 +5944,7 @@ class Scheduler:
         # When memory access is small, reducing gpu kernel overhead is profitable over
         # slightly larger memory access.
         node1_write_memory = self.dep_size_hint(next(iter(node1.read_writes.writes)))
-        node2_write_memory = self.dep_size_hint(next(iter(node2.read_writes.writes)))
+        node2_write_memory = self.dep_size_hint(next(iter(node1.read_writes.writes)))
         if (
             max(node1_write_memory, node2_write_memory)
             > config.small_memory_access_threshold
@@ -6278,7 +5955,7 @@ class Scheduler:
         # race condition
         def has_reusable_buffer(node: BaseSchedulerNode) -> bool:
             for read in node.read_writes.reads:
-                input_buf: SchedulerBuffer | SchedulerDonatedBuffer | None
+                input_buf: Union[SchedulerBuffer, Optional[SchedulerDonatedBuffer]]
                 if read.name in self.name_to_donated_buffer:
                     input_buf = self.name_to_donated_buffer[read.name]
                 else:
@@ -6582,7 +6259,7 @@ class Scheduler:
         """
         node1_buf_names = node1.get_buffer_names()
         why = WhyNoFuse(node1, node2)
-        remaining_deps_by_name: dict[str, list[Dep]] = defaultdict(list)
+        remaining_deps_by_name: Dict[str, List[Dep]] = defaultdict(list)
 
         for dep in node2.unmet_dependencies:
             name = self.mutation_renames.get(dep.name, dep.name)
@@ -6731,7 +6408,7 @@ class Scheduler:
     # we relax the conditions for fusion and additionally allow matching a writing StarDep with any read dep.
     # This makes use of the fact that `f(UB) = UB`.
     def fusable_stardep_write_and_read_on_empty_tensor(
-        self, read: Dep, write: StarDep, writing_node: ir.Operation | None
+        self, read: Dep, write: StarDep, writing_node: Optional[ir.Operation]
     ) -> bool:
         if not isinstance(writing_node, ir.UserDefinedTritonKernel):
             return False
@@ -6782,7 +6459,7 @@ class Scheduler:
         count_bytes: bool = ...,
         return_is_mix_order_reduction: Literal[True] = ...,
         allow_mix_order_reduction: bool = ...,
-    ) -> tuple[int, int, bool]: ...
+    ) -> Tuple[int, int, bool]: ...
 
     def score_fusion_memory(
         self,
@@ -6791,7 +6468,7 @@ class Scheduler:
         count_bytes: bool = True,
         return_is_mix_order_reduction: bool = False,
         allow_mix_order_reduction: bool = True,
-    ) -> int | tuple[int, int, bool]:
+    ) -> Union[int, Tuple[int, int, bool]]:
         """
         The first term in our fusion score that estimates number of saved
         memory operations.
@@ -6838,8 +6515,8 @@ class Scheduler:
             or node1.is_template()
             or node2.is_template()
         ):
-            node1_deps = node1.read_writes.reads | node1.read_writes.writes
-            node2_deps = node2.read_writes.reads | node2.read_writes.writes
+            node1_deps = Union[node1.read_writes.reads, node1.read_writes.writes]
+            node2_deps = Union[node2.read_writes.reads, node2.read_writes.writes]
 
             def _match(dep1: Dep, dep2: Dep):
                 if dep1 == dep2:
@@ -6870,7 +6547,7 @@ class Scheduler:
 
             deps = [
                 dep
-                for dep in node1.read_writes.reads | node1.read_writes.writes
+                for dep in Union[node1.read_writes.reads, node1.read_writes.writes]
                 if dep in node2.read_writes.reads or dep in node2.read_writes.writes
             ]
 
@@ -6878,8 +6555,8 @@ class Scheduler:
                 sum(self.dep_size_hint(dep, count_bytes) for dep in deps), 0, False
             )
 
-        common_memory_deps = (node1.read_writes.reads | node1.read_writes.writes) & (
-            node2.read_writes.reads | node2.read_writes.writes
+        common_memory_deps = (Union[node1.read_writes.reads, node1.read_writes.writes]) & (
+            Union[node2.read_writes.reads, node2.read_writes.writes]
         )
 
         score = sum(self.dep_size_hint(dep) for dep in common_memory_deps)
@@ -7082,14 +6759,14 @@ class Scheduler:
         )
 
     def get_possible_fusions_with_highest_priority(
-        self, possible_fusions: list[tuple[BaseSchedulerNode, BaseSchedulerNode]]
-    ) -> list[tuple[BaseSchedulerNode, BaseSchedulerNode]]:
+        self, possible_fusions: List[Tuple[BaseSchedulerNode, BaseSchedulerNode]]
+    ) -> List[Tuple[BaseSchedulerNode, BaseSchedulerNode]]:
         # Group the possible fusions based on their priority from the backend.
         # Only return the group of possible fusions with highest priority.
         if len(possible_fusions) == 0:
             return possible_fusions
-        possible_fusions_group_by_priority: dict[
-            int, list[tuple[BaseSchedulerNode, BaseSchedulerNode]]
+        possible_fusions_group_by_priority: Dict[
+            int, List[Tuple[BaseSchedulerNode, BaseSchedulerNode]]
         ] = {}
 
         for node1, node2 in possible_fusions:
@@ -7114,7 +6791,7 @@ class Scheduler:
         return possible_fusions_with_highest_priority
 
     def score_fusion_key(
-        self, nodes: tuple[BaseSchedulerNode, BaseSchedulerNode]
+        self, nodes: Tuple[BaseSchedulerNode, BaseSchedulerNode]
     ) -> Any:
         """
         Shim for list.sort(key=...)
@@ -7203,7 +6880,7 @@ class Scheduler:
 
         return device_scheduling(self)
 
-    def get_backend(self, device: torch.device | None) -> BaseScheduling:
+    def get_backend(self, device: Optional[torch.device]) -> BaseScheduling:
         assert device is not None
         if device not in self.backends:
             self.backends[device] = self.create_backend(device)
@@ -7240,7 +6917,7 @@ class Scheduler:
             and name not in self.mutation_real_name
         )
 
-    def should_partition(self, node: BaseSchedulerNode) -> str | None:
+    def should_partition(self, node: BaseSchedulerNode) -> Optional[str]:
         """
         Return the reason why we should partition the inductor graph on this node,
         or None if the node is cudagraphable.
@@ -7341,7 +7018,7 @@ class Scheduler:
 
     def _uses_cudagraph_unsafe_unbacked_symint(
         self, node: BaseSchedulerNode
-    ) -> str | None:
+    ) -> Optional[str]:
         unsafe_symints = self._get_cudagraph_unsafe_unbacked_symints()
         if not unsafe_symints:
             return None
@@ -7358,12 +7035,12 @@ class Scheduler:
 
     def get_name_to_nodes(
         self,
-    ) -> dict[str, ir.IRNode | ir.TorchBindObject | sympy.Expr]:
+    ) -> Dict[str, ir.IRNode | ir.TorchBindObject | sympy.Expr]:
         """
         Return a mapping from name strings to the corresponding graph inputs or
         base scheduler node outputs.
         """
-        name_to_node: dict[str, ir.IRNode | ir.TorchBindObject | sympy.Expr] = {}
+        name_to_node: Union[Dict[str, Union[ir.IRNode, ir.TorchBindObject], sympy.Expr]] = {}
         name_to_node.update(V.graph.graph_inputs)
 
         for node in self.nodes:
@@ -7374,7 +7051,7 @@ class Scheduler:
 
     def compute_graph_partition_maps(
         self,
-        signatures: list[GraphPartitionSignature],
+        signatures: List[GraphPartitionSignature],
     ) -> None:
         """
         computes a mapping from partition input/output indices to graph input/output
@@ -7416,7 +7093,7 @@ class Scheduler:
     def get_graph_partition_symbol_inputs(
         self,
         partition: PartitionType,
-        input_nodes: dict[str, ir.IRNode | ir.TorchBindObject | sympy.Expr],
+        input_nodes: Union[Dict[str, Union[ir.IRNode, ir.TorchBindObject], sympy.Expr]],
     ) -> OrderedSet[sympy.Symbol]:
         """
         Returns all symbol inputs which are required to be in scope to successfully
@@ -7427,7 +7104,7 @@ class Scheduler:
         """
 
         def get_input_node_symbols(
-            node: ir.IRNode | sympy.Expr | ir.TorchBindObject,
+            node: Union[Union[ir.IRNode, sympy.Expr], ir.TorchBindObject],
         ) -> OrderedSet[sympy.Symbol]:
             """
             Gets symbols used in input node shapes, strides, and offsets.
@@ -7468,7 +7145,7 @@ class Scheduler:
             *(get_scheduler_node_symbol_uses(node) for node in partition)
         )
         candidate_symbols.update(
-            *(get_input_node_symbols(node) for node in input_nodes.values())
+            *(get_input_node_symbols(node) for _, node in input_nodes.items())
         )
 
         candidate_symbols = filter_symbols(candidate_symbols)
@@ -7482,8 +7159,8 @@ class Scheduler:
         return OrderedSet(sorted(res, key=operator.attrgetter("name")))
 
     def get_graph_partition_signature(
-        self, partitions: list[PartitionType], skip_cudagraphs: list[bool]
-    ) -> list[GraphPartitionSignature]:
+        self, partitions: List[PartitionType], skip_cudagraphs: List[bool]
+    ) -> List[GraphPartitionSignature]:
         """
         Gets signature for each graph partition, including input nodes, output nodes, and
         whether deallocating an input within graph partition.
@@ -7537,7 +7214,7 @@ class Scheduler:
                 OrderedSet(
                     [
                         x.name
-                        for x in read_writes.reads | read_writes.writes
+                        for x in Union[read_writes.reads, read_writes.writes]
                         if not isinstance(x, WeakDep)
                     ]
                 )
@@ -7660,8 +7337,8 @@ class Scheduler:
 
     def reorder_for_minimizing_partition(
         self,
-        nodes: list[BaseSchedulerNode],
-    ) -> list[BaseSchedulerNode]:
+        nodes: List[BaseSchedulerNode],
+    ) -> List[BaseSchedulerNode]:
         """
         Reorder nodes to minimize the number of partitions via a bfs
         topological sort. This is the optimal reordering such that the
@@ -7672,9 +7349,9 @@ class Scheduler:
         """
         import heapq
 
-        node_to_indegree: dict[BaseSchedulerNode, int] = dict()
-        cudagraphable_nodes: list[tuple[int, BaseSchedulerNode]] = []
-        non_cudagraphable_nodes: list[tuple[int, BaseSchedulerNode]] = []
+        node_to_indegree: Dict[BaseSchedulerNode, int] = dict()
+        cudagraphable_nodes: List[Tuple[int, BaseSchedulerNode]] = []
+        non_cudagraphable_nodes: List[Tuple[int, BaseSchedulerNode]] = []
         node_to_index = {node: idx for idx, node in enumerate(nodes)}
 
         def insert_pending_nodes(node: BaseSchedulerNode) -> None:
@@ -7696,7 +7373,7 @@ class Scheduler:
             if node_to_indegree[node] == 0:
                 insert_pending_nodes(node)
 
-        schedule: list[BaseSchedulerNode] = []
+        schedule: List[BaseSchedulerNode] = []
         num_iters: int = 0
         while num_iters < len(nodes) and (
             non_cudagraphable_nodes or cudagraphable_nodes
@@ -7725,8 +7402,8 @@ class Scheduler:
 
     def maybe_reorder_for_minimizing_partition(
         self,
-        nodes: list[BaseSchedulerNode],
-    ) -> list[BaseSchedulerNode]:
+        nodes: List[BaseSchedulerNode],
+    ) -> List[BaseSchedulerNode]:
         """
         Reorder nodes to minimize the number of partitions if this only slightly
         increase peak memory.
@@ -7755,8 +7432,8 @@ class Scheduler:
         return nodes
 
     def reorder_for_partition_with_simple_dependency(
-        self, nodes: list[BaseSchedulerNode]
-    ) -> list[BaseSchedulerNode]:
+        self, nodes: List[BaseSchedulerNode]
+    ) -> List[BaseSchedulerNode]:
         """
         Reorder a node if it should be partitioned and has simple dependency:
         1. move a partitioned node to the front if it has no dependency
@@ -7764,9 +7441,9 @@ class Scheduler:
         3. otherwise do not reorder
         """
 
-        front: list[BaseSchedulerNode] = []
-        middle: list[BaseSchedulerNode] = []
-        back: list[BaseSchedulerNode] = []
+        front: List[BaseSchedulerNode] = []
+        middle: List[BaseSchedulerNode] = []
+        back: List[BaseSchedulerNode] = []
 
         def only_output_user(node: BaseSchedulerNode) -> bool:
             for buf in node.get_outputs():
@@ -7788,12 +7465,12 @@ class Scheduler:
 
     def graph_partition(
         self,
-    ) -> tuple[list[PartitionType], list[GraphPartitionSignature]]:
+    ) -> Tuple[List[PartitionType], List[GraphPartitionSignature]]:
         """
         Given a list of BaseSchedulerNodes, split into a list of
         graph partitions and compute partition input/output signatures.
         """
-        partitions: list[PartitionType] = []
+        partitions: List[PartitionType] = []
         skip_cudagraph = True
         cur_partition: PartitionType = []
         skip_cudagraphs = []
@@ -7843,8 +7520,8 @@ class Scheduler:
 
     def _log_graph_partitions(
         self,
-        partitions: list[PartitionType],
-        signatures: list[GraphPartitionSignature],
+        partitions: List[PartitionType],
+        signatures: List[GraphPartitionSignature],
     ) -> None:
         if not cudagraphs_log.isEnabledFor(logging.DEBUG):
             return
@@ -7953,7 +7630,7 @@ class Scheduler:
         )
 
     def use_default_device_context(
-        self, partitions: list[PartitionType], signatures: list[GraphPartitionSignature]
+        self, partitions: List[PartitionType], signatures: List[GraphPartitionSignature]
     ) -> contextlib.AbstractContextManager[None]:
         @contextlib.contextmanager
         def ctx() -> Iterator[None]:
@@ -7980,7 +7657,7 @@ class Scheduler:
         return ctx()
 
     def update_graph_partition_default_device(
-        self, partitions: list[PartitionType], signatures: list[GraphPartitionSignature]
+        self, partitions: List[PartitionType], signatures: List[GraphPartitionSignature]
     ) -> None:
         # Note: [Graph Partition Device Contexts]
         # Entering a device context takes 60 microseconds and exiting a device
@@ -8058,12 +7735,12 @@ class Scheduler:
                 f"Expect {num_partitions} partition maps but got {len(V.graph.partition_maps)}"
             )
 
-    def _codegen(self, nodes: list[BaseSchedulerNode]) -> None:
+    def _codegen(self, nodes: List[BaseSchedulerNode]) -> None:
         if config.check_stack_no_cycles_TESTING_ONLY:
             import torch._dynamo.convert_frame
 
             stack = traceback.extract_stack()
-            seen: OrderedSet[tuple[str, int | None]] = OrderedSet()
+            seen: OrderedSet[Tuple[str, Optional[int]]] = OrderedSet()
             for frame in reversed(stack):
                 # This is where maybe_cprofile is
                 if (
@@ -8237,19 +7914,19 @@ class Scheduler:
 
     def benchmark_combo_kernel(
         self, node_list: Sequence[BaseSchedulerNode], node_benchmark_results
-    ) -> tuple[float, float, list[str | None]]:
+    ) -> Tuple[float, float, List[Optional[str]]]:
         """
         Benchmark fused list of nodes and return the execution time
         in milliseconds on randomly generated inputs.
         """
-        device = node_list[0].get_device()
+        device = node_List[0].get_device()
         V.graph.scheduler = self
         self.current_device = device
         assert device is not None
         backend = self.get_backend(device)
         return backend.benchmark_combo_kernel(node_list, node_benchmark_results)
 
-    def speedup_by_combo_kernel(self, nodes: list[BaseSchedulerNode]) -> bool:
+    def speedup_by_combo_kernel(self, nodes: List[BaseSchedulerNode]) -> bool:
         """
         If config.benchmark_fusion is False, always return True.
         Otherwise, return True if fusion can brings speedup.
@@ -8350,7 +8027,7 @@ class Scheduler:
                         V.graph.zero_dim_cpu_tensor_list.add(read.name)
 
     @property
-    def current_stream_idx(self) -> int | None:
+    def current_stream_idx(self) -> Optional[int]:
         """CUDA Stream index that current scheduler node assigned to."""
         if self._current_stream_ctx is not None:
             return self._current_stream_ctx.stream_idx
@@ -8358,7 +8035,7 @@ class Scheduler:
             return None
 
     @property
-    def current_stream_name(self) -> str | None:
+    def current_stream_name(self) -> Optional[str]:
         """CUDA Stream name that current scheduler node assigned to."""
         if (stream_idx := self.current_stream_idx) is not None:
             return get_stream_name(stream_idx)
@@ -8410,7 +8087,7 @@ class Scheduler:
 
 
 class BaseScheduling:  # noqa: docstring_linter
-    def __init__(self, scheduler: Scheduler | None):
+    def __init__(self, scheduler: Optional[Scheduler]):
         super().__init__()
         self.scheduler = scheduler
 
@@ -8486,7 +8163,7 @@ class BaseScheduling:  # noqa: docstring_linter
 
     def group_fn(
         self, sizes: Sequence[Sequence[sympy.Expr]]
-    ) -> tuple[tuple[sympy.Expr, ...], ...]:
+    ) -> Tuple[Tuple[sympy.Expr, ...], ...]:
         """
         Process the iteration sizes in case a transformation needs to be applied.
         """
@@ -8497,7 +8174,7 @@ class BaseScheduling:  # noqa: docstring_linter
         template_node: BaseSchedulerNode,
         epilogue_nodes: Sequence[BaseSchedulerNode],
         prologue_nodes: Sequence[BaseSchedulerNode],
-    ) -> str | None:
+    ) -> Optional[str]:
         """
         Given a template node, generate a kernel.
 
@@ -8510,14 +8187,14 @@ class BaseScheduling:  # noqa: docstring_linter
         self,
         nodes: Sequence[BaseSchedulerNode],
         benchmark_kernel: bool,
-        hint_override: int | None = None,
+        hint_override: Optional[int] = None,
     ) -> str:
         """
         Generate a kernel given a list of pre-fused nodes.
         """
         raise NotImplementedError
 
-    def codegen_node(self, node: FusedSchedulerNode | SchedulerNode) -> None:
+    def codegen_node(self, node: Union[FusedSchedulerNode, SchedulerNode]) -> None:
         """
         Generate a kernel given a list of pre-fused nodes.
         """
@@ -8547,14 +8224,14 @@ class BaseScheduling:  # noqa: docstring_linter
 
     def benchmark_fused_nodes(
         self, nodes: Sequence[BaseSchedulerNode]
-    ) -> tuple[float, str]:
+    ) -> Tuple[float, str]:
         """
         Benchmark fused list of nodes and return the execution time
         in milliseconds on randomly generated inputs.
         """
         raise NotImplementedError
 
-    def benchmark_codegened_module(self, module: ModuleType) -> tuple[float, str]:
+    def benchmark_codegened_module(self, module: ModuleType) -> Tuple[float, str]:
         """
         Benchmark a compiled module and return the execution time
         in milliseconds on randomly generated inputs.
@@ -8572,7 +8249,7 @@ class BaseScheduling:  # noqa: docstring_linter
 
     def benchmark_combo_kernel(
         self, node_list: Sequence[BaseSchedulerNode], node_benchmark_results
-    ) -> tuple[float, float, list[str | None]]:
+    ) -> Tuple[float, float, List[Optional[str]]]:
         """
         Benchmark the list of nodes to combine and return the execution time
         and memory copy time in milliseconds on randomly generated inputs.
@@ -8582,7 +8259,7 @@ class BaseScheduling:  # noqa: docstring_linter
     def codegen_comment(
         self,
         node_schedule: Sequence[BaseSchedulerNode],
-        kernel_name: str | None = None,
+        kernel_name: Optional[str] = None,
     ) -> None:
         if kernel_name:
             from torch._inductor.debug import set_kernel_post_grad_provenance_tracing

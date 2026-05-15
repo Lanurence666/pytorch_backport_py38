@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: export"]
 # flake8: noqa
+from __future__ import annotations
 import contextlib
 import copy
 import functools
@@ -1093,10 +1094,7 @@ def forward(self, args_0):
             return (torch.randn(2, 3),)
 
         trace_inputs = make_inputs()
-        with (
-            torch._dynamo.config.patch(replay_side_effects=False),
-            warnings.catch_warnings(record=True) as w,
-        ):
+        with torch._dynamo.config.patch(replay_side_effects=False), warnings.catch_warnings(record=True) as w:
             gm = dynamo_graph_capture_for_export(foo)(*trace_inputs)
             cnt = 0
             for entry in w:

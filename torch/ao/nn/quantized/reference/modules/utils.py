@@ -1,7 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import typing
 
 import torch
+from typing import Dict, Optional, Tuple
 
 
 __all__ = [
@@ -88,9 +91,9 @@ class ReferenceQuantizedModule(torch.nn.Module):
         # for capturing `.item` operations
         self.weight_axis_int: int = self.weight_axis.item()  # type: ignore[operator, assignment]
 
-        self.weight_quant_min: int | None = weight_qparams.get("quant_min")
+        self.weight_quant_min: Optional[int] = weight_qparams.get("quant_min")
 
-        self.weight_quant_max: int | None = weight_qparams.get("quant_max")
+        self.weight_quant_max: Optional[int] = weight_qparams.get("quant_max")
 
     def get_weight(self):
         """
@@ -197,10 +200,10 @@ def _quantize_weight_decomposed(
     weight_scale: torch.Tensor,
     weight_zero_point: torch.Tensor,
     weight_axis: int,
-    weight_quant_min: int | None,
-    weight_quant_max: int | None,
+    weight_quant_min: Optional[int],
+    weight_quant_max: Optional[int],
 ) -> torch.Tensor:
-    _DTYPE_TO_QVALUE_BOUNDS: dict[torch.dtype, tuple[int, int]] = {
+    _DTYPE_TO_QVALUE_BOUNDS: Dict[torch.dtype, Tuple[int, int]] = {
         torch.uint8: (0, 255),
         torch.int8: (-128, 127),
         torch.int32: (-2147483648, 2147483647),  # torch.jit interprets 2**31 as a float
@@ -259,11 +262,11 @@ def _dequantize_weight_decomposed(
     weight_scale: torch.Tensor,
     weight_zero_point: torch.Tensor,
     weight_axis: int,
-    weight_quant_min: int | None,
-    weight_quant_max: int | None,
+    weight_quant_min: Optional[int],
+    weight_quant_max: Optional[int],
 ) -> torch.Tensor:
     # TODO: get the quant_min and quant_max from activation_post_process
-    _DTYPE_TO_QVALUE_BOUNDS: dict[torch.dtype, tuple[int, int]] = {
+    _DTYPE_TO_QVALUE_BOUNDS: Dict[torch.dtype, Tuple[int, int]] = {
         torch.uint8: (0, 255),
         torch.int8: (-128, 127),
         torch.int32: (-2147483648, 2147483647),  # torch.jit interprets 2**31 as a float
@@ -344,8 +347,8 @@ def _quantize_and_dequantize_weight_decomposed(
     weight_scale: torch.Tensor,
     weight_zero_point: torch.Tensor,
     weight_axis_int: int,
-    weight_quant_min: int | None,
-    weight_quant_max: int | None,
+    weight_quant_min: Optional[int],
+    weight_quant_max: Optional[int],
 ) -> torch.Tensor:
     """Quantize and then dequantize the weight based on
     the quantization parameters
@@ -428,7 +431,7 @@ def _save_weight_qparams(
             destination[prefix + "weight_axis"] = weight_axis
 
 
-def _get_weight_qparam_keys(state_dict: dict[str, typing.Any], prefix: str):
+def _get_weight_qparam_keys(state_dict: Dict[str, typing.Any], prefix: str):
     keys = ["weight_qscheme", "weight_dtype"]
     weight_qscheme = state_dict[prefix + "weight_qscheme"]
     if weight_qscheme is not None:

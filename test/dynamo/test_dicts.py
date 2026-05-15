@@ -1,6 +1,7 @@
 # Owner(s): ["module: dynamo"]
 
 
+from __future__ import annotations
 import enum
 import itertools
 import operator
@@ -1556,22 +1557,22 @@ class DictTests(torch._dynamo.test_case.TestCase):
         ord_dict = OrderedDict({3: 3, 4: 4})
         base_dict = {5: 5, 6: 6}
 
-        exp_def = def_dict | ord_dict
+        exp_def = {**def_dict, **ord_dict}
         self.assertIsInstance(exp_def, defaultdict)
 
-        exp_def_2 = def_dict | base_dict
+        exp_def_2 = {**def_dict, **base_dict}
         self.assertIsInstance(exp_def_2, defaultdict)
 
-        exp_def_3 = base_dict | def_dict
+        exp_def_3 = {**base_dict, **def_dict}
         self.assertIsInstance(exp_def_3, defaultdict)
 
-        exp_ord = ord_dict | def_dict
+        exp_ord = {**ord_dict, **def_dict}
         self.assertIsInstance(exp_ord, OrderedDict)
 
-        exp_ord_2 = base_dict | ord_dict
+        exp_ord_2 = {**base_dict, **ord_dict}
         self.assertIsInstance(exp_ord_2, OrderedDict)
 
-        exp_base = base_dict | base_dict
+        exp_base = {**base_dict, **base_dict}
         self.assertIsInstance(exp_base, dict)
 
     def test_range_as_dict_key(self):
@@ -2074,7 +2075,7 @@ class DictGuardTests(LoggingTestCase):
     def test_cmp_or(self, records):
         @torch.compile(backend="eager", fullgraph=True)
         def fn(x, d1, d2):
-            d = d1 | d2
+            d = {**d1, **d2}
             if d.get(5, False):
                 return x.sin()
             return x.cos()
@@ -2100,7 +2101,7 @@ class DictGuardTests(LoggingTestCase):
     def test_cmp_ior(self, records):
         @torch.compile(backend="eager", fullgraph=True)
         def fn(x, d1, d2):
-            d2 |= d1
+            d2.update(d1)
             if d2.get(3, False):
                 return x.sin()
             return x.cos()
@@ -2225,8 +2226,8 @@ class DictMethodsTests(torch._dynamo.test_case.TestCase):
 
         # Test the |= operator
         d3, d4 = d1.copy(), d2.copy()
-        d3 |= d2
-        d4 |= d1
+        d3.update(d2)
+        d4.update(d1)
         self.assertEqual(d3, {"a": 1, "b": 3, "c": 4})
         self.assertEqual(d4, {"a": 1, "b": 2, "c": 4})
 
@@ -2405,16 +2406,6 @@ class DictMethodsTests(torch._dynamo.test_case.TestCase):
             self.assertRaises(TypeError, d.popitem, 1)
 
     @make_dynamo_test
-    def test_popitem_plain_dict_subclass(self):
-        """popitem on an OrderedDict subclass whose internal items storage is
-        a plain dict must not pass last= (plain dict rejects keyword args)."""
-        d = self.thetype()
-        d["a"] = 1
-        d["b"] = 2
-        key, value = d.popitem()
-        self.assertNotIn(key, d)
-
-    @make_dynamo_test
     def test_setdefault(self):
         d = self.thetype({"a": 1, "b": 2})
         self.assertEqual(d.setdefault("a", 3), 1)
@@ -2474,46 +2465,6 @@ class DictMethodsTests(torch._dynamo.test_case.TestCase):
 
         # Test invalid usage
         self.assertRaises(TypeError, d.values, 1)
-
-    @make_dynamo_test
-    def test_keys_contains(self):
-        d = self.thetype({"a": 1, "b": 2})
-        keys = d.keys()
-        self.assertTrue("a" in keys)
-        self.assertTrue("b" in keys)
-        self.assertFalse("c" in keys)
-
-        # Test Dict.keys contains
-        self.assertTrue("a" in dict.keys(d))
-        self.assertFalse("c" in dict.keys(d))
-        self.assertTrue("b" in self.thetype.keys(d))
-
-    @make_dynamo_test
-    def test_items_contains(self):
-        d = self.thetype({"a": 1, "b": 2})
-        items = d.items()
-        self.assertTrue(("a", 1) in items)
-        self.assertTrue(("b", 2) in items)
-        self.assertFalse(("a", 2) in items)
-        self.assertFalse(("c", 1) in items)
-
-        # Test Dict.items contains
-        self.assertTrue(("a", 1) in dict.items(d))
-        self.assertFalse(("c", 1) in dict.items(d))
-        self.assertTrue(("b", 2) in self.thetype.items(d))
-
-    @make_dynamo_test
-    def test_values_contains(self):
-        d = self.thetype({"a": 1, "b": 2})
-        values = d.values()
-        self.assertTrue(1 in values)
-        self.assertTrue(2 in values)
-        self.assertFalse(3 in values)
-
-        # Test Dict.values contains
-        self.assertTrue(1 in dict.values(d))
-        self.assertFalse(3 in dict.values(d))
-        self.assertTrue(2 in self.thetype.values(d))
 
     @make_dynamo_test
     def test_type(self):

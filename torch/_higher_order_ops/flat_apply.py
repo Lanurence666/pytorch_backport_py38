@@ -1,7 +1,13 @@
+from __future__ import annotations
+
 import typing
-from collections.abc import Callable, Sequence
+
 from dataclasses import dataclass
-from typing import Generic, overload, TypeAlias, TypeVar
+from typing import Callable, Generic, List, Sequence, Tuple, Type, TypeVar, Union, overload
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 from typing_extensions import ParamSpec, TypeIs, TypeVarTuple, Unpack
 
 import torch
@@ -24,7 +30,7 @@ def is_graphable(val: object) -> TypeIs[torch.fx.node.BaseArgumentTypes]:
     ) or is_opaque_type(type(val))
 
 
-def is_graphable_type(typ: type[object]) -> bool:
+def is_graphable_type(typ: Type[object]) -> bool:
     """Return whether the given type is graphable."""
     return (
         issubclass(typ, torch.fx.node.base_types)
@@ -33,7 +39,7 @@ def is_graphable_type(typ: type[object]) -> bool:
     )
 
 
-def to_graphable(stuff: pytree.PyTree) -> tuple[list[object], pytree.TreeSpec]:
+def to_graphable(stuff: pytree.PyTree) -> Tuple[List[object], pytree.TreeSpec]:
     """Flattens stuff into a flat list of graphable types."""
     # We can consider preserving things like List[int] to improve
     # perf and readability (right now that is all flattened out)
@@ -49,7 +55,7 @@ def to_graphable(stuff: pytree.PyTree) -> tuple[list[object], pytree.TreeSpec]:
 
 
 def from_graphable(
-    flat_args: tuple[Unpack[_Ts]], spec: pytree.TreeSpec
+    flat_args: Tuple[Unpack[_Ts]], spec: pytree.TreeSpec
 ) -> pytree.PyTree:
     """The inverse of to_graphable."""
     stuff = pytree.tree_unflatten(flat_args, spec)
@@ -58,7 +64,7 @@ def from_graphable(
 
 def func_to_graphable(
     func: Callable[..., object],
-) -> tuple[list[object], pytree.TreeSpec]:
+) -> Tuple[List[object], pytree.TreeSpec]:
     """
     Pack and flatten a function type into graphable types.
     This is useful for legalizing the function argument of `flat_apply`.
@@ -66,7 +72,7 @@ def func_to_graphable(
     return pytree.tree_flatten(_ConstantFunction(func))
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _ConstantFunction(Generic[_P, _R]):
     func: Callable[_P, _R]
 
@@ -78,7 +84,7 @@ pytree.register_constant(_ConstantFunction)
 
 
 _OpTypes = (
-    torch._ops.OpOverload | torch._ops.OpOverloadPacket | torch._ops.HigherOrderOperator
+    Union[Union[torch._ops.OpOverload, torch._ops.OpOverloadPacket], torch._ops.HigherOrderOperator]
 )
 _op_types = typing.get_args(_OpTypes)
 
@@ -86,7 +92,7 @@ _op_types = typing.get_args(_OpTypes)
 _Base: TypeAlias = torch.fx.node.BaseArgumentTypes
 # pyrefly bug: pyrefly is complaining: Expected a type form, got instance of `Literal['_FXOutput']
 # pyrefly: ignore[not-a-type]
-_FXOutput = _Base | Sequence["_FXOutput"]
+_FXOutput = Union[_Base, Sequence["_FXOutput"]]
 
 
 class FlatApply(HigherOrderOperator):
@@ -95,7 +101,7 @@ class FlatApply(HigherOrderOperator):
 
     def __call__(
         self,
-        func: _OpTypes | pytree.TreeSpec,
+        func: Union[_OpTypes, pytree.TreeSpec],
         in_spec: pytree.TreeSpec,
         *flat_args: Unpack[_Ts],
         # If True then the output is checked to be valid. If False then it is up
@@ -138,7 +144,7 @@ class FlatApply(HigherOrderOperator):
 
 
 @overload
-def is_valid_output(x: tuple[object, ...]) -> TypeIs[tuple[_FXOutput, ...]]: ...
+def is_valid_output(x: Tuple[object, ...]) -> TypeIs[Tuple[_FXOutput, ...]]: ...
 
 
 @overload
@@ -152,9 +158,9 @@ def is_valid_output(x: object) -> bool:
 
 
 def impl(
-    func: _OpTypes | pytree.TreeSpec,
+    func: Union[_OpTypes, pytree.TreeSpec],
     in_spec: pytree.TreeSpec,
-    flat_args: tuple[Unpack[_Ts]],
+    flat_args: Tuple[Unpack[_Ts]],
     checked_output: bool,
 ) -> _FXOutput:
     if isinstance(func, pytree.TreeSpec):

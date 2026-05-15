@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Common utils for testing operators."""
 
-from __future__ import annotations
 
 import contextlib
 import copy

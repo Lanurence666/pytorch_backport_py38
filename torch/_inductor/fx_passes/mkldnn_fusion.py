@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import operator
 from functools import reduce
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Set, TYPE_CHECKING, Tuple
 
 import torch
 from torch._dynamo.utils import counters
@@ -132,7 +134,7 @@ if torch._C._has_mkldnn:
         def pack_linear(
             self, graph, is_lp_weight, batch_size, input, packed_weight_node, bias
         ):
-            packed_linear_inputs: tuple[Any, ...] = (input, packed_weight_node)
+            packed_linear_inputs: Tuple[Any, ...] = (input, packed_weight_node)
             transpose_weight_node = packed_weight_node.args[0]
             if (
                 is_lp_weight
@@ -1563,7 +1565,7 @@ if torch._C._has_mkldnn:
                         user_node.replace_all_uses_with(node)
                         gm.graph.erase_node(user_node)
 
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def _mkldnn_fusion_init():
         # TODO: aarch64: enable op fusion for acl once it supports fused operators. Disabling it for now.
         # Otherwise even the matmul or innerproduct can not be accelerated with acl
@@ -1582,7 +1584,7 @@ if torch._C._has_mkldnn:
 
         _register_woq_lowerings()
 
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def _mkldnn_weight_pack_init():
         if torch.backends.mkldnn.enabled and torch.backends.mkldnn.is_available():
             _register_weight_pack_pass()

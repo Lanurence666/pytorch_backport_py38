@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING, Tuple, Union
 
 import torch
 import torch._inductor.config
@@ -12,7 +12,7 @@ from .ir import FixedLayout, FlexibleLayout, Layout
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    
 
     import sympy
 
@@ -26,9 +26,9 @@ class KernelInputs(ABC):
 
     def __init__(
         self,
-        input_nodes: list[Any],
-        scalars: dict[str, float | int] | None = None,
-        out_dtype: torch.dtype | None = None,
+        input_nodes: List[Any],
+        scalars: Optional[Union[Dict[str, float, int]]]= None,
+        out_dtype: Optional[torch.dtype]= None,
     ):
         """
         Initialize with a tuple of input nodes.
@@ -38,12 +38,12 @@ class KernelInputs(ABC):
             out_dtype: Optional output dtype to store
         """
         self._input_nodes = input_nodes
-        self._device_name: str | None = None
+        self._device_name: Optional[str] = None
         self._scalars = scalars if scalars is not None else {}
         self._out_dtype = out_dtype
         assert len(input_nodes) > 0, "Expected at least one input node"
 
-    def nodes(self, reorder: Sequence[int] | None = None) -> list[Any]:
+    def nodes(self, reorder: Optional[Sequence[int]] = None) -> List[Any]:
         """
         Return the stored input nodes, optionally reordered.
 
@@ -72,7 +72,7 @@ class KernelInputs(ABC):
         return len(self._input_nodes)
 
     @property
-    def device_type(self) -> str | None:
+    def device_type(self) -> Optional[str]:
         """
         Get the device type of the first node.
 
@@ -91,7 +91,7 @@ class KernelInputs(ABC):
         """
         return self._input_nodes[0].get_device()
 
-    def device_name(self) -> str | None:
+    def device_name(self) -> Optional[str]:
         """
         Get the device name information.
 
@@ -105,7 +105,7 @@ class KernelInputs(ABC):
                 self._device_name = device_properties.gcnArchName
         return self._device_name
 
-    def shapes_symbolic(self) -> tuple[tuple[Any, ...], ...]:
+    def shapes_symbolic(self) -> Tuple[Tuple[Any, ...], ...]:
         """
         Get the symbolic shapes of all input nodes.
 
@@ -114,7 +114,7 @@ class KernelInputs(ABC):
         """
         return tuple(node.get_size() for node in self._input_nodes)
 
-    def shapes_hinted(self) -> tuple[tuple[int, ...], ...]:
+    def shapes_hinted(self) -> Tuple[Tuple[int, ...], ...]:
         """
         Get the size hints for shapes of all input nodes.
 
@@ -126,7 +126,7 @@ class KernelInputs(ABC):
             for node in self._input_nodes
         )
 
-    def strides_symbolic(self) -> tuple[tuple[sympy.Integer, ...], ...]:
+    def strides_symbolic(self) -> Tuple[Tuple[sympy.Integer, ...], ...]:
         """
         Get the symbolic strides of all input nodes.
 
@@ -135,7 +135,7 @@ class KernelInputs(ABC):
         """
         return tuple(node.get_stride() for node in self._input_nodes)
 
-    def strides_hinted(self) -> tuple[tuple[int, ...], ...]:
+    def strides_hinted(self) -> Tuple[Tuple[int, ...], ...]:
         """
         Get the size hints for strides of all input nodes.
 
@@ -147,7 +147,7 @@ class KernelInputs(ABC):
             for node in self._input_nodes
         )
 
-    def dtypes(self) -> tuple[torch.dtype, ...]:
+    def dtypes(self) -> Tuple[torch.dtype, ...]:
         """
         Get the dtypes of all input nodes.
 
@@ -177,7 +177,7 @@ class KernelInputs(ABC):
             The output dtype
         """
 
-    def get_scalar(self, name: str) -> float | int:
+    def get_scalar(self, name: str) -> Union[float, int]:
         """
         Get the scalar value for a given name.
 
@@ -209,9 +209,9 @@ class MMKernelInputs(KernelInputs):
 
     def __init__(
         self,
-        input_nodes: list[Any],
-        scalars: dict[str, float | int] | None = None,
-        out_dtype: torch.dtype | None = None,
+        input_nodes: List[Any],
+        scalars: Optional[Union[Dict[str, float, int]]]= None,
+        out_dtype: Optional[torch.dtype]= None,
         mat1_idx: int = -2,
         mat2_idx: int = -1,
     ):
@@ -242,7 +242,7 @@ class MMKernelInputs(KernelInputs):
 
     def mnk_symbolic(
         self,
-    ) -> tuple[sympy.Integer, sympy.Integer, sympy.Integer]:
+    ) -> Tuple[sympy.Integer, sympy.Integer, sympy.Integer]:
         """
         Get the symbolic M, N, K dimensions for matrix multiplication.
         Handles both 2D (MM) and 3D (BMM) tensors.
@@ -297,7 +297,7 @@ class MMKernelInputs(KernelInputs):
         else:
             return FixedLayout(self.device(), out_dtype, size)
 
-    def mat1mat2(self) -> tuple[Any, Any]:
+    def mat1mat2(self) -> Tuple[Any, Any]:
         """
         Get the mat1 and mat2 nodes.
 
@@ -307,7 +307,7 @@ class MMKernelInputs(KernelInputs):
         nodes = self.nodes()
         return nodes[self._mat1_idx], nodes[self._mat2_idx]
 
-    def mnk_hinted(self) -> tuple[int, int, int]:
+    def mnk_hinted(self) -> Tuple[int, int, int]:
         """
         Get the hinted M, N, K dimensions for matrix multiplication.
         Handles both 2D (MM) and 3D (BMM) tensors.

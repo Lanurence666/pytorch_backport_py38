@@ -1,11 +1,13 @@
 # Owner(s): ["module: inductor"]
 
+from __future__ import annotations
+
 import contextlib
 import functools
 import logging
-from collections.abc import Callable
+
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union, overload
 
 import torch
 from torch._dynamo.utils import counters
@@ -37,7 +39,7 @@ class RangeBounds:
     """Inclusive range [start, end] for dimension-based dispatch."""
 
     start: int
-    end: int | float  # float('inf') for unbounded
+    end: Union[int, float]  # float('inf') for unbounded
 
     def __post_init__(self) -> None:
         if self.start < 1:
@@ -61,8 +63,8 @@ class ImplConfig:
 
     impl_name: str
     impl_func: Callable[..., Any] = field(compare=False, hash=False, repr=False)
-    kwargs: dict[str, Any] = field(default_factory=dict)
-    config_patches: dict[str, Any] = field(
+    kwargs: Dict[str, Any] = field(default_factory=dict)
+    config_patches: Dict[str, Any] = field(
         default_factory=dict, compare=False, hash=False, repr=False
     )
 
@@ -86,7 +88,7 @@ class RangeImplGroup:
     """Groups non-adjacent ranges using the same implementation."""
 
     impl_config: ImplConfig
-    ranges: list[RangeBounds] = field(default_factory=list)
+    ranges: List[RangeBounds] = field(default_factory=list)
 
     def add_range(self, range_bounds: RangeBounds) -> None:
         self.ranges.append(range_bounds)
@@ -105,11 +107,11 @@ class RangeImplGroup:
         return self.impl_config.impl_func
 
     @property
-    def impl_kwargs(self) -> dict[str, Any]:
+    def impl_kwargs(self) -> Dict[str, Any]:
         return self.impl_config.kwargs
 
     @property
-    def config_patches(self) -> dict[str, Any]:
+    def config_patches(self) -> Dict[str, Any]:
         return self.impl_config.config_patches
 
 
@@ -155,8 +157,8 @@ class CustomOpConfig:
 
     def __init__(
         self,
-        decomposition: Callable[..., Any] | None = None,
-        config_patches: dict[str, Any] | None = None,
+        decomposition: Optional[Callable[..., Any]] = None,
+        config_patches: Optional[Dict[str, Any]] = None,
         **params: Any,
     ):
         if decomposition is not None and not callable(decomposition):
@@ -169,7 +171,7 @@ class CustomOpConfig:
         self.params = params
 
     def get_decomposition(
-        self, default_impl: Callable[..., Any] | None = None
+        self, default_impl: Optional[Callable[..., Any]] = None
     ) -> Callable[..., Any]:
         """Return the decomposition function for this config.
         When decomposition is not specified, return the default implementation.
@@ -201,10 +203,10 @@ __all__ = [
 
 
 def _extract_tensor_inputs(
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
     op_overload: torch._ops.OpOverload,
-) -> tuple[list[Any], dict[str, Any]]:
+) -> Tuple[List[Any], Dict[str, Any]]:
     """Extract tensor inputs from mixed args/kwargs.
     Separates tensors (for autotuning input_nodes) from non-tensor parameters.
 
@@ -241,9 +243,9 @@ def _extract_tensor_inputs(
 
 
 def _merge_config_and_runtime_kwargs(
-    config_params: dict[str, Any],
-    runtime_kwargs: dict[str, Any],
-) -> dict[str, Any]:
+    config_params: Dict[str, Any],
+    runtime_kwargs: Dict[str, Any],
+) -> Dict[str, Any]:
     """Merge config parameters with runtime kwargs. Config params take precedence,
     since they represent the values being autotuned.
 
@@ -260,10 +262,10 @@ def _merge_config_and_runtime_kwargs(
 
 
 def _adapt_user_input_gen_fns(
-    inputs: list[Any],
+    inputs: List[Any],
     op_overload: torch._ops.OpOverload,
-    user_input_gen_fns: dict[str, Callable[[torch.Tensor], torch.Tensor]],
-) -> dict[int, Callable[[Any], torch.Tensor]]:
+    user_input_gen_fns: Dict[str, Callable[[torch.Tensor], torch.Tensor]],
+) -> Dict[int, Callable[[Any], torch.Tensor]]:
     """Convert user input generators from name-based to index-based format.
     Inductor autotune's input_gen_fns expects index of arg_names as key.
     """
@@ -302,8 +304,8 @@ def _adapt_user_input_gen_fns(
 
 
 def _group_ranges_by_impl(
-    range_to_best_impl: dict[RangeBounds, ImplConfig],
-) -> list[RangeImplGroup]:
+    range_to_best_impl: Dict[RangeBounds, ImplConfig],
+) -> List[RangeImplGroup]:
     """Group ranges by implementation using semantic identity (name + kwargs)."""
     from torch._inductor import config
 
@@ -323,7 +325,7 @@ def _group_ranges_by_impl(
         return groups
 
     # Group ranges by impl_config (uses __hash__ and __eq__ based on semantic identity)
-    impl_to_group: dict[ImplConfig, RangeImplGroup] = {}
+    impl_to_group: Dict[ImplConfig, RangeImplGroup] = {}
 
     for range_bounds, impl_config in range_to_best_impl.items():
         if impl_config not in impl_to_group:
@@ -348,8 +350,8 @@ def _group_ranges_by_impl(
 
 
 def _create_ranges_from_split_points(
-    split_points: list[int],
-) -> list[tuple[int, int] | tuple[int, float]]:
+    split_points: List[int],
+) -> Union[List[Tuple[int, int], Tuple[int, float]]]:
     """Convert split points into ranges for autotuning dispatch.
 
     Example:
@@ -357,7 +359,7 @@ def _create_ranges_from_split_points(
         returns:
                [(1, 512), (513, 2048), (2049, float('inf'))]
     """
-    ranges: list[tuple[int, int] | tuple[int, float]] = []
+    ranges: Union[List[Tuple[int, int], Tuple[int, float]]] = []
     start = 1
 
     for split_point in split_points:
@@ -373,7 +375,7 @@ def _create_range_input_gen_fn(
     base_gen_fn: Callable[[torch.Tensor], torch.Tensor],
     dim_index: int,
     range_start: int,
-    range_end: int | float,
+    range_end: Union[int, float],
     range_upper_bound: int,
 ) -> Callable[[torch.Tensor], torch.Tensor]:
     """Create input generator that modifies target dimension to top of range.
@@ -437,15 +439,15 @@ def _create_fallback_choice(
 
 def autotune_custom_op(
     name: str,
-    decompositions: list[Callable[..., Any]],
-    inputs: list[torch.fx.Node],
-    non_tensor_args: list[dict[str, Any]],
+    decompositions: List[Callable[..., Any]],
+    inputs: List[torch.fx.Node],
+    non_tensor_args: List[Dict[str, Any]],
     op_overload: torch._ops.OpOverload,
-    user_input_gen_fns: dict[str, Callable[[torch.Tensor], torch.Tensor]] | None = None,
-    config_patches_list: list[dict[str, Any]] | None = None,
+    user_input_gen_fns: Dict[str, Callable[[torch.Tensor], torch.Tensor]] | None = None,
+    config_patches_list: List[Dict[str, Any]] | None = None,
     min_speedup_threshold: float = 1.0,
     benchmark_with_cudagraphs: bool = False,
-) -> tuple[TensorBox, ChoiceCaller]:
+) -> Tuple[TensorBox, ChoiceCaller]:
     """Autotune custom operations by comparing multiple decomposition implementations.
 
     Currently supports SINGLE OUTPUT custom ops only.
@@ -487,7 +489,7 @@ def autotune_custom_op(
         )
 
     # Convert user input generation functions BEFORE creating choices
-    input_gen_fns: dict[int, Callable[[Any], torch.Tensor]] = {}
+    input_gen_fns: Dict[int, Callable[[Any], torch.Tensor]] = {}
     if user_input_gen_fns:
         input_gen_fns = _adapt_user_input_gen_fns(
             inputs, op_overload, user_input_gen_fns
@@ -602,11 +604,11 @@ def autotune_custom_op(
 
 
 def _generate_dynamic_configs(
-    tensor_inputs: list[Buffer],
-    config_generator: Callable[[dict[str, torch.Tensor]], list[CustomOpConfig]],
+    tensor_inputs: List[Buffer],
+    config_generator: Callable[[Dict[str, torch.Tensor]], List[CustomOpConfig]],
     op_overload: torch._ops.OpOverload,
     operation_name: str,
-) -> list[CustomOpConfig]:
+) -> List[CustomOpConfig]:
     """Generate configs dynamically based on input tensors at lowering time."""
     # Get parameter names from op schema instead of impl signature
     schema = op_overload._schema
@@ -635,14 +637,14 @@ def _generate_dynamic_configs(
 
 
 def _prepare_configs_and_decompositions(
-    processed_configs: list[CustomOpConfig] | None,
-    config_generator: Callable[[dict[str, torch.Tensor]], list[CustomOpConfig]] | None,
-    tensor_inputs: list[Any],
+    processed_configs: Optional[List[CustomOpConfig]],
+    config_generator: Callable[[Dict[str, torch.Tensor]], List[CustomOpConfig]] | None,
+    tensor_inputs: List[Any],
     default_impl: Callable[..., Any],
     op_overload: torch._ops.OpOverload,
-    runtime_kwargs: dict[str, Any],
+    runtime_kwargs: Dict[str, Any],
     name: str,
-) -> tuple[list[Callable], list[dict[str, Any]], list[dict[str, Any]]]:
+) -> Tuple[List[Callable], List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Prepare decompositions and merged kwargs from configs.
 
     Handles both static configs and dynamic config generation.
@@ -677,14 +679,14 @@ def _prepare_configs_and_decompositions(
 
 
 def _standard_lowering_fn(
-    processed_configs: list[CustomOpConfig],
+    processed_configs: List[CustomOpConfig],
     default_impl: Callable[..., Any],
     name: str,
     op_overload: torch._ops.OpOverload,
-    input_gen_fns: dict[str, Callable[[torch.Tensor], torch.Tensor]] | None,
-    tensor_inputs: list[Any],
-    runtime_kwargs: dict[str, Any],
-    config_generator: Callable[[dict[str, torch.Tensor]], list[CustomOpConfig]]
+    input_gen_fns: Dict[str, Callable[[torch.Tensor], torch.Tensor]] | None,
+    tensor_inputs: List[Any],
+    runtime_kwargs: Dict[str, Any],
+    config_generator: Callable[[Dict[str, torch.Tensor]], List[CustomOpConfig]]
     | None = None,
     min_speedup_threshold: float = 1.0,
     benchmark_with_cudagraphs: bool = False,
@@ -728,7 +730,7 @@ def _standard_lowering_fn(
 
 def _apply_config_patches_recursive(
     operations: list,
-    config_patches: dict[str, Any],
+    config_patches: Dict[str, Any],
 ) -> None:
     """Apply config_patches to operations, including those inside subgraphs."""
     for op in operations:
@@ -745,11 +747,11 @@ def _apply_config_patches_recursive(
 
 def _lower_single_impl(
     impl: Callable[..., Any],
-    impl_kwargs: dict[str, Any],
-    runtime_kwargs: dict[str, Any],
-    tensor_inputs: list[Any],
+    impl_kwargs: Dict[str, Any],
+    runtime_kwargs: Dict[str, Any],
+    tensor_inputs: List[Any],
     name: str,
-    config_patches: dict[str, Any] | None = None,
+    config_patches: Optional[Dict[str, Any]] = None,
 ) -> Any:
     """Lower a single implementation by tracing and inlining it.
 
@@ -811,18 +813,18 @@ def _lower_single_impl(
 
 
 def _range_based_lowering_fn(
-    processed_configs: list[CustomOpConfig],
+    processed_configs: List[CustomOpConfig],
     default_impl: Callable[..., Any],
     name: str,
     op_overload: torch._ops.OpOverload,
-    input_gen_fns: dict[str, Callable[[torch.Tensor], torch.Tensor]] | None,
+    input_gen_fns: Dict[str, Callable[[torch.Tensor], torch.Tensor]] | None,
     tensor_name: str,
     dim_index: int,
-    ranges: list[tuple[int, int | float]],
-    tensor_inputs: list[Any],
-    runtime_kwargs: dict[str, Any],
+    ranges: List[Tuple[int, Union[int, float]]],
+    tensor_inputs: List[Any],
+    runtime_kwargs: Dict[str, Any],
     range_upper_bound: int,
-    config_generator: Callable[[dict[str, torch.Tensor]], list[CustomOpConfig]]
+    config_generator: Callable[[Dict[str, torch.Tensor]], List[CustomOpConfig]]
     | None = None,
     min_speedup_threshold: float = 1.0,
     benchmark_with_cudagraphs: bool = False,
@@ -848,7 +850,7 @@ def _range_based_lowering_fn(
         )
     )
 
-    range_to_best_impl_map: dict[RangeBounds, ImplConfig] = {}
+    range_to_best_impl_map: Dict[RangeBounds, ImplConfig] = {}
 
     # Benchmark each range and collect winning implementations
     for range_start, range_end in ranges:
@@ -940,7 +942,7 @@ def _range_based_lowering_fn(
 
         dim_value = fake_tensors[0].size(dim_index)
 
-        def build_range_predicate(ranges_list: list[RangeBounds]) -> torch.Tensor:
+        def build_range_predicate(ranges_list: List[RangeBounds]) -> torch.Tensor:
             predicates = []
             for rb in ranges_list:
                 end = int(rb.end) if rb.end != float("inf") else None
@@ -951,7 +953,7 @@ def _range_based_lowering_fn(
 
             result = predicates[0]
             for pred in predicates[1:]:
-                result = result | pred
+                result = {**result, **pred}
             return result  # pyrefly: ignore [bad-return]
 
         def build_nested_cond(idx: int):
@@ -1028,7 +1030,7 @@ def _range_based_lowering_fn(
 
     # Apply config_patches from all impl groups to inlined operations
     # TODO - consider conflicting patches
-    merged_patches: dict[str, Any] = {}
+    merged_patches: Dict[str, Any] = {}
     for group in impl_groups:
         merged_patches.update(group.config_patches)
     if merged_patches:
@@ -1043,17 +1045,17 @@ def _range_based_lowering_fn(
 
 
 def _create_autotuning_lowering(
-    processed_configs: list[CustomOpConfig],
+    processed_configs: List[CustomOpConfig],
     default_impl: Callable[..., Any],
     name: str,
     op_overload: torch._ops.OpOverload,
-    input_gen_fns: dict[str, Callable[[torch.Tensor], torch.Tensor]] | None,
+    input_gen_fns: Dict[str, Callable[[torch.Tensor], torch.Tensor]] | None,
     range_upper_bound: int,
     is_range_based: bool = False,
-    config_generator: Callable[[dict[str, torch.Tensor]], list[CustomOpConfig]]
+    config_generator: Callable[[Dict[str, torch.Tensor]], List[CustomOpConfig]]
     | None = None,
-    dispatch_on: tuple[str, int] | None = None,
-    split_points: list[int] | None = None,
+    dispatch_on: Optional[Tuple[str, int]] = None,
+    split_points: Optional[List[int]] = None,
     min_speedup_threshold: float = 1.0,
     benchmark_with_cudagraphs: bool = False,
 ) -> Callable[..., Any]:
@@ -1112,14 +1114,14 @@ def _create_autotuning_lowering(
 
 
 def register_custom_op_autotuning(
-    custom_op: torch._library.custom_ops.CustomOpDef | torch._ops.OpOverload,
-    configs: list[CustomOpConfig] | list[Callable[..., Any]] | None = None,
-    config_generator: Callable[[dict[str, torch.Tensor]], list[CustomOpConfig]]
+    custom_op: Union[torch._library.custom_ops.CustomOpDef, torch._ops.OpOverload],
+    configs: Union[List[CustomOpConfig], List[Callable[..., Any]]] | None = None,
+    config_generator: Callable[[Dict[str, torch.Tensor]], List[CustomOpConfig]]
     | None = None,
-    name: str | None = None,
-    input_gen_fns: dict[str, Callable[[torch.Tensor], torch.Tensor]] | None = None,
-    dispatch_on: dict[str, Any] | None = None,
-    split_points: list[int] | None = None,
+    name: Optional[str] = None,
+    input_gen_fns: Dict[str, Callable[[torch.Tensor], torch.Tensor]] | None = None,
+    dispatch_on: Optional[Dict[str, Any]] = None,
+    split_points: Optional[List[int]] = None,
     min_speedup_threshold: float = 1.0,
     benchmark_with_cudagraphs: bool = False,
 ) -> None:
@@ -1133,7 +1135,7 @@ def register_custom_op_autotuning(
                    OpOverload (e.g., torch.ops.aten.mm.default)
         configs: List of CustomOpConfig objects for static inputs. Mutually exclusive with config_generator.
         config_generator: Dynamic config generator function that takes a dict mapping
-                          parameter names to fake tensors, and returns list[CustomOpConfig]
+                          parameter names to fake tensors, and returns List[CustomOpConfig]
                           based on input tensor properties. Mutually exclusive with configs.
         name: Operation name (default: "{op_name}_autotuned")
         input_gen_fns: Custom input generators for benchmarking
@@ -1175,7 +1177,7 @@ def register_custom_op_autotuning(
         )
 
         # Dynamic config generation based on input tensor properties
-        def generate_k_split_configs(fake_tensors: dict[str, torch.Tensor]) -> list[CustomOpConfig]:
+        def generate_k_split_configs(fake_tensors: Dict[str, torch.Tensor]) -> List[CustomOpConfig]:
             # Access tensor shapes, dtypes, devices, etc.
             m, k = fake_tensors["mat1"].shape
             _, n = fake_tensors["mat2"].shape
@@ -1254,7 +1256,7 @@ def register_custom_op_autotuning(
 
     # Validate range-based parameters
     is_range_based = dispatch_on is not None or split_points is not None
-    dispatch_on_tuple: tuple[str, int] | None = None
+    dispatch_on_tuple: Optional[Tuple[str, int]] = None
     range_upper_bound = DEFAULT_RANGE_UPPER_BOUND
     if is_range_based:
         if dispatch_on is None or split_points is None:

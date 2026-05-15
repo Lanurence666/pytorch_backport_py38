@@ -30,7 +30,9 @@ class AttributeTypeIsSupportedChecker(ast.NodeVisitor):
     the "empty" values specified above will NOT be flagged as
     problematic.
     2. We match on string literals, so if the user decides to use a
-    non-standard import (e.g. `from typing import List as foo`), we
+    non-standard import (e.g. `from typing import Dict, List, List as foo`), Optional, Tuple, Type, Union, we
+from typing_extensions import NamedTuple
+
     won't catch it.
 
     Example:
@@ -75,16 +77,7 @@ class AttributeTypeIsSupportedChecker(ast.NodeVisitor):
         init_ast = ast.parse(textwrap.dedent(source_lines))
 
         # Get items annotated in the class body
-        if sys.version_info >= (3, 14):
-            import annotationlib
-
-            self.class_level_annotations = list(
-                annotationlib.get_annotations(
-                    nn_module, format=annotationlib.Format.FORWARDREF
-                ).keys()
-            )
-        else:
-            self.class_level_annotations = list(nn_module.__annotations__.keys())
+        self.class_level_annotations = list(nn_module.__annotations__.keys())
 
         # Flag for later
         self.visiting_class_level_ann = False

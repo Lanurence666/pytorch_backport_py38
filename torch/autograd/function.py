@@ -1,11 +1,17 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import inspect
 import itertools
 import warnings
 from collections import OrderedDict
-from collections.abc import Callable
-from typing import Any, Concatenate, TypeVar
+
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union
+try:
+    from typing import Concatenate
+except ImportError:
+    from typing_extensions import Concatenate
 from typing_extensions import deprecated, ParamSpec
 
 import torch
@@ -413,7 +419,7 @@ class _SingleLevelFunction(
         )
 
     @staticmethod
-    def setup_context(ctx: Any, inputs: tuple[Any, ...], output: Any) -> Any:
+    def setup_context(ctx: Any, inputs: Tuple[Any, ...], output: Any) -> Any:
         r"""There are two ways to define the forward pass of an autograd.Function.
 
         Either:
@@ -613,11 +619,11 @@ class Function(_SingleLevelFunction):
             bound_args = signature.bind(*args, **kwargs)
             bound_args.apply_defaults()
 
-            return bound_args.args, bound_args.kwargs
+            return bound_args.args
 
         is_setup_ctx_defined = _is_setup_context_defined(cls.setup_context)
         if is_setup_ctx_defined:
-            args, kwargs = bind_default_args(cls.forward, *args, **kwargs)
+            args = bind_default_args(cls.forward, *args, **kwargs)
 
         if not torch._C._are_functorch_transforms_active():
             # See NOTE: [functorch vjp and autograd interaction]
@@ -776,7 +782,7 @@ def _unflatten(input, proto):
     # unflatten a list or tuple input into a nested list/tuple structure
     # specified by proto
     def unflatten_helper(input, proto):
-        res: list[torch.Tensor | None] = []
+        res: Union[List[torch.Tensor, None]]= []
         if hasattr(proto, "_jit_wrap"):
             return proto._jit_wrap(input)
         if not isinstance(proto, (list, tuple)):

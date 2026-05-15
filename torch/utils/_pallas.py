@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import functools
 
 import torch
+from typing import Tuple
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_jax_package() -> bool:
     """Check if JAX is installed."""
     try:
@@ -14,7 +17,7 @@ def has_jax_package() -> bool:
         return False
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_pallas_package() -> bool:
     """Check if Pallas (JAX experimental) is available."""
     if not has_jax_package():
@@ -29,8 +32,8 @@ def has_pallas_package() -> bool:
         return False
 
 
-@functools.cache
-def get_jax_version(fallback: tuple[int, int, int] = (0, 0, 0)) -> tuple[int, int, int]:
+@functools.lru_cache(maxsize=None)
+def get_jax_version(fallback: Tuple[int, int, int] = (0, 0, 0)) -> Tuple[int, int, int]:
     """Get JAX version as (major, minor, patch) tuple."""
     try:
         import jax  # type: ignore[import-not-found]
@@ -42,7 +45,7 @@ def get_jax_version(fallback: tuple[int, int, int] = (0, 0, 0)) -> tuple[int, in
         return fallback
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_jax_cuda_backend() -> bool:
     """Check if JAX has CUDA backend support with SM90+ (required by Mosaic GPU)."""
     if not has_jax_package():
@@ -66,7 +69,7 @@ def has_jax_cuda_backend() -> bool:
         return False
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_jax_tpu_backend() -> bool:
     """Check if JAX has TPU backend support."""
     if not has_jax_package():
@@ -81,7 +84,7 @@ def has_jax_tpu_backend() -> bool:
         return False
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_torch_tpu() -> bool:
     """Check if torch_tpu is installed and available."""
     try:
@@ -94,25 +97,25 @@ def has_torch_tpu() -> bool:
         return False
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_cpu_pallas() -> bool:
     """Checks for a full Pallas-on-CPU environment."""
     return has_pallas_package()
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_cuda_pallas() -> bool:
     """Checks for a full Pallas-on-CUDA environment."""
     return has_pallas_package() and torch.cuda.is_available() and has_jax_cuda_backend()
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_tpu_pallas() -> bool:
     """Checks for a full Pallas-on-TPU environment."""
     return has_pallas_package() and has_jax_tpu_backend() and has_torch_tpu()
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_pallas() -> bool:
     """
     Check if Pallas backend is fully available for use.

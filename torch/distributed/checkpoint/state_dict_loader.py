@@ -1,10 +1,12 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import inspect
 import logging
 import os
 import warnings
-from typing import Any, cast, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Union, cast
 from typing_extensions import deprecated
 
 import torch
@@ -34,12 +36,12 @@ logger = logging.getLogger()
     category=FutureWarning,
 )
 def load_state_dict(
-    state_dict: dict[str, Any],
+    state_dict: Dict[str, Any],
     storage_reader: StorageReader,
-    process_group: dist.ProcessGroup | None = None,
+    process_group: Optional[dist.ProcessGroup]= None,
     coordinator_rank: int = 0,
     no_dist: bool = False,
-    planner: LoadPlanner | None = None,
+    planner: Optional[LoadPlanner]= None,
 ) -> None:
     """This method is deprecated. Please switch to 'load'."""
     storage_reader.reset()
@@ -58,12 +60,12 @@ def load_state_dict(
 @_dcp_method_logger(log_exceptions=True)
 @_api_bc_check
 def load(
-    state_dict: dict[str, Any],
+    state_dict: Dict[str, Any],
     *,
-    checkpoint_id: str | os.PathLike | None = None,
-    storage_reader: StorageReader | None = None,
-    planner: LoadPlanner | None = None,
-    process_group: dist.ProcessGroup | None = None,
+    checkpoint_id: Optional[Union[str, os.PathLike]]= None,
+    storage_reader: Optional[StorageReader]= None,
+    planner: Optional[LoadPlanner]= None,
+    process_group: Optional[dist.ProcessGroup]= None,
     no_dist: bool = False,
 ) -> None:
     """
@@ -201,12 +203,12 @@ def load(
 
 
 def _load_state_dict(
-    state_dict: dict[str, Any],
+    state_dict: Dict[str, Any],
     storage_reader: StorageReader,
-    process_group: dist.ProcessGroup | None = None,
+    process_group: Optional[dist.ProcessGroup]= None,
     coordinator_rank: int = 0,
     no_dist: bool = False,
-    planner: LoadPlanner | None = None,
+    planner: Optional[LoadPlanner]= None,
 ) -> None:
     torch._C._log_api_usage_once("torch.distributed.checkpoint.load_state_dict")
 
@@ -220,7 +222,7 @@ def _load_state_dict(
         ckpt_kwargs["process_group"] = distW.group
 
     use_collectives = True
-    metadata: Metadata | None = None
+    metadata: Optional[Metadata]= None
 
     @_dcp_method_logger(**ckpt_kwargs)
     def local_step():
@@ -228,8 +230,8 @@ def _load_state_dict(
         nonlocal metadata
 
         # Use global metadata if available, otherwise fallback to rank local metadata
-        global_metadata_exc: Exception | None = None
-        rank_metadata_exc: Exception | None = None
+        global_metadata_exc: Optional[Exception]= None
+        rank_metadata_exc: Optional[Exception]= None
         try:
             metadata = storage_reader.read_metadata()
         except Exception as e:
@@ -290,12 +292,12 @@ def _load_state_dict(
         all_local_plans = storage_reader.prepare_global_plan(all_local_plans)
         return all_local_plans
 
-    central_plan: LoadPlan | None = None
+    central_plan: Optional[LoadPlan]= None
     if use_collectives:
         central_plan = distW.reduce_scatter("plan", local_step, global_step)
     else:
         local_plan: LoadPlan = local_step()
-        global_plan: list[LoadPlan] = global_step([local_plan])
+        global_plan: List[LoadPlan] = global_step([local_plan])
         central_plan = global_plan[0]
 
     @_dcp_method_logger(**ckpt_kwargs)
@@ -318,12 +320,12 @@ def _load_state_dict(
 
 
 def _load_state_dict_from_keys(
-    keys: set[str] | str | None = None,
+    keys: Optional[Union[Set[str], str]]= None,
     *,
-    checkpoint_id: str | os.PathLike | None = None,
-    storage_reader: StorageReader | None = None,
-    process_group: dist.ProcessGroup | None = None,
-) -> dict[str, Any]:
+    checkpoint_id: Optional[Union[str, os.PathLike]]= None,
+    storage_reader: Optional[StorageReader]= None,
+    process_group: Optional[dist.ProcessGroup]= None,
+) -> Dict[str, Any]:
     """
     Load only the specified keys from the checkpoint, if no keys are specified, the entire
     checkpoint will be loaded. Note, this method completely loads the checkpoint into the
@@ -351,7 +353,7 @@ def _load_state_dict_from_keys(
         Rank 0 is assumed to be the coordinator rank.
 
     Args:
-        keys (Optional[Union[set[str], str]]):
+        keys (Optional[Union[Set[str], str]]):
             Loads any key specified in this set. If no keys are specified, the entire checkpoint
             is loaded.
         checkpoint_id (Union[str, os.PathLike, None]):
@@ -389,7 +391,7 @@ def _load_state_dict_from_keys(
     if isinstance(keys, str):
         keys = {keys}
 
-    sd: dict[str, Any] = {}
+    sd: Dict[str, Any] = {}
     _load_state_dict(
         state_dict=sd,
         storage_reader=storage_reader,

@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 
 import sympy
@@ -15,6 +17,7 @@ from torch.utils._ordered_set import OrderedSet
 from torch.utils._sympy.functions import CeilDiv
 
 from ..utils import sympy_product
+from typing import Dict, Set, Type, Union
 
 
 class TritonSplitScanKernel(TritonKernel):
@@ -35,7 +38,7 @@ class TritonSplitScanKernel(TritonKernel):
 
     def __init__(
         self,
-        tiling: dict[str, sympy.Expr],
+        tiling: Dict[str, sympy.Expr],
         pid_cache=None,
         fixed_config=None,
         **kwargs,
@@ -122,7 +125,7 @@ class TritonSplitScanKernel(TritonKernel):
         )
         max_blocks = pointwise_numel * CeilDiv(reduction_numel, min_rblock)
         nbytes = scratch_nbytes_per_block * max_blocks
-        scratch_base: str | TritonCSEVariable
+        scratch_base: Union[str, TritonCSEVariable]
         scratch_base, _, offset = self.args.workspace(nelem=nbytes, zero_fill=True)
         if offset != 0:
             scratch_base = cse_load(
@@ -219,5 +222,5 @@ class TritonSplitScanKernel(TritonKernel):
     def _get_heuristic(self):
         return "split_scan"
 
-    def _get_grid_type(self) -> type[SplitScanGrid]:
+    def _get_grid_type(self) -> Type[SplitScanGrid]:
         return SplitScanGrid

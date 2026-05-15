@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import glob
 import io
 import json
@@ -6,7 +8,11 @@ import os
 import tempfile
 import zipfile
 from dataclasses import dataclass
-from typing import Any, IO, TYPE_CHECKING, TypeAlias
+from typing import Any, Callable, Dict, IO, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, overload
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 from typing_extensions import TypeIs
 
 import torch
@@ -62,13 +68,13 @@ if TYPE_CHECKING:
 
 
 DEFAULT_PICKLE_PROTOCOL = 2
-AOTI_FILES: TypeAlias = list[str | Weights] | dict[str, list[str | Weights]]
+AOTI_FILES = Union[List[Union[str, Weights]], Dict[str, List[Union[str, Weights]]]]
 
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-def is_pt2_package(serialized_model: bytes | str) -> bool:
+def is_pt2_package(serialized_model: Union[bytes, str]) -> bool:
     """
     Check if the serialized model is a PT2 Archive package.
     """
@@ -236,7 +242,7 @@ class PT2ArchiveReader:
 
         return int(archive_version)
 
-    def get_file_names(self) -> list[str]:
+    def get_file_names(self) -> List[str]:
         """
         Get the file names in the archive.
         """
@@ -250,7 +256,7 @@ PT2ArchiveReader.__module__ = "torch.export.pt2_archive"
 
 def _package_aoti_files(
     archive_writer: PT2ArchiveWriter,
-    aoti_files: AOTI_FILES | None,
+    aoti_files: Optional[AOTI_FILES],
     pickle_protocol: int = DEFAULT_PICKLE_PROTOCOL,
 ) -> None:
     if aoti_files is None:
@@ -264,12 +270,13 @@ def _package_aoti_files(
             f"Expected aoti_files to be a dict, but got {type(aoti_files)}"
         )
 
-    all_weights: dict[str, Weights] = {}  # model_name -> weight
-    weights_configs: dict[
-        str, dict[str, Any]
+    all_weights: Dict[str, Weights] = {}  # model_name -> weight
+    weights_configs: Dict[
+        str, Dict[str, Any]
     ] = {}  # model_name -> (weight_name -> (filename, shape, stride, offset))
 
     for model_name, files in aoti_files.items():
+        num_so_files = 0
         weights_configs[model_name] = {}
 
         for file in files:
@@ -280,8 +287,14 @@ def _package_aoti_files(
                 all_weights[model_name] = file
                 continue
 
-            # Note: Previously we rejected multiple .so cases. But Triton CPU AOTI
-            # has multiple .so files per model (wrapper, launcher, kernel).
+            if file.endswith(".so"):
+                num_so_files += 1
+                if num_so_files > 1:
+                    raise RuntimeError(
+                        f"Multiple .so files found in {files}. "
+                        "You might need to clear your cache "
+                        "directory before calling aoti_compile again."
+                    )
 
             filename = os.path.basename(file)
             if filename.startswith(CUSTOM_OBJ_FILENAME_PREFIX):
@@ -298,7 +311,7 @@ def _package_aoti_files(
 
     if len(all_weights) > 0:
         # Dedup weights
-        grouped_tensors: list[OrderedSet[tuple[str, str]]] = group_weights(all_weights)
+        grouped_tensors: List[OrderedSet[Tuple[str, str]]] = group_weights(all_weights)
         for idx, group in enumerate(grouped_tensors):
             filename = f"{WEIGHT_FILENAME_PREFIX}{idx}"
             complete_tensor = get_complete_tensor(group, all_weights)
@@ -365,9 +378,9 @@ def _should_use_pickle(t: torch.Tensor) -> bool:
 
 
 def _save_pickled_tensors(
-    pickled_items: list[tuple[str, torch.Tensor]],
+    pickled_items: List[Tuple[str, torch.Tensor]],
     archive_writer: PT2ArchiveWriter,
-    config: dict[str, schema.PayloadMeta],
+    config: Dict[str, schema.PayloadMeta],
     directory: str,
     filename_prefix: str,
     idx: int,
@@ -392,10 +405,10 @@ def _save_pickled_tensors(
 
 
 def _save_raw_tensors(
-    raw_items: dict[str, tuple[torch.Tensor, TensorProperties]],
+    raw_items: Dict[str, Tuple[torch.Tensor, TensorProperties]],
     model_name: str,
     archive_writer: PT2ArchiveWriter,
-    config: dict[str, schema.PayloadMeta],
+    config: Dict[str, schema.PayloadMeta],
     directory: str,
     filename_prefix: str,
     idx: int,
@@ -418,7 +431,7 @@ def _save_raw_tensors(
         idx += 1
 
         for _, item_fqn in group:
-            tensor, _ = weights_dict[model_name].get_weight(item_fqn)
+            tensor, _ = weights_Dict[model_name].get_weight(item_fqn)
             config[item_fqn] = schema.PayloadMeta(
                 path_name=path_name,
                 is_param=isinstance(tensor, torch.nn.Parameter),
@@ -435,10 +448,10 @@ def _package_state_dict(
     archive_writer: PT2ArchiveWriter,
     pickle_protocol: int = DEFAULT_PICKLE_PROTOCOL,
 ) -> schema.PayloadConfig:
-    weights_config: dict[str, schema.PayloadMeta] = {}
+    weights_config: Dict[str, schema.PayloadMeta] = {}
 
-    pickled_weights: list[tuple[str, torch.Tensor]] = []
-    raw_weights: dict[str, tuple[torch.Tensor, TensorProperties]] = {}
+    pickled_weights: List[Tuple[str, torch.Tensor]] = []
+    raw_weights: Dict[str, Tuple[torch.Tensor, TensorProperties]] = {}
 
     # Categorize weights
     for weight_fqn, weight_tensor in exported_program.state_dict.items():
@@ -482,11 +495,11 @@ def _package_constants(
     archive_writer: PT2ArchiveWriter,
     pickle_protocol: int = DEFAULT_PICKLE_PROTOCOL,
 ) -> schema.PayloadConfig:
-    constants_config: dict[str, schema.PayloadMeta] = {}
+    constants_config: Dict[str, schema.PayloadMeta] = {}
 
-    pickled_constants: list[tuple[str, torch.Tensor]] = []
-    raw_constants: dict[str, tuple[torch.Tensor, TensorProperties]] = {}
-    custom_objects: list[tuple[str, torch._C.ScriptObject]] = []
+    pickled_constants: List[Tuple[str, torch.Tensor]] = []
+    raw_constants: Dict[str, Tuple[torch.Tensor, TensorProperties]] = {}
+    custom_objects: List[Tuple[str, torch._C.ScriptObject]] = []
 
     # Categorize constants
     for constant_fqn, constant in exported_program.constants.items():
@@ -564,8 +577,8 @@ def _package_payload_config(
 
 def _package_exported_programs(
     archive_writer: PT2ArchiveWriter,
-    exported_programs: ExportedProgram | dict[str, ExportedProgram] | None,
-    opset_version: dict[str, int] | None = None,
+    exported_programs: Union[ExportedProgram, Optional[Dict[str, ExportedProgram]]],
+    opset_version: Optional[Dict[str, int]] = None,
     pickle_protocol: int = DEFAULT_PICKLE_PROTOCOL,
 ) -> None:
     if exported_programs is None:
@@ -610,7 +623,7 @@ def _package_exported_programs(
 
 
 def _package_extra_files(
-    archive_writer: PT2ArchiveWriter, extra_files: dict[str, Any] | None
+    archive_writer: PT2ArchiveWriter, extra_files: Optional[Dict[str, Any]]
 ) -> None:
     if extra_files is None:
         return
@@ -620,7 +633,7 @@ def _package_extra_files(
 
 
 def _package_executorch_files(
-    archive_writer: PT2ArchiveWriter, executorch_files: dict[str, bytes] | None
+    archive_writer: PT2ArchiveWriter, executorch_files: Optional[Dict[str, bytes]]
 ) -> None:
     if executorch_files is None:
         return
@@ -632,28 +645,28 @@ def _package_executorch_files(
 def package_pt2(
     f: FileLike,
     *,
-    exported_programs: ExportedProgram | dict[str, ExportedProgram] | None = None,
-    aoti_files: AOTI_FILES | None = None,
-    extra_files: dict[str, Any] | None = None,
-    opset_version: dict[str, int] | None = None,
+    exported_programs: Union[ExportedProgram, Dict[str, ExportedProgram]] | None = None,
+    aoti_files: Optional[AOTI_FILES] = None,
+    extra_files: Optional[Dict[str, Any]] = None,
+    opset_version: Optional[Dict[str, int]] = None,
     pickle_protocol: int = DEFAULT_PICKLE_PROTOCOL,
-    executorch_files: dict[str, bytes] | None = None,
+    executorch_files: Optional[Dict[str, bytes]] = None,
 ) -> FileLike:
     r"""
     Saves the artifacts to a PT2Archive format. The artifact can then be loaded
     using ``load_pt2``.
 
     Args:
-        f (str | os.PathLike[str] | IO[bytes]): A file-like object (has to
+        f (Union[str, os.PathLike[str]] | IO[bytes]): A file-like object (has to
          implement write and flush) or a string containing a file name.
 
-        exported_programs (Union[ExportedProgram, dict[str, ExportedProgram]]):
+        exported_programs (Union[ExportedProgram, Dict[str, ExportedProgram]]):
          The exported program to save, or a dictionary mapping model name to an
          exported program to save. The exported program will be saved under
          models/\*.json. If only one ExportedProgram is specified, this will
          automatically be named "model".
 
-        aoti_files (Union[list[str], dict[str, list[str]]]): A list of files
+        aoti_files (Union[List[str], Dict[str, List[str]]]): A list of files
          generated by AOTInductor via
          ``torch._inductor.aot_compile(..., {"aot_inductor.package": True})``,
          or a dictionary mapping model name to its AOTInductor generated files.
@@ -668,7 +681,7 @@ def package_pt2(
 
         pickle_protocol: can be specified to override the default protocol
 
-        executorch_files (Optional[dict[str, bytes]]): Optional executorch
+        executorch_files (Optional[Dict[str, bytes]]): Optional executorch
          artifacts to save.
 
     """
@@ -729,16 +742,15 @@ class AOTICompiledModel:
         flat_outputs = self.loader.boxed_run(flat_inputs)
         return pytree.tree_unflatten(flat_outputs, out_spec)
 
-    def get_metadata(self) -> dict[str, str]:
+    def get_metadata(self) -> Dict[str, str]:
         return self.loader.get_metadata()
 
     def load_constants(
         self,
-        constants_map: dict[str, torch.Tensor],
+        constants_map: Dict[str, torch.Tensor],
         *,
         check_full_update: bool,
         user_managed: bool = False,
-        allow_h2d_copy: bool = False,
     ) -> None:
         """
         Given a mapping of constant fqns to tensors, load the constants into the model.
@@ -749,20 +761,15 @@ class AOTICompiledModel:
             constants_map: A mapping of constant fqns to tensors.
             check_full_update: Whether to add check to see if all the constants
             are updated and have values.
-            user_managed: If True, the loader stores the tensor pointers
-            directly; the caller must keep them alive.
-            allow_h2d_copy: If True, CPU tensors are silently copied to the
-            model's device. Useful for loading a CPU ``state_dict()`` into a
-            non-CPU model. Incompatible with ``user_managed``.
         """
         self.loader.load_constants(
-            constants_map, False, check_full_update, user_managed, allow_h2d_copy
+            constants_map, False, check_full_update, user_managed
         )
 
-    def get_constant_fqns(self) -> list[str]:
+    def get_constant_fqns(self) -> List[str]:
         return self.loader.get_constant_fqns()
 
-    def __deepcopy__(self, memo: dict[Any, Any] | None) -> "AOTICompiledModel":
+    def __deepcopy__(self, memo: Optional[Dict[Any, Any]]) -> "AOTICompiledModel":
         logger.warning(
             "AOTICompiledModel deepcopy warning: AOTICompiledModel.loader is not deepcopied."
         )
@@ -771,9 +778,9 @@ class AOTICompiledModel:
 
 @dataclass
 class PT2ArchiveContents:
-    exported_programs: dict[str, ExportedProgram]
-    aoti_runners: dict[str, AOTICompiledModel]
-    extra_files: dict[str, Any]
+    exported_programs: Dict[str, ExportedProgram]
+    aoti_runners: Dict[str, AOTICompiledModel]
+    extra_files: Dict[str, Any]
 
 
 def _create_flat_tensor_from_bytes(
@@ -807,11 +814,11 @@ def _build_file_map(
     archive_reader: PT2ArchiveReader,
     config: schema.PayloadConfig,
     base_dir: str,
-) -> dict[str, torch.Tensor]:
+) -> Dict[str, torch.Tensor]:
     """
     Build a map from file path to the payload in flat tensor format.
     """
-    file_map: dict[str, torch.Tensor] = {}
+    file_map: Dict[str, torch.Tensor] = {}
     for payload_meta in config.config.values():
         # skip pickled objects
         if payload_meta.use_pickle:
@@ -847,7 +854,7 @@ def _load_payload_config(
 def _load_state_dict(
     archive_reader: PT2ArchiveReader,
     model_name: str,
-) -> dict[str, torch.Tensor] | bytes:
+) -> Union[Dict[str, torch.Tensor], bytes]:
     # Make it BC compatible with legacy weight files
     legacy_weights_file = f"{WEIGHTS_DIR}{model_name}.pt"
     if legacy_weights_file in archive_reader.get_file_names():
@@ -867,13 +874,13 @@ def _load_state_dict(
         )
         # chain the mapping weight FQN -> weight file name -> strided weight payload
         # so that the aliasing of weights is preserved
-        state_dict: dict[str, torch.Tensor] = {}
+        state_dict: Dict[str, torch.Tensor] = {}
         for weight_fqn, payload_meta in weights_config.config.items():
             if payload_meta.use_pickle:
                 weight_bytes = archive_reader.read_bytes(
                     os.path.join(WEIGHTS_DIR, payload_meta.path_name)
                 )
-                state_dict[weight_fqn] = torch.load(
+                state_Dict[weight_fqn] = torch.load(
                     io.BytesIO(weight_bytes), weights_only=False
                 )
             else:
@@ -891,11 +898,11 @@ def _load_state_dict(
                     ),
                 )
                 if payload_meta.is_param:
-                    state_dict[weight_fqn] = torch.nn.Parameter(
+                    state_Dict[weight_fqn] = torch.nn.Parameter(
                         weight_tensor, requires_grad=tensor_meta.requires_grad
                     )
                 else:
-                    state_dict[weight_fqn] = weight_tensor
+                    state_Dict[weight_fqn] = weight_tensor
 
         return state_dict
 
@@ -903,7 +910,7 @@ def _load_state_dict(
 def _load_constants(
     archive_reader: PT2ArchiveReader,
     model_name: str,
-) -> dict[str, torch.Tensor] | bytes:
+) -> Union[Dict[str, torch.Tensor], bytes]:
     # Make it BC compatible with legacy constant files
     legacy_constants_file = f"{CONSTANTS_DIR}{model_name}.pt"
     if legacy_constants_file in archive_reader.get_file_names():
@@ -923,7 +930,7 @@ def _load_constants(
         )
         # chain the mapping constant FQN -> constant file name -> strided constant payload
         # so that the aliasing of constants is preserved
-        constants: dict[str, torch.Tensor] = {}
+        constants: Dict[str, torch.Tensor] = {}
         for constant_fqn, payload_meta in constants_config.config.items():
             path_name = payload_meta.path_name
             if path_name.startswith(TENSOR_CONSTANT_FILENAME_PREFIX):
@@ -964,9 +971,9 @@ def _load_constants(
 
 def _load_exported_programs(
     archive_reader: PT2ArchiveReader,
-    file_names: list[str],
-    expected_opset_version: dict[str, int] | None,
-) -> dict[str, ExportedProgram]:
+    file_names: List[str],
+    expected_opset_version: Optional[Dict[str, int]],
+) -> Dict[str, ExportedProgram]:
     exported_program_files = [
         file for file in file_names if file.startswith(MODELS_DIR)
     ]
@@ -1004,11 +1011,11 @@ def _load_exported_programs(
 
 
 def _load_extra_files(
-    archive_reader: PT2ArchiveReader, file_names: list[str]
-) -> dict[str, Any]:
+    archive_reader: PT2ArchiveReader, file_names: List[str]
+) -> Dict[str, Any]:
     extra_files = [file for file in file_names if file.startswith(EXTRA_DIR)]
 
-    extra_file_contents: dict[str, Any] = {}
+    extra_file_contents: Dict[str, Any] = {}
     for file in extra_files:
         contents = archive_reader.read_string(file)
         extra_file_contents[file[len(EXTRA_DIR) :]] = contents
@@ -1059,7 +1066,7 @@ def _load_aoti(
 def load_pt2(
     f: FileLike,
     *,
-    expected_opset_version: dict[str, int] | None = None,
+    expected_opset_version: Optional[Dict[str, int]] = None,
     run_single_threaded: bool = False,
     num_runners: int = 1,
     device_index: int = -1,
@@ -1069,7 +1076,7 @@ def load_pt2(
     Loads all the artifacts previously saved with ``package_pt2``.
 
     Args:
-        f (str | os.PathLike[str] | IO[bytes]): A file-like object (has to
+        f (Union[str, os.PathLike[str]] | IO[bytes]): A file-like object (has to
          implement write and flush) or a string containing a file name.
 
         expected_opset_version (Optional[Dict[str, int]]): A map of opset names
@@ -1125,7 +1132,7 @@ def load_pt2(
         extra_files = _load_extra_files(archive_reader, file_names)
 
         # Get a list of AOTI model names
-        aoti_model_names: set[str] = set()
+        aoti_model_names: Set[str] = set()
         for file in file_names:
             if file.startswith(AOTINDUCTOR_DIR):
                 file_end = file[
@@ -1202,7 +1209,7 @@ def load_pt2(
 
 
 def load_weights_to_pt2_contents(
-    pt2_contents: PT2ArchiveContents, weights_map: dict[str, Any]
+    pt2_contents: PT2ArchiveContents, weights_map: Dict[str, Any]
 ) -> None:
     """
     Load weights into the models in PT2 archive contents

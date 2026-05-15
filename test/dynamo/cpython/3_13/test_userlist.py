@@ -36,7 +36,7 @@ class RedirectImportFinder(importlib.abc.MetaPathFinder):
         if fullname in redirect_imports:
             try:
                 # Attempt to import the standalone module
-                name = fullname.removeprefix("test.")
+                name = (fullname[len("test."):] if fullname.startswith("test.") else fullname)
                 r = importlib.import_module(name)
                 # Redirect the module in sys.modules
                 sys.modules[fullname] = r
@@ -110,9 +110,10 @@ class UserListTest(list_tests.CommonTest):
 
     def test_getitemoverwriteiter(self):
         # Verify that __getitem__ overrides *are* recognized by __iter__
-        class T(self.type2test):
-            def __getitem__(self, key):
-                return str(key) + '!!!'
+        with torch._dynamo.error_on_graph_break(False):
+            class T(self.type2test):
+                def __getitem__(self, key):
+                    return str(key) + '!!!'
         self.assertEqual(next(iter(T((1,2)))), "0!!!")
 
     def test_userlist_copy(self):

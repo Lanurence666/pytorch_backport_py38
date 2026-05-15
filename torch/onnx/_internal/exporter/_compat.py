@@ -1,14 +1,14 @@
+from __future__ import annotations
 """Compatibility functions for the torch.onnx.export API."""
 
 # mypy: allow-untyped-defs
 # mypy: disable-error-code=attr-defined
-from __future__ import annotations
 
 import io
 import logging
 import warnings
-from collections.abc import Callable, Mapping, Sequence
-from typing import Any, TYPE_CHECKING
+from collections.abc import Callable
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import torch
 from torch.onnx import _constants as onnx_constants
@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 
 
 def _get_torch_export_args(
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any] | None,
-) -> tuple[tuple[Any, ...], dict[str, Any] | None]:
+    args: Tuple[Any, ...],
+    kwargs: Union[Dict[str, Any], None,]
+) -> Union[Tuple[Tuple[Any, ...], Dict[str, Any], None]]:
     """Obtain the arguments for torch.onnx.export from the model and the input arguments."""
     if not kwargs and args and isinstance(args[-1], dict):
         kwargs = args[-1]
@@ -45,20 +45,20 @@ def export_compat(
     | torch.export.ExportedProgram
     | torch.jit.ScriptModule
     | torch.jit.ScriptFunction,
-    args: tuple[Any, ...],
-    f: str | os.PathLike | None = None,
+    args: Tuple[Any, ...],
+    f: Optional[Union[str, os.PathLike]]= None,
     *,
-    kwargs: dict[str, Any] | None = None,
+    kwargs: Optional[Dict[str, Any]]= None,
     export_params: bool = True,
-    verbose: bool | None = None,
-    input_names: Sequence[str] | None = None,
-    output_names: Sequence[str] | None = None,
-    opset_version: int | None = onnx_constants.ONNX_DEFAULT_OPSET,
-    custom_translation_table: dict[Callable, Callable] | None = None,
+    verbose: Optional[bool]= None,
+    input_names: Optional[Sequence[str]]= None,
+    output_names: Optional[Sequence[str]]= None,
+    opset_version: Optional[int]= onnx_constants.ONNX_DEFAULT_OPSET,
+    custom_translation_table: Optional[Dict[Callable, Callable]]= None,
     dynamic_axes: Mapping[str, Mapping[int, str]]
     | Mapping[str, Sequence[int]]
     | None = None,
-    dynamic_shapes: dict[str, Any] | tuple[Any, ...] | list[Any] | None = None,
+    dynamic_shapes: Optional[Union[Dict[str, Any], Tuple[Any, ...], List[Any]]]= None,
     keep_initializers_as_inputs: bool = False,
     external_data: bool = True,
     report: bool = False,
@@ -66,7 +66,7 @@ def export_compat(
     verify: bool = False,
     profile: bool = False,
     dump_exported_program: bool = False,
-    artifacts_dir: str | os.PathLike = ".",
+    artifacts_dir: Union[str, os.PathLike]= ".",
 ) -> _onnx_program.ONNXProgram:
     if opset_version is None:
         opset_version = onnx_constants.ONNX_DEFAULT_OPSET

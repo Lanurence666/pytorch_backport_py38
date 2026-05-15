@@ -12,6 +12,7 @@
 #include <ATen/native/cuda/Loops.cuh>
 
 #include <type_traits>
+#include <ATen/OpMathType.h>
 
 namespace at::native {
 namespace binary_internal {

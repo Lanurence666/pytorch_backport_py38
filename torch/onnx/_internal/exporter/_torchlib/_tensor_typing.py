@@ -1,8 +1,8 @@
+from __future__ import annotations
 """Typings for function definitions."""
 
-from __future__ import annotations
 
-from typing import TypeVar, Union
+from typing import Type, TypeVar, Union
 
 from onnxscript import (
     BFLOAT16,

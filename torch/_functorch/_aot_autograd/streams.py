@@ -1,5 +1,11 @@
+from __future__ import annotations
+
 import operator
-from typing import Any, TYPE_CHECKING, TypeAlias
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 import torch.fx
 import torch.fx.traceback
@@ -79,7 +85,7 @@ def get_device(node: Node) -> torch.device:
     return node.meta["val"].device
 
 
-def get_stream(node: Node) -> int | None:
+def get_stream(node: Node) -> Optional[int]:
     maybe_annotation = node.meta.get("custom", None)
     if maybe_annotation is not None:
         return node.meta["custom"].get("stream", None)
@@ -130,9 +136,9 @@ def insert_wait_event_before_node(graph: Graph, node: Node, event_ind: int) -> N
 
 
 def populate_stream_timeline(
-    stream_to_timeline: dict[int | None, IndexedDict[Node, float]],
+    stream_to_timeline: Dict[Optional[int], IndexedDict[Node, float]],
     graph: Graph,
-    stream_index: int | None,
+    stream_index: Optional[int],
 ) -> IndexedDict[Node, float]:
     if stream_index not in stream_to_timeline:
         stream_to_timeline[stream_index] = IndexedDict()
@@ -159,7 +165,7 @@ def populate_stream_timeline(
 # we attempt to find the point which to deallocate based on the estimated timestamps.
 def handle_synced_deallocation(
     graph: Graph,
-    stream_to_exec_trace: dict[int | None, IndexedDict[Node, float]],
+    stream_to_exec_trace: Dict[Optional[int], IndexedDict[Node, float]],
     node: Node,
     last_usage: Node,
 ) -> None:
@@ -227,7 +233,7 @@ def insert_sync(
     graph: Graph,
     consumer: Node,
     producer: Node,
-    node_to_wait_event_ind: dict[Node, int],
+    node_to_wait_event_ind: Dict[Node, int],
 ) -> None:
     if producer not in node_to_wait_event_ind:
         node_to_wait_event_ind[producer] = new_event()
@@ -266,7 +272,7 @@ def assign_backward_streams(gm: torch.fx.GraphModule) -> None:
 
 def insert_backward_syncs(gm: torch.fx.GraphModule) -> None:
     """Inserts stream syncs for backward nodes if consumer and producer are on different streams"""
-    node_to_wait_event_ind: dict[Node, int] = {}
+    node_to_wait_event_ind: Dict[Node, int] = {}
     for node in gm.graph.nodes:
         if node.op == "call_function" and is_bwd_node(node):
             flat_args = _get_flat_args(node, {})
@@ -288,7 +294,7 @@ def sync_deallocations(gm: torch.fx.GraphModule) -> None:
     # I think this is fine because you should have large tensors if you're using streams
     # although perhaps I could add a constant 10us per op ahead of the first stream op?
     # a trace of all the nodes running in a given stream
-    stream_to_exec_trace: dict[int | None, IndexedDict[Node, float]] = {}
+    stream_to_exec_trace: Dict[Optional[int], IndexedDict[Node, float]] = {}
     for node in gm.graph.nodes:
         if node.op == "call_function" and is_bwd_node(node):
             allocating_stream = get_stream(node)
@@ -365,9 +371,9 @@ def populate_fw_metadata_with_stream_indices(
 def _wrap_sync_node(
     gm: torch.fx.GraphModule,
     sync_node: Node,
-    deps_before_sync: list[Node],
-    visited: set[Node],
-) -> tuple[Node, list[Node]]:
+    deps_before_sync: List[Node],
+    visited: Set[Node],
+) -> Tuple[Node, List[Node]]:
     """
     Core logic: wrap a single sync node in control_deps.
 
@@ -419,7 +425,7 @@ def _wrap_sync_node(
 
     # The output is (sync_result, *deps_with_uses_after_sync)
     # Create getitem nodes only for dependencies that have uses after sync
-    replacements: dict[Node, Node] = {}
+    replacements: Dict[Node, Node] = {}
     with graph.inserting_after(control_deps_node):
         for i, dep in enumerate(deps_with_uses_after_sync):
             getitem_node = graph.call_function(
@@ -467,17 +473,17 @@ def wrap_all_sync_nodes_with_control_deps(gm: torch.fx.GraphModule) -> None:
     graph = gm.graph
     if len(graph.nodes) == 0:
         raise RuntimeError("Expected a non-empty graph")
-    stream_to_nodes: dict[int | None, list[Node]] = {}
+    stream_to_nodes: Dict[Optional[int], List[Node]] = {}
     # Maps event_index -> control_deps node that wrapped its record_event,
     # so the corresponding wait_event/synchronize_event can depend on the record.
-    event_to_ctrl: dict[int, Node] = {}
+    event_to_ctrl: Dict[int, Node] = {}
     # Maps event_index -> getitem nodes threaded through record_event's control_deps,
     # so synchronize_event can thread them through to subsequent ops.
-    event_to_passthrough: dict[int, list[Node]] = {}
+    event_to_passthrough: Dict[int, List[Node]] = {}
     # Maps event_index -> stream that the event was recorded on,
     # so synchronize_event can infer its stream.
-    event_to_stream: dict[int, int | None] = {}
-    visited: set[Node] = set()
+    event_to_stream: Dict[int, Optional[int]] = {}
+    visited: Set[Node] = set()
     found_sync = False
 
     # Walk the node linked-list manually so we can mutate the graph
@@ -496,7 +502,7 @@ def wrap_all_sync_nodes_with_control_deps(gm: torch.fx.GraphModule) -> None:
                     torch.ops.streams.synchronize_device.default,
                     torch.ops.streams.synchronize_stream.default,
                 ):
-                    all_stream_deps: list[Node] = [
+                    all_stream_deps: List[Node] = [
                         n for nodes in stream_to_nodes.values() for n in nodes
                     ]
                     if all_stream_deps:
@@ -514,8 +520,8 @@ def wrap_all_sync_nodes_with_control_deps(gm: torch.fx.GraphModule) -> None:
                 # recorded externally, thread the graph inputs through so
                 # that any post-sync uses depend on the synchronize.
                 if node.target is torch.ops.streams.synchronize_event.default:
-                    sync_stream: int | None = event_to_stream.get(event_index)
-                    all_stream_deps: list[Node] = [
+                    sync_stream: Optional[int] = event_to_stream.get(event_index)
+                    all_stream_deps: List[Node] = [
                         n for nodes in stream_to_nodes.values() for n in nodes
                     ]
                     if event_index not in event_to_stream:
@@ -569,7 +575,7 @@ def wrap_all_sync_nodes_with_control_deps(gm: torch.fx.GraphModule) -> None:
                     )
                 else:
                     ctrl_node = None
-                    passthrough: list[torch.fx.Node] = []
+                    passthrough: List[torch.fx.Node] = []
 
                 if node.target is torch.ops.streams.record_event.default:
                     event_to_stream[event_index] = sync_stream

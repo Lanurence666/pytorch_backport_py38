@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import operator
 import warnings
-from collections.abc import Sequence
+
 from itertools import chain
-from typing import Any, Generic, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
 
 import torch
 from torch._utils import (
@@ -21,7 +23,7 @@ from torch.nn.parallel.scatter_gather import gather, scatter_kwargs
 __all__ = ["DataParallel", "data_parallel"]
 
 
-def _check_balance(device_ids: Sequence[int | torch.device]) -> None:
+def _check_balance(device_ids: Sequence[Union[int, torch.device]]) -> None:
     imbalance_warn = """
     There is an imbalance between your GPUs. You may want to exclude GPU {} which
     has less than 75% of the memory or cores of GPU {}. You can do so by setting
@@ -136,8 +138,8 @@ class DataParallel(Module, Generic[T]):
     def __init__(
         self,
         module: T,
-        device_ids: Sequence[int | torch.device] | None = None,
-        output_device: int | torch.device | None = None,
+        device_ids: Union[Sequence[int, torch.device], None] = None,
+        output_device: Optional[Union[int, torch.device]] = None,
         dim: int = 0,
     ) -> None:
         super().__init__()
@@ -196,35 +198,35 @@ class DataParallel(Module, Generic[T]):
             outputs = self.parallel_apply(replicas, inputs, module_kwargs)
             return self.gather(outputs, self.output_device)
 
-    def replicate(self, module: T, device_ids: Sequence[int | torch.device]) -> list[T]:
+    def replicate(self, module: T, device_ids: Sequence[Union[int, torch.device]]) -> List[T]:
         return replicate(module, device_ids, not torch.is_grad_enabled())
 
     def scatter(
         self,
-        inputs: tuple[Any, ...],
-        kwargs: dict[str, Any] | None,
-        device_ids: Sequence[int | torch.device],
+        inputs: Tuple[Any, ...],
+        kwargs: Optional[Dict[str, Any]],
+        device_ids: Sequence[Union[int, torch.device]],
     ) -> Any:
         return scatter_kwargs(inputs, kwargs, device_ids, dim=self.dim)
 
     def parallel_apply(
         self, replicas: Sequence[T], inputs: Sequence[Any], kwargs: Any
-    ) -> list[Any]:
+    ) -> List[Any]:
         return parallel_apply(
             replicas, inputs, kwargs, self.device_ids[: len(replicas)]
         )
 
-    def gather(self, outputs: Any, output_device: int | torch.device) -> Any:
+    def gather(self, outputs: Any, output_device: Union[int, torch.device]) -> Any:
         return gather(outputs, output_device, dim=self.dim)
 
 
 def data_parallel(
     module: Module,
     inputs: Any,
-    device_ids: Sequence[int | torch.device] | None = None,
-    output_device: int | torch.device | None = None,
+    device_ids: Union[Sequence[int, torch.device], None] = None,
+    output_device: Optional[Union[int, torch.device]] = None,
     dim: int = 0,
-    module_kwargs: Any | None = None,
+    module_kwargs: Optional[Any] = None,
 ) -> torch.Tensor:
     r"""Evaluate module(input) in parallel across the GPUs given in device_ids.
 

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+from typing import Dict, List, Union
 """Create or remove git worktrees with submodules cloned locally.
 
 This avoids fetching submodules from remote, which is slow for large repos
@@ -28,7 +30,7 @@ def get_repo_root() -> Path:
     return Path(result.stdout.strip())
 
 
-def get_existing_worktrees(repo_root: Path) -> list[str]:
+def get_existing_worktrees(repo_root: Path) -> List[str]:
     result = subprocess.run(
         ["git", "worktree", "list", "--porcelain"],
         capture_output=True,
@@ -53,7 +55,7 @@ def next_worktree_name(repo_root: Path) -> str:
         n += 1
 
 
-def parse_gitmodules(root: Path) -> list[dict[str, str]]:
+def parse_gitmodules(root: Path) -> List[Dict[str, str]]:
     gitmodules = root / ".gitmodules"
     if not gitmodules.exists():
         return []
@@ -68,7 +70,7 @@ def parse_gitmodules(root: Path) -> list[dict[str, str]]:
     return modules
 
 
-def get_submodule_commit(parent_repo: Path, submodule_path: str) -> str | None:
+def get_submodule_commit(parent_repo: Path, submodule_path: str) -> Union[str, None]:
     """Get the commit hash a parent repo expects for a submodule."""
     result = subprocess.run(
         ["git", "ls-tree", "HEAD", submodule_path],
@@ -83,7 +85,7 @@ def get_submodule_commit(parent_repo: Path, submodule_path: str) -> str | None:
     return parts[2] if len(parts) >= 3 else None
 
 
-def resolve_git_dir(submodule_worktree: Path) -> Path | None:
+def resolve_git_dir(submodule_worktree: Path) -> Union[Path, None]:
     """Resolve the actual git object directory for a submodule.
 
     Submodules can have .git as either a directory (standalone clone) or a

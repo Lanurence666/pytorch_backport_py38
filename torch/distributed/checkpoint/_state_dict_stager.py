@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import types
 import warnings
 import weakref
 from copyreg import dispatch_table
-from typing import Any
+from typing import Any, Dict, Mapping, Set, Type
 
 import torch
 import torch.cuda._pin_memory_utils as pin_memory_utils
@@ -104,7 +106,7 @@ class StateDictStager:
                 ),
             )
 
-        d: dict[Any, Any] = {}
+        d: Dict[Any, Any] = {}
         self._deepcopy_dispatch = d
         d[type(None)] = _deepcopy_atomic
         d[int] = _deepcopy_atomic

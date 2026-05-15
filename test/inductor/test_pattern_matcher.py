@@ -1,4 +1,5 @@
 # Owner(s): ["module: inductor"]
+from __future__ import annotations
 import copy
 import os
 import unittest
@@ -1189,20 +1190,7 @@ class TestPatternMatcher(TestCase):
             torch.randn(5, 5, device=GPU_TYPE),
         ]
 
-        with (
-            unittest.mock.patch(
-                "torch._inductor.fx_passes.pre_grad.config.pre_grad_fusion_options",
-                {"test": {}},
-            ),
-            unittest.mock.patch(
-                "torch._inductor.fx_passes.pre_grad.PRE_GRAD_FUSIONS",
-                [],
-            ),
-            unittest.mock.patch(
-                "torch._inductor.fx_passes.pre_grad.PRE_GRAD_PATTERNS",
-                {"test": test_pass},
-            ),
-        ):
+        with unittest.mock.patch( "torch._inductor.fx_passes.pre_grad.config.pre_grad_fusion_options", {"test": {}}, ), unittest.mock.patch( "torch._inductor.fx_passes.pre_grad.PRE_GRAD_FUSIONS", [], ), unittest.mock.patch( "torch._inductor.fx_passes.pre_grad.PRE_GRAD_PATTERNS", {"test": test_pass}, ):
             for fn in (fn0, fn1, fn2, fn3, fn4, fn5):
                 counter = 0
                 expected = fn(*copy.deepcopy(args))

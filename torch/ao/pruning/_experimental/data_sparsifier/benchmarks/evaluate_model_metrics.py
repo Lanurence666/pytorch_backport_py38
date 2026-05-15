@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import argparse
 
 import numpy as np  # type: ignore[import]
@@ -86,7 +88,7 @@ def evaluate_metrics(test_dataloader, sparse_model_metadata):
     metadata = pd.read_csv(sparse_model_metadata)
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-    metrics_dict: dict[str, list] = {
+    metrics_dict: Dict[str, list] = {
         "norm": [],
         "sparse_block_shape": [],
         "sparsity_level": [],

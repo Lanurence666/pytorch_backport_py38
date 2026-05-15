@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module implements graph deduplication functionality for TorchDynamo's optimization pipeline.
 Graph deduplication identifies identical subgraphs in the computational graph and merges them
@@ -20,20 +21,21 @@ from torch.utils._ordered_set import OrderedSet
 
 from .graph_region_tracker import Node, Region
 from .graph_utils import _detect_cycles, _get_flat_args, _get_flat_args_unique
+from typing import Dict, Generator, Iterable, List, Optional, Set, Tuple
 
 
 # Represents an index into the region
 # to select a node and then
 # an index into that node's
 # flattened arguments
-UsageIndex = tuple[int, int]
+UsageIndex = Tuple[int, int]
 
 log = logging.getLogger(__name__)
 
-last_node_to_additional_deps: dict[Node, OrderedSet[Node]] | None = None
+last_node_to_additional_deps: Optional[Dict[Node, OrderedSet[Node]]]= None
 
 
-def apply_graph_deduplication(output_graph) -> dict[str, torch.fx.GraphModule]:  # type: ignore[no-untyped-def]
+def apply_graph_deduplication(output_graph) -> Dict[str, torch.fx.GraphModule]:  # type: ignore[no-untyped-def]
     """
     This is the main entry point for applying the graph deduplication pass. \
 Deduplication occurs in two phases:
@@ -71,7 +73,7 @@ when they are created in output_graph.
         output_graph.graph, output_graph.region_tracker.node_to_mutated_arg_positions
     )
 
-    sub_gms: dict[str, torch.fx.GraphModule] = {}
+    sub_gms: Dict[str, torch.fx.GraphModule] = {}
 
     for region_group in duplicated_region_groups:
         inds_with_external_users = _get_all_output_indices(region_group)
@@ -125,12 +127,12 @@ def _replace_region_with_subgraph(
     region: Region,
     get_subgraph_node: Node,
     external_node_usages: Iterable[OrderedSet[UsageIndex]],
-    node_usage_to_tuple_elems: dict[UsageIndex, OrderedSet[int]],
-    ind_to_tuple_spec: dict[int, dict[tuple[int, ...], int]],
-    inds_with_external_users: list[int],
+    node_usage_to_tuple_elems: Dict[UsageIndex, OrderedSet[int]],
+    ind_to_tuple_spec: Dict[int, Dict[Tuple[int, ...], int]],
+    inds_with_external_users: List[int],
     subgraph_name: str,
-    node_to_additional_deps: dict[Node, OrderedSet[Node]],
-    node_to_mutated_arg_positions: dict[Node, OrderedSet[int]],
+    node_to_additional_deps: Dict[Node, OrderedSet[Node]],
+    node_to_mutated_arg_positions: Dict[Node, OrderedSet[int]],
 ) -> None:
     sub_args = []
     flattened_getitem_nodes: OrderedSet[Node] = OrderedSet()
@@ -219,7 +221,7 @@ def _replace_region_with_subgraph(
 
 def _get_external_inputs(
     region: Region,
-) -> dict[Node, OrderedSet[UsageIndex]]:
+) -> Dict[Node, OrderedSet[UsageIndex]]:
     external_node_to_usages = defaultdict[Node, OrderedSet[UsageIndex]](OrderedSet)
     region_unique = set(region)
     for node_ind, node in enumerate(region):
@@ -235,17 +237,17 @@ def _get_external_inputs(
     return external_node_to_usages
 
 
-def _get_all_output_indices(regions: list[Region]) -> list[int]:
+def _get_all_output_indices(regions: List[Region]) -> List[int]:
     # Scan all regions to get the set of all possible output nodes indices in the region
     # perhaps we can record this information during region creation for more efficiency?
-    inds_with_external_users: set[int] = set()
+    inds_with_external_users: Set[int] = set()
     for region in regions:
         _get_inds_with_external_users(region, inds_with_external_users)
 
     return sorted(inds_with_external_users)
 
 
-def _get_inds_with_external_users(region: Region, inds_unique: set[int]) -> None:
+def _get_inds_with_external_users(region: Region, inds_unique: Set[int]) -> None:
     for ind, node in enumerate(region):
         for user in node.users:
             if user not in region:
@@ -255,19 +257,19 @@ def _get_inds_with_external_users(region: Region, inds_unique: set[int]) -> None
 
 def _create_subgraph(
     region: Region,
-    inds_with_external_users: list[int],
-) -> tuple[
+    inds_with_external_users: List[int],
+) -> Tuple[
     torch.fx.Graph,
-    list[OrderedSet[UsageIndex]],
-    dict[UsageIndex, OrderedSet[int]],
-    dict[int, dict[tuple[int, ...], int]],
+    List[OrderedSet[UsageIndex]],
+    Dict[UsageIndex, OrderedSet[int]],
+    Dict[int, Dict[Tuple[int, ...], int]],
 ]:
     subgraph: torch.fx.Graph = torch.fx.Graph()
     external_input_to_usages = _get_external_inputs(region)
-    external_node_usages = list[OrderedSet[UsageIndex]]()
+    external_node_usages = List[OrderedSet[UsageIndex]]()
     region_to_subgraph_node = {}
     flattened_getitem_nodes: OrderedSet[Node] = OrderedSet()
-    node_usage_to_tuple_elems: dict[UsageIndex, OrderedSet[int]] = {}
+    node_usage_to_tuple_elems: Dict[UsageIndex, OrderedSet[int]] = {}
 
     for node, usage_indices in external_input_to_usages.items():
         # We don't handle tuples as inputs today
@@ -325,7 +327,7 @@ def _create_subgraph(
 
 def _stable_topological_sort_impl(
     graph: torch.fx.Graph,
-    node_to_additional_deps: dict[Node, OrderedSet[Node]],
+    node_to_additional_deps: Dict[Node, OrderedSet[Node]],
     do_sort: bool = True,
 ) -> bool:
     # Nodes are in exactly one of these four collections:
@@ -352,8 +354,7 @@ def _stable_topological_sort_impl(
 
         if node.target == "output":
             outputs.add(node)
-            if node.users:
-                raise AssertionError("output nodes should have no users")
+            assert not node.users, "output nodes should have no users"
             continue
 
         waiting_for = [
@@ -380,15 +381,14 @@ def _stable_topological_sort_impl(
 
 def _stable_topological_sort(
     graph: torch.fx.Graph,
-    node_to_additional_deps: dict[Node, OrderedSet[Node]],
+    node_to_additional_deps: Dict[Node, OrderedSet[Node]],
 ) -> None:
-    if not _stable_topological_sort_impl(graph, node_to_additional_deps):
-        raise AssertionError("stable topological sort failed")
+    assert _stable_topological_sort_impl(graph, node_to_additional_deps)
 
 
 def _has_cycle(
     graph: torch.fx.Graph,
-    node_to_additional_deps: dict[Node, OrderedSet[Node]],
+    node_to_additional_deps: Dict[Node, OrderedSet[Node]],
 ) -> bool:
     return not _stable_topological_sort_impl(
         graph, node_to_additional_deps, do_sort=False
@@ -396,16 +396,16 @@ def _has_cycle(
 
 
 def _populate_additional_deps(
-    graph: torch.fx.Graph, node_to_mutated_arg_positions: dict[Node, OrderedSet[int]]
-) -> dict[Node, OrderedSet[Node]]:
-    node_to_additional_deps: dict[Node, OrderedSet[Node]] = defaultdict(OrderedSet)
+    graph: torch.fx.Graph, node_to_mutated_arg_positions: Dict[Node, OrderedSet[int]]
+) -> Dict[Node, OrderedSet[Node]]:
+    node_to_additional_deps: Dict[Node, OrderedSet[Node]] = defaultdict(OrderedSet)
     _add_mutation_dependencies(node_to_mutated_arg_positions, node_to_additional_deps)
     _add_global_state_dependencies(graph, node_to_additional_deps)
     return node_to_additional_deps
 
 
 def _add_global_state_dependencies(
-    graph: torch.fx.Graph, node_to_additional_deps: dict[Node, OrderedSet[Node]]
+    graph: torch.fx.Graph, node_to_additional_deps: Dict[Node, OrderedSet[Node]]
 ) -> None:
     import torch.amp
 
@@ -413,12 +413,12 @@ def _add_global_state_dependencies(
 
     # These are targets of the nodes which need to stay in the same relative place in the graph
     global_state_targets = {torch.amp._enter_autocast, torch.amp._exit_autocast}
-    all_nodes_dep_on: list[Node] = []
+    all_nodes_dep_on: List[Node] = []
 
     def prev_cur_nodes(
-        all_nodes: list[Node],
-    ) -> Generator[tuple[list[Node], Node], None, None]:
-        prev_nodes: list[Node] = []
+        all_nodes: List[Node],
+    ) -> Generator[Tuple[List[Node], Node], None, None]:
+        prev_nodes: List[Node] = []
         next_nodes = list(reversed(all_nodes))
 
         while next_nodes:
@@ -441,8 +441,8 @@ def _add_global_state_dependencies(
 
 
 def _add_mutation_dependencies(
-    node_to_mutated_arg_positions: dict[Node, OrderedSet[int]],
-    node_to_additional_deps: dict[Node, OrderedSet[Node]],
+    node_to_mutated_arg_positions: Dict[Node, OrderedSet[int]],
+    node_to_additional_deps: Dict[Node, OrderedSet[Node]],
 ) -> None:
     for node, indices in node_to_mutated_arg_positions.items():
         flat_args_kwargs = _get_flat_args(node, {})
@@ -467,11 +467,11 @@ def _add_mutation_dependencies(
 
 def _has_aliasing(
     region: Region,
-    inputs: list[Node],
-    inds_with_external_users: list[int],
+    inputs: List[Node],
+    inds_with_external_users: List[int],
     flattened_getitem_nodes: OrderedSet[Node],
 ) -> bool:
-    input_storages: dict[StorageWeakRef, Node] = dict()
+    input_storages: Dict[StorageWeakRef, Node] = dict()
     for node in inputs:
         if node in flattened_getitem_nodes:
             continue
@@ -488,15 +488,14 @@ def _has_aliasing(
                 )
                 return True
             input_storages[storage] = node
-    output_storages: dict[StorageWeakRef, Node] = dict()
+    output_storages: Dict[StorageWeakRef, Node] = dict()
     for i in inds_with_external_users:
         out_node = region[i]
         if out_node in flattened_getitem_nodes:
             continue
         if out_node:
             example_value = out_node.meta["example_value"]
-            if isinstance(example_value, list):
-                raise AssertionError("expected example_value to not be a list")
+            assert not isinstance(example_value, list)
             if isinstance(example_value, torch.Tensor):
                 storage = StorageWeakRef(example_value._typed_storage())
                 if storage in output_storages:
@@ -551,12 +550,11 @@ def _get_flattened_node_indices(node: Node, region: Region) -> OrderedSet[int]:
 
 def _create_getitem_nodes(
     node: Node, subgraph_tuple_node: Node, subgraph: torch.fx.Graph
-) -> tuple[list[Node], dict[tuple[int, ...], int]]:
+) -> Tuple[List[Node], Dict[Tuple[int, ...], int]]:
     tup = node.meta["example_value"]
-    if not isinstance(tup, tuple):
-        raise AssertionError("_get_getitem_children expects tuple")
+    assert isinstance(tup, tuple), "_get_getitem_children expects tuple"
 
-    getitem_nodes: list[Node] = []
+    getitem_nodes: List[Node] = []
     queue = deque([(e, (i,), subgraph_tuple_node) for i, e in enumerate(tup)])
     path_to_output_index = {}
 
@@ -583,12 +581,11 @@ def _create_getitem_nodes(
 def _replace_tuple_outputs(
     node: Node,
     output_index: int,
-    tuple_spec: dict[tuple[int, ...], int],
+    tuple_spec: Dict[Tuple[int, ...], int],
     invoke_subgraph_node: Node,
     graph: torch.fx.Graph,
 ) -> OrderedSet[Node]:
-    if not _is_tuple_node(node):
-        raise AssertionError("_replace_tuple_outputs expects a tuple node")
+    assert _is_tuple_node(node), "_replace_tuple_outputs expects a tuple node"
 
     queue = deque((c, (c.args[1],)) for c in _get_children_getitems(node))
     erased_nodes: OrderedSet[Node] = OrderedSet()

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import multiprocessing
 import os
 import platform
@@ -5,7 +6,10 @@ import shutil
 import subprocess
 import sys
 import sysconfig
-from distutils.command.clean import clean
+try:
+    from distutils.command.clean import clean
+except ImportError:
+    from setuptools.command.clean import clean
 
 from setuptools import Extension, find_packages, setup
 

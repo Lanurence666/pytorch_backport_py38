@@ -13,8 +13,10 @@ import sys
 import textwrap
 import traceback
 import typing
-from collections.abc import Callable, Mapping, Sequence
-from typing import Any, Literal
+
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Type, Union, overload
+from typing_extensions import Literal
+
 
 import onnxscript
 import onnxscript.evaluator
@@ -51,7 +53,7 @@ if typing.TYPE_CHECKING:
 
 
 # Define utilities to convert PyTorch data types so users do not need to specify manually
-_TORCH_DTYPE_TO_ONNX: dict[torch.dtype, ir.DataType] = {
+_TORCH_DTYPE_TO_ONNX: Dict[torch.dtype, ir.DataType] = {
     torch.bfloat16: ir.DataType.BFLOAT16,
     torch.bool: ir.DataType.BOOL,
     torch.complex128: ir.DataType.COMPLEX128,
@@ -102,7 +104,7 @@ _STEP_THREE_ERROR_MESSAGE = textwrap.dedent(
 logger = logging.getLogger(__name__)
 # The current tracer that is being used to trace the operators,
 # used by torch/onnx/_internal/exporter/_torchlib/ops/hop.py
-current_tracer: _building.OpRecorder | None = None
+current_tracer: Optional[_building.OpRecorder] = None
 
 
 def torch_dtype_to_onnx_dtype(dtype: torch.dtype) -> ir.DataType:
@@ -110,7 +112,7 @@ def torch_dtype_to_onnx_dtype(dtype: torch.dtype) -> ir.DataType:
 
 
 class TorchTensor(ir.Tensor):
-    def __init__(self, tensor: torch.Tensor, name: str | None = None) -> None:
+    def __init__(self, tensor: torch.Tensor, name: Optional[str] = None) -> None:
         # Pass the tensor as the raw data to ir.Tensor's constructor
         if tensor.dtype == torch.float4_e2m1fn_x2:
             # Change the shape to the unpacked shape
@@ -151,7 +153,7 @@ class TorchTensor(ir.Tensor):
 
         return self.raw.numpy(force=True)
 
-    def __array__(self, dtype: Any = None, copy: bool | None = None) -> npt.NDArray:
+    def __array__(self, dtype: Any = None, copy: Optional[bool] = None) -> npt.NDArray:
         del copy  # Unused, but needed for the signature
         if dtype is None:
             return self.numpy()
@@ -236,14 +238,14 @@ def _set_shape_type(
     | torch.SymBool
     | torch.SymInt
     | torch.SymFloat
-    | tuple[torch.Tensor],
+    | Tuple[torch.Tensor],
     complex_to_float: bool,
 ) -> None:
     if isinstance(meta_val, tuple):
         logger.warning("Setting shape and type of tensors is not supported yet")
     if isinstance(meta_val, torch.Tensor):
         dims = []
-        shape: tuple[int, ...]
+        shape: Tuple[int, ...]
         if meta_val.dtype == torch.float4_e2m1fn_x2:
             # Change the shape to the unpacked shape
             shape = _type_casting.get_float4_shape(meta_val)
@@ -292,7 +294,7 @@ def _get_qualified_module_name(cls: Any) -> str:
     return module + "." + cls.__name__
 
 
-def _get_node_namespace(node: torch.fx.Node) -> tuple[str, list[str], list[str]]:
+def _get_node_namespace(node: torch.fx.Node) -> Tuple[str, List[str], List[str]]:
     """Get the namespace and scope of the node.
 
     Example::
@@ -350,7 +352,7 @@ def _set_node_metadata(fx_node: torch.fx.Node, ir_node: ir.Node) -> None:
 
 
 def _handle_getitem_node(
-    node: torch.fx.Node, node_name_to_values: dict[str, ir.Value | Sequence[ir.Value]]
+    node: torch.fx.Node, node_name_to_values: Dict[str, Union[ir.Value, Sequence[ir.Value]]]
 ) -> ir.Value:
     """Handle a getitem node.
 
@@ -380,9 +382,9 @@ def _handle_getitem_node(
 
 
 def _handle_call_function_node(
-    graph_like: ir.Graph | ir.Function,
+    graph_like: Union[ir.Graph, ir.Function],
     node: torch.fx.Node,
-    node_name_to_values: dict[str, ir.Value | Sequence[ir.Value]],
+    node_name_to_values: Dict[str, Union[ir.Value, Sequence[ir.Value]]],
 ) -> None:
     """Handle a call_function node.
 
@@ -396,7 +398,7 @@ def _handle_call_function_node(
     # Add op to the graph
     op = str(node.target)
     fx_inputs, attributes, input_names, output_names = _get_inputs_and_attributes(node)
-    inputs: list[ir.Value | None] = []
+    inputs: List[Optional[ir.Value]] = []
     for i, input_ in enumerate(fx_inputs):
         if input_ is None:
             inputs.append(None)
@@ -437,8 +439,8 @@ def _handle_call_function_node(
 
 def _convert_fx_arg_to_onnx_arg(
     arg,
-    node_name_to_values: dict[str, ir.Value | Sequence[ir.Value]],
-    node_name_to_local_functions: dict[str, ir.Function],
+    node_name_to_values: Dict[str, Union[ir.Value, Sequence[ir.Value]]],
+    node_name_to_local_functions: Dict[str, ir.Function],
 ) -> Any:
     """Convert an FX argument to an ONNX compatible argument.
 
@@ -496,7 +498,7 @@ def _is_onnx_op(op: Any) -> bool:
     return op.name().startswith("onnx::")
 
 
-def _parse_onnx_op(op: torch._ops.OpOverload) -> tuple[str, int]:
+def _parse_onnx_op(op: torch._ops.OpOverload) -> Tuple[str, int]:
     """Parse the ONNX custom op overload name to get the op type and opset version."""
     name = op.name()[len("onnx::") :]
     name, _, opset = name.partition(".opset")
@@ -506,13 +508,13 @@ def _parse_onnx_op(op: torch._ops.OpOverload) -> tuple[str, int]:
 def _handle_call_function_node_with_lowering(
     model: ir.Model,
     node: torch.fx.Node,
-    node_name_to_values: dict[str, ir.Value | Sequence[ir.Value]],
+    node_name_to_values: Dict[str, Union[ir.Value, Sequence[ir.Value]]],
     *,
-    graph_like: ir.Graph | ir.Function,
-    constant_farm: dict[Any, ir.Value],
+    graph_like: Union[ir.Graph, ir.Function],
+    constant_farm: Dict[Any, ir.Value],
     registry: _registration.ONNXRegistry,
     opset: onnxscript.values.Opset,
-    node_name_to_local_functions: dict[str, ir.Function],
+    node_name_to_local_functions: Dict[str, ir.Function],
 ) -> None:
     """Translate a call_function node to an ONNX node.
 
@@ -660,9 +662,9 @@ def _handle_call_function_node_with_lowering(
 
 def _handle_placeholder_node(
     node: torch.fx.Node,
-    node_name_to_values: dict[str, ir.Value | Sequence[ir.Value]],
+    node_name_to_values: Dict[str, Union[ir.Value, Sequence[ir.Value]]],
     *,
-    graph_like: ir.Graph | ir.Function,
+    graph_like: Union[ir.Graph, ir.Function],
     lower: str,
     opset: onnxscript.values.Opset,
 ) -> None:
@@ -682,7 +684,7 @@ def _handle_get_attr_node(
     node: torch.fx.Node,
     *,
     owned_graphs: Mapping[str, ir.Function],
-    node_name_to_local_functions: dict[str, ir.Function],
+    node_name_to_local_functions: Dict[str, ir.Function],
 ) -> None:
     """Handle a get_attr node by assigning the corresponding ONNX function to the node name.
 
@@ -725,8 +727,8 @@ def _handle_get_attr_node(
 
 def _handle_output_node(
     node: torch.fx.Node,
-    node_name_to_values: dict[str, ir.Value | Sequence[ir.Value]],
-    graph_like: ir.Graph | ir.Function,
+    node_name_to_values: Dict[str, Union[ir.Value, Sequence[ir.Value]]],
+    graph_like: Union[ir.Graph, ir.Function],
 ) -> None:
     """Handle an output node by adding the output to the graph's outputs.
 
@@ -762,11 +764,11 @@ def _translate_fx_graph(
     fx_graph: torch.fx.Graph,
     model: ir.Model,
     *,
-    graph_like: ir.Graph | ir.Function,
+    graph_like: Union[ir.Graph, ir.Function],
     owned_graphs: Mapping[str, ir.Function],
     lower: Literal["at_conversion", "none"],
     registry: _registration.ONNXRegistry,
-) -> dict[str, ir.Value | Sequence[ir.Value]]:
+) -> Dict[str, Union[ir.Value, Sequence[ir.Value]]]:
     """Translate a submodule to an ONNX function.
 
     Any functions used by the traced functions will be added to the model.
@@ -785,12 +787,12 @@ def _translate_fx_graph(
     Returns:
         A mapping of FX node names to their produced ONNX ``Value``.
     """
-    node_name_to_values: dict[str, ir.Value | Sequence[ir.Value]] = {}
+    node_name_to_values: Dict[str, Union[ir.Value, Sequence[ir.Value]]] = {}
     # The reason we need node_name_to_local_functions in addition to owned_graphs
     # is because the get_attr nodes may assign a different name than the GraphModule name
     # to the subgraph. This is not typical but is valid Python.
-    node_name_to_local_functions: dict[str, ir.Function] = {}
-    constant_farm: dict[Any, ir.Value] = {}
+    node_name_to_local_functions: Dict[str, ir.Function] = {}
+    constant_farm: Dict[Any, ir.Value] = {}
     opset = _get_onnxscript_opset(registry.opset_version)
 
     for node in fx_graph.nodes:
@@ -842,7 +844,7 @@ def _translate_fx_graph(
 
 def _get_inputs_and_attributes(
     node: torch.fx.Node,
-) -> tuple[list[torch.fx.Node | None], dict[str, Any], list[str], list[str]]:
+) -> Tuple[List[Optional[torch.fx.Node]], Dict[str, Any], List[str], List[str]]:
     """Find and Fill in the not provided kwargs with default values.
 
     Returns:
@@ -861,9 +863,9 @@ def _get_inputs_and_attributes(
 
     # This function assumes the order of arguments in FX op is the
     # same as the order of arguments in TorchScript op.
-    inputs: list[Any] = []  # type: ignore[no-redef]
-    input_names: list[str] = []
-    attributes: dict[str, Any] = {}
+    inputs: List[Any] = []  # type: ignore[no-redef]
+    input_names: List[str] = []
+    attributes: Dict[str, Any] = {}
 
     if inspect.isbuiltin(node.target):
         inputs = list(node.args)
@@ -917,7 +919,7 @@ def _maybe_start_profiler(should_profile: bool) -> Any:
     return None
 
 
-def _maybe_stop_profiler_and_get_result(profiler) -> str | None:
+def _maybe_stop_profiler_and_get_result(profiler) -> Optional[str]:
     if profiler is None:
         return None
     profiler.stop()
@@ -943,7 +945,7 @@ def _summarize_exception_stack(e: BaseException) -> str:
 
 
 def _format_exceptions_for_all_strategies(
-    results: list[_capture_strategies.Result],
+    results: List[_capture_strategies.Result],
 ) -> str:
     """Format all the exceptions from the capture strategies."""
     return "\n".join(
@@ -959,7 +961,7 @@ def _format_exceptions_for_all_strategies(
 def exported_program_to_ir(
     exported_program: torch.export.ExportedProgram,
     *,
-    registry: _registration.ONNXRegistry | None = None,
+    registry: Optional[_registration.ONNXRegistry] = None,
     lower: Literal["at_conversion", "none"] = "at_conversion",
 ) -> ir.Model:
     """Convert an exported program to an ONNX IR model.
@@ -992,10 +994,8 @@ def _prepare_exported_program_for_export(
 ) -> torch.export.ExportedProgram:
     """Decompose and apply pre-export transformations to the exported program."""
 
-    with (
         # Support the dynamism with 0/1 input dim
-        torch.fx.experimental._config.patch(backed_size_oblivious=True),  # type: ignore[attr-defined]
-    ):
+    with torch.fx.experimental._config.patch(backed_size_oblivious=True):  # type: ignore[attr-defined]
         # Decompose the graph given the implemented torch ops in ONNX
         exported_program = _fx_passes.decompose_with_registry(
             exported_program, registry
@@ -1010,7 +1010,7 @@ def _prepare_exported_program_for_export(
         return exported_program
 
 
-def _get_scope_name(scoped_name: str) -> tuple[str, str]:
+def _get_scope_name(scoped_name: str) -> Tuple[str, str]:
     """Get the scope and name of a node.
 
     Examples::
@@ -1081,7 +1081,7 @@ def _exported_program_to_onnx_program(
 
     # A dictionary storing the translated subgraphs as ONNX functions made available to outer graphs
     # {<subgraph_scope>: {<subgraph_name>: <IR function>}}
-    scoped_subgraphs: dict[str, dict[str, ir.Function]] = {}
+    scoped_subgraphs: Dict[str, Dict[str, ir.Function]] = {}
     values = None
 
     # 1. Translate all nodes in all subgraphs and the main graph
@@ -1096,7 +1096,7 @@ def _exported_program_to_onnx_program(
         owned_graphs = scoped_subgraphs.setdefault(name, {})
         fx_graph = module.graph
 
-        graph_like: ir.Graph | ir.Function
+        graph_like: Union[ir.Graph, ir.Function]
         if name == "":
             # Root graph
             graph_like = model.graph
@@ -1275,7 +1275,7 @@ def _exported_program_to_onnx_program(
     return _onnx_program.ONNXProgram(model, exported_program)
 
 
-def _verbose_printer(verbose: bool | None) -> Callable[..., None]:
+def _verbose_printer(verbose: Optional[bool]) -> Callable[..., None]:
     """Prints messages based on `verbose`."""
     if verbose is False:
         return lambda *_, **__: None
@@ -1290,21 +1290,21 @@ def export(
     | torch.fx.GraphModule
     | torch.jit.ScriptModule
     | torch.jit.ScriptFunction,
-    args: tuple[Any, ...] = (),
-    kwargs: dict[str, Any] | None = None,
+    args: Tuple[Any, ...] = (),
+    kwargs: Optional[Dict[str, Any]] = None,
     *,
-    registry: _registration.ONNXRegistry | None = None,
-    dynamic_shapes: dict[str, Any] | tuple[Any, ...] | list[Any] | None = None,
-    input_names: Sequence[str] | None = None,
-    output_names: Sequence[str] | None = None,
+    registry: Optional[_registration.ONNXRegistry] = None,
+    dynamic_shapes: Union[Dict[str, Any], Tuple[Any, ...]] | Optional[List[Any]] = None,
+    input_names: Optional[Sequence[str]] = None,
+    output_names: Optional[Sequence[str]] = None,
     report: bool = False,
     verify: bool = False,
     profile: bool = False,
     dump_exported_program: bool = False,
     artifacts_dir: str | os.PathLike = ".",
-    verbose: bool | None = None,
+    verbose: Optional[bool] = None,
     optimize: bool = True,
-    opset_version: int | None = None,
+    opset_version: Optional[int] = None,
 ) -> _onnx_program.ONNXProgram:
     """Export a PyTorch model to ONNXProgram.
 
@@ -1346,10 +1346,10 @@ def export(
 
     verbose_print = _verbose_printer(verbose)
     export_status = _reporting.ExportStatus()
-    failed_results: list[_capture_strategies.Result] = []
+    failed_results: List[_capture_strategies.Result] = []
 
-    program: torch.export.ExportedProgram | None = None
-    capture_strategy: str | None = None
+    program: Optional[torch.export.ExportedProgram] = None
+    capture_strategy: Optional[str] = None
     # Step 1: Export the model with torch.export.export if the model is not already an ExportedProgram
     if isinstance(model, torch.export.ExportedProgram):
         # We know the model is already exported program, so the args, kwargs, and dynamic_shapes
@@ -1360,7 +1360,7 @@ def export(
     else:
         # Convert an nn.Module to an ExportedProgram
         # Try everything 🐰 (all paths for getting an ExportedProgram)
-        result: _capture_strategies.Result | None = None
+        result: Optional[_capture_strategies.Result] = None
         for strategy_class in _capture_strategies.CAPTURE_STRATEGIES:
             strategy = strategy_class(  # type: ignore[abstract]
                 verbose=verbose is not False,  # Treat None as verbose

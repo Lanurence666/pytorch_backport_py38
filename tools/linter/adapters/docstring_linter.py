@@ -3,9 +3,9 @@ from __future__ import annotations
 import itertools
 import json
 import sys
-from functools import cached_property
+from functools import lru_cached_property
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Set, TYPE_CHECKING, Union
 
 
 _FILE = Path(__file__).absolute()
@@ -18,7 +18,7 @@ else:
     import _linter
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Iterator, Sequence
 
 
 GRANDFATHER_LIST = _FILE.parent / "docstring_linter-grandfather.json"
@@ -46,10 +46,10 @@ class DocstringLinter(_linter.FileLinter):
     description = DESCRIPTION
     is_fixer = False
 
-    path_to_blocks: dict[str, list[dict[str, Any]]]
-    path_to_errors: dict[str, list[dict[str, Any]]]
+    path_to_blocks: Dict[str, List[Dict[str, Any]]]
+    path_to_errors: Dict[str, List[Dict[str, Any]]]
 
-    def __init__(self, argv: Sequence[str] | None = None) -> None:
+    def __init__(self, argv: Union[Sequence[str], None] = None) -> None:
         super().__init__(argv)
         add_arguments(self.parser.add_argument)
         self.path_to_blocks = {}
@@ -73,7 +73,7 @@ class DocstringLinter(_linter.FileLinter):
 
         yield from (self._block_result(b, pf) for b in sorted(bad - gf))
 
-        def as_data(b: _linter.Block) -> dict[str, Any]:
+        def as_data(b: _linter.Block) -> Dict[str, Any]:
             status = "grandfather" if b in gf else "bad" if b in bad else "good"
             return {"status": status, **b.as_data()}
 
@@ -83,7 +83,7 @@ class DocstringLinter(_linter.FileLinter):
         self.path_to_errors[str(pf.path)] = [{str(result.line): result.name}]
 
     @cached_property
-    def _grandfather(self) -> dict[str, dict[str, Any]]:
+    def _grandfather(self) -> Dict[str, Dict[str, Any]]:
         try:
             with open(self.args.grandfather) as fp:
                 return json.load(fp)  # type: ignore[no-any-return]
@@ -94,16 +94,16 @@ class DocstringLinter(_linter.FileLinter):
             raise
 
     @cached_property
-    def _max_lines(self) -> dict[str, int]:
+    def _max_lines(self) -> Dict[str, int]:
         return {"class": self.args.max_class, "def": self.args.max_def}
 
     def _grandfathered(
-        self, path: Path | None, bad: set[_linter.Block]
-    ) -> set[_linter.Block]:
+        self, path: Union[Path, None], bad: Set[_linter.Block]
+    ) -> Set[_linter.Block]:
         if path is None or self.args.no_grandfather or self.args.write_grandfather:
             return set()
 
-        grand: dict[str, int] = self._grandfather.get(str(path), {})
+        grand: Dict[str, int] = self._grandfather.get(str(path), {})
         tolerance_ratio = 1 + self.args.grandfather_tolerance / 100.0
 
         def grandfathered(b: _linter.Block) -> bool:
@@ -128,14 +128,14 @@ class DocstringLinter(_linter.FileLinter):
         return _linter.LintResult(msg, *pf.tokens[b.begin].start)
 
     def _display(
-        self, pf: _linter.PythonFile, results: list[_linter.LintResult]
+        self, pf: _linter.PythonFile, results: List[_linter.LintResult]
     ) -> Iterator[str]:
         if not self.args.report:
             yield from super()._display(pf, results)
 
     def _dont_require_constructor_and_class_docs(
-        self, blocks: Sequence[_linter.Block], bad: set[_linter.Block]
-    ) -> set[_linter.Block]:
+        self, blocks: Sequence[_linter.Block], bad: Set[_linter.Block]
+    ) -> Set[_linter.Block]:
         if self.args.lint_init:
             return bad
 
@@ -171,7 +171,7 @@ class DocstringLinter(_linter.FileLinter):
 
     def _write_grandfather(self) -> None:
         if self.args.write_grandfather:
-            results: dict[str, dict[str, int]] = {}
+            results: Dict[str, Dict[str, int]] = {}
 
             for path, blocks in self.path_to_blocks.items():
                 for block in blocks:
@@ -183,8 +183,8 @@ class DocstringLinter(_linter.FileLinter):
                 json.dump(results, fp, sort_keys=True, indent=2)
 
 
-def make_recursive(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    def rec(i: int) -> dict[str, Any]:
+def make_recursive(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def rec(i: int) -> Dict[str, Any]:
         d = dict(blocks[i])
         d["children"] = [rec(c) for c in d["children"]]
         return d
@@ -193,10 +193,10 @@ def make_recursive(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def make_terse(
-    blocks: Sequence[dict[str, Any]],
+    blocks: Sequence[Dict[str, Any]],
     index_by_line: bool = True,
-) -> dict[str, dict[str, Any]]:
-    result: dict[str, dict[str, Any]] = {}
+) -> Dict[str, Dict[str, Any]]:
+    result: Dict[str, Dict[str, Any]] = {}
 
     max_line = max(b["start_line"] for b in blocks) if blocks else 0
     line_field_width = len(str(max_line))
@@ -232,9 +232,9 @@ def make_terse(
 
 
 def file_summary(
-    blocks: Sequence[dict[str, Any]], report_all: bool = False
-) -> dict[str, str]:
-    def to_line(v: dict[str, Any]) -> str | None:
+    blocks: Sequence[Dict[str, Any]], report_all: bool = False
+) -> Dict[str, str]:
+    def to_line(v: Dict[str, Any]) -> Union[str, None]:
         if (status := v["status"]) == "good":
             if not report_all:
                 return None

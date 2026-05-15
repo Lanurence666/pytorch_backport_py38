@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import List, Tuple, Union
 import dataclasses as dc
 from enum import Enum
 
@@ -22,12 +23,12 @@ class LintMessage:
     name: str
     severity: LintSeverity
 
-    char: int | None = None
-    description: str | None = None
-    line: int | None = None
-    original: str | None = None
-    path: str | None = None
-    replacement: str | None = None
+    char: Union[int, None] = None
+    description: Union[str, None] = None
+    line: Union[int, None] = None
+    original: Union[str, None] = None
+    path: Union[str, None] = None
+    replacement: Union[str, None] = None
 
     asdict = dc.asdict
 
@@ -54,12 +55,12 @@ class LintResult:
 
     name: str
 
-    line: int | None = None
-    char: int | None = None
-    replacement: str | None = None
-    length: int | None = None  # Not in LintMessage
-    description: str | None = None
-    original: str | None = None
+    line: Union[int, None] = None
+    char: Union[int, None] = None
+    replacement: Union[str, None] = None
+    length: Union[int, None] = None  # Not in LintMessage
+    description: Union[str, None] = None
+    original: Union[str, None] = None
 
     is_recursive: bool = False  # Not in LintMessage
 
@@ -67,7 +68,7 @@ class LintResult:
     def is_edit(self) -> bool:
         return None not in (self.char, self.length, self.line, self.replacement)
 
-    def apply(self, lines: list[str]) -> None:
+    def apply(self, lines: List[str]) -> None:
         if not (
             self.char is None
             or self.length is None
@@ -104,7 +105,7 @@ class LintResult:
 
         return LintMessage(code=code, path=path, severity=LintSeverity.ERROR, **d)
 
-    def sort_key(self) -> tuple[int, int, str]:
+    def sort_key(self) -> Tuple[int, int, str]:
         line = -1 if self.line is None else self.line
         char = -1 if self.char is None else self.char
         return line, char, self.name

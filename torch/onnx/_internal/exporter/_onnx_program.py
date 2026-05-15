@@ -13,8 +13,8 @@ import os
 import tempfile
 import textwrap
 import warnings
-from collections.abc import Callable, Sequence
-from typing import Any, TYPE_CHECKING
+
+from typing import Any, Callable, Dict, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type, Union, overload
 
 import torch
 from torch.onnx._internal._lazy_import import onnx, onnx_ir as ir, onnxscript_apis
@@ -42,7 +42,7 @@ _NP_UNSUPPORTED_DTYPES_8BIT = frozenset(
 logger = logging.getLogger(__name__)
 
 
-def _ort_session_initializer(model: str | bytes) -> ort.InferenceSession:
+def _ort_session_initializer(model: Union[str, bytes]) -> ort.InferenceSession:
     """Initialize an ONNX Runtime inference session with the specified model."""
     import onnxruntime as ort
 
@@ -73,7 +73,7 @@ def _count_initializer_size(graph: ir.Graph) -> int:
 @contextlib.contextmanager
 def _set_graph_outputs(
     graph: ir.Graph,
-    outputs: list[ir.Value],
+    outputs: List[ir.Value],
 ):
     """Temporarily set the outputs of the graph.
 
@@ -91,7 +91,7 @@ def _set_graph_outputs(
         graph.outputs.extend(original_outputs)
 
 
-def _create_value_mapping(graph: ir.Graph) -> dict[str, ir.Value]:
+def _create_value_mapping(graph: ir.Graph) -> Dict[str, ir.Value]:
     """Return a dictionary mapping names to values in the graph.
 
     The mapping does not include values from subgraphs.
@@ -102,7 +102,7 @@ def _create_value_mapping(graph: ir.Graph) -> dict[str, ir.Value]:
     Returns:
         A dictionary mapping names to values.
     """
-    values: dict[str, ir.Value] = {}
+    values: Dict[str, ir.Value] = {}
     values.update(graph.initializers)
     # The names of the values can be None or "", which we need to exclude
     for input in graph.inputs:
@@ -117,7 +117,7 @@ def _create_value_mapping(graph: ir.Graph) -> dict[str, ir.Value]:
     return values
 
 
-def _to_numpy_array(input: torch.Tensor | int | float | str | bool) -> np.ndarray:
+def _to_numpy_array(input: Union[Union[torch.Tensor, int], Union[float, str]] | bool) -> np.ndarray:
     if isinstance(input, (int, float, str, bool)):
         return ir.tensor(input).numpy()
 
@@ -144,7 +144,7 @@ def _from_numpy_array(array: np.ndarray) -> torch.Tensor:
     return torch.from_numpy(array)
 
 
-def _to_ort_value(input: torch.Tensor | int | float | str | bool) -> ort.OrtValue:
+def _to_ort_value(input: Union[Union[torch.Tensor, int], Union[float, str]] | bool) -> ort.OrtValue:
     """Convert a PyTorch tensor to an ONNX Runtime OrtValue."""
     import numpy as np
     import onnxruntime as ort
@@ -210,7 +210,7 @@ class ONNXProgram:
     """
 
     def __init__(
-        self, model: ir.Model, exported_program: torch.export.ExportedProgram | None
+        self, model: ir.Model, exported_program: Optional[torch.export.ExportedProgram]
     ) -> None:
         """Initialize the ONNX program with the specified model and exported program.
         Args:
@@ -219,10 +219,10 @@ class ONNXProgram:
         """
         self.model: ir.Model = model
         self.exported_program = exported_program
-        self._inference_session: ort.InferenceSession | None = None
-        self._tempdir: tempfile.TemporaryDirectory | None = None
+        self._inference_session: Optional[ort.InferenceSession] = None
+        self._tempdir: Optional[tempfile.TemporaryDirectory] = None
         # Strategy used to capture the exported program
-        self._capture_strategy: str | None = None
+        self._capture_strategy: Optional[str] = None
 
     def __repr__(self) -> str:
         return f"""\
@@ -327,7 +327,7 @@ ONNXProgram(
         *,
         include_initializers: bool = True,
         keep_initializers_as_inputs: bool = False,
-        external_data: bool | None = None,
+        external_data: Optional[bool] = None,
     ) -> None:
         """Save the ONNX model to the specified destination.
 
@@ -388,7 +388,7 @@ ONNXProgram(
                 self.model.graph.inputs.clear()
                 self.model.graph.inputs.extend(original_inputs)
 
-    def apply_weights(self, state_dict: dict[str, torch.Tensor]) -> None:
+    def apply_weights(self, state_dict: Dict[str, torch.Tensor]) -> None:
         """Apply the weights from the specified state dict to the ONNX model.
 
         Use this method to replace FakeTensors or other weights.
@@ -413,7 +413,7 @@ ONNXProgram(
     def initialize_inference_session(
         self,
         initializer: Callable[
-            [str | bytes], ort.InferenceSession
+            [Union[str, bytes]], ort.InferenceSession
         ] = _ort_session_initializer,
     ) -> None:
         """Initialize the ONNX Runtime inference session.
@@ -453,7 +453,7 @@ ONNXProgram(
             self._tempdir.cleanup()
             self._tempdir = None
 
-    def rename_axes(self, rename_mapping: dict[str | ir.SymbolicDim, str]) -> None:
+    def rename_axes(self, rename_mapping: Dict[Union[str, ir.SymbolicDim], str]) -> None:
         """Rename axes in a model according to the specified rename mapping.
 
         Example::
@@ -480,7 +480,7 @@ ONNXProgram(
 
     def _rename_dynamic_axes(
         self,
-        dynamic_shapes: dict[str, Any] | tuple[Any, ...] | list[Any],
+        dynamic_shapes: Union[Dict[str, Any], Tuple[Any, ...]] | List[Any],
     ) -> None:
         """Rename dynamic axes in a model according to the specified dynamic_axes names."""
         rename_mapping = _dynamic_shapes.create_rename_mapping(
@@ -489,7 +489,7 @@ ONNXProgram(
         _ir_passes.rename_axis(self.model, rename_mapping)
 
 
-def _process_args(args, kwargs) -> tuple[torch.Tensor, ...]:
+def _process_args(args, kwargs) -> Tuple[torch.Tensor, ...]:
     """Process input arguments for the ONNX model."""
     args = _flatten_inputs(args, kwargs)
     args = _remove_none_from_inputs(args)

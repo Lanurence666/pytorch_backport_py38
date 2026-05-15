@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import Callable
 
 import torch
@@ -14,6 +16,7 @@ from torch.fx.graph import Node
 
 from .ns_types import NSSingleResultType, NSSingleResultValuesType
 from .utils import get_target_type_str, getattr_from_fqn, return_first_non_observer_node
+from typing import Callable, Dict, List, Optional, Type, cast
 
 
 toq = torch.ops.quantized
@@ -31,7 +34,7 @@ def mod_weight_bias_0(mod: nn.Module) -> torch.Tensor:
     return mod._weight_bias()[0]  # type: ignore[operator]
 
 
-def get_lstm_weight(mod: nn.Module) -> list[torch.Tensor]:
+def get_lstm_weight(mod: nn.Module) -> List[torch.Tensor]:
     res = []
     for idx, param_name in enumerate(mod._flat_weights_names):  # type: ignore[arg-type]
         if "weight_ih_l" in param_name or "weight_hh_l" in param_name:
@@ -40,7 +43,7 @@ def get_lstm_weight(mod: nn.Module) -> list[torch.Tensor]:
     return res
 
 
-def get_qlstm_weight(mod: nn.Module) -> list[torch.Tensor]:
+def get_qlstm_weight(mod: nn.Module) -> List[torch.Tensor]:
     res = []
     for weight_value in mod._all_weight_values:  # type: ignore[union-attr]
         res.append(weight_value.param.__getstate__()[0][4][0].__getstate__()[0][0])
@@ -66,7 +69,7 @@ def get_linear_mod_weight(mod: nn.Module) -> torch.Tensor:
         return mod._weight_bias()[0]  # type: ignore[operator]
 
 
-def get_lstm_mod_weights(mod: nn.Module) -> list[torch.Tensor]:
+def get_lstm_mod_weights(mod: nn.Module) -> List[torch.Tensor]:
     # TODO(future PR): make more generic, handle everything
     if isinstance(mod, nn.LSTM):
         res = []
@@ -175,8 +178,8 @@ def get_qlinear_fun_weight(node: Node, gm: GraphModule) -> torch.Tensor:
     return weight
 
 
-def get_op_to_type_to_weight_extraction_fn() -> dict[str, dict[Callable, Callable]]:
-    op_to_type_to_weight_extraction_fn: dict[str, dict[Callable, Callable]] = {
+def get_op_to_type_to_weight_extraction_fn() -> Dict[str, Dict[Callable, Callable]]:
+    op_to_type_to_weight_extraction_fn: Dict[str, Dict[Callable, Callable]] = {
         "call_module": {
             # Conv1d
             nn.Conv1d: mod_weight_detach,
@@ -243,9 +246,8 @@ def get_op_to_type_to_weight_extraction_fn() -> dict[str, dict[Callable, Callabl
 def extract_weight_from_node(
     node: Node,
     gm: GraphModule,
-    op_to_type_to_weight_extraction_fn: dict[str, dict[Callable, Callable]]
-    | None = None,
-) -> NSSingleResultType | None:
+    op_to_type_to_weight_extraction_fn: Optional[Dict[str, Dict[Callable, Callable]]] = None
+) -> Optional[NSSingleResultType]:
     res_type = NSSingleResultValuesType.WEIGHT.value
 
     # Not all graphmodules have _node_name_to_scope, so only fill it

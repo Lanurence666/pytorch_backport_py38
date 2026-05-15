@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import os
-from collections.abc import Callable
+
 from types import TracebackType
-from typing import TypeVar
+from typing import Callable, Dict, List, Optional, Set, Type, TypeVar
 
 from torch.fx import Graph, Node
 from torch.fx._compatibility import compatibility
@@ -26,8 +28,8 @@ class GraphTransformObserver:
         self,
         gm: GraphModule,
         passname: str,
-        subsystem: str | None = None,
-        log_url: str | None = None,
+        subsystem: Optional[str] = None,
+        log_url: Optional[str] = None,
     ) -> None:
         """
         log_url is inferred to be torch._inductor.config.trace.log_url_for_graph_xform unless otherwise specified
@@ -49,11 +51,11 @@ class GraphTransformObserver:
         )
 
         if self.active:
-            self.erased_nodes: set[str] = set()
-            self.created_nodes: set[str] = set()
-            self.name_to_node: dict[str, Node] = {}
+            self.erased_nodes: Set[str] = set()
+            self.created_nodes: Set[str] = set()
+            self.name_to_node: Dict[str, Node] = {}
             # record graph modules deepcopied from self.gm, so we can remove hooks on them when exiting the context
-            self.copied_gms: list[GraphModule] = []
+            self.copied_gms: List[GraphModule] = []
 
             self._node_creation_hook = self.get_node_creation_hook()
             self._node_erase_hook = self.get_node_erase_hook()
@@ -76,7 +78,7 @@ class GraphTransformObserver:
     def get_current_pass_count(cls) -> int:
         return cls.__pass_count
 
-    def apply_gm_pass(self, pass_fn: Callable[[GraphModule], T]) -> T | None:
+    def apply_gm_pass(self, pass_fn: Callable[[GraphModule], T]) -> Optional[T]:
         from torch._dynamo.utils import dynamo_timed
 
         with self:
@@ -89,7 +91,7 @@ class GraphTransformObserver:
             ):
                 return pass_fn(self.gm)
 
-    def apply_graph_pass(self, pass_fn: Callable[[Graph], T]) -> T | None:
+    def apply_graph_pass(self, pass_fn: Callable[[Graph], T]) -> Optional[T]:
         from torch._dynamo.utils import dynamo_timed
 
         with self:
@@ -111,10 +113,11 @@ class GraphTransformObserver:
         if self.subsystem is None:
             return False
 
+        debug_info = lambda: self.passname  # noqa: E731
         from torch._inductor.compiler_bisector import CompilerBisector
 
         return CompilerBisector.disable_subsystem(
-            "inductor", self.subsystem, lambda: self.passname
+            "inductor", self.subsystem, debug_info
         )
 
     def __enter__(self) -> "GraphTransformObserver":
@@ -137,9 +140,9 @@ class GraphTransformObserver:
 
     def __exit__(
         self,
-        type: type[BaseException] | None,
-        value: BaseException | None,
-        tb: TracebackType | None,
+        type: Optional[Type[BaseException]],
+        value: Optional[BaseException],
+        tb: Optional[TracebackType],
     ) -> None:
         if not self.active:
             return

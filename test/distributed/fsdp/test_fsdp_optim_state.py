@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import bisect
 import sys
 from collections.abc import Callable

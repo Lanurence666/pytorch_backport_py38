@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import functools
 from collections import defaultdict
 
@@ -7,25 +9,17 @@ from torch._export.passes._node_metadata_hook import (
     _set_node_metadata_hook,
 )
 from torch._library.fake_profile import OpProfile, TensorMetadata
+from typing import Dict, Set
 
 
-def insert_custom_op_guards(gm: torch.fx.GraphModule, ops_to_guard: set[str]) -> None:
+def insert_custom_op_guards(gm: torch.fx.GraphModule, ops_to_guard: Set[str]) -> None:
     """
     This is used by draft_export to insert guards in front of calls to custom
     operators which have a generated fake kernel.
     """
     for node in gm.graph.nodes:
         if node.op == "call_function" and str(node.target) in ops_to_guard:
-            with (
-                _set_node_metadata_hook(
-                    gm,
-                    functools.partial(
-                        _node_metadata_hook,
-                        metadata={"stack_trace": node.meta.get("stack_trace")},
-                    ),
-                ),
-                gm.graph.inserting_before(node),
-            ):
+            with _set_node_metadata_hook( gm, functools.partial( _node_metadata_hook, metadata={"stack_trace": node.meta.get("stack_trace")}, ), ), gm.graph.inserting_before(node):
                 for arg in (*node.args, *node.kwargs.values()):
                     if isinstance(arg, torch.fx.Node) and isinstance(
                         arg.meta.get("val"), torch.Tensor
@@ -45,8 +39,8 @@ def insert_custom_op_guards(gm: torch.fx.GraphModule, ops_to_guard: set[str]) ->
 
 
 def get_op_profiles(
-    gm: torch.fx.GraphModule, ops_to_guard: set[str]
-) -> dict[str, set[OpProfile]]:
+    gm: torch.fx.GraphModule, ops_to_guard: Set[str]
+) -> Dict[str, Set[OpProfile]]:
     """
     This is used by draft_export to get a list of custom operator profiles so
     that we can generate fake kernels.
@@ -75,7 +69,7 @@ def get_op_profiles(
 
         return OpProfile(args_profile, out_profile)  # type: ignore[arg-type]
 
-    op_profiles: dict[str, set[OpProfile]] = defaultdict(set)
+    op_profiles: Dict[str, Set[OpProfile]] = defaultdict(set)
 
     for node in gm.graph.nodes:
         if node.op == "call_function" and str(node.target) in ops_to_guard:

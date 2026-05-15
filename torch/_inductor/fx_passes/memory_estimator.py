@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import itertools
 import logging
 from collections import defaultdict
@@ -9,6 +11,7 @@ import torch.fx as fx
 from torch.fx.experimental.symbolic_shapes import optimization_hint
 from torch.utils._ordered_set import OrderedSet
 from torch.utils._pytree import tree_map_only
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
 
 log = logging.getLogger(__name__)
@@ -39,31 +42,31 @@ class GraphAliasTracker:
     - Uses: nodes that use a storage as input
     """
 
-    def __init__(self, nodes: list[fx.Node]):
+    def __init__(self, nodes: List[fx.Node]):
         # Map from node to the fresh storages it allocates (not views/aliases)
-        self.node_to_fresh_allocations: dict[fx.Node, OrderedSet[StorageKey]] = {}
+        self.node_to_fresh_allocations: Dict[fx.Node, OrderedSet[StorageKey]] = {}
 
         # Map from storage to the node that originally allocated it
-        self.storage_to_allocator: dict[StorageKey, fx.Node] = {}
+        self.storage_to_allocator: Dict[StorageKey, fx.Node] = {}
 
         # Map from node to all storages it uses as inputs
-        self.node_to_storage_uses: dict[fx.Node, OrderedSet[StorageKey]] = {}
+        self.node_to_storage_uses: Dict[fx.Node, OrderedSet[StorageKey]] = {}
 
         # Map from storage to all nodes that use it
-        self.storage_to_uses: dict[StorageKey, OrderedSet[fx.Node]] = defaultdict(
+        self.storage_to_uses: Dict[StorageKey, OrderedSet[fx.Node]] = defaultdict(
             OrderedSet
         )
 
         # Map from storage to the last node that uses it
-        self.storage_to_last_user: dict[StorageKey, fx.Node] = {}
+        self.storage_to_last_user: Dict[StorageKey, fx.Node] = {}
 
         # Map from node to storages that have their last use at that node
-        self.node_to_storages_last_used: dict[fx.Node, OrderedSet[StorageKey]] = (
+        self.node_to_storages_last_used: Dict[fx.Node, OrderedSet[StorageKey]] = (
             defaultdict(OrderedSet)
         )
 
         # Track all output storages for each node (for building usage graph)
-        self.node_to_output_storages: dict[fx.Node, OrderedSet[StorageKey]] = {}
+        self.node_to_output_storages: Dict[fx.Node, OrderedSet[StorageKey]] = {}
 
         # First pass: build storage allocations and track uses
         for node in nodes:
@@ -143,7 +146,7 @@ class GraphAliasTracker:
         return self.node_to_storages_last_used[node]
 
 
-def _size_of_default(num_bytes: int | torch.SymInt) -> int:
+def _size_of_default(num_bytes: Union[int, torch.SymInt]) -> int:
     return optimization_hint(num_bytes)
 
 
@@ -154,8 +157,8 @@ def device_filter(device: torch.device) -> bool:
 def build_memory_profile(
     graph: fx.Graph,
     is_releasable: Callable[[fx.Node], bool],
-    size_of: Callable[[int | torch.SymInt], int] | None = None,
-) -> list[int]:
+    size_of: Union[Callable[[int, torch.Optional[SymInt], int]]]= None
+) -> List[int]:
     """
     Function to estimate the memory profile of an input FX graph.
 
@@ -165,7 +168,7 @@ def build_memory_profile(
     - is_releasable (Callable[[fx.Node], bool]): A function that
       determines if a node's memory can be released (e.g. primal nodes
       cannot be released).
-    - size_of (Callable[[int | torch.SymInt], int]): A function that converts
+    - size_of (Callable[[Union[int, torch.SymInt]], int]): A function that converts
       byte counts (possibly symbolic) to concrete integers.
 
     Returns:
@@ -217,8 +220,8 @@ def build_memory_profile(
 def get_fwd_bwd_interactions(
     fwd_graph: fx.Graph,
     bwd_graph: fx.Graph,
-    size_of: Callable[[int | torch.SymInt], int] | None = None,
-) -> tuple[int, OrderedSet[str]]:
+    size_of: Union[Callable[[int, torch.Optional[SymInt], int]]]= None
+) -> Tuple[int, OrderedSet[str]]:
     """
     Analyze the interactions between the forward (fwd) and backward (bwd) graphs
     to determine memory usage characteristics.
@@ -226,11 +229,11 @@ def get_fwd_bwd_interactions(
     Args:
     - fwd_graph (fx.Graph): The forward graph representing the forward pass.
     - bwd_graph (fx.Graph): The backward graph representing the backward pass.
-    - size_of (Callable[[int | torch.SymInt], int]): A function that converts
+    - size_of (Callable[[Union[int, torch.SymInt]], int]): A function that converts
       byte counts (possibly symbolic) to concrete integers.
 
     Returns:
-    - tuple[int, OrderedSet[str]]: A tuple containing:
+    - Tuple[int, OrderedSet[str]]: A tuple containing:
         1. The baseline memory usage during the backward pass, accounting for
            storages that persist from the forward pass (i.e., in fwd output but
            not in bwd input).
@@ -326,8 +329,8 @@ class MemoryTracker:
     def __init__(
         self,
         graph: fx.Graph,
-        is_releasable: Callable[[fx.Node], bool] | None = None,
-        device_filter: Callable[[torch.device], bool] | None = None,
+        is_releasable: Optional[Callable[[fx.Node], bool]]= None,
+        device_filter: Optional[Callable[[torch.device], bool]]= None,
     ):
         """
         Initialize memory tracker for alternative scheduling of the given graph.

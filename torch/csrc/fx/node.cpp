@@ -692,7 +692,8 @@ static PyObject* NodeIter_iternext_helper(NodeIter* self) {
   }
   while (self->_cur != self->_root) {
     if (!self->_cur->_erased) {
-      return Py_NewRef(self->_cur);
+      Py_INCREF(self->_cur);
+      return (PyObject*)self->_cur;
     }
     if constexpr (reversed) {
       NodeBase* prev = (NodeBase*)Py_NewRef(self->_cur->_prev);

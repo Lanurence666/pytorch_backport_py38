@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 This closely follows the implementation in NumPyro (https://github.com/pyro-ppl/numpyro).
@@ -15,6 +16,7 @@ from torch import Tensor
 from torch.distributions import Beta, constraints
 from torch.distributions.distribution import Distribution
 from torch.distributions.utils import broadcast_all
+from typing import Optional, Union
 
 
 __all__ = ["LKJCholesky"]
@@ -66,8 +68,8 @@ class LKJCholesky(Distribution):
     def __init__(
         self,
         dim: int,
-        concentration: Tensor | float = 1.0,
-        validate_args: bool | None = None,
+        concentration: Union[Tensor, float]= 1.0,
+        validate_args: Optional[bool]= None,
     ) -> None:
         if dim < 2:
             raise ValueError(

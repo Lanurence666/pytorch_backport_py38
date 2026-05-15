@@ -1,8 +1,10 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 
+from __future__ import annotations
+
 import dataclasses
-from collections.abc import Sequence
-from typing import cast
+
+from typing import Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 
 import torch
 import torch.distributed as dist
@@ -44,7 +46,7 @@ from torch.distributed.remote_device import _remote_device
 from torch.distributed.tensor import DTensor
 
 
-STATE_DICT_2D_LAYOUT = dict[str, tuple[Sequence[int] | None, Sequence[int]]]
+STATE_DICT_2D_LAYOUT = Union[Dict[str, Tuple[Sequence[int], None, Sequence[int]]]]
 
 
 # TODO: Update docstrings for optimizer.py
@@ -65,7 +67,7 @@ def _gen_rank_device(global_rank: int, device_type: str = "cuda") -> str:
 
 
 def _create_colwise_spec(
-    pg: dist.ProcessGroup | None = None,
+    pg: Optional[dist.ProcessGroup]= None,
 ) -> ChunkShardingSpec:
     pg_device_type = dist.distributed_c10d._get_pg_default_device(pg).type
     if pg is None:
@@ -80,7 +82,7 @@ def _create_colwise_spec(
         ]
     return ChunkShardingSpec(
         dim=0,
-        placements=cast(list[_remote_device | str], placements),
+        placements = cast(List[Union[_remote_device, str]], placements),
     )
 
 
@@ -121,7 +123,7 @@ def _alloc_tensor(
 
 def _get_state_dict_2d_layout(
     state_dict: STATE_DICT_TYPE,
-) -> tuple[STATE_DICT_2D_LAYOUT, dist.ProcessGroup | None]:
+) -> Union[Tuple[STATE_DICT_2D_LAYOUT, dist.ProcessGroup, None]]:
     """
     Load the right TP slice of the optimizer state.
 
@@ -133,7 +135,7 @@ def _get_state_dict_2d_layout(
     N.B. The state_dict *MUST* come from FSDP.sharded_state_dict.
     """
     specs: STATE_DICT_2D_LAYOUT = {}
-    dp_pg: dist.ProcessGroup | None = None
+    dp_pg: Optional[dist.ProcessGroup]= None
     for key, value in state_dict.items():
         specs[key] = (None, value.size())
         if _is_nested_tensor(value):
@@ -155,12 +157,12 @@ def _get_state_dict_2d_layout(
 
 
 class _ReaderWithOffset(DefaultLoadPlanner):
-    translation: dict[MetadataIndex, MetadataIndex]
+    translation: Dict[MetadataIndex, MetadataIndex]
     state_dict: STATE_DICT_TYPE
     # pyrefly: ignore [bad-override]
     metadata: Metadata
 
-    def __init__(self, fqn_to_offset: dict[str, Sequence[int]]) -> None:
+    def __init__(self, fqn_to_offset: Dict[str, Sequence[int]]) -> None:
         super().__init__()
         self.fqn_to_offset = fqn_to_offset
         self.metadata = Metadata({})
@@ -219,7 +221,7 @@ def load_sharded_optimizer_state_dict(
     model_state_dict: STATE_DICT_TYPE,
     optimizer_key: str,
     storage_reader: StorageReader,
-    planner: LoadPlanner | None = None,
+    planner: Optional[LoadPlanner]= None,
 ) -> STATE_DICT_TYPE:
     """
     Load a state_dict in conjunction with FSDP sharded optimizer state.
@@ -288,7 +290,7 @@ def load_sharded_optimizer_state_dict(
     # Create a state_dict for optimizer state
     state_dict: STATE_DICT_TYPE = {}
 
-    fqn_to_offset: dict[str, Sequence[int]] = {}
+    fqn_to_offset: Dict[str, Sequence[int]] = {}
     for key, value in metadata.state_dict_metadata.items():
         key_path = metadata.planner_data[key]
         if key_path[0] != optimizer_key:

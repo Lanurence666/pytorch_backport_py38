@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import List
 import argparse
 import fnmatch
 import subprocess
@@ -13,7 +14,7 @@ REPO_ROOT = Path(__file__).parents[2]
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 
 
-def commit_ci(files: list[str], message: str) -> None:
+def commit_ci(files: List[str], message: str) -> None:
     # Check that there are no other modified files than the ones edited by this
     # tool
     stdout = subprocess.run(
@@ -46,7 +47,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    touched_files: list[Path] = []
+    touched_files: List[Path] = []
 
     if args.filter_gha:
         for relative_file in WORKFLOWS_DIR.iterdir():

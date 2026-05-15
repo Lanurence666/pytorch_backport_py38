@@ -1,9 +1,12 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch import Tensor
 
 from .optimizer import _to_scalar, Optimizer, ParamsT
+from typing import Callable, Optional, Union
 
 
 __all__ = ["LBFGS"]
@@ -240,13 +243,13 @@ class LBFGS(Optimizer):
     def __init__(
         self,
         params: ParamsT,
-        lr: float | Tensor = 1,
+        lr: Union[float, Tensor]= 1,
         max_iter: int = 20,
-        max_eval: int | None = None,
+        max_eval: Optional[int]= None,
         tolerance_grad: float = 1e-7,
         tolerance_change: float = 1e-9,
         history_size: int = 100,
-        line_search_fn: str | None = None,
+        line_search_fn: Optional[str]= None,
     ) -> None:
         if isinstance(lr, Tensor) and lr.numel() != 1:
             raise ValueError("Tensor lr must be 1-element")
@@ -312,7 +315,7 @@ class LBFGS(Optimizer):
         return [p.clone(memory_format=torch.contiguous_format) for p in self._params]
 
     def _set_param(self, params_data) -> None:
-        for p, pdata in zip(self._params, params_data, strict=True):
+        for p, pdata in _zip_strict(self._params, params_data):
             p.copy_(pdata)
 
     def _directional_evaluate(self, closure, x, t, d):

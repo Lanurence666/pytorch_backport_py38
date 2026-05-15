@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import Callable, Generator, List, Set, TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Hashable
+    from collections.abc import Hashable
     from typing import Literal
 
 from .dispatch import dispatch
 from .utils import hashable
 
 
-_global_logic_variables: set[Hashable] = set()
+_global_logic_variables: Set[Hashable] = set()
 _glv = _global_logic_variables
 
 
@@ -48,7 +48,7 @@ def var() -> Callable[..., Var]:
     return lambda *args: Var(*args)
 
 
-def vars() -> Callable[[int], list[Callable[..., Var]]]:
+def vars() -> Callable[[int], List[Callable[..., Var]]]:
     return lambda n: [var() for i in range(n)]
 
 

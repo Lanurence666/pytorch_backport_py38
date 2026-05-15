@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import contextlib
 import dataclasses
 import functools
@@ -9,9 +11,9 @@ import os
 import re
 import sys
 import warnings
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from enum import Enum
-from typing import Any, cast, Optional
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, Union, cast
 
 import sympy
 
@@ -87,7 +89,7 @@ from .cpp_utils import (
 _IS_WINDOWS = sys.platform == "win32"
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def get_export_declaration():
     return "__declspec(dllexport)" if _IS_WINDOWS else ""
 
@@ -145,7 +147,7 @@ DTYPE_LOWP_FP = [
     torch.float16,
 ]
 
-VECTORIZABLE_DTYPES: list[torch.dtype] = [
+VECTORIZABLE_DTYPES: List[torch.dtype] = [
     torch.float64,
     torch.float,
     torch.bfloat16,
@@ -210,7 +212,7 @@ def reduction_combine(
     var,
     next_value,
     helper_val=None,
-    index: sympy.Symbol | None = None,
+    index: Optional[sympy.Symbol] = None,
     src_dtype=None,
 ):
     is_bool = src_dtype == torch.bool
@@ -315,11 +317,11 @@ def move_code_under_inner_loop(
 
 
 def reduction_prefix_array(
-    acc_var: str | CSEVariable,
+    acc_var: Union[str, CSEVariable],
     acc_type: str,
     reduction_type: str,
     dtype: torch.dtype,
-    len: str | int,
+    len: Union[str, int],
     init_fn,
 ):
     """
@@ -464,7 +466,7 @@ def simplify_index_in_vec_range(index: sympy.Expr, var: sympy.Expr, vec_length: 
 
 @functools.lru_cache
 def stride_at_vec_range(
-    index: sympy.Expr, var: sympy.Symbol, vec_length: int | None = None
+    index: sympy.Expr, var: sympy.Symbol, vec_length: Optional[int] = None
 ):
     if vec_length:
         index = simplify_index_in_vec_range(index, var, vec_length)
@@ -523,10 +525,10 @@ class OuterLoopFusedSchedulerNode(FusedSchedulerNode):
     def __init__(
         self,
         scheduler: "Scheduler",
-        outer_fused_nodes: list[FusedSchedulerNode | SchedulerNode],
+        outer_fused_nodes: List[Union[FusedSchedulerNode, SchedulerNode]],
         outer_loop_fusion_depth,
     ):
-        self.outer_fused_nodes: list[FusedSchedulerNode | SchedulerNode] = (
+        self.outer_fused_nodes: List[Union[FusedSchedulerNode, SchedulerNode]] = (
             outer_fused_nodes
         )
         self.outer_loop_fusion_depth = outer_loop_fusion_depth
@@ -591,8 +593,8 @@ class OuterLoopFusedSchedulerNode(FusedSchedulerNode):
             return True
 
         for idx in range(len(cpp_kernel_proxy_list) - 1):
-            left_loop_nest = cpp_kernel_proxy_list[idx].loop_nest
-            right_loop_nest = cpp_kernel_proxy_list[idx + 1].loop_nest
+            left_loop_nest = cpp_kernel_proxy_List[idx].loop_nest
+            right_loop_nest = cpp_kernel_proxy_List[idx + 1].loop_nest
             if not _inner(
                 left_loop_nest,
                 right_loop_nest,
@@ -629,13 +631,13 @@ class OuterLoopFusedSchedulerNode(FusedSchedulerNode):
         self,
         cpp_kernel_proxy_list,
     ):
-        kernel_group = cpp_kernel_proxy_list[0].kernel_group
+        kernel_group = cpp_kernel_proxy_List[0].kernel_group
         outer_loop_fused_kernel = OuterLoopFusedKernel(kernel_group)
         outer_loop_fused_kernel.inner = [
             proxy.loop_nest.from_loop_level(self.outer_loop_fusion_depth)
             for proxy in cpp_kernel_proxy_list
         ]
-        outer_fused_proxy = cpp_kernel_proxy_list[0]
+        outer_fused_proxy = cpp_kernel_proxy_List[0]
         outer_fused_proxy.loop_nest.kernel = outer_loop_fused_kernel
         outer_fused_proxy.loop_nest.loops = outer_fused_proxy.loop_nest.loops[
             : self.outer_loop_fusion_depth
@@ -646,8 +648,8 @@ class OuterLoopFusedSchedulerNode(FusedSchedulerNode):
 class RecordOptimizationContext:
     def __init__(self, func_name: str = ""):
         self.func_name = func_name
-        self.current_node: torch.fx.Node | None = None
-        self.opt_ctx: OptimizationContext | None = None
+        self.current_node: Optional[torch.fx.Node] = None
+        self.opt_ctx: Optional[OptimizationContext] = None
 
     def __enter__(self):
         assert V.interpreter
@@ -1193,7 +1195,7 @@ class CppOverrides(OpOverrides):
         name: str,
         reduction_type: str,
         value: CSEVariable,
-        extra_meta: dict[str, Any],
+        extra_meta: Dict[str, Any],
     ) -> None:
         raise NotImplementedError
 
@@ -1498,7 +1500,7 @@ class CppVecOverrides(CppOverrides):
         assert isinstance(V.kernel, CppVecKernel)
         code = BracesBuffer()
         rand_function = (
-            f"result[offset_idx] = normalized_rand_cpu({seed}, offset[offset_idx]);"
+            f"result[offset_idx] = normalized_rand_cpu({seed}, offSet[offset_idx]);"
         )
         return codegen_rand(offset, code, rand_function)
 
@@ -1506,14 +1508,14 @@ class CppVecOverrides(CppOverrides):
     def randn(seed, offset):
         assert isinstance(V.kernel, CppVecKernel)
         code = BracesBuffer()
-        rand_function = f"result[offset_idx] = randn_cpu({seed}, offset[offset_idx]);"
+        rand_function = f"result[offset_idx] = randn_cpu({seed}, offSet[offset_idx]);"
         return codegen_rand(offset, code, rand_function)
 
     @staticmethod
     def randint64(seed, offset, low, high):
         assert isinstance(V.kernel, CppVecKernel)
         code = BracesBuffer()
-        rand_function = f"result[offset_idx] = randint64_cpu({seed}, offset[offset_idx], {low}, {high});"
+        rand_function = f"result[offset_idx] = randint64_cpu({seed}, offSet[offset_idx], {low}, {high});"
         return codegen_rand(offset, code, rand_function, torch.int64)
 
     @staticmethod
@@ -1815,7 +1817,7 @@ class CppVecOverrides(CppOverrides):
                     assert isinstance(other_vec_var, CppCSEVariable), other_vec_var
                     body_vec_var.dtype = dtype
                     other_vec_var.dtype = dtype
-                    overrides: type[CppOverrides | CppVecOverrides] = (
+                    overrides: Type[Union[CppOverrides, CppVecOverrides]] = (
                         # pyrefly: ignore [bad-assignment]
                         V.kernel.overrides
                     )  # type: ignore[has-type]
@@ -2022,13 +2024,13 @@ class CppKernel(Kernel):
         super().__init__(args)
         # Indicate when this kernel is active, for example
         # {x0, {24, 26}} -> this kernel is active when x0 >= 24 and x0 < 26
-        self.active_ranges: dict[sympy.Expr, tuple[sympy.Expr, ...]] = {}
+        self.active_ranges: Dict[sympy.Expr, Tuple[sympy.Expr, ...]] = {}
         # Indicate this kernel will be moved under the inner for-loop
         # See move_code_under_inner_loop
-        self.inner_itervars: list[sympy.Symbol] = []
-        self.call_ranges: tuple[sympy.Expr, ...] | None = None
-        self.ranges: list[sympy.Expr] = []
-        self.itervars: list[sympy.Symbol] = []
+        self.inner_itervars: List[sympy.Symbol] = []
+        self.call_ranges: Optional[Tuple[sympy.Expr, ...]] = None
+        self.ranges: List[sympy.Expr] = []
+        self.itervars: List[sympy.Symbol] = []
         self.reduction_depth = None
         self.reduction_prefix = IndentedBuffer()
         # We need this because when we run "reduction" nodes here, we lack
@@ -2037,7 +2039,7 @@ class CppKernel(Kernel):
         # reduction types and dtype to generate the reduction prefix. We record the information
         # with a callable lambda function, and when we have enough information to finalize
         # the reduction prefix, we can invoke the functions here with additional information.
-        self.reduction_prefix_generators: list[Callable] = []  # type: ignore[type-arg]
+        self.reduction_prefix_generators: List[Callable] = []  # type: ignore[type-arg]
         self.reduction_suffix = IndentedBuffer()
         self.parallel_reduction_prefix = IndentedBuffer()
         self.parallel_reduction_suffix = IndentedBuffer()
@@ -2056,8 +2058,8 @@ class CppKernel(Kernel):
         self.preloads = IndentedBuffer()
         self.poststores = IndentedBuffer()
         self.num_threads = num_threads  # num_threads the kernel specialized for
-        self.reduction_omp_dec: dict[tuple[str, str], str] = {}
-        self.reduction_var_names: list[str] = []
+        self.reduction_omp_dec: Dict[Tuple[str, str], str] = {}
+        self.reduction_var_names: List[str] = []
 
     def _gen_parallel_reduction_buffers(
         self,
@@ -2104,7 +2106,7 @@ class CppKernel(Kernel):
         for var_name in self.reduction_var_names:
             replace_acc_name(self.stores, var_name, f"{var_name}_local")
 
-    def gen_body(self, code: BracesBuffer | None = None):
+    def gen_body(self, code: Optional[BracesBuffer] = None):
         assert code is None
         code = BracesBuffer()
         with contextlib.ExitStack() as stack:
@@ -2252,7 +2254,7 @@ class CppKernel(Kernel):
 
     def _gen_reduction_prefix(
         self,
-        acc: CSEVariable | str,
+        acc: Union[CSEVariable, str],
         acc_type: str,
         rtype: str,
         dtype: torch.dtype,
@@ -2264,7 +2266,7 @@ class CppKernel(Kernel):
         # Otherwise, we will define and initialize a reduction array
         # => float tmp_acc0_arr[size];
         # => for (int i = 0; i < size; i++) tmp_acc0_arr[i] = 0;
-        def inner(size: int | None = None):
+        def inner(size: Optional[int] = None):
             if size is None:
                 return f"{acc_type} {acc} = {init_fn(rtype, dtype)};"
             else:
@@ -2279,7 +2281,7 @@ class CppKernel(Kernel):
 
         return inner
 
-    def finalize_reduction_prefix(self, size: int | None = None):
+    def finalize_reduction_prefix(self, size: Optional[int] = None):
         for gen_fn in self.reduction_prefix_generators:
             self.reduction_prefix.splice(gen_fn(size))
 
@@ -2690,8 +2692,8 @@ class CppKernel(Kernel):
     def codegen_conditions(
         self,
         code: BracesBuffer,
-        prefix: str | None = None,
-        var: sympy.Symbol | None = None,
+        prefix: Optional[str] = None,
+        var: Optional[sympy.Symbol] = None,
     ):
         if prefix is None:
             prefix = ""
@@ -2807,7 +2809,7 @@ class CppVecKernel(CppKernel):
         var: str,
         index: sympy.Expr,
         dtype: torch.dtype,
-        load_mask: CppCSEVariable | None = None,
+        load_mask: Optional[CppCSEVariable] = None,
     ):
         """
         Get a load line str that loads a vector from `var` at `index` of type `dtype`.
@@ -2841,13 +2843,13 @@ class CppVecKernel(CppKernel):
 
     def _load_or_store_non_contiguous(
         self,
-        var: str | None,
+        var: Optional[str],
         index: sympy.Expr,
         dtype: torch.dtype,
-        buffer: IndentedBuffer | None = None,
-        store_value: str | CppCSEVariable | None = None,
+        buffer: Optional[IndentedBuffer] = None,
+        store_value: Optional[Union[str, CppCSEVariable]] = None,
         accu_store: bool = False,
-    ) -> CppCSEVariable | None:
+    ) -> Optional[CppCSEVariable]:
         """
         Load or store a vector in a non-contiguous way. The vector is initialized from an array that is
         filled in an inner loop over the tiling factor.
@@ -3004,7 +3006,7 @@ class CppVecKernel(CppKernel):
 
     def _get_store_line(
         self,
-        value: str | CppCSEVariable,
+        value: Union[str, CppCSEVariable],
         var: str,
         index: sympy.Expr,
         dtype: torch.dtype,
@@ -3264,7 +3266,7 @@ class CppVecKernel(CppKernel):
                 reduction_combine_fn=self.reduction_combine_vec,
                 reduction_init_fn=self.reduction_init_vec,
             )
-        tmpvar: str | CSEVariable
+        tmpvar: Union[str, CSEVariable]
         is_bool = dtype == torch.bool
         if horizontal_reduction:
             # Horizontal reduction
@@ -3459,9 +3461,9 @@ class CppVecKernel(CppKernel):
         var,
         next_value,
         helper_val=None,
-        index: sympy.Symbol | None = None,
-        horizontal_reduction: bool | None = None,
-        src_dtype: torch.dtype | None = torch.float32,
+        index: Optional[sympy.Symbol] = None,
+        horizontal_reduction: Optional[bool] = None,
+        src_dtype: Optional[torch.dtype] = torch.float32,
     ):
         is_bool = src_dtype == torch.bool
         if reduction_type == "max":
@@ -3862,7 +3864,7 @@ class CppTile2DKernel(CppVecKernel):
         return self.transform_indexing(index)
 
 
-def get_loop_body_lowp_fp(_body: LoopBody) -> tuple[torch.dtype | None, bool]:
+def get_loop_body_lowp_fp(_body: LoopBody) -> Tuple[Optional[torch.dtype], bool]:
     """
     Returns the low precision data type (torch.float16/torch.bfloat16) contained in the nodes
     and if all the nodes can codegen with this data type without converting to float.
@@ -3870,7 +3872,7 @@ def get_loop_body_lowp_fp(_body: LoopBody) -> tuple[torch.dtype | None, bool]:
     """
     sub_blocks = [_body.root_block] + list(_body.subblocks.values())
 
-    _lowp_fp_type: torch.dtype | None = None
+    _lowp_fp_type: Optional[torch.dtype] = None
     _use_fp32 = False
     for sub_block in sub_blocks:
         for _node in sub_block.graph.nodes:
@@ -3916,7 +3918,7 @@ class TilingSelect:
         self,
         fn_list,
         var_sizes_list,
-    ) -> tuple[list[int], list[int]]:
+    ) -> Tuple[List[int], List[int]]:
         # TODO(jgong5): support alternative tiling factors and data types
         loop_bodies = _get_loop_body(fn_list)
         all_dtypes = _get_dtype_from_loopbodies(loop_bodies)
@@ -3986,10 +3988,10 @@ class TilingSelect:
                     itervars[:reduction_depth],
                     itervars[reduction_depth:],
                 )
-                op_counter: dict[str, int] = {}
+                op_counter: Dict[str, int] = {}
                 # ops may cause overhead with vectorization, like non-contiguous
                 # index_expr, load, store
-                non_contig_indexing_op_counter: dict[str, int] = {}
+                non_contig_indexing_op_counter: Dict[str, int] = {}
                 for _body in loop_bodies:
                     sub_blocks = [_body.root_block] + list(_body.subblocks.values())
                     for sub_block in sub_blocks:
@@ -4139,9 +4141,9 @@ class CppKernelProxy(CppKernel):
     # Now, use kernel_cls and vec_kernel_cls class attributes instead.
     # This lets CppKernelProxy subclasses inject custom behavior cleanly.
     # No need to duplicate codegen_functions() just to swap kernel classes.
-    kernel_cls: type[CppKernel] = CppKernel
-    vec_kernel_cls: type[CppVecKernel] = CppVecKernel
-    tile2d_kernel_cls: type[CppTile2DKernel] = CppTile2DKernel
+    kernel_cls: Type[CppKernel] = CppKernel
+    vec_kernel_cls: Type[CppVecKernel] = CppVecKernel
+    tile2d_kernel_cls: Type[CppTile2DKernel] = CppTile2DKernel
 
     def __init__(self, kernel_group):
         super().__init__(kernel_group.args, kernel_group.ws.num_threads)
@@ -4149,7 +4151,7 @@ class CppKernelProxy(CppKernel):
         self.loop_nest = None
         self.call_ranges = None
         self.picked_vec_isa: cpu_vec_isa.VecISA = cpu_vec_isa.pick_vec_isa()
-        self.kernels: list[CppKernel] = []
+        self.kernels: List[CppKernel] = []
 
     def data_type_propagation(self, nodes):
         for _node in nodes:
@@ -4169,7 +4171,7 @@ class CppKernelProxy(CppKernel):
 
     def legalize_lowp_fp_dtype_loopbody(self, loop_body: LoopBody):
         def add_to_dtype(sub_graph: torch.fx.Graph):
-            def get_input_dtype(node: torch.fx.Node) -> torch.dtype | None:
+            def get_input_dtype(node: torch.fx.Node) -> Optional[torch.dtype]:
                 """Get input dtype for nodes that may consumes lowp fp dt"""
                 if node.target == "store":
                     return V.graph.get_dtype(node.args[1])  # type: ignore[arg-type]
@@ -4183,7 +4185,7 @@ class CppKernelProxy(CppKernel):
                 else:
                     return None
 
-            def get_output_dtype(node: torch.fx.Node) -> torch.dtype | None:
+            def get_output_dtype(node: torch.fx.Node) -> Optional[torch.dtype]:
                 """Get output dtype for nodes that may produce lowp fp dt"""
                 if node.target == "load":
                     assert len(node.args) == 3
@@ -4612,7 +4614,7 @@ class CppKernelProxy(CppKernel):
             DataTypePropagation.propagate_loopbody(body)
         self.codegen_functions(loop_bodies, var_sizes_list)
 
-    def codegen_nodes(self, nodes: list[SchedulerNode]):
+    def codegen_nodes(self, nodes: List[SchedulerNode]):
         # Legalize BF16 node by adding to_dtype explicitly
         self.legalize_lowp_fp_dtype(nodes)
         self.data_type_propagation(nodes)
@@ -4652,7 +4654,7 @@ class CppKernelProxy(CppKernel):
         for kernel in self.kernels:
             kernel.update_stores_with_parallel_reduction()
 
-    def gen_body(self, code: BracesBuffer | None = None):
+    def gen_body(self, code: Optional[BracesBuffer] = None):
         assert code is not None
         if_prefix = "C10_LIKELY"
         for kernel in self.kernels:
@@ -4753,11 +4755,11 @@ class CppKernelProxy(CppKernel):
 class OuterLoopFusedKernel(CppKernel):
     def __init__(self, kernel_group):
         super().__init__(kernel_group.args, kernel_group.ws.num_threads)
-        self.inner: list[LoopNest] = []
+        self.inner: List[LoopNest] = []
 
     def decide_parallel_depth(self, max_parallel_depth, threads):
         kernels_parallel_depth = []
-        nested_kernels: list[CppKernel] = [
+        nested_kernels: List[CppKernel] = [
             loop_nest.get_kernel() for loop_nest in self.inner
         ]
         # TODO(leslie-fang-intel): only enable parallel within all outer loop levels.
@@ -4795,7 +4797,7 @@ class CppScheduling(BaseScheduling):
     # Subclass CppKernelProxy to customize codegen without copying codegen_node().
     # Use kernel_proxy_cls to inject custom proxies in CppScheduling subclasses.
     # Avoid duplicating codegen_node() just to swap in a custom kernel proxy class.
-    kernel_proxy_cls: type[CppKernelProxy] = CppKernelProxy
+    kernel_proxy_cls: Type[CppKernelProxy] = CppKernelProxy
     # ctypes limits the number of args to 1024, refer to:
     # https://github.com/python/cpython/commit/a285af7e626d1b81cf09f8b2bf7656f100bc1237
     # We set a conservative threshold here.
@@ -4920,7 +4922,7 @@ class CppScheduling(BaseScheduling):
             else:
                 return FusedSchedulerNode.fuse(node1, node2)
 
-    def _why_fuse_nodes(self, node1, node2) -> ReasonFusedNodes | None:
+    def _why_fuse_nodes(self, node1, node2) -> Optional[ReasonFusedNodes]:
         _, (vars1, reduce1) = node1.group
         _, (vars2, reduce2) = node2.group
 
@@ -4968,7 +4970,7 @@ class CppScheduling(BaseScheduling):
         ranges2 = node_to_recomp.node.data.get_size()
         ranges1 = None
         if isinstance(ref_node, FusedSchedulerNode):
-            ranges_set = OrderedSet[tuple[Any, ...]]()
+            ranges_set = OrderedSet[Tuple[Any, ...]]()
             for snode in ref_node.snodes:
                 assert isinstance(snode, SchedulerNode)
                 if isinstance(snode.node, ir.TemplateBuffer):
@@ -5117,7 +5119,7 @@ class CppScheduling(BaseScheduling):
             self._can_fuse_horizontal_impl(node1, node2) and not node1.is_reduction()
         ) or self.can_fuse_vertical_outer_loop(node1, node2)
 
-    def try_loop_split(self, nodes: list[SchedulerNode]):
+    def try_loop_split(self, nodes: List[SchedulerNode]):
         """
         Apply loop split optimization.
         When one of the indexing_exprs contains a division, we eliminate the division by splitting the loop
@@ -5154,7 +5156,7 @@ class CppScheduling(BaseScheduling):
         matched_index_size = None
 
         # Collect node info for later compatibility check
-        node_bodies: list[tuple[Any, Any]] = []
+        node_bodies: List[Tuple[Any, Any]] = []
 
         for node in nodes:
             assert isinstance(node.node, ir.ComputedBuffer)
@@ -5262,8 +5264,8 @@ class CppScheduling(BaseScheduling):
         """
         kernel_group = self.kernel_group
         generated_cpp_vec_kernel_count = metrics.generated_cpp_vec_kernel_count
-        cpp_kernel_proxy_list: list[self.kernel_proxy_cls] = []  # type: ignore[name-defined]
-        nodes_list: list[list[SchedulerNode]] = []
+        cpp_kernel_proxy_list: List[self.kernel_proxy_cls] = []  # type: ignore[name-defined]
+        nodes_list: List[List[SchedulerNode]] = []
         assert isinstance(node, OuterLoopFusedSchedulerNode)
 
         def try_outer_loop_fusion_with_local_buf(node: OuterLoopFusedSchedulerNode):
@@ -5276,16 +5278,16 @@ class CppScheduling(BaseScheduling):
 
             def get_call_ranges(node: BaseSchedulerNode):
                 assert isinstance(node, (SchedulerNode, FusedSchedulerNode))
-                nodes: list[SchedulerNode] = node.get_nodes()  # type: ignore[assignment]
+                nodes: List[SchedulerNode] = node.get_nodes()  # type: ignore[assignment]
                 _, (group, reduction_group) = max(
                     nodes, key=lambda x: int(x.is_reduction())
                 ).group
                 call_ranges = tuple(group) + tuple(reduction_group)
                 return call_ranges
 
-            local_buffers: list[ir.Buffer] = []
+            local_buffers: List[ir.Buffer] = []
             # Map local buffer name to a list of global buffers
-            local_to_global_buffers: dict[str, list[ir.Buffer]] = {}
+            local_to_global_buffers: Dict[str, List[ir.Buffer]] = {}
             if all(
                 len(get_call_ranges(_node)) == node.outer_loop_fusion_depth + 1
                 for _node in node.get_outer_nodes()
@@ -5349,7 +5351,7 @@ class CppScheduling(BaseScheduling):
                         ):
                             continue
                         # Local Buffer is a view of global buffer
-                        local_buffer_stride: list[int] = []
+                        local_buffer_stride: List[int] = []
                         stride = global_buffer_layout.stride[-1]
                         local_buffer_size = get_call_ranges(scheduler_node)[
                             size_offset:
@@ -5448,14 +5450,14 @@ class CppScheduling(BaseScheduling):
             with torch._inductor.config.patch(inplace_buffers=False):
                 for _node in node.get_outer_nodes():
                     assert isinstance(_node, (FusedSchedulerNode, SchedulerNode))
-                    _nodes: list[SchedulerNode] = _node.get_nodes()  # type: ignore[assignment]
+                    _nodes: List[SchedulerNode] = _node.get_nodes()  # type: ignore[assignment]
                     cpp_kernel_proxy = self.kernel_proxy_cls(kernel_group)
                     cpp_kernel_proxy.codegen_nodes(_nodes)
                     kernel_group.finalize_kernel(cpp_kernel_proxy, _nodes)
 
     def codegen_node(
         self,
-        node: OuterLoopFusedSchedulerNode | FusedSchedulerNode | SchedulerNode,
+        node: Union[Union[OuterLoopFusedSchedulerNode, FusedSchedulerNode], SchedulerNode],
     ):
         """
         Turn an set of pre-fused nodes into a C++ kernel.
@@ -5465,7 +5467,7 @@ class CppScheduling(BaseScheduling):
         if isinstance(node, OuterLoopFusedSchedulerNode):
             self.codegen_outer_loop_node(node)
         else:
-            nodes: list[SchedulerNode] = node.get_nodes()  # type: ignore[assignment]
+            nodes: List[SchedulerNode] = node.get_nodes()  # type: ignore[assignment]
             nodes = self.try_loop_split(nodes)
             cpp_kernel_proxy = self.kernel_proxy_cls(kernel_group)
             cpp_kernel_proxy.codegen_nodes(nodes)
@@ -5508,7 +5510,7 @@ class CppScheduling(BaseScheduling):
         _, (_, rnumel) = template_node.group
         assert rnumel == ()
         ctb: ir.CppTemplateBuffer = cast(ir.CppTemplateBuffer, template_node.node)
-        epilogue_ir_nodes: list[ir.Operation | None] = [n.node for n in epilogue_nodes]
+        epilogue_ir_nodes: List[Optional[ir.Operation]] = [n.node for n in epilogue_nodes]
         assert all(isinstance(n, ir.ComputedBuffer) for n in epilogue_ir_nodes), (
             "Epilogue nodes must all be instances of ir.ComputedBuffer"
         )
@@ -5794,8 +5796,8 @@ class WorkSharing:
 
 @dataclasses.dataclass
 class LoopLevel:
-    var: sympy.Expr | None = None
-    size: sympy.Expr | None = None
+    var: Optional[sympy.Expr] = None
+    size: Optional[sympy.Expr] = None
     offset: sympy.Expr = sympy.S.Zero
     # Note [tiled_size]
     # We may do loop-tiling at this loop level.
@@ -5889,8 +5891,8 @@ class LoopNest:
     2D tiling at both the innermost and outer levels.
     """
 
-    loops: list[LoopLevel] | None = None
-    kernel: CppKernel | None = None
+    loops: Optional[List[LoopLevel]] = None
+    kernel: Optional[CppKernel] = None
 
     @staticmethod
     def build(kernel: CppKernel):
@@ -5900,7 +5902,7 @@ class LoopNest:
         reduction_depth = kernel.reduction_depth
         assert reduction_depth is not None
 
-        loops: list[LoopLevel] | None = None
+        loops: Optional[List[LoopLevel]] = None
         for loop_idx, (var, size) in enumerate(zip(itervars, ranges)):
             loop = LoopLevel(var, size)
             if not loops:

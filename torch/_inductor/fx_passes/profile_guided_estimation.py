@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Profile-Guided Estimation (PGE) for overlap scheduling.
 
@@ -9,7 +10,6 @@ When the same profile is loaded on all ranks, estimates are deterministic
 and no cross-rank synchronization is needed.
 """
 
-from __future__ import annotations
 
 import functools
 import json
@@ -17,7 +17,7 @@ import logging
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
 import torch.fx as fx
@@ -40,7 +40,7 @@ from torch.utils._ordered_set import OrderedSet
 log = logging.getLogger(__name__)
 
 
-def _rank_stride(ranks: tuple[int, ...]) -> int | None:
+def _rank_stride(ranks: Tuple[int, ...]) -> Optional[int]:
     """Compute the stride of a sorted rank tuple, or None if non-uniform.
 
     Examples:
@@ -65,7 +65,7 @@ class CollectiveRecord:
     """A single collective kernel observation from the profile."""
 
     collective_name: str  # "all_gather_into_tensor", "reduce_scatter_tensor", etc.
-    pg_ranks: tuple[int, ...]  # sorted rank tuple
+    pg_ranks: Tuple[int, ...]  # sorted rank tuple
     group_size: int
     in_nelems: int  # "In msg nelems" from profile
     out_nelems: int  # "Out msg nelems" from profile
@@ -78,9 +78,9 @@ class OpRecord:
     """A single op observation from the profile (any CPU op with GPU kernels)."""
 
     op_name: str  # normalized name, e.g. "aten::mm", "mylib::my_custom_op"
-    input_shapes: tuple[tuple[int, ...], ...]
-    input_strides: tuple[tuple[int, ...], ...]
-    dtype: torch.dtype | None
+    input_shapes: Tuple[Tuple[int, ...], ...]
+    input_strides: Tuple[Tuple[int, ...], ...]
+    dtype: Optional[torch.dtype]
     duration_us: float  # sum of all GPU kernels for this CPU op
 
 
@@ -95,37 +95,37 @@ def _to_nested_tuple(x: Any) -> Any:
 class ProfileData:
     """Parse Chrome Trace JSON and build lookup tables for kernel runtimes."""
 
-    collectives: list[CollectiveRecord] = field(default_factory=list)
-    ops: list[OpRecord] = field(default_factory=list)
-    pg_configs: dict[str, tuple[int, ...]] = field(default_factory=dict)
+    collectives: List[CollectiveRecord] = field(default_factory=list)
+    ops: List[OpRecord] = field(default_factory=list)
+    pg_configs: Dict[str, Tuple[int, ...]] = field(default_factory=dict)
 
     # Lookup indices built after loading
-    _collective_index: dict[
-        tuple[str, tuple[int, ...], str], list[tuple[int, float]]
+    _collective_index: Dict[
+        Tuple[str, Tuple[int, ...], str], List[Tuple[int, float]]
     ] = field(default_factory=dict)
     # Fallback index by mesh dimension (name, stride, group_size, dtype).
     # Matches PGs belonging to the same mesh dimension regardless of specific ranks.
     # E.g. (0,2,4,6) and (1,3,5,7) both have stride=2, size=4 → same mesh dim.
-    _collective_index_by_mesh_dim: dict[
-        tuple[str, int, int, str], list[tuple[int, float]]
+    _collective_index_by_mesh_dim: Dict[
+        Tuple[str, int, int, str], List[Tuple[int, float]]
     ] = field(default_factory=dict)
     # Count of distinct PGs per mesh dimension (stride, group_size) — used for
     # ambiguity check (skip fallback if multiple PGs share the same mesh dim).
-    _pg_count_by_mesh_dim: dict[tuple[int, int], int] = field(default_factory=dict)
+    _pg_count_by_mesh_dim: Dict[Tuple[int, int], int] = field(default_factory=dict)
     # Generic op index: (op_name, input_shapes, input_strides, dtype) -> avg_dur_us
-    _op_index: dict[
-        tuple[
+    _op_index: Dict[
+        Tuple[
             str,
-            tuple[tuple[int, ...], ...],
-            tuple[tuple[int, ...], ...],
-            torch.dtype | None,
+            Tuple[Tuple[int, ...], ...],
+            Tuple[Tuple[int, ...], ...],
+            Optional[torch.dtype],
         ],
         float,
     ] = field(default_factory=dict)
     # Peak observed bandwidth per PG (GB/s), computed from largest messages
-    _pg_peak_bw: dict[tuple[int, ...], float] = field(default_factory=dict)
+    _pg_peak_bw: Dict[Tuple[int, ...], float] = field(default_factory=dict)
     # Mesh-dimension fallback: (stride, group_size) -> peak BW (GB/s)
-    _mesh_dim_peak_bw: dict[tuple[int, int], float] = field(default_factory=dict)
+    _mesh_dim_peak_bw: Dict[Tuple[int, int], float] = field(default_factory=dict)
 
     def load(self, trace_path: str) -> None:
         """Load and parse a Chrome Trace JSON file."""
@@ -151,7 +151,7 @@ class ProfileData:
             len(self.pg_configs),
         )
 
-    def _parse_pg_configs(self, data: dict[str, Any]) -> None:
+    def _parse_pg_configs(self, data: Dict[str, Any]) -> None:
         dist_info = data.get("distributedInfo", {})
         pg_config = dist_info.get("pg_config", {})
         # pg_config can be a list of dicts or a dict of dicts
@@ -167,7 +167,7 @@ class ProfileData:
                 if ranks:
                     self.pg_configs[pg_name] = tuple(sorted(ranks))
 
-    def _parse_events(self, data: dict[str, Any]) -> None:
+    def _parse_events(self, data: Dict[str, Any]) -> None:
         events = data.get("traceEvents", [])
         # Reuse profile_analysis's External id -> CPU op mapping
         try:
@@ -185,7 +185,7 @@ class ProfileData:
                     extern_mapping[ev["args"]["External id"]].append(ev)
 
         # Build External id -> total GPU kernel duration
-        gpu_dur: dict[int, float] = defaultdict(float)
+        gpu_dur: Dict[int, float] = defaultdict(float)
         for ev in events:
             if not isinstance(ev, dict) or ev.get("cat") != "kernel":
                 continue
@@ -238,7 +238,7 @@ class ProfileData:
             cpu_ev = cpu_evs[0]
             self._parse_op(cpu_ev.get("name", ""), cpu_ev.get("args", {}), total_dur)
 
-    def _parse_ranks(self, ranks_str: str, pg_name: str) -> tuple[int, ...]:
+    def _parse_ranks(self, ranks_str: str, pg_name: str) -> Tuple[int, ...]:
         """Parse rank list from profile string or fall back to pg_configs."""
         if isinstance(ranks_str, str) and ranks_str.startswith("["):
             try:
@@ -251,7 +251,7 @@ class ProfileData:
             return self.pg_configs[pg_name]
         return ()
 
-    def _parse_op(self, name: str, args: dict[str, Any], total_dur: float) -> None:
+    def _parse_op(self, name: str, args: Dict[str, Any], total_dur: float) -> None:
         """Parse any CPU op into a generic OpRecord."""
         input_dims = args.get("Input Dims", [])
         input_strides = args.get("Input Strides", [])
@@ -286,14 +286,14 @@ class ProfileData:
 
     def _build_indices(self) -> None:
         """Build lookup indices from parsed records."""
-        coll_idx: dict[tuple[str, tuple[int, ...], str], list[tuple[int, float]]] = (
+        coll_idx: Dict[Tuple[str, Tuple[int, ...], str], List[Tuple[int, float]]] = (
             defaultdict(list)
         )
-        coll_idx_by_mesh_dim: dict[
-            tuple[str, int, int, str], list[tuple[int, float]]
+        coll_idx_by_mesh_dim: Dict[
+            Tuple[str, int, int, str], List[Tuple[int, float]]
         ] = defaultdict(list)
         # Track distinct PG rank sets per mesh dimension for ambiguity check
-        pg_sets_by_mesh_dim: dict[tuple[int, int], OrderedSet[tuple[int, ...]]] = (
+        pg_sets_by_mesh_dim: Dict[Tuple[int, int], OrderedSet[Tuple[int, ...]]] = (
             defaultdict(OrderedSet)
         )
         for rec in self.collectives:
@@ -320,13 +320,13 @@ class ProfileData:
         }
 
         op_groups: defaultdict[
-            tuple[
+            Tuple[
                 str,
-                tuple[tuple[int, ...], ...],
-                tuple[tuple[int, ...], ...],
-                torch.dtype | None,
+                Tuple[Tuple[int, ...], ...],
+                Tuple[Tuple[int, ...], ...],
+                Optional[torch.dtype],
             ],
-            list[float],
+            List[float],
         ] = defaultdict(list)
         for rec in self.ops:
             key = (rec.op_name, rec.input_shapes, rec.input_strides, rec.dtype)
@@ -338,10 +338,10 @@ class ProfileData:
         # is most representative of hardware speed, not dominated by startup latency).
         # Uses output-convention bytes (matching _estimate_with_pg_bandwidth).
         _TOP_N = 5  # consider top N largest messages for peak BW
-        pg_bw_samples: dict[tuple[int, ...], list[tuple[int, float]]] = defaultdict(
+        pg_bw_samples: Dict[Tuple[int, ...], List[Tuple[int, float]]] = defaultdict(
             list
         )
-        mesh_dim_bw_samples: dict[tuple[int, int], list[tuple[int, float]]] = (
+        mesh_dim_bw_samples: Dict[Tuple[int, int], List[Tuple[int, float]]] = (
             defaultdict(list)
         )
         for rec in self.collectives:
@@ -357,7 +357,7 @@ class ProfileData:
                 mesh_dim_bw_samples[(stride, gs)].append((total_bytes, bw_gbps))
 
         def _peak_bw_from_samples(
-            samples: list[tuple[int, float]],
+            samples: List[Tuple[int, float]],
         ) -> float:
             """Get peak BW from the top-N largest messages."""
             # Sort by message size descending, take top N, return max BW
@@ -376,7 +376,7 @@ class ProfileData:
             if samples
         }
 
-    def get_collective_keys(self) -> list[tuple[str, tuple[int, ...], str]]:
+    def get_collective_keys(self) -> List[Tuple[str, Tuple[int, ...], str]]:
         """Return the collective index keys: (name, pg_ranks, dtype)."""
         return list(self._collective_index.keys())
 
@@ -385,7 +385,7 @@ class ProfileData:
         """Number of distinct op shapes in the index."""
         return len(self._op_index)
 
-    def get_op_names(self) -> list[str]:
+    def get_op_names(self) -> List[str]:
         """Return distinct op names in the op index."""
         return list(OrderedSet(name for name, _, _, _ in self._op_index))
 
@@ -418,10 +418,10 @@ class ProfileData:
 
     def _estimate_with_pg_bandwidth(
         self,
-        pg_ranks: tuple[int, ...],
+        pg_ranks: Tuple[int, ...],
         nelems: int,
         dtype: str,
-    ) -> float | None:
+    ) -> Optional[float]:
         """Estimate collective duration using peak observed bandwidth for this PG.
 
         Used when the target size exceeds the extrapolation cap. Returns ms or None.
@@ -443,10 +443,10 @@ class ProfileData:
     def lookup_collective(
         self,
         collective_name: str,
-        pg_ranks: tuple[int, ...],
+        pg_ranks: Tuple[int, ...],
         nelems: int,
         dtype: str,
-    ) -> tuple[float, str] | None:
+    ) -> Optional[Tuple[float, str]]:
         """Look up collective duration in ms. Returns (duration_ms, source) or None.
 
         ``source`` is ``"profile"`` for exact/interpolated matches, or
@@ -497,8 +497,8 @@ class ProfileData:
         return None
 
     def _interpolate_log_log(
-        self, entries: list[tuple[int, float]], target_nelems: int
-    ) -> float | None:
+        self, entries: List[Tuple[int, float]], target_nelems: int
+    ) -> Optional[float]:
         """Interpolate duration in log-log space (log(nelems) vs log(dur))."""
         if not entries or target_nelems <= 0:
             return None
@@ -506,8 +506,8 @@ class ProfileData:
         log_target = math.log(target_nelems)
 
         # Find bracketing entries
-        lower: tuple[int, float] | None = None
-        upper: tuple[int, float] | None = None
+        lower: Optional[Tuple[int, float]]= None
+        upper: Optional[Tuple[int, float]]= None
         for n, dur in entries:
             if n <= 0 or dur <= 0:
                 continue
@@ -537,10 +537,10 @@ class ProfileData:
     def lookup_op(
         self,
         op_name: str,
-        input_shapes: tuple[tuple[int, ...], ...],
-        input_strides: tuple[tuple[int, ...], ...],
-        dtype: torch.dtype | None,
-    ) -> float | None:
+        input_shapes: Tuple[Tuple[int, ...], ...],
+        input_strides: Tuple[Tuple[int, ...], ...],
+        dtype: Union[torch.dtype, None,]
+    ) -> Optional[float]:
         """Look up op duration in ms by exact shape+stride match. Returns None on miss."""
         key = (op_name, input_shapes, input_strides, dtype)
         dur_us = self._op_index.get(key)
@@ -549,22 +549,22 @@ class ProfileData:
         return None
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _dtype_to_nccl_str(dtype: torch.dtype) -> str:
     """Convert torch.dtype to NCCL/ScalarType name (for collective matching).
 
     Derives the name from torch.Tensor.type() which returns e.g.
     "torch.BFloat16Tensor" -> "BFloat16".
     """
-    return (
-        torch.tensor([], dtype=dtype)
-        .type()
-        .removeprefix("torch.")
-        .removesuffix("Tensor")
-    )
+    dtype_str = torch.tensor([], dtype=dtype).type()
+    if dtype_str.startswith("torch."):
+        dtype_str = dtype_str[len("torch."):]
+    if dtype_str.endswith("Tensor"):
+        dtype_str = dtype_str[:-len("Tensor")]
+    return dtype_str
 
 
-def _get_node_dtype(node: fx.Node) -> torch.dtype | None:
+def _get_node_dtype(node: fx.Node) -> Optional[torch.dtype]:
     """Extract dtype from FX node metadata."""
     val = node.meta.get("val")
     if isinstance(val, torch.Tensor):
@@ -576,7 +576,7 @@ def _get_node_dtype(node: fx.Node) -> torch.dtype | None:
     return None
 
 
-def _fx_target_to_profile_name(node: fx.Node) -> str | None:
+def _fx_target_to_profile_name(node: fx.Node) -> Optional[str]:
     """Convert FX node target to the profile op name format.
 
     FX: torch.ops.aten.mm.default → "aten::mm"
@@ -595,15 +595,15 @@ def _fx_target_to_profile_name(node: fx.Node) -> str | None:
 
 def _get_node_input_shapes_and_strides(
     node: fx.Node,
-) -> tuple[tuple[tuple[int, ...], ...], tuple[tuple[int, ...], ...]] | None:
+) -> Optional[Tuple[Tuple[Tuple[int, ...], ...], Tuple[Tuple[int, ...], ...]]]:
     """Extract input shapes and strides from FX node tensor args.
 
     Returns (shapes, strides) or None if no tensor args or symbolic dims.
     """
     from torch._inductor.fx_passes.node_runtime_estimation import get_hint
 
-    shapes: list[tuple[int, ...]] = []
-    strides: list[tuple[int, ...]] = []
+    shapes: List[Tuple[int, ...]] = []
+    strides: List[Tuple[int, ...]] = []
     for arg in node.args:
         if not isinstance(arg, fx.Node):
             continue
@@ -640,7 +640,7 @@ def _is_collective_node(node: fx.Node) -> bool:
 
 def _get_collective_info(
     node: fx.Node,
-) -> tuple[str, tuple[int, ...], int, str] | None:
+) -> Optional[Tuple[str, Tuple[int, ...], int, str]]:
     """Extract (collective_name, pg_ranks, nelems, dtype) from collective node."""
     import torch.distributed as c10d
     from torch.fx.operator_schemas import normalize_function
@@ -706,7 +706,7 @@ class ProfileGuidedEstimator:
     """Profile-guided runtime estimator for FX nodes.
 
     Implements the ``custom_runtime_estimation`` interface:
-    ``(fx.Node, int | None) -> float | None`` (returns ms or None for fallback).
+    ``(fx.Node, Optional[int]) -> Union[float, None`` (returns ms or None for fallback).]
 
     Handles collectives via interpolation (latency + bandwidth model) and all
     other ops (matmul, SDPA, custom ops, etc.) via exact shape match from the
@@ -716,14 +716,14 @@ class ProfileGuidedEstimator:
     def __init__(
         self,
         trace_path: str,
-        diagnostics_gm: torch.fx.GraphModule | None = None,
+        diagnostics_gm: Optional[torch.fx.GraphModule]= None,
     ) -> None:
         self.profile = ProfileData()
         self.profile.load(trace_path)
         self._log_profile_vs_analytical_comparison(diagnostics_gm)
 
     def _log_profile_vs_analytical_comparison(
-        self, diagnostics_gm: torch.fx.GraphModule | None
+        self, diagnostics_gm: Optional[torch.fx.GraphModule]
     ) -> None:
         """Log profile data and PGE vs analytical comparison to trace_structured.
 
@@ -743,7 +743,7 @@ class ProfileGuidedEstimator:
             for (op_name, shapes, strides, dtype), dur_us in profile._op_index.items()
         ]
 
-        diagnostics: list[dict[str, Any]] = []
+        diagnostics: List[Dict[str, Any]] = []
         if diagnostics_gm is not None:
             from torch._inductor.fx_passes.overlap_scheduling import (
                 estimate_roofline_runtime_ms,
@@ -753,7 +753,7 @@ class ProfileGuidedEstimator:
                 pge_est = self(node)
                 if pge_est is None:
                     continue
-                entry: dict[str, Any] = {
+                entry: Dict[str, Any] = {
                     "node": node.name,
                     "op": str(node.target),
                     "pge_ms": pge_est,
@@ -773,7 +773,7 @@ class ProfileGuidedEstimator:
                         entry["analytical_ms"] = analytical
                 diagnostics.append(entry)
 
-        payload: dict[str, Any] = {
+        payload: Dict[str, Any] = {
             "collective_count": len(profile.collectives),
             "op_count": profile.op_count,
             "op_entries": op_entries,
@@ -790,14 +790,14 @@ class ProfileGuidedEstimator:
             payload_fn=lambda: json.dumps(payload),
         )
 
-    def __call__(self, node: fx.Node, override_size: int | None = None) -> float | None:
+    def __call__(self, node: fx.Node, override_size: Optional[int] = None) -> Optional[float]:
         if _is_collective_node(node):
             return self._estimate_collective(node, override_size)
         return self._estimate_op(node)
 
     def _estimate_collective(
-        self, node: fx.Node, override_size: int | None
-    ) -> float | None:
+        self, node: fx.Node, override_size: Optional[int]
+    ) -> Optional[float]:
         info = _get_collective_info(node)
         if info is None:
             return None
@@ -815,7 +815,7 @@ class ProfileGuidedEstimator:
             return result[0]
         return None
 
-    def _estimate_op(self, node: fx.Node) -> float | None:
+    def _estimate_op(self, node: fx.Node) -> Optional[float]:
         """Estimate any non-collective op via exact shape+stride match in profile."""
         profile_name = _fx_target_to_profile_name(node)
         if profile_name is None:

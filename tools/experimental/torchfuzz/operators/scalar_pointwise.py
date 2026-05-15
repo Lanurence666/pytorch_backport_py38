@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 """Scalar pointwise operator implementation."""
 
 import random
@@ -16,7 +18,7 @@ class ScalarPointwiseOperator(Operator):
         self.symbol = symbol
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Scalar operations don't have specific torch ops, they use Python operators."""
         return None
 
@@ -26,7 +28,7 @@ class ScalarPointwiseOperator(Operator):
             return False
         return isinstance(output_spec, ScalarSpec)
 
-    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 2) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 2) -> List[Spec]:
         """Decompose scalar into input scalars for pointwise operation with type promotion."""
         if not isinstance(output_spec, ScalarSpec):
             raise ValueError(
@@ -42,7 +44,7 @@ class ScalarPointwiseOperator(Operator):
         return [ScalarSpec(dtype=dtypes[0]), ScalarSpec(dtype=dtypes[1])]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for scalar pointwise operation."""
         if len(input_names) != 2:
@@ -79,7 +81,7 @@ class ScalarDivOperator(ScalarPointwiseOperator):
         super().__init__("scalar_div", "/")
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for scalar division with zero-denominator guard."""
         if len(input_names) != 2:

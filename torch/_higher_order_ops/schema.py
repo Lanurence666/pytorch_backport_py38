@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import copy
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, List, Optional, Tuple, Type, Union
 
 import torch
 import torch.utils._pytree as pytree
@@ -13,7 +15,7 @@ from torch.fx.node import Target
 # This is helpful for generating FunctionSchema for HigherOrderOperator, where
 # we don't have a function to inspect and each call of the higher order operator
 # would have different schema.
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class HopArgumentInfo:
     # Could give a name to the operand by default it's empty string.
     name: str
@@ -32,7 +34,7 @@ class HopArgumentInfoGen:
         example_value: Any,
         *,
         name: str = "",
-        default_value: Any | None = None,
+        default_value: Optional[Any]= None,
         is_mutated: bool = False,
         kw_only: bool = False,
     ) -> HopArgumentInfo:
@@ -102,16 +104,16 @@ class CArgumentGen:
 
 class HopSchemaGenerator:
     def __init__(self, hop: torch._ops.HigherOrderOperator):
-        self.arg_infos: list[HopArgumentInfo] = []
-        self.example_outputs: list[Any] = []
-        self.schema_tree_spec: pytree.TreeSpec | None = None
+        self.arg_infos: List[HopArgumentInfo] = []
+        self.example_outputs: List[Any] = []
+        self.schema_tree_spec: Optional[pytree.TreeSpec] = None
         self.hop = hop
 
     def add_arg(
         self,
         name: str,
         example_value: Any,
-        default_value: Any | None = None,
+        default_value: Optional[Any]= None,
         is_mutated: bool = False,
         kw_only: bool = False,
     ) -> None:
@@ -210,9 +212,9 @@ class CFunctionSchemaGen:
     @staticmethod
     def from_hop_argument_info(
         op_name: str,
-        inp_argument_info: list[HopArgumentInfo],
+        inp_argument_info: List[HopArgumentInfo],
         out_argument_info: HopArgumentInfo,
-        schema_tree_spec: pytree.TreeSpec | None,
+        schema_tree_spec: Union[pytree.TreeSpec, None,]
     ) -> Any:
         args = []
         for i, arg_info in enumerate(inp_argument_info):
@@ -261,11 +263,11 @@ class HopSchema(torch._C.FunctionSchema):
         self,
         name: str,
         overload_name: str,
-        arguments: list[torch._C.Argument],
-        returns: list[torch._C.Argument],
+        arguments: List[torch._C.Argument],
+        returns: List[torch._C.Argument],
         is_vararg: bool,
         is_varret: bool,
-        schema_tree_spec: pytree.TreeSpec | None,
+        schema_tree_spec: Union[pytree.TreeSpec, None,]
     ):
         self.tree_spec = schema_tree_spec
         self.is_vararg = is_vararg
@@ -295,7 +297,7 @@ class HopSchema(torch._C.FunctionSchema):
 
 def find_hop_schema(
     gm: torch.fx.GraphModule, target: Target
-) -> list[torch._C.FunctionSchema]:
+) -> List[torch._C.FunctionSchema]:
     schemas = []
     for node in gm.graph.find_nodes(op="call_function", target=target):
 

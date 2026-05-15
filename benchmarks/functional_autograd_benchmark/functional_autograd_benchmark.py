@@ -1,3 +1,4 @@
+from __future__ import annotations
 import time
 from argparse import ArgumentParser
 from collections import defaultdict

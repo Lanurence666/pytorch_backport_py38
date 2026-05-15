@@ -3,6 +3,7 @@ from contextlib import contextmanager
 
 import torch
 from torch.backends import __allow_nonbracketed_mutation, ContextProp, PropModule
+from typing import Set
 
 
 __all__ = ["is_available", "flags", "set_flags"]

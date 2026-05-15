@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 For procedural tests needed for __torch_function__, we use this function
 to export method names and signatures as needed by the tests in
@@ -14,13 +15,12 @@ generated.  In the full build system, OUTPUT_DIR is
 torch/testing/_internal/generated
 """
 
-from __future__ import annotations
 
 import argparse
 import os
 import textwrap
 from collections import defaultdict
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, TYPE_CHECKING
 
 import torchgen.api.python as python
 from torchgen.context import with_native_function
@@ -58,9 +58,9 @@ def gen_annotated(
         (is_py_fft_function, "torch._C._fft"),
         (is_py_variable_method, "torch.Tensor"),
     )
-    annotated_args: list[str] = []
+    annotated_args: List[str] = []
     for pred, namespace in mappings:
-        groups: dict[BaseOperatorName, list[NativeFunction]] = defaultdict(list)
+        groups: Dict[BaseOperatorName, List[NativeFunction]] = defaultdict(list)
         for f in native_functions:
             if not should_generate_py_binding(f) or not pred(f):
                 continue
@@ -82,7 +82,7 @@ def gen_annotated(
 
 @with_native_function
 def gen_annotated_args(f: NativeFunction) -> str:
-    def _get_kwargs_func_exclusion_list() -> list[str]:
+    def _get_kwargs_func_exclusion_list() -> List[str]:
         # functions that currently don't work with kwargs in test_overrides.py
         return [
             "diagonal",
@@ -92,12 +92,12 @@ def gen_annotated_args(f: NativeFunction) -> str:
         ]
 
     def _add_out_arg(
-        out_args: list[dict[str, Any]], args: Sequence[Argument], *, is_kwarg_only: bool
+        out_args: List[Dict[str, Any]], args: Sequence[Argument], *, is_kwarg_only: bool
     ) -> None:
         for arg in args:
             if arg.default is not None:
                 continue
-            out_arg: dict[str, Any] = {}
+            out_arg: Dict[str, Any] = {}
             out_arg["is_kwarg_only"] = str(is_kwarg_only)
             out_arg["name"] = arg.name
             out_arg["simple_type"] = python.argument_type_str(
@@ -108,7 +108,7 @@ def gen_annotated_args(f: NativeFunction) -> str:
                 out_arg["size"] = size_t
             out_args.append(out_arg)
 
-    out_args: list[dict[str, Any]] = []
+    out_args: List[Dict[str, Any]] = []
     _add_out_arg(out_args, f.func.arguments.flat_positional, is_kwarg_only=False)
     if f"{f.func.name.name}" not in _get_kwargs_func_exclusion_list():
         _add_out_arg(out_args, f.func.arguments.flat_kwarg_only, is_kwarg_only=True)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from itertools import chain
 
@@ -5,6 +7,7 @@ import torch
 from torch._utils import _get_device_index
 from torch.autograd import Function
 from torch.nn.parallel import comm
+from typing import List, Optional, Union
 
 
 class Broadcast(Function):
@@ -156,7 +159,7 @@ class Scatter(Function):
 
 
 # background streams used for copying
-_streams: list[torch.Stream | None] | None = None
+_streams: Optional[Union[List[torch.Stream, None]]]= None
 
 
 def _get_stream(device: torch.device):

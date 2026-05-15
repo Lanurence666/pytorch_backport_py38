@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import functools
 import pickle
-from collections.abc import Callable, Iterable, Iterator
-from typing import TypeVar
+from collections.abc import Callable
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Type, TypeVar
 
 from torch.utils._import_utils import import_dill
 from torch.utils.data.datapipes._hook_iterator import _SnapshotState
@@ -36,7 +38,7 @@ UNTRACABLE_DATAFRAME_PIPES = [
 ]
 
 
-class DataChunk(list[_T]):
+class DataChunk(List[_T]):
     def __init__(self, items: Iterable[_T]) -> None:
         items = list(items)
         super().__init__(items)
@@ -124,15 +126,15 @@ class IterDataPipe(IterableDataset[_T_co], metaclass=_IterDataPipeMeta):
             >>> next(it1)  # Further usage of `it1` will raise a `RunTimeError`
     """
 
-    functions: dict[str, Callable] = {}
-    reduce_ex_hook: Callable | None = None
-    getstate_hook: Callable | None = None
-    str_hook: Callable | None = None
-    repr_hook: Callable | None = None
-    _valid_iterator_id: int | None = None
+    functions: Dict[str, Callable] = {}
+    reduce_ex_hook: Optional[Callable]= None
+    getstate_hook: Optional[Callable]= None
+    str_hook: Optional[Callable]= None
+    repr_hook: Optional[Callable]= None
+    _valid_iterator_id: Optional[int]= None
     _number_of_samples_yielded: int = 0
     _snapshot_state: _SnapshotState = _SnapshotState.NotStarted
-    _fast_forward_iterator: Iterator | None = None
+    _fast_forward_iterator: Optional[Iterator]= None
 
     def __iter__(self) -> Iterator[_T_co]:
         # pyrefly: ignore [bad-return]
@@ -280,11 +282,11 @@ class MapDataPipe(Dataset[_T_co], metaclass=_DataPipeMeta):
         [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]]
     """
 
-    functions: dict[str, Callable] = {}
-    reduce_ex_hook: Callable | None = None
-    getstate_hook: Callable | None = None
-    str_hook: Callable | None = None
-    repr_hook: Callable | None = None
+    functions: Dict[str, Callable] = {}
+    reduce_ex_hook: Optional[Callable]= None
+    getstate_hook: Optional[Callable]= None
+    str_hook: Optional[Callable]= None
+    repr_hook: Optional[Callable]= None
 
     def __getattr__(self, attribute_name):
         if attribute_name in MapDataPipe.functions:
@@ -408,7 +410,7 @@ class _IterDataPipeSerializationWrapper(_DataPipeSerializationWrapper, IterDataP
     def __init__(self, datapipe: IterDataPipe[_T_co]) -> None:
         super().__init__(datapipe)
         # pyrefly: ignore [invalid-type-var]
-        self._datapipe_iter: Iterator[_T_co] | None = None
+        self._datapipe_iter: Optional[Iterator[_T_co]] = None
 
     def __iter__(self) -> "_IterDataPipeSerializationWrapper":
         self._datapipe_iter = iter(self._datapipe)

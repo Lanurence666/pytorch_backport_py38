@@ -1,3 +1,4 @@
+from __future__ import annotations
 """This file provides a location for operators that help exporting models via onnx.
 
 E.g. `shape_as_tensor` and `reshape_from_tensor_shape`
@@ -8,12 +9,12 @@ Since then we have implemented these directly in ATen, so this
 file is kept purely for backward-compatibility.
 """
 
-from __future__ import annotations
 
 
-__all__: list[str] = []
+__all__: List[str] = []
 
 import torch
+from typing import List
 
 
 """Get the shape of a tensor as a tensor.

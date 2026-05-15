@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, Type, Union
 
 import torch
 from torch import SymInt
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from .fake_tensor import _DispatchCacheKey, _MetadataIntLike
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _DeconstructedSymNode:
     """
     Represents a SymNode without the associated ShapeEnv
@@ -26,8 +26,8 @@ class _DeconstructedSymNode:
     # n.b. keep the same protocol as SymNode
     _expr: sympy.Expr
     pytype: type
-    _hint: int | float | bool | None
-    constant: int | float | bool | None
+    _hint: Optional[Union[int, float, bool]]
+    constant: Optional[Union[int, float, bool]]
     fx_node: torch.fx.Node
 
     @staticmethod
@@ -77,13 +77,13 @@ class _DeconstructedSymNode:
         return hash((self._expr, self.pytype, self._hint, self.constant, self.fx_node))
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _DeconstructedSymType:
     """
     Represents a SymInt, SymFloat, SymBool without the associated ShapeEnv
     """
 
-    ty: type[PySymType]
+    ty: Type[PySymType]
     node: _DeconstructedSymNode
 
     @staticmethod
@@ -106,12 +106,12 @@ class _DeconstructedSymType:
         return NotImplemented
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _InputBackref:
     value: int
 
 
-@dataclass(slots=True)
+@dataclass
 class _PySymInputStub:
     """
     Represents a SymInt in the cached key. Needed because SymInt doesn't
@@ -126,10 +126,10 @@ class _PySymInputStub:
     #                          the cache to avoid cyclic ShapeEnv references.
     #   _InputBackref: This is a back-reference to a previous _PySymInputStub in
     #                  the key.
-    value: PySymType | _DeconstructedSymType | _InputBackref
+    value: Union[PySymType, _DeconstructedSymType, _InputBackref]
 
     def __init__(
-        self, value: PySymType | _DeconstructedSymType | _InputBackref
+        self, value: Union[Union[PySymType, _DeconstructedSymType], _InputBackref]
     ) -> None:
         # For inputs (values in the `key`) we need to keep the PySymType intact
         # - this way if we need to reuse it as an output we can properly copy
@@ -176,7 +176,7 @@ class _PySymInputStub:
             return self.value.node._value_hash()
 
 
-@dataclass(slots=True)
+@dataclass
 class _SymIntOutputStub:
     """
     Represents a SymInt in the cached output.
@@ -184,9 +184,9 @@ class _SymIntOutputStub:
 
     # This is either an `int` which represents the index in the key to copy the
     # SymNode from or it's the deconstructed SymNode itself.
-    value: int | _DeconstructedSymNode
+    value: Union[int, _DeconstructedSymNode]
 
-    def __init__(self, value: SymInt, key_path: int | None) -> None:
+    def __init__(self, value: SymInt, key_path: Optional[int]) -> None:
         if key_path is None:
             self.value = _DeconstructedSymNode.from_node(value.node)
         else:
@@ -216,7 +216,7 @@ class _SymIntOutputStub:
         raise NotImplementedError
 
 
-@dataclass(slots=True)
+@dataclass
 class _CacheKeyState:
     """
     State used while building our cache key.
@@ -224,20 +224,20 @@ class _CacheKeyState:
 
     # We track the SymNodes so when we get the output we can see if it exactly
     # matches one of the inputs so we can uncache it properly.
-    sym_node_lookup: dict[int, int]  # id(SymNode) -> index
+    sym_node_lookup: Dict[int, int]  # id(SymNode) -> index
 
     # This is a list of all seen input sympy.Symbols. We use it when building
     # the cache entry to see if the output value has any symbols that we didn't
     # see on input. See _has_unrepresented_symbols().
-    known_symbols: set[sympy.Symbol]
+    known_symbols: Set[sympy.Symbol]
 
     # There are cases where we're asked to perform an op when we have no
     # ShapeEnv on the FakeTensorMode - but for SymNodes we MUST have a
     # ShapeEnv. So as we scan if we see a SymNode (with a ShapeEnv) we record it
     # here.
-    shape_env: ShapeEnv | None
+    shape_env: Optional[ShapeEnv]
 
-    def __init__(self, shape_env: ShapeEnv | None = None) -> None:
+    def __init__(self, shape_env: Optional[ShapeEnv] = None) -> None:
         self.sym_node_lookup = {}
         self.known_symbols = set()
         self.shape_env = shape_env
@@ -255,7 +255,7 @@ class _CacheKeyState:
         """
         return bool(self.sym_node_lookup)
 
-    def convert_sym_int(self, result: list[object], arg: SymInt) -> None:
+    def convert_sym_int(self, result: List[object], arg: SymInt) -> None:
         node_id = id(arg.node)
         if node_id in self.sym_node_lookup:
             result.append(_InputBackref(self.sym_node_lookup[node_id]))

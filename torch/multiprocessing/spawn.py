@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 import multiprocessing
 import multiprocessing.connection
@@ -12,6 +14,7 @@ import warnings
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
 from . import _prctl_pr_set_pdeathsig  # type: ignore[attr-defined]
+from typing import Optional, Set, overload
 
 
 ENV_VAR_PARALLEL_START = "TORCH_MP_PARALLEL_START"
@@ -57,7 +60,7 @@ class ProcessExitedException(ProcessException):
         error_index: int,
         error_pid: int,
         exit_code: int,
-        signal_name: str | None = None,
+        signal_name: Optional[str]= None,
     ):
         super().__init__(msg, error_index, error_pid)
         self.exit_code = exit_code
@@ -115,7 +118,7 @@ class ProcessContext:
             time_to_wait = max(0, end - time.monotonic())
             process.join(time_to_wait)
 
-    def join(self, timeout: float | None = None, grace_period: float | None = None):
+    def join(self, timeout: Optional[float] = None, grace_period: Optional[float] = None):
         r"""Join one or more processes within spawn context.
 
         Attempt to join one or more processes in this spawn context.

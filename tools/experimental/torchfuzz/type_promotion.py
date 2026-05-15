@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Tuple
 """Type promotion utilities for torchfuzz operators."""
 
 import random
@@ -67,7 +69,7 @@ PROMOTION_CHAINS = {
 }
 
 
-def get_promoted_dtypes(target_dtype: torch.dtype) -> list[torch.dtype]:
+def get_promoted_dtypes(target_dtype: torch.dtype) -> List[torch.dtype]:
     """
     Generate two dtypes that will promote to target_dtype via PyTorch's type promotion rules.
     """
@@ -161,7 +163,7 @@ def get_dtype_map() -> dict:
 
 def get_scalar_promotion_pairs(
     target_dtype: torch.dtype,
-) -> list[tuple[torch.dtype, torch.dtype]]:
+) -> List[Tuple[torch.dtype, torch.dtype]]:
     """
     Get promotion pairs for scalar operations.
     Returns list of (dtype1, dtype2) tuples that promote to target_dtype.

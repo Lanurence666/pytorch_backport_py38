@@ -1,5 +1,6 @@
 # Owner(s): ["module: inductor"]
 
+from __future__ import annotations
 import copy
 import os
 import shutil
@@ -157,10 +158,7 @@ class AOTIRunnerUtil:
             # This should really be the default behavior of torch.export.export
             model = WrapperModule(model)
 
-        with (
-            torch.no_grad(),
-            torch._export.config.patch(use_new_tracer_experimental=True),
-        ):
+        with torch.no_grad(), torch._export.config.patch(use_new_tracer_experimental=True):
             # strict=False needs extra migration work
             ep = torch.export.export(
                 model,
@@ -220,15 +218,7 @@ def check_model(
     rtol=None,
     move_model_to_device=True,
 ):
-    with (
-        torch.no_grad(),
-        config.patch(
-            {
-                "aot_inductor.allow_stack_allocation": self.allow_stack_allocation,
-                "aot_inductor.use_minimal_arrayref_interface": self.use_minimal_arrayref_interface,
-            }
-        ),
-    ):
+    with torch.no_grad(), config.patch( { "aot_inductor.allow_stack_allocation": self.allow_stack_allocation, "aot_inductor.use_minimal_arrayref_interface": self.use_minimal_arrayref_interface, } ):
         torch.manual_seed(0)
         if not isinstance(model, types.FunctionType) and move_model_to_device:
             model = model.to(self.device)
@@ -266,15 +256,7 @@ def check_model_with_multiple_inputs(
     options=None,
     dynamic_shapes=None,
 ):
-    with (
-        torch.no_grad(),
-        config.patch(
-            {
-                "aot_inductor.allow_stack_allocation": self.allow_stack_allocation,
-                "aot_inductor.use_minimal_arrayref_interface": self.use_minimal_arrayref_interface,
-            }
-        ),
-    ):
+    with torch.no_grad(), config.patch( { "aot_inductor.allow_stack_allocation": self.allow_stack_allocation, "aot_inductor.use_minimal_arrayref_interface": self.use_minimal_arrayref_interface, } ):
         torch.manual_seed(0)
         model = model.to(self.device)
         ref_model = copy.deepcopy(model)
@@ -296,15 +278,7 @@ def code_check_count(
     target_str: str,
     target_count: int,
 ):
-    with (
-        torch.no_grad(),
-        config.patch(
-            {
-                "aot_inductor.allow_stack_allocation": self.allow_stack_allocation,
-                "aot_inductor.use_minimal_arrayref_interface": self.use_minimal_arrayref_interface,
-            }
-        ),
-    ):
+    with torch.no_grad(), config.patch( { "aot_inductor.allow_stack_allocation": self.allow_stack_allocation, "aot_inductor.use_minimal_arrayref_interface": self.use_minimal_arrayref_interface, } ):
         package_path = torch._export.aot_compile(model, example_inputs)
 
     with open(os.path.splitext(package_path)[0] + ".cpp") as cpp:

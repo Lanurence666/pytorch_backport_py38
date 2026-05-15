@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from typing import Dict, Union
 from torchgen.model import NativeFunctionsGroup, NativeFunctionsViewGroup
 
 
-def func_name_base_str(g: NativeFunctionsGroup | NativeFunctionsViewGroup) -> str:
+def func_name_base_str(g: Union[NativeFunctionsGroup, NativeFunctionsViewGroup]) -> str:
     if isinstance(g, NativeFunctionsGroup):
         return str(g.functional.func.name.name.base)
     else:
@@ -55,12 +56,12 @@ is_hand_written_ops_ = frozenset(
 )
 
 
-def is_hand_written(g: NativeFunctionsGroup | NativeFunctionsViewGroup) -> bool:
+def is_hand_written(g: Union[NativeFunctionsGroup, NativeFunctionsViewGroup]) -> bool:
     name_base = func_name_base_str(g)
     return name_base in is_hand_written_ops_
 
 
-def override_test_values(arg_map: dict[str, str], op_name: str, index: int) -> None:
+def override_test_values(arg_map: Dict[str, str], op_name: str, index: int) -> None:
     if index not in (0, 1):
         raise AssertionError(f"index must be 0 or 1, got {index}")
     if op_name == "addr":

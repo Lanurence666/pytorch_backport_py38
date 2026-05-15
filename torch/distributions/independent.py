@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
-from typing import Generic, TypeVar
+from __future__ import annotations
+
+from typing import Dict, Generic, Optional, Type, TypeVar
 
 import torch
 from torch import Size, Tensor
@@ -45,14 +47,14 @@ class Independent(Distribution, Generic[D]):
             reinterpret as event dims
     """
 
-    arg_constraints: dict[str, constraints.Constraint] = {}
+    arg_constraints: Dict[str, constraints.Constraint] = {}
     base_dist: D
 
     def __init__(
         self,
         base_distribution: D,
         reinterpreted_batch_ndims: int,
-        validate_args: bool | None = None,
+        validate_args: Optional[bool]= None,
     ) -> None:
         if reinterpreted_batch_ndims > len(base_distribution.batch_shape):
             raise ValueError(

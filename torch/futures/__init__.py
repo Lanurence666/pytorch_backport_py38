@@ -2,7 +2,7 @@
 # pylint: disable=useless-parent-delegation
 from __future__ import annotations
 
-from typing import cast, Generic, TYPE_CHECKING, TypeVar
+from typing import Callable, Generic, List, Set, TYPE_CHECKING, Type, TypeVar, Union, cast
 
 import torch
 
@@ -27,7 +27,7 @@ class Future(torch._C.Future, Generic[T]):
     .. warning:: GPU support is a beta feature, subject to changes.
     """
 
-    def __init__(self, *, devices: list[int | str | torch.device] | None = None):
+    def __init__(self, *, devices: Union[List[int, str, torch.device], None] = None):
         r"""
         Create an empty unset ``Future``. If the future is intended to hold
         values containing CUDA tensors, (a superset of) their CUDA devices must
@@ -282,7 +282,7 @@ class Future(torch._C.Future, Generic[T]):
         self.set_result(result)  # type: ignore[arg-type]
 
 
-def collect_all(futures: list[Future]) -> Future[list[Future]]:
+def collect_all(futures: List[Future]) -> Future[List[Future]]:
     r"""
     Collects the provided :class:`~torch.futures.Future` objects into a single
     combined :class:`~torch.futures.Future` that is completed when all of the
@@ -309,12 +309,12 @@ def collect_all(futures: list[Future]) -> Future[list[Future]]:
         fut1 result = 1
     """
     return cast(
-        Future[list[Future]],
-        torch._C._collect_all(cast(list[torch._C.Future], futures)),
+        Future[List[Future]],
+        torch._C._collect_all(cast(List[torch._C.Future], futures)),
     )
 
 
-def wait_all(futures: list[Future]) -> list:
+def wait_all(futures: List[Future]) -> list:
     r"""
     Waits for all provided futures to be complete, and returns
     the list of completed values. If any of the futures encounters an error,
@@ -331,5 +331,5 @@ def wait_all(futures: list[Future]) -> list:
     """
     return [
         fut.wait()
-        for fut in torch._C._collect_all(cast(list[torch._C.Future], futures)).wait()
+        for fut in torch._C._collect_all(cast(List[torch._C.Future], futures)).wait()
     ]

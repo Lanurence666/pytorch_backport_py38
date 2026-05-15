@@ -1,5 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from collections.abc import Callable
+from typing import Dict
 
 import torch
 from torch._export.utils import (
@@ -28,7 +31,7 @@ PRESERVED_ATEN_CIA_OPS = {
 }
 
 
-class CustomDecompTable(dict[torch._ops.OperatorBase, Callable]):
+class CustomDecompTable(Dict[torch._ops.OperatorBase, Callable]):
     """
     This is a custom dictionary that is specifically used for handling decomp_table in export.
     The reason we need this is because in the new world, you can only *delete* an op from decomp
@@ -142,7 +145,7 @@ class CustomDecompTable(dict[torch._ops.OperatorBase, Callable]):
         self._materialize_if_needed()
         return self.decomp_table.items()
 
-    def materialize(self) -> dict[torch._ops.OperatorBase, Callable]:
+    def materialize(self) -> Dict[torch._ops.OperatorBase, Callable]:
         for op in _collect_all_valid_cia_ops():
             if _is_aten_op(op):
                 continue

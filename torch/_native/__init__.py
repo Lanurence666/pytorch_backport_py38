@@ -1,15 +1,17 @@
+from __future__ import annotations
+
 import os
 import warnings
-from functools import cache
-from typing import cast
+from functools import lru_cache
+from typing import Optional, Type, cast
 
 # This handles collecting registration of all native ops
 # Also need to import DSL utils to make sure DSL registration is ok
 from . import cutedsl_utils, dsl_registry, ops, registry, triton_utils
 
 
-@cache
-def get_user_ordering_fn() -> registry.UserOrderingFn | None:
+@lru_cache(maxsize=None)
+def get_user_ordering_fn() -> Optional[registry.UserOrderingFn]:
     """
     Get a user-supplied graph-ordering function if specified.
 

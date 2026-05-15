@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 import os
 import shutil
@@ -8,6 +10,7 @@ from torch._inductor import config
 from torch._inductor.codegen.cuda import cuda_env
 from torch._inductor.cpp_builder import _set_gpu_runtime_env, _transform_cuda_paths
 from torch._inductor.utils import is_linux
+from typing import List, Optional
 
 
 if config.is_fbcode():
@@ -29,18 +32,16 @@ def use_re_build() -> bool:
     return False
 
 
-def _cutlass_path() -> str | None:
+def _cutlass_path() -> str:
     if config.is_fbcode():
         from libfb.py import parutil
 
         return parutil.get_dir_path("cutlass-4-headers")
     else:
-        from torch._inductor.codegen.cutlass.utils import try_import_cutlass
-
-        return config.cutlass.cutlass_dir if try_import_cutlass() else None
+        return config.cutlass.cutlass_dir
 
 
-def _cutlass_paths() -> list[str]:
+def _cutlass_paths() -> List[str]:
     return [
         "include",
         "tools/library/include",
@@ -49,31 +50,26 @@ def _cutlass_paths() -> list[str]:
     ]
 
 
-def _clone_cutlass_paths(build_root: str) -> list[str]:
+def _clone_cutlass_paths(build_root: str) -> List[str]:
+    paths = _cutlass_paths()
     cutlass_root = _cutlass_path()
-    if cutlass_root is None:
-        return []
-    paths = []
     for path in _cutlass_paths():
         old_path = os.path.join(cutlass_root, path)
         new_path = os.path.join(build_root, path)
         shutil.copytree(old_path, new_path, dirs_exist_ok=True)
-        paths.append(new_path)
     return paths
 
 
-def _cutlass_include_paths() -> list[str]:
-    cutlass_root = _cutlass_path()
-    if cutlass_root is None:
-        return []
+def _cutlass_include_paths() -> List[str]:
+    cutlass_path = _cutlass_path()
     return [
         # Use realpath to get canonical absolute paths, in order not to mess up cache keys
-        os.path.realpath(os.path.join(cutlass_root, path))
+        os.path.realpath(os.path.join(cutlass_path, path))
         for path in _cutlass_paths()
     ]
 
 
-def _cuda_compiler() -> str | None:
+def _cuda_compiler() -> Optional[str]:
     if cuda_env.nvcc_exist(config.cuda.cuda_cxx):
         return config.cuda.cuda_cxx
     if config.is_fbcode():
@@ -85,7 +81,7 @@ def _cuda_compiler() -> str | None:
     return "nvcc"
 
 
-def _cuda_lib_options() -> list[str]:
+def _cuda_lib_options() -> List[str]:
     """
     Util function for CUTLASS backend to find the correct CUDA libraries.
     """
@@ -98,7 +94,7 @@ def _cuda_lib_options() -> list[str]:
             build_paths.sdk_lib,
             os.path.join(build_paths.sdk_lib, "stubs"),
         ]
-    extra_ldflags: list[str] = []
+    extra_ldflags: List[str] = []
     if is_linux():
         _transform_cuda_paths(lpaths)
         for path in lpaths:
@@ -120,7 +116,7 @@ def _cuda_lib_options() -> list[str]:
     return extra_ldflags
 
 
-def _nvcc_host_compiler_options() -> list[str]:
+def _nvcc_host_compiler_options() -> List[str]:
     return [
         "-fPIC",
         "-fno-strict-aliasing",
@@ -149,7 +145,7 @@ def _nvcc_arch_as_compile_option() -> str:
     return arch
 
 
-def _nvcc_compiler_options() -> list[str]:
+def _nvcc_compiler_options() -> List[str]:
     arch = _nvcc_arch_as_compile_option()
     code = [f"sm_{arch}", f"compute_{arch}"]
     if config.cuda.enable_cuda_lto:
@@ -191,10 +187,10 @@ def _nvcc_compiler_options() -> list[str]:
 
 
 def cuda_compile_command(
-    src_files: list[str],
+    src_files: List[str],
     dst_file: str,
     dst_file_ext: str,
-    extra_args: list[str] | None = None,
+    extra_args: Optional[List[str]] = None
 ) -> str:
     if extra_args is None:
         extra_args = []

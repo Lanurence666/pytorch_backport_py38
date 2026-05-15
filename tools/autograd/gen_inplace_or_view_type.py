@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from typing import Dict, List, Tuple, Union
 from torchgen.api import cpp
 from torchgen.api.autograd import (
     dispatch_strategy,
@@ -281,7 +282,7 @@ def inverse_view_name(f: NativeFunction) -> str:
     return f"{copy_variant}{overload}_inverse"
 
 
-def extract_bindings(f: NativeFunction) -> list[Binding]:
+def extract_bindings(f: NativeFunction) -> List[Binding]:
     return [
         r
         for a in f.func.schema_order_arguments()
@@ -297,9 +298,9 @@ def extract_bindings(f: NativeFunction) -> list[Binding]:
 
 
 @with_native_function
-def unpack_args(f: NativeFunction) -> tuple[list[str], list[Binding]]:
-    body: list[str] = []
-    unpacked_bindings: list[Binding] = []
+def unpack_args(f: NativeFunction) -> Tuple[List[str], List[Binding]]:
+    body: List[str] = []
+    unpacked_bindings: List[Binding] = []
 
     for i, binding in enumerate(extract_bindings(f)):
         if isinstance(binding.argument, SelfArgument):
@@ -339,7 +340,7 @@ def get_base_name(f: NativeFunction) -> str:
     return f.func.name.name.base  # TODO: should be str(f.func.name.name)?
 
 
-def get_view_info(f: NativeFunction) -> str | None:
+def get_view_info(f: NativeFunction) -> Union[str, None]:
     base_name = get_base_name(f)
     view_info = VIEW_FUNCTIONS.get(base_name)
     if view_info is None and base_name in RETURNS_VIEWS_OF_INPUT:
@@ -348,7 +349,7 @@ def get_view_info(f: NativeFunction) -> str | None:
 
 
 def emit_view_func(
-    f: NativeFunction, bindings: list[Binding], view_idx: str | None = None
+    f: NativeFunction, bindings: List[Binding], view_idx: Union[str, None] = None
 ) -> str:
     """Generate an additional lambda function to recover views in backward when as_strided is not supported.
     See Note [View + Inplace update for base tensor] and [View + Inplace update for view tensor] for more details.
@@ -356,8 +357,8 @@ def emit_view_func(
     # TODO: Clean this logic up if we get rid of reverse view funcs or reify them.
     input_base = "input_base"
     replay_view_func = ""
-    updated_args: list[str] = []
-    known_view_arg_simple_types: list[CType] = [
+    updated_args: List[str] = []
+    known_view_arg_simple_types: List[CType] = [
         BaseCType(longT),
         OptionalCType(BaseCType(longT)),
         BaseCType(SymIntT),
@@ -449,7 +450,7 @@ def emit_view_func(
 
 def emit_view_body(
     fn: NativeFunctionWithDifferentiabilityInfo, var: str
-) -> tuple[str, str]:
+) -> Tuple[str, str]:
     # See NOTE [ Autograd View Variables ] in variable.h for details.
     f = fn.func
     base_name = get_base_name(f)
@@ -524,9 +525,9 @@ def modifies_arguments(f: NativeFunction) -> bool:
 
 
 @with_native_function_with_differentiability_info
-def emit_inplace_or_view_body(fn: NativeFunctionWithDifferentiabilityInfo) -> list[str]:
+def emit_inplace_or_view_body(fn: NativeFunctionWithDifferentiabilityInfo) -> List[str]:
     f = fn.func
-    inplace_view_body: list[str] = []
+    inplace_view_body: List[str] = []
 
     dispatcher_sig = DispatcherSignature.from_schema(f.func)
     dispatcher_exprs = dispatcher_sig.exprs()
@@ -587,7 +588,7 @@ def gen_formals(f: NativeFunction) -> str:
 @with_native_function_with_differentiability_info
 def inplace_or_view_method_definition(
     fn: NativeFunctionWithDifferentiabilityInfo,
-) -> str | None:
+) -> Union[str, None]:
     f = fn.func
     if get_view_info(f) is None and (
         # For functions that modify their inputs but don't return them,
@@ -607,7 +608,7 @@ def inplace_or_view_method_definition(
 @with_native_function_with_differentiability_info
 def inplace_or_view_method_registration(
     fn: NativeFunctionWithDifferentiabilityInfo,
-) -> str | None:
+) -> Union[str, None]:
     f = fn.func
     if get_view_info(f) is None and (
         not modifies_arguments(f) or len(f.func.returns) == 0
@@ -628,7 +629,7 @@ def use_derived(fn: NativeFunctionWithDifferentiabilityInfo) -> bool:
 
 def gen_inplace_or_view_type_env(
     fn: NativeFunctionWithDifferentiabilityInfo,
-) -> dict[str, list[str]]:
+) -> Dict[str, List[str]]:
     definition = inplace_or_view_method_definition(fn)
     registration = inplace_or_view_method_registration(fn)
 
@@ -651,7 +652,7 @@ def gen_inplace_or_view_type(
     out: str,
     native_yaml_path: str,
     tags_yaml_path: str,
-    fns_with_infos: list[NativeFunctionWithDifferentiabilityInfo],
+    fns_with_infos: List[NativeFunctionWithDifferentiabilityInfo],
     template_path: str,
 ) -> None:
     # NOTE: see Note [Sharded File] at the top of the VariableType.cpp

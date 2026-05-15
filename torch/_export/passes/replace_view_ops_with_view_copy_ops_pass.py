@@ -1,15 +1,18 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch._export.error import InternalError
 from torch._export.pass_base import _ExportPassBaseDeprecatedDoNotUse
 from torch._ops import HigherOrderOperator, OpOverload
+from typing import Dict, Optional
 
 
 __all__ = ["ReplaceViewOpsWithViewCopyOpsPass"]
 
 
-_NON_FUNCTIONAL_OPS_TO_FUNCTIONAL_OPS: dict[OpOverload, OpOverload] = {
+_NON_FUNCTIONAL_OPS_TO_FUNCTIONAL_OPS: Dict[OpOverload, OpOverload] = {
     torch.ops.aten._unsafe_view.default: torch.ops.aten.view_copy.default,
 }
 
@@ -21,7 +24,7 @@ def is_view_op(schema: torch._C.FunctionSchema) -> bool:
     return (alias_info is not None) and (not alias_info.is_write)
 
 
-def get_view_copy_of_view_op(schema: torch._C.FunctionSchema) -> OpOverload | None:
+def get_view_copy_of_view_op(schema: torch._C.FunctionSchema) -> Optional[OpOverload]:
     if is_view_op(schema) and schema.name.startswith("aten::"):
         view_op_name = schema.name.split("::")[1]
         view_op_overload = (

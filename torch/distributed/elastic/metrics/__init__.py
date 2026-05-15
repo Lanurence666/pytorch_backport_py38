@@ -7,6 +7,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 """Metrics API.
 
 **Overview**:
@@ -158,7 +160,7 @@ from .api import (
 )
 
 
-def initialize_metrics(cfg: MetricsConfig | None = None):
+def initialize_metrics(cfg: Optional[MetricsConfig] = None):
     pass
 
 

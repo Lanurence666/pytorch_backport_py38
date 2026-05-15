@@ -7,7 +7,7 @@ from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, cast
+from typing import Any, Dict, List, cast
 
 import requests
 
@@ -59,7 +59,7 @@ def get_test_config(job_name: str) -> str:
 
 def get_td_exclusions(
     workflow_run_id: int, workflow_run_attempt: int
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     with TemporaryDirectory() as temp_dir:
         print("Using temporary directory:", temp_dir)
         os.chdir(temp_dir)
@@ -71,7 +71,7 @@ def get_td_exclusions(
         for path in s3_paths:
             unzip(path)
 
-        grouped_tests: dict[str, Any] = defaultdict(lambda: defaultdict(set))
+        grouped_tests: Dict[str, Any] = defaultdict(lambda: defaultdict(set))
         for td_exclusions in Path(".").glob("**/td_exclusions*.json"):
             with open(td_exclusions) as f:
                 exclusions = json.load(f)
@@ -88,7 +88,7 @@ def get_td_exclusions(
         return grouped_tests
 
 
-def get_all_run_attempts(workflow_run_id: int) -> list[int]:
+def get_all_run_attempts(workflow_run_id: int) -> List[int]:
     # Returns all run attempts for a given workflow run id that have test
     # artifacts
     bucket = get_s3_resource().Bucket("gha-artifacts")

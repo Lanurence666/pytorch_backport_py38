@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 State dict utilities for torch.export.
@@ -6,15 +7,15 @@ This module provides utilities for restoring state dicts to traced modules,
 ensuring that FQNs (Fully Qualified Names) match the original module structure.
 """
 
-from collections.abc import Callable, Sequence
-from typing import Any
+
+from typing import Any, Callable, Dict, List, Sequence, Set, Tuple, Type, Union
 
 import torch
 import torch.fx
 
 
 def _get_underlying_module(
-    module_or_method: torch.nn.Module | Callable[..., Any],
+    module_or_method: Union[torch.nn.Module, Callable[..., Any]],
 ) -> torch.nn.Module:
     """Extract the underlying nn.Module from either a module or a bound method.
 
@@ -66,7 +67,7 @@ def _clear_traced_params_buffers(
 
 
 def _restore_state_dict(
-    original_module: torch.nn.Module | Callable[..., Any],
+    original_module: Union[torch.nn.Module, Callable[..., Any]],
     traced_module: torch.fx.GraphModule,
 ) -> None:
     """
@@ -113,28 +114,28 @@ def _restore_state_dict(
 
     # Build ID-based lookups for traced module params/buffers
     # Collect all data first to avoid modifying during iteration
-    traced_params: dict[int, tuple[str, torch.nn.Parameter]] = {}
+    traced_params: Dict[int, Tuple[str, torch.nn.Parameter]] = {}
     for name, param in traced_module.named_parameters(remove_duplicate=False):
         traced_params[id(param)] = (name, param)
 
-    traced_buffers: dict[int, tuple[str, torch.Tensor]] = {}
+    traced_buffers: Dict[int, Tuple[str, torch.Tensor]] = {}
     for name, buffer in traced_module.named_buffers(remove_duplicate=False):
         traced_buffers[id(buffer)] = (name, buffer)
 
     # Collect original module's parameters and buffers upfront to avoid
     # issues with shared tensor objects during iteration
-    orig_params_list: list[tuple[str, torch.nn.Parameter]] = list(
+    orig_params_list: List[Tuple[str, torch.nn.Parameter]] = list(
         module.named_parameters(remove_duplicate=False)
     )
-    orig_buffers_list: list[tuple[str, torch.Tensor]] = list(
+    orig_buffers_list: List[Tuple[str, torch.Tensor]] = list(
         module.named_buffers(remove_duplicate=False)
     )
 
     # Build mapping from old names to new names for graph node updates
-    name_mapping: dict[str, str] = {}
+    name_mapping: Dict[str, str] = {}
 
     # Track which traced names we've processed
-    processed_traced_names: set[str] = set()
+    processed_traced_names: Set[str] = set()
 
     # Restore parameters in the order they appear in original module
     for orig_name, orig_param in orig_params_list:

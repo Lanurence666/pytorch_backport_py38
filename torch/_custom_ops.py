@@ -9,6 +9,7 @@ from torch._custom_op.impl import (
     validate_namespace,
 )
 from torch.library import get_ctx
+from typing import Callable, Iterable, Union
 
 
 __all__ = [

@@ -1,7 +1,13 @@
+from __future__ import annotations
+
 import operator
 import warnings
-from collections.abc import Callable, Iterable, Sequence
-from typing import TypeAlias, TypeVar
+from collections.abc import Iterable
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 from typing_extensions import ParamSpec
 
 import torch
@@ -60,9 +66,9 @@ from torch.nn.modules.conv import Conv2d
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
-_SymbolDict: TypeAlias = dict[Node, TVar | DVar | BVar]
+_SymbolDict: TypeAlias = Union[Dict[Node, TVar, DVar, BVar]]
 
-_INFERENCE_RULES: dict[Target, Callable[..., tuple[list[Constraint], int]]] = {}
+_INFERENCE_RULES: Dict[Target, Callable[..., Tuple[List[Constraint], int]]] = {}
 
 MAX_TENSOR_RANK = 4
 
@@ -129,7 +135,7 @@ def register_inference_rule(
 
 def generate_flatten_constraints(
     start_dim: int, end_dim: int, input: TVar, flattened: TVar, n: int, counter: int
-) -> tuple[Conj, int]:
+) -> Tuple[Conj, int]:
     d, counter = gen_tensor_dims(n, counter)
     c1 = BinConstraintT(input, TensorType(d), op_eq)
     start_dim = n if start_dim == -1 else abs(start_dim)
@@ -141,8 +147,8 @@ def generate_flatten_constraints(
 
 @register_inference_rule(getattr)
 def get_attr_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     If the attribute is "device" then the tensor shape is preserved
     """
@@ -164,8 +170,8 @@ def get_attr_inference_rule(
 
 @register_inference_rule(torch.bmm)
 def bmm_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     Constraints that match the input to a size 3 tensor
     and switch the dimensions according to the rules
@@ -238,8 +244,8 @@ def bmm_inference_rule(
 
 @register_inference_rule("index_select")
 def index_select_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     We constrain the second argument to a vector or Dyn.
     The output replaces the input with the shape of the vector
@@ -306,8 +312,8 @@ def index_select_inference_rule(
 
 @register_inference_rule("expand")
 def expand_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     We generate the exact constraints as we do for tensor additions but we constraint
     the rank of this expression to be equal to len(n.args[1:]) so that only
@@ -379,8 +385,8 @@ def expand_inference_rule(
 @register_inference_rule(torch.ones)
 @register_inference_rule(torch.zeros)
 def equality_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     We generate the constraint: input = output
     """
@@ -414,8 +420,8 @@ def equality_inference_rule(
 
 @register_inference_rule("transpose")
 def transpose_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     Can be considered as a sequence of two index selects, so we generate constraints accordingly
     """
@@ -451,8 +457,8 @@ def transpose_inference_rule(
 
 @register_inference_rule("type_as")
 def type_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     We generate the constraint: input = output
     """
@@ -480,8 +486,8 @@ def type_inference_rule(
 
 @register_inference_rule("masked_fill_")
 def masked_fill_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     Similar to addition. For now we implement the constraints when
     the argument is a boolean tensor. There is also a case for when
@@ -511,8 +517,8 @@ def masked_fill_inference_rule(
 
 @register_inference_rule(torch.nn.functional.embedding)
 def embedding_inference_rule_functional(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
 
@@ -533,9 +539,9 @@ def embedding_inference_rule(
     n: Node,
     module_instance: torch.nn.Embedding,
     symbols: _SymbolDict,
-    constraints: list[Constraint],
+    constraints: List[Constraint],
     counter: int,
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     """
     The output shape differs from the input shape in the last dimension
     """
@@ -545,8 +551,8 @@ def embedding_inference_rule(
 
 
 def gen_embedding_rules(
-    n: Node, symbols: _SymbolDict, embedding_dim: int | DVar, counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, embedding_dim: Union[int, DVar], counter: int
+) -> Tuple[List[Constraint], int]:
     embedding_output, counter = gen_tvar(counter)
     symbols[n] = embedding_output
     embedding_input = symbols[n.args[0]]  # pyrefly: ignore[bad-index]
@@ -578,8 +584,8 @@ def gen_embedding_rules(
 
 @register_inference_rule(torch.tensor)
 def tensor_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     If the tensor is a scalar, we will skip it since we
     do not support scalars yet. We will add support in the future
@@ -591,8 +597,8 @@ def tensor_inference_rule(
 @register_inference_rule("reshape")
 @register_inference_rule("view")
 def view_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     Similar to reshape but with an extra condition on the strides
     """
@@ -635,8 +641,8 @@ def view_inference_rule(
 
 @register_inference_rule("size")
 def size_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     The constraint is just lhs = rhs.
     Ex: size = input_ids.size()
@@ -681,7 +687,7 @@ def size_inference_rule(
         raise NotImplementedError
 
 
-def range_check(i: int, n: int) -> T | F:
+def range_check(i: int, n: int) -> Union[T, F]:
     """
     Checks if an index i is within range of a size n list
     Args:
@@ -698,8 +704,8 @@ def range_check(i: int, n: int) -> T | F:
 
 @register_inference_rule(torch.cumsum)
 def cumsum_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     Input and output shapes should be equal
     We should verify that the index is valid
@@ -739,8 +745,8 @@ def cumsum_inference_rule(
 
 @register_inference_rule(_assert_is_none)
 def assert_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     if len(n.users) != 0:
         raise AssertionError(f"Expected no users, got {len(n.users)}")
     return [], counter  # pyrefly: ignore[implicit-any]
@@ -748,8 +754,8 @@ def assert_inference_rule(
 
 @register_inference_rule(operator.getitem)
 def getitem_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
 
@@ -816,8 +822,8 @@ def getitem_inference_rule(
 
 @register_inference_rule(operator.gt)
 def gt_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], (Node, int)):
         raise AssertionError(f"Expected Node or int, got {type(n.args[0])}")
     if not isinstance(n.args[1], (Node, int)):
@@ -881,8 +887,8 @@ def gt_inference_rule(
 
 @register_inference_rule(operator.eq)
 def eq_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], (Node, int)):
         raise AssertionError(f"Expected Node or int, got {type(n.args[0])}")
     if not isinstance(n.args[1], (Node, int)):
@@ -924,8 +930,8 @@ def eq_inference_rule(
 
 @register_inference_rule(operator.ne)
 def neq_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     Translates to inconsistent in gradual types.
     To prove inequality, we should prove that
@@ -1054,8 +1060,8 @@ def neq_inference_rule(
 
 @register_inference_rule(operator.lt)
 def lt_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], (Node, int)):
         raise AssertionError(f"Expected Node or int, got {type(n.args[0])}")
     if not isinstance(n.args[1], (Node, int)):
@@ -1101,8 +1107,8 @@ def lt_inference_rule(
 
 @register_inference_rule(torch.full)
 def full_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     full, counter = gen_tvar(counter)
     symbols[n] = full
     res = []
@@ -1121,8 +1127,8 @@ def full_inference_rule(
 # TODO normalize index
 @register_inference_rule(torch.arange)
 def arange_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     start = 0
     step = 1
 
@@ -1168,7 +1174,7 @@ def arange_inference_rule(
 
 def gen_broadcasting_constraints(
     e1: TVar, e2: TVar, symbols: _SymbolDict, counter: int, output_var: TVar
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     # additional vars that don't correspond to expressions
     e11, counter = gen_tvar(counter)
     e22, counter = gen_tvar(counter)
@@ -1186,8 +1192,8 @@ def gen_broadcasting_constraints(
 @register_inference_rule(torch.add)
 @register_inference_rule(operator.add)
 def broadcasting_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:  # pyrefly: ignore[bad-return]
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:  # pyrefly: ignore[bad-return]
     op_code = None
     if n.target is operator.add or n.target is torch.add:
         op_code = op_add
@@ -1267,8 +1273,8 @@ def broadcasting_inference_rule(
 
 @register_inference_rule(torch.flatten)
 def flatten_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
 
@@ -1313,8 +1319,8 @@ def flatten_inference_rule(
 
 @register_inference_rule(torch.nn.functional.layer_norm)
 def layer_norm_functional(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     """
     We generate the constraint: input = output
     """
@@ -1333,9 +1339,9 @@ def layer_norm_inference_rule(
     n: Node,
     module_instance: torch.nn.LayerNorm,
     symbols: _SymbolDict,
-    constraints: list[Constraint],
+    constraints: List[Constraint],
     counter: int,
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     """
     Input and output shapes should be equal.
     Input should be consistent with the normalized_shape
@@ -1349,7 +1355,7 @@ def layer_norm_inference_rule(
 
 def gen_layer_norm_constraints(
     n: Node, normalized_shape: Sequence[int], symbols: _SymbolDict, counter: int
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     output, counter = gen_tvar(counter)
     symbols[n] = output
     input = symbols[n.args[0]]  # pyrefly: ignore[bad-index]
@@ -1382,9 +1388,9 @@ def relu_inference_rule(
     n: Node,
     module_instance: torch.nn.Module,
     symbols: _SymbolDict,
-    constraints: list[Constraint],
+    constraints: List[Constraint],
     counter: int,
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     """
     Input and output shapes should be equal.
     """
@@ -1403,9 +1409,9 @@ def linear_inference_rule(
     n: Node,
     module_instance: torch.nn.Linear,
     symbols: _SymbolDict,
-    constraints: list[Constraint],
+    constraints: List[Constraint],
     counter: int,
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     """
     Input and output sizes should be the same except for the last dimension
     If the input is Dyn, then so should the output
@@ -1419,8 +1425,8 @@ def linear_inference_rule(
 
 @register_inference_rule("dim")
 def torch_dim_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
     my_dim, counter = gen_dvar(counter)
@@ -1448,8 +1454,8 @@ def torch_dim_inference_rule(
 
 @register_inference_rule(torch._C._nn.linear)
 def torch_linear_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
     weight_dims, counter = gen_tensor_dims(2, counter)
@@ -1466,11 +1472,11 @@ def torch_linear_inference_rule(
 
 def linear_constraints(
     n: Node,
-    in_features: int | DVar,
-    out_features: int | DVar,
+    in_features: Union[int, DVar],
+    out_features: Union[int, DVar],
     symbols: _SymbolDict,
     counter: int,
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     linear_output, counter = gen_tvar(counter)
     symbols[n] = linear_output
     linear_input = symbols[n.args[0]]  # pyrefly: ignore[bad-index]
@@ -1502,8 +1508,8 @@ def linear_constraints(
 
 
 def add_layer_norm_constraints(
-    input_dim: list[DVar], normalized_dim: list[int]
-) -> list[Constraint]:
+    input_dim: List[DVar], normalized_dim: List[int]
+) -> List[Constraint]:
     """
     The constraints say that the type has the form: ``[*, 1024, 1024]``
     while the normalized_dim have the form ``[1024, 1024]``.
@@ -1518,21 +1524,21 @@ def add_layer_norm_constraints(
         return [F()]
 
     else:
-        constraints: list[Constraint] = []
+        constraints: List[Constraint] = []
         for i, n in zip(reversed(input_dim), reversed(normalized_dim)):
             constraints.append(BinConstraintD(i, n, op_consistency))
         return constraints
 
 
 def add_linear_constraints(
-    dims1: list[DVar],
-    dims2: list[DVar],
-    in_features: int | DVar,
-    out_features: int | DVar,
-) -> list[Constraint]:
+    dims1: List[DVar],
+    dims2: List[DVar],
+    in_features: Union[int, DVar],
+    out_features: Union[int, DVar],
+) -> List[Constraint]:
     if len(dims1) != len(dims2):
         raise AssertionError(f"Expected same length, got {len(dims1)} vs {len(dims2)}")
-    constraints: list[Constraint] = []
+    constraints: List[Constraint] = []
     for i in range(len(dims1)):
         if i == len(dims1) - 1:
             constraints.append(BinConstraintD(dims1[i], in_features, op_consistency))
@@ -1545,8 +1551,8 @@ def add_linear_constraints(
 
 @register_inference_rule(torch.reshape)
 def reshape_inference_rule(
-    n: Node, symbols: _SymbolDict, constraints: list[Constraint], counter: int
-) -> tuple[list[Constraint], int]:
+    n: Node, symbols: _SymbolDict, constraints: List[Constraint], counter: int
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
 
@@ -1568,9 +1574,9 @@ def batchnorm_inference_rule(
     n: Node,
     module_instance: BatchNorm2d,
     symbols: _SymbolDict,
-    constraints: list[Constraint],
+    constraints: List[Constraint],
     counter: int,
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
 
@@ -1597,9 +1603,9 @@ def adaptive_inference_rule(
     n: Node,
     module_instance: torch.nn.AdaptiveAvgPool2d,
     symbols: _SymbolDict,
-    constraints: list[Constraint],
+    constraints: List[Constraint],
     counter: int,
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
 
@@ -1640,9 +1646,9 @@ def conv2d_inference_rule(
     n: Node,
     module_instance: Conv2d,
     symbols: _SymbolDict,
-    constraints: list[Constraint],
+    constraints: List[Constraint],
     counter: int,
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
 
@@ -1680,9 +1686,9 @@ def maxpool_inference_rule(
     n: Node,
     module_instance: torch.nn.MaxPool2d,
     symbols: _SymbolDict,
-    constraints: list[Constraint],
+    constraints: List[Constraint],
     counter: int,
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
     maxpool, counter = gen_tvar(counter)
@@ -1710,21 +1716,21 @@ def maxpool_inference_rule(
 
 
 class ConstraintGenerator:
-    def __init__(self, traced: torch.nn.Module, graph: Graph | None = None) -> None:
+    def __init__(self, traced: torch.nn.Module, graph: Optional[Graph] = None) -> None:
         self.traced = traced  # traced or tracer.root
         self.traced_params = dict(self.traced.named_parameters())
         self.constraints = []
         self.symbol_dict = {}
         self.graph = traced.graph if hasattr(traced, "graph") else graph
 
-    def generate_constraints(self, counter: int = 0) -> tuple[Conj, int]:
+    def generate_constraints(self, counter: int = 0) -> Tuple[Conj, int]:
         """
         Iterate through every node and generate constraints
         Effect: self.constraints will be populated with the final constraints
         """
         graph = self.graph
 
-        all_constraints: list[Constraint] = []
+        all_constraints: List[Constraint] = []
 
         # pyrefly: ignore [missing-attribute]
         for n in graph.nodes:
@@ -1735,7 +1741,7 @@ class ConstraintGenerator:
 
     def generate_constraints_node(
         self, n: Node, counter: int
-    ) -> tuple[list[Constraint], int]:
+    ) -> Tuple[List[Constraint], int]:
         """
         Generate constraints the given node:
         Currently supported operations:

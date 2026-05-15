@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Barrier implementations for synchronizing distributed checkpoint operations.
 
@@ -11,7 +12,7 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import torch.distributed as dist
 import torch.distributed.elastic.utils.store as store_util
@@ -21,7 +22,7 @@ logger = logging.getLogger()
 
 
 # Registry of barrier types
-BARRIER_REGISTRY: dict[str, type] = {}
+BARRIER_REGISTRY: Dict[str, type] = {}
 
 
 def register_barrier(barrier_class: type) -> type:
@@ -63,8 +64,8 @@ class BarrierConfig:
         )
     """
 
-    barrier_type: str | None = None
-    barrier_args: dict[str, Any] = field(default_factory=dict)
+    barrier_type: Optional[str]= None
+    barrier_args: Dict[str, Any] = field(default_factory=dict)
 
 
 def create_barrier_from_config(
@@ -105,7 +106,7 @@ class Barrier(abc.ABC):
     """
 
     @abc.abstractmethod
-    def __init__(self, **kwargs: dict[str, Any]):
+    def __init__(self, **kwargs: Dict[str, Any]):
         """
         Initialize a barrier.
 

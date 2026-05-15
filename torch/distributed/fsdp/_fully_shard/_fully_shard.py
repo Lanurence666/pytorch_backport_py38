@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import functools
 from contextlib import contextmanager
-from typing import Any, cast, Literal, NoReturn, overload, TYPE_CHECKING
-from typing_extensions import deprecated
+from typing import Any, Callable, Dict, Iterable, Iterator, List, NoReturn, Optional, Set, TYPE_CHECKING, Union, cast, overload
+from typing_extensions import Literal, deprecated
 
 import torch
 import torch.nn as nn
@@ -35,7 +35,7 @@ from ._fsdp_state import _get_module_fsdp_state, FSDPState
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator
+    
 
     from torch.distributed.tensor import DeviceMesh
 
@@ -52,10 +52,10 @@ __all__ = [
 ]
 
 
-cls_to_fsdp_cls: dict[type, type] = {}
+cls_to_fsdp_cls: Dict[type, type] = {}
 
 
-def get_cls_to_fsdp_cls() -> dict[type, type]:
+def get_cls_to_fsdp_cls() -> Dict[type, type]:
     return cls_to_fsdp_cls
 
 
@@ -64,29 +64,29 @@ def get_cls_to_fsdp_cls() -> dict[type, type]:
 def fully_shard(
     module: nn.Module,
     *,
-    mesh: DeviceMesh | None = ...,
-    reshard_after_forward: bool | int | None = ...,
-    shard_placement_fn: Callable[[nn.Parameter], ShardPlacementFnResult] | None = ...,
+    mesh: Optional[DeviceMesh]= ...,
+    reshard_after_forward: Optional[Union[bool, int]]= ...,
+    shard_placement_fn: Optional[Callable[[nn.Parameter], ShardPlacementFnResult]]= ...,
     mp_policy: MixedPrecisionPolicy = ...,
     offload_policy: OffloadPolicy = ...,
-    ignored_params: set[nn.Parameter] | None = ...,
-    dp_mesh_dims: DataParallelMeshDims | None = ...,
+    ignored_params: Optional[Set[nn.Parameter]]= ...,
+    dp_mesh_dims: Optional[DataParallelMeshDims]= ...,
 ) -> FSDPModule: ...
 
 
 @overload
 # pyrefly: ignore [inconsistent-overload]
 def fully_shard(
-    module: list[nn.Module],
+    module: List[nn.Module],
     *,
-    mesh: DeviceMesh | None = ...,
-    reshard_after_forward: bool | int | None = ...,
-    shard_placement_fn: Callable[[nn.Parameter], ShardPlacementFnResult] | None = ...,
+    mesh: Optional[DeviceMesh]= ...,
+    reshard_after_forward: Optional[Union[bool, int]]= ...,
+    shard_placement_fn: Optional[Callable[[nn.Parameter], ShardPlacementFnResult]]= ...,
     mp_policy: MixedPrecisionPolicy = ...,
     offload_policy: OffloadPolicy = ...,
-    ignored_params: set[nn.Parameter] | None = ...,
-    dp_mesh_dims: DataParallelMeshDims | None = ...,
-) -> list[FSDPModule]: ...
+    ignored_params: Optional[Set[nn.Parameter]]= ...,
+    dp_mesh_dims: Optional[DataParallelMeshDims]= ...,
+) -> List[FSDPModule]: ...
 
 
 # The decorator adds a state object to `module` that can be accessed via
@@ -98,13 +98,13 @@ def fully_shard(
 def fully_shard(
     module,
     *,
-    mesh: DeviceMesh | None = None,
-    reshard_after_forward: bool | int | None = None,
-    shard_placement_fn: Callable[[nn.Parameter], ShardPlacementFnResult] | None = None,
+    mesh: Optional[DeviceMesh]= None,
+    reshard_after_forward: Optional[Union[bool, int]]= None,
+    shard_placement_fn: Optional[Callable[[nn.Parameter], ShardPlacementFnResult]]= None,
     mp_policy: MixedPrecisionPolicy = MixedPrecisionPolicy(),
     offload_policy: OffloadPolicy = OffloadPolicy(),
-    ignored_params: set[nn.Parameter] | None = None,
-    dp_mesh_dims: DataParallelMeshDims | None = None,
+    ignored_params: Optional[Set[nn.Parameter]]= None,
+    dp_mesh_dims: Optional[DataParallelMeshDims]= None,
 ):
     """
     Apply fully sharded data parallelism (FSDP) to ``module``, where FSDP
@@ -201,7 +201,7 @@ def fully_shard(
               between forward and backward, the registered parameters must be
               the sharded parameters. For ``False`` or an ``int``, this can be
               done by manually resharding via :meth:`reshard`.
-        shard_placement_fn (Optional[Callable[[nn.Parameter], Optional[Shard | ShardPlacementResult]]]):
+        shard_placement_fn (Optional[Callable[[nn.Parameter], Optional[Union[Shard, ShardPlacementResult]]]]):
             This callable can be used to override the sharding placement and/or
             mesh for a parameter. It can return:
 
@@ -342,7 +342,7 @@ class FSDPModule:
         for fsdp_param_group in state._fsdp_param_groups:
             fsdp_param_group.reshard()
 
-    def unshard(self, async_op: bool = False) -> UnshardHandle | None:
+    def unshard(self, async_op: bool = False) -> Optional[UnshardHandle]:
         """
         Unshards the module's parameters by allocating memory and all-gathering
         the parameters. This method is *not* recursive. The unshard follows the
@@ -510,7 +510,7 @@ class FSDPModule:
                 for fsdp_param_group in state._fsdp_param_groups:
                     fsdp_param_group.reshard_after_backward = reshard_after_backward
 
-    def set_modules_to_forward_prefetch(self, modules: list[FSDPModule]) -> None:
+    def set_modules_to_forward_prefetch(self, modules: List[FSDPModule]) -> None:
         """
         Sets the FSDP modules for which this FSDP module should explicitly
         prefetch all-gathers in forward. The prefetching runs after this
@@ -530,7 +530,7 @@ class FSDPModule:
             module._get_fsdp_state() for module in modules
         ]
 
-    def set_modules_to_backward_prefetch(self, modules: list[FSDPModule]) -> None:
+    def set_modules_to_backward_prefetch(self, modules: List[FSDPModule]) -> None:
         """
         Sets the FSDP modules for which this FSDP module should explicitly
         prefetch all-gathers in backward. This overrides the default backward
@@ -592,7 +592,7 @@ class FSDPModule:
         self,
         hook: Callable[[torch.Tensor], None],
         *,
-        stream: torch.cuda.Stream | None = None,
+        stream: Optional[torch.cuda.Stream]= None,
     ):
         """
         Args:
@@ -824,7 +824,7 @@ class UnshardHandle:
 
 
 class _UnshardHandleImpl(UnshardHandle):
-    def __init__(self, fsdp_param_groups: list[FSDPParamGroup] | None):
+    def __init__(self, fsdp_param_groups: Optional[List[FSDPParamGroup]]):
         self._fsdp_param_groups = fsdp_param_groups
 
     def wait(self):
@@ -873,7 +873,7 @@ def register_fsdp_forward_method(module: nn.Module, method_name: str) -> None:
     )
 
 
-def share_comm_ctx(modules: list[FSDPModule]) -> None:
+def share_comm_ctx(modules: List[FSDPModule]) -> None:
     """
     Share cuda streams for multiple FSDPModules
 

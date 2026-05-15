@@ -1,7 +1,7 @@
+from __future__ import annotations
 """Strategies for capturing ExportedPrograms."""
 
 # mypy: allow-untyped-defs
-from __future__ import annotations
 
 import abc
 import contextlib
@@ -9,7 +9,7 @@ import dataclasses
 import datetime
 import logging
 import pathlib
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, TYPE_CHECKING, Tuple, Type, Union
 
 import torch
 from torch.onnx import _flags
@@ -17,13 +17,13 @@ from torch.onnx import _flags
 
 if TYPE_CHECKING:
     import os
-    from collections.abc import Callable
+    
 
 
 logger = logging.getLogger(__name__)
 
 
-def _verbose_printer(verbose: bool | None) -> Callable[..., None]:
+def _verbose_printer(verbose: Optional[bool]) -> Callable[..., None]:
     """Prints messages based on `verbose`."""
     if verbose is False:
         return lambda *_, **__: None
@@ -59,9 +59,9 @@ def _patch_dynamo_unsupported_functions():
 
 @dataclasses.dataclass
 class Result:
-    exported_program: torch.export.ExportedProgram | None
+    exported_program: Optional[torch.export.ExportedProgram]
     strategy: str
-    exception: Exception | None = None
+    exception: Optional[Exception] = None
 
     @property
     def success(self) -> bool:
@@ -91,7 +91,7 @@ class CaptureStrategy(abc.ABC):
         verbose: bool = False,
         dump: bool = False,
         artifacts_dir: str | os.PathLike = ".",
-        timestamp: str | None = None,
+        timestamp: Optional[str] = None,
     ) -> None:
         """Initialize the strategy.
 
@@ -105,13 +105,13 @@ class CaptureStrategy(abc.ABC):
         self._timestamp = timestamp or datetime.datetime.now().strftime(
             "%Y-%m-%d_%H-%M-%S-%f"
         )
-        self._exception: Exception | None = None
+        self._exception: Optional[Exception] = None
 
     def __call__(
         self,
-        model: torch.nn.Module | torch.jit.ScriptFunction,
-        args: tuple[Any, ...],
-        kwargs: dict[str, Any] | None,
+        model: Union[torch.nn.Module, torch.jit.ScriptFunction],
+        args: Tuple[Any, ...],
+        kwargs: Optional[Dict[str, Any]],
         dynamic_shapes,
     ) -> Result:
         self._enter(model)
@@ -139,14 +139,14 @@ class CaptureStrategy(abc.ABC):
     ) -> torch.export.ExportedProgram:
         raise NotImplementedError
 
-    def _enter(self, model: torch.nn.Module | torch.jit.ScriptFunction) -> None:
+    def _enter(self, model: Union[torch.nn.Module, torch.jit.ScriptFunction]) -> None:
         return
 
-    def _success(self, model: torch.nn.Module | torch.jit.ScriptFunction) -> None:
+    def _success(self, model: Union[torch.nn.Module, torch.jit.ScriptFunction]) -> None:
         return
 
     def _failure(
-        self, model: torch.nn.Module | torch.jit.ScriptFunction, e: Exception
+        self, model: Union[torch.nn.Module, torch.jit.ScriptFunction], e: Exception
     ) -> None:
         return
 
@@ -155,11 +155,8 @@ class TorchExportStrictStrategy(CaptureStrategy):
     def _capture(
         self, model, args, kwargs, dynamic_shapes
     ) -> torch.export.ExportedProgram:
-        with (
-            _patch_dynamo_unsupported_functions(),
             # Support the dynamism with 0/1 input dim
-            torch.fx.experimental._config.patch(backed_size_oblivious=True),  # type: ignore[attr-defined]
-        ):
+        with _patch_dynamo_unsupported_functions(), torch.fx.experimental._config.patch(backed_size_oblivious=True):  # type: ignore[attr-defined]
             try:
                 return torch.export.export(
                     model,
@@ -211,10 +208,8 @@ class TorchExportNonStrictStrategy(CaptureStrategy):
     def _capture(
         self, model, args, kwargs, dynamic_shapes
     ) -> torch.export.ExportedProgram:
-        with (
             # Support the dynamism with 0/1 input dim
-            torch.fx.experimental._config.patch(backed_size_oblivious=True),  # type: ignore[attr-defined]
-        ):
+        with torch.fx.experimental._config.patch(backed_size_oblivious=True):  # type: ignore[attr-defined]
             try:
                 return torch.export.export(
                     model,
@@ -295,7 +290,7 @@ class TorchExportDraftExportStrategy(CaptureStrategy):
         )
 
 
-CAPTURE_STRATEGIES: tuple[type[CaptureStrategy], ...] = (
+CAPTURE_STRATEGIES: Tuple[Type[CaptureStrategy], ...] = (
     TorchExportNonStrictStrategy,  # strict=False is preferred over strict=True because it does not have dynamo issues
     TorchExportStrictStrategy,
 )

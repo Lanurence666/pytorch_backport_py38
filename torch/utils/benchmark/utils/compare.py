@@ -1,5 +1,7 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Display class to aggregate and print the results of many measurements."""
+
 import collections
 import enum
 import itertools as it
@@ -7,6 +9,7 @@ import itertools as it
 from torch.utils.benchmark.utils import common
 from torch import tensor as _tensor
 import operator
+from typing import List, Optional, Tuple
 
 __all__ = ["Colorize", "Compare"]
 
@@ -28,7 +31,7 @@ class Colorize(enum.Enum):
 class _Column:
     def __init__(
         self,
-        grouped_results: list[tuple[common.Measurement | None, ...]],
+        grouped_results: List[Tuple[Optional[common.Measurement], ...]],
         time_scale: float,
         time_unit: str,
         trim_significant_figures: bool,
@@ -50,7 +53,7 @@ class _Column:
         unit_digits = max(d for d in leading_digits if d is not None)
         decimal_digits = min(
             max(m.significant_figures - digits, 0)
-            for digits, m in zip(leading_digits, self._flat_results, strict=True)
+            for digits, m in _zip_strict(leading_digits, self._flat_results)
             if (m is not None) and (digits is not None)
         ) if self._trim_significant_figures else 1
         length = unit_digits + decimal_digits + (1 if decimal_digits else 0)
@@ -59,7 +62,7 @@ class _Column:
     def get_results_for(self, group):
         return self._grouped_results[group]
 
-    def num_to_str(self, value: float | None, estimated_sigfigs: int, spread: float | None):
+    def num_to_str(self, value: Optional[float], estimated_sigfigs: int, spread: Optional[float]):
         if value is None:
             return " " * len(self.num_to_str(1, estimated_sigfigs, None))
 
@@ -87,10 +90,10 @@ class _Row:
         self._row_name_str_len = row_name_str_len
         self._time_scale = time_scale
         self._colorize = colorize
-        self._columns: tuple[_Column, ...] = ()
+        self._columns: Tuple[_Column, ...] = ()
         self._num_threads = num_threads
 
-    def register_columns(self, columns: tuple[_Column, ...]) -> None:
+    def register_columns(self, columns: Tuple[_Column, ...]) -> None:
         self._columns = columns
 
     def as_column_strings(self):
@@ -140,7 +143,7 @@ class _Row:
             ]
 
         row_contents = [column_strings[0].ljust(col_widths[0])]
-        for col_str, width, result, best_value in zip(column_strings[1:], col_widths[1:], self._results, best_values, strict=False):
+        for col_str, width, result, best_value in zip(column_strings[1:], col_widths[1:], self._results, best_values):
             col_str = col_str.center(width)
             if self._colorize != Colorize.NONE and result is not None and best_value is not None:
                 col_str = self.color_segment(col_str, result.median, best_value)
@@ -151,7 +154,7 @@ class _Row:
 class Table:
     def __init__(
             self,
-            results: list[common.Measurement],
+            results: List[common.Measurement],
             colorize: Colorize,
             trim_significant_figures: bool,
             highlight_warnings: bool
@@ -174,17 +177,17 @@ class Table:
         self.rows, self.columns = self.populate_rows_and_columns()
 
     @staticmethod
-    def row_fn(m: common.Measurement) -> tuple[int, str | None, str]:
+    def row_fn(m: common.Measurement) -> Tuple[int, Optional[str], str]:
         return m.num_threads, m.env, m.as_row_name
 
     @staticmethod
-    def col_fn(m: common.Measurement) -> str | None:
+    def col_fn(m: common.Measurement) -> Optional[str]:
         return m.description
 
-    def populate_rows_and_columns(self) -> tuple[tuple[_Row, ...], tuple[_Column, ...]]:
-        rows: list[_Row] = []
-        columns: list[_Column] = []
-        ordered_results: list[list[common.Measurement | None]] = [
+    def populate_rows_and_columns(self) -> Tuple[Tuple[_Row, ...], Tuple[_Column, ...]]:
+        rows: List[_Row] = []
+        columns: List[_Column] = []
+        ordered_results: List[List[Optional[common.Measurement]]] = [
             [None for _ in self.column_keys]
             for _ in self.row_keys
         ]
@@ -204,8 +207,8 @@ class Table:
         prior_num_threads = -1
         prior_env = ""
         row_group = -1
-        rows_by_group: list[list[list[common.Measurement | None]]] = []
-        for (num_threads, env, _), row in zip(self.row_keys, ordered_results, strict=True):
+        rows_by_group: List[List[List[Optional[common.Measurement]]]] = []
+        for (num_threads, env, _), row in _zip_strict(self.row_keys, ordered_results):
             thread_transition = (num_threads != prior_num_threads)
             if thread_transition:
                 prior_num_threads = num_threads
@@ -249,10 +252,10 @@ class Table:
         for sr in string_rows:
             sr.extend(["" for _ in range(num_cols - len(sr))])
 
-        col_widths = [max(len(j) for j in i) for i in zip(*string_rows, strict=True)]
-        finalized_columns = ["  |  ".join(i.center(w) for i, w in zip(string_rows[0], col_widths, strict=True))]
+        col_widths = [max(len(j) for j in i) for i in _zip_strict(*string_rows)]
+        finalized_columns = ["  |  ".join(i.center(w) for i, w in _zip_strict(string_rows[0], col_widths))]
         overall_width = len(finalized_columns[0])
-        for string_row, row in zip(string_rows[1:], self.rows, strict=True):
+        for string_row, row in _zip_strict(string_rows[1:], self.rows):
             finalized_columns.extend(row.row_separator(overall_width))
             finalized_columns.append("  |  ".join(row.finalize_column_strings(string_row, col_widths)))
 
@@ -282,8 +285,8 @@ class Compare:
     Args:
         results: List of Measurement to display.
     """
-    def __init__(self, results: list[common.Measurement]) -> None:
-        self._results: list[common.Measurement] = []
+    def __init__(self, results: List[common.Measurement]) -> None:
+        self._results: List[common.Measurement] = []
         self.extend_results(results)
         self._trim_significant_figures = False
         self._colorize = Colorize.NONE
@@ -329,13 +332,13 @@ class Compare:
         output = [self._layout(group) for group in grouped_results.values()]
         return output
 
-    def _group_by_label(self, results: list[common.Measurement]):
-        grouped_results: collections.defaultdict[str, list[common.Measurement]] = collections.defaultdict(list)
+    def _group_by_label(self, results: List[common.Measurement]):
+        grouped_results: collections.defaultdict[str, List[common.Measurement]] = collections.defaultdict(list)
         for r in results:
             grouped_results[r.label].append(r)
         return grouped_results
 
-    def _layout(self, results: list[common.Measurement]):
+    def _layout(self, results: List[common.Measurement]):
         table = Table(
             results,
             self._colorize,

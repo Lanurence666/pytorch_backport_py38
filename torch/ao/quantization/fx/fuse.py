@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import warnings
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from torch.ao.quantization.backend_config import (
     BackendConfig,
@@ -33,8 +35,8 @@ __all__ = [
 def fuse(
     model: GraphModule,
     is_qat: bool,
-    fuse_custom_config: FuseCustomConfig | dict[str, Any] | None = None,
-    backend_config: BackendConfig | dict[str, Any] | None = None,
+    fuse_custom_config: Optional[Union[FuseCustomConfig, Dict[str, Any]]]= None,
+    backend_config: Optional[Union[BackendConfig, Dict[str, Any]]]= None,
 ) -> GraphModule:
     if fuse_custom_config is None:
         fuse_custom_config = FuseCustomConfig()
@@ -78,7 +80,7 @@ def fuse(
     # TODO: change this to inplace changes to graph, since we no longer construct
     # new GraphModule anymore
     fused_graph = Graph()
-    env: dict[Any, Any] = {}
+    env: Dict[Any, Any] = {}
 
     def load_arg(a):
         return map_arg(a, lambda node: env[node.name])
@@ -140,21 +142,21 @@ def fuse(
 def _find_matches(
     root: GraphModule,
     graph: Graph,
-    pattern_to_fuse_handler_cls: dict[Pattern, Callable],
-) -> dict[str, tuple[Node, Pattern, NodePattern, FuseHandler, dict[Node, Any]]]:
+    pattern_to_fuse_handler_cls: Dict[Pattern, Callable],
+) -> Dict[str, Tuple[Node, Pattern, NodePattern, FuseHandler, Dict[Node, Any]]]:
     modules = dict(root.named_modules())
     # node name -> (root_node, match_value)
-    match_map: dict[
-        str, tuple[Node, Pattern, NodePattern, FuseHandler, dict[Node, Any]]
+    match_map: Dict[
+        str, Tuple[Node, Pattern, NodePattern, FuseHandler, Dict[Node, Any]]
     ] = {}
     # a map from node to the matched subpattern
-    node_to_subpattern: dict[Node, Any] = {}
+    node_to_subpattern: Dict[Node, Any] = {}
 
     # TODO: dedup with quantization matching function in match_utils.py
     def apply_match(pattern, node, match, matched_node_pattern, node_to_subpattern):
         if isinstance(pattern, tuple):
             s, *args = pattern
-            current_node_pattern: list[Node] = []
+            current_node_pattern: List[Node] = []
             apply_match(s, node, match, current_node_pattern, node_to_subpattern)
             for subpattern, arg in zip(args, node.args):
                 apply_match(
@@ -181,7 +183,7 @@ def _find_matches(
     for node in reversed(graph.nodes):
         if node.name not in match_map:
             for pattern, fuse_handler_cls in pattern_to_fuse_handler_cls.items():
-                matched_node_pattern: list[Node] = []
+                matched_node_pattern: List[Node] = []
                 if _is_match(modules, node, pattern):
                     apply_match(
                         pattern,

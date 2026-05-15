@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from collections import OrderedDict
-from collections.abc import Iterator, Sequence
-from typing import cast, TYPE_CHECKING, TypeVar
+
+from typing import Dict, Iterator, List, Optional, Sequence, Set, TYPE_CHECKING, Type, TypeVar, Union, cast
 from typing_extensions import TypeIs
 
 import torch
@@ -49,7 +51,7 @@ def _is_jit_enabled() -> "EnabledProxy":
 #
 # currently a module cannot be replicated properly if the descendants of
 # any ScriptModule contains python module (type 1 above)
-def _replicatable_module(module: Module, memo: set[Module] | None = None) -> bool:
+def _replicatable_module(module: Module, memo: Optional[Set[Module]] = None) -> bool:
     # module.modules() contains module itself as the first element
     def descendant_modules(module: Module) -> Iterator[Module]:
         gen = module.modules()
@@ -82,9 +84,9 @@ def _replicatable_module(module: Module, memo: set[Module] | None = None) -> boo
 
 def _broadcast_coalesced_reshape(
     tensors: Sequence[torch.Tensor],
-    devices: Sequence[int | torch.device],
+    devices: Sequence[Union[int, torch.device]],
     detach: bool = False,
-) -> list[list[torch.Tensor]]:
+) -> List[List[torch.Tensor]]:
     from torch.nn.parallel._functions import Broadcast
 
     if len(tensors) == 0:
@@ -117,9 +119,9 @@ T = TypeVar("T", bound=Module)
 
 def replicate(
     network: T,
-    devices: Sequence[int | torch.device],
+    devices: Sequence[Union[int, torch.device]],
     detach: bool = False,
-) -> list[T]:
+) -> List[T]:
     if not _replicatable_module(network):
         raise RuntimeError(
             "Cannot replicate network where python modules are children of ScriptModule"
@@ -136,8 +138,8 @@ def replicate(
     param_copies = _broadcast_coalesced_reshape(params, devices, detach)
 
     buffers = list(network.buffers())
-    buffers_rg: list[torch.Tensor] = []
-    buffers_not_rg: list[torch.Tensor] = []
+    buffers_rg: List[torch.Tensor] = []
+    buffers_not_rg: List[torch.Tensor] = []
     for buf in buffers:
         if buf.requires_grad and not detach:
             buffers_rg.append(buf)
@@ -153,8 +155,8 @@ def replicate(
     )
 
     modules = list(network.modules())
-    module_copies: list[list[Module]] = [[] for _ in devices]
-    module_indices: dict[Module, int] = {}
+    module_copies: List[List[Module]] = [[] for _ in devices]
+    module_indices: Dict[Module, int] = {}
 
     for i, module in enumerate(modules):
         module_indices[module] = i

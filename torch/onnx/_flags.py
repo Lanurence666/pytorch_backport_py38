@@ -1,3 +1,4 @@
+from typing import Any
 """Internal feature flags for torch.onnx.
 
 NOTE: These flags are experimental only. Any flag here can be removed at any

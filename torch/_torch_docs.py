@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Adds docstrings to functions defined in the torch._C module."""
 
@@ -5,6 +6,7 @@ import re
 
 import torch._C
 from torch._C import _add_docstr as add_docstr
+from typing import Any, Dict, Generator, List, Optional, Set, Tuple, Type, Union, cast
 
 
 def parse_kwargs(desc):
@@ -196,7 +198,7 @@ rocm_fp16_notes = {
 :ref:`different precision<fp16_on_mi200>` for backward."""
 }
 
-reproducibility_notes: dict[str, str] = {
+reproducibility_notes: Dict[str, str] = {
     "forward_reproducibility_note": """This operation may behave nondeterministically when given tensors on \
 a CUDA device. See :doc:`/notes/randomness` for more information.""",
     "backward_reproducibility_note": """This operation may produce nondeterministic gradients when given tensors on \
@@ -9708,7 +9710,7 @@ Out-of-place version of :meth:`torch.Tensor.scatter_reduce_`
 add_docstr(
     torch.segment_reduce,
     r"""
-segment_reduce(data: Tensor, reduce: str, *, lengths: Tensor | None = None, indices: Tensor | None = None, offsets: Tensor | None = None, axis: _int = 0, unsafe: _bool = False, initial: Number | _complex | None = None) -> Tensor # noqa: B950
+segment_reduce(data: Tensor, reduce: str, *, lengths: Optional[Tensor] = None, indices: Optional[Tensor] = None, offsets: Optional[Tensor] = None, axis: _int = 0, unsafe: _bool = False, initial: Union[Number, Optional[_complex]] = None) -> Tensor # noqa: B950
 
 Perform a segment reduction operation on the input tensor along the specified axis.
 

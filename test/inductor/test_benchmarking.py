@@ -171,24 +171,7 @@ class TestBenchmarker(TestCase):
             _bench.register_benchmarker("cpu", custom_cpu, override=True)
 
             # Ensure default CPU/GPU methods are NOT called if registry override works.
-            with (
-                patch.object(
-                    benchmarker_cls,
-                    "benchmark_cpu",
-                    side_effect=AssertionError(
-                        "benchmark_cpu should not be called when a custom 'cpu' handler is registered"
-                    ),
-                    create=True,
-                ),
-                patch.object(
-                    benchmarker_cls,
-                    "benchmark_gpu",
-                    side_effect=AssertionError(
-                        "benchmark_gpu should not be called for 'cpu' device"
-                    ),
-                    create=True,
-                ),
-            ):
+            with patch.object( benchmarker_cls, "benchmark_cpu", side_effect=AssertionError( "benchmark_cpu should not be called when a custom 'cpu' handler is registered" ), create=True, ), patch.object( benchmarker_cls, "benchmark_gpu", side_effect=AssertionError( "benchmark_gpu should not be called for 'cpu' device" ), create=True, ):
                 (fn, fn_args, fn_kwargs), _ = self.make_params(device)
                 out = benchmarker.benchmark(fn, fn_args, fn_kwargs)
                 self.assertEqual(out, "cpu-override")

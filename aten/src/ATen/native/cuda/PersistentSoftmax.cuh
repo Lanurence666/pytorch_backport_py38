@@ -6,7 +6,9 @@
 #include <cuda_fp16.h>
 #include <c10/macros/Macros.h>
 
+#include <ATen/AccumulateType.h>
 #include <ATen/cuda/DeviceUtils.cuh>
+#include <ATen/OpMathType.h>
 
 namespace {
 
@@ -26,7 +28,8 @@ struct Add {
 template<typename T>
 struct Max {
   __device__ __forceinline__ T operator()(T a, T b) const {
-    return a < b ? b : a;
+    using opmath_t = at::opmath_type<T>;
+    return static_cast<opmath_t>(a) < static_cast<opmath_t>(b) ? b : a;
   }
 };
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextlib
 import copy
 import hashlib
@@ -8,11 +10,11 @@ import os
 import pickle
 import tokenize
 import unittest
-from collections.abc import Callable
+
 from contextvars import ContextVar
 from dataclasses import dataclass
 from types import FunctionType, ModuleType
-from typing import Any, Generic, NoReturn, Optional, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Generic, NoReturn, Optional, TYPE_CHECKING, TypeVar, Union
 from typing_extensions import deprecated
 
 from torch._utils_internal import justknobs_check
@@ -27,13 +29,13 @@ _IMMUTABLE_CONFIG_TYPES = (int, float, bool, type(None), str, tuple)
 
 
 # Duplicated, because mypy needs these types statically
-T = TypeVar("T", bound=int | float | bool | str | list | set | tuple | dict | None)
+T = TypeVar("T", bound=Union[int, float, bool, str, list, set, tuple, Optional[dict]])
 
 
 _UNSET_SENTINEL = object()
 
 
-@dataclass(kw_only=True)
+@dataclass
 class _Config(Generic[T]):
     """Represents a config with richer behaviour than just a default value.
     ::
@@ -73,15 +75,15 @@ class _Config(Generic[T]):
             default behaviour. I.e. user overrides take preference.
     """
 
-    default: T | object
-    justknob: str | None = None
-    env_name_default: list[str] | None = None
-    env_name_force: list[str] | None = None
-    value_type: type | None = None
-    alias: str | None = None
+    default: Union[T, object]
+    justknob: Optional[str] = None
+    env_name_default: Optional[List[str]] = None
+    env_name_force: Optional[List[str]] = None
+    value_type: Optional[type] = None
+    alias: Optional[str] = None
     # Deprecation support
     deprecated: bool = False
-    deprecation_message: str | None = None
+    deprecation_message: Optional[str] = None
 
     def __post_init__(self) -> None:
         self.env_name_default = _Config.string_or_list_of_string_to_list(
@@ -105,8 +107,8 @@ class _Config(Generic[T]):
 
     @staticmethod
     def string_or_list_of_string_to_list(
-        val: str | list[str] | None,
-    ) -> list[str] | None:
+        val: Union[str, Optional[List[str]]],
+    ) -> Optional[List[str]]:
         if val is None:
             return None
         if isinstance(val, str):
@@ -123,29 +125,29 @@ class _Config(Generic[T]):
 if TYPE_CHECKING:
 
     def Config(
-        default: T | object = _UNSET_SENTINEL,
-        justknob: str | None = None,
-        env_name_default: str | list[str] | None = None,
-        env_name_force: str | list[str] | None = None,
-        value_type: type | None = None,
-        alias: str | None = None,
+        default: Union[T, object] = _UNSET_SENTINEL,
+        justknob: Optional[str] = None,
+        env_name_default: Union[str, List[str]] | None = None,
+        env_name_force: Union[str, List[str]] | None = None,
+        value_type: Optional[type] = None,
+        alias: Optional[str] = None,
         # Deprecation support
         deprecated: bool = False,
-        deprecation_message: str | None = None,
+        deprecation_message: Optional[str] = None,
     ) -> T: ...
 
 else:
 
     def Config(
-        default: T | object = _UNSET_SENTINEL,
-        justknob: str | None = None,
-        env_name_default: str | list[str] | None = None,
-        env_name_force: str | list[str] | None = None,
-        value_type: type | None = None,
-        alias: str | None = None,
+        default: Union[T, object] = _UNSET_SENTINEL,
+        justknob: Optional[str] = None,
+        env_name_default: Union[str, List[str]] | None = None,
+        env_name_force: Union[str, List[str]] | None = None,
+        value_type: Optional[type] = None,
+        alias: Optional[str] = None,
         # Deprecation support
         deprecated: bool = False,
-        deprecation_message: str | None = None,
+        deprecation_message: Optional[str] = None,
     ) -> _Config[T]:
         return _Config(
             default=default,
@@ -160,7 +162,7 @@ else:
         )
 
 
-def _read_env_variable(name: str) -> bool | str | None:
+def _read_env_variable(name: str) -> Union[bool, Optional[str]]:
     value = os.environ.get(name)
     if value == "1":
         return True
@@ -178,21 +180,18 @@ def install_config_module(module: ModuleType) -> None:
 
     class ConfigModuleInstance(ConfigModule):
         # __annotations__ is written to by Sphinx autodoc
-        _bypass_keys = {
-            "_hash_dirty_var",
-            "_hash_cache_var",
-            "_get_dict_dirty_keys_var",
-            "_get_dict_cache_var",
-            "__annotations__",
-        }
+        _bypass_keys = set({"_is_dirty", "_hash_digest", "__annotations__"})
 
     def visit(
-        source: ModuleType | type,
-        dest: ModuleType | SubConfigProxy,
+        source: Union[ModuleType, type],
+        dest: Union[ModuleType, SubConfigProxy],
         prefix: str,
     ) -> None:
         """Walk the module structure and move everything to module._config"""
-        type_hints = inspect.get_annotations(source)
+        try:
+            type_hints = inspect.get_annotations(source)
+        except AttributeError:
+            type_hints = getattr(source, '__annotations__', {})
         for key, value in list(source.__dict__.items()):
             if (
                 key.startswith("__")
@@ -202,10 +201,11 @@ def install_config_module(module: ModuleType) -> None:
                     and (
                         value.__module__ == "typing"
                         or value.__module__.startswith("collections.abc")
+                        or value.__module__.startswith("typing_extensions")
                     )
                 )
-                # Handle from torch.utils._config_module import Config
                 or (isinstance(value, type) and issubclass(value, _Config))
+                or key == "annotations"
             ):
                 continue
 
@@ -240,7 +240,7 @@ def install_config_module(module: ModuleType) -> None:
             else:
                 raise AssertionError(f"Unhandled config {key}={value} ({type(value)})")
 
-    config: dict[str, _ConfigEntry] = {}
+    config: Dict[str, _ConfigEntry] = {}
 
     compile_ignored_keys = get_assignments_with_compile_ignored_comments(module)
 
@@ -248,23 +248,15 @@ def install_config_module(module: ModuleType) -> None:
     module._config = config  # type: ignore[attr-defined]
     module._compile_ignored_keys = compile_ignored_keys  # type: ignore[attr-defined]
     module.__class__ = ConfigModuleInstance
-    module._hash_dirty_var = ContextVar(f"{module.__name__}._hash_dirty", default=True)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
-    module._hash_cache_var = ContextVar(  # pyrefly: ignore[missing-attribute]
-        f"{module.__name__}._hash_cache", default=None
-    )  # type: ignore[attr-defined]
-    module._get_dict_dirty_keys_var = ContextVar(  # pyrefly: ignore[missing-attribute]
-        f"{module.__name__}._get_dict_dirty_keys", default=None
-    )  # type: ignore[attr-defined]
-    module._get_dict_cache_var = ContextVar(  # pyrefly: ignore[missing-attribute]
-        f"{module.__name__}._get_dict_cache", default=None
-    )  # type: ignore[attr-defined]
+    module._is_dirty = True  # type: ignore[attr-defined]
+    module._hash_digest = None  # type: ignore[attr-defined]
 
 
 COMPILE_IGNORED_MARKER = "@compile_ignored"
 
 
 # Gets all the keys (i.e. assignments) with a @compile_ignored comment
-def get_assignments_with_compile_ignored_comments(module: ModuleType) -> set[str]:
+def get_assignments_with_compile_ignored_comments(module: ModuleType) -> Set[str]:
     source_code = inspect.getsource(module)
     assignments = set()
 
@@ -301,9 +293,6 @@ def get_assignments_with_compile_ignored_comments(module: ModuleType) -> set[str
     return assignments
 
 
-_GetDictCacheKey = tuple[tuple[str, ...], tuple[str, ...], bool]
-
-
 @dataclass
 class _ConfigEntry:
     # The default value specified in the configuration
@@ -314,7 +303,7 @@ class _ConfigEntry:
     # _UNSET_SENTINEL indicates the value is not set.
     user_override: ContextVar[object]
     # The justknob to check for this config
-    justknob: str | None = None
+    justknob: Optional[str] = None
     # environment variables are read at install time
     env_value_force: Any = _UNSET_SENTINEL
     env_value_default: Any = _UNSET_SENTINEL
@@ -330,10 +319,10 @@ class _ConfigEntry:
     # call so the final state is correct. It's just very unintuitive.
     # upstream bug - python/cpython#126886
     hide: bool = False
-    alias: str | None = None
+    alias: Optional[str] = None
     # Deprecation support
     deprecated: bool = False
-    deprecation_message: str | None = None
+    deprecation_message: Optional[str] = None
     _deprecation_warned: bool = False
 
     def __init__(self, config: _Config, name: str) -> None:
@@ -369,12 +358,14 @@ class _ConfigEntry:
         if self.value_type is not None and (
             config.env_name_default is not None or config.env_name_force is not None
         ):
-            if self.value_type not in (
-                bool,
-                str,
-                Optional[bool],  # noqa: UP045
-                Optional[str],  # noqa: UP045
-            ):
+            allowed = (bool, str, Optional[bool], Optional[str])
+            if isinstance(self.value_type, str):
+                allowed_str = ("bool", "str", "Optional[bool]", "Optional[str]")
+                if self.value_type not in allowed_str:
+                    raise AssertionError(
+                        f"envvar configs only support (optional) booleans or strings, {self.value_type} is neither"
+                    )
+            elif self.value_type not in allowed:
                 raise AssertionError(
                     f"envvar configs only support (optional) booleans or strings, {self.value_type} is neither"
                 )
@@ -386,17 +377,11 @@ class ConfigModule(ModuleType):
     # The actual configuration settings.  E.g., torch._dynamo.config.debug
     # would live as "debug" in the key, and torch._inductor.config.triton.cudagraphs
     # maps as "triton.cudagraphs". See discussion on the class for meaning of various sub items
-    _config: dict[str, _ConfigEntry]
-    _bypass_keys: set[str]
-    _compile_ignored_keys: set[str]
-    _hash_dirty_var: ContextVar[bool]
-    _hash_cache_var: ContextVar[bytes | None]
-    # Per-thread cache state, backed by ContextVar so each thread/context gets
-    # its own dirty set and cache (config values are per-thread via ContextVar).
-    # None means fully dirty (initial state or >_GET_DICT_DIRTY_KEYS_CAP keys
-    # changed); empty set means the last _get_dict result is up to date.
-    _get_dict_dirty_keys_var: ContextVar[set[str] | None]
-    _get_dict_cache_var: ContextVar[dict[_GetDictCacheKey, dict[str, Any]]]
+    _config: Dict[str, _ConfigEntry]
+    _bypass_keys: Set[str]
+    _compile_ignored_keys: Set[str]
+    _is_dirty: bool
+    _hash_digest: Optional[bytes]
 
     def __init__(self) -> None:
         raise NotImplementedError(
@@ -429,8 +414,7 @@ class ConfigModule(ModuleType):
                 self._set_alias_val(config, value)
             else:
                 config.user_override.set(value)
-                self._hash_dirty_var.set(True)
-                self._mark_get_dict_dirty(name)
+                self._is_dirty = True
                 config.hide = False
 
     def __getattr__(self, name: str) -> Any:
@@ -473,8 +457,7 @@ class ConfigModule(ModuleType):
             raise AttributeError(f"{self.__name__}.{name} does not exist") from e
 
     def __delattr__(self, name: str) -> None:
-        self._hash_dirty_var.set(True)
-        self._mark_get_dict_dirty(name)
+        self._is_dirty = True
         # must support delete because unittest.mock.patch deletes
         # then recreate things
         self._config[name].user_override.set(_UNSET_SENTINEL)
@@ -482,7 +465,7 @@ class ConfigModule(ModuleType):
 
     def _get_alias_module_and_name(
         self, entry: _ConfigEntry
-    ) -> tuple[ModuleType, str] | None:
+    ) -> Optional[Tuple[ModuleType, str]]:
         alias = entry.alias
         if alias is None:
             return None
@@ -510,16 +493,6 @@ class ConfigModule(ModuleType):
         module, constant_name = data
         setattr(module, constant_name, val)
 
-    _GET_DICT_DIRTY_KEYS_CAP = 16
-
-    def _mark_get_dict_dirty(self, name: str) -> None:
-        dirty = self._get_dict_dirty_keys_var.get()
-        if dirty is None:
-            return
-        dirty.add(name)
-        if len(dirty) > self._GET_DICT_DIRTY_KEYS_CAP:
-            self._get_dict_dirty_keys_var.set(None)
-
     def _is_default(self, name: str) -> bool:
         """
         Returns true if the config is at its default value.
@@ -546,11 +519,10 @@ class ConfigModule(ModuleType):
 
     def _get_dict(
         self,
-        ignored_keys: list[str] | None = None,
-        ignored_prefixes: list[str] | None = None,
+        ignored_keys: Optional[List[str]] = None,
+        ignored_prefixes: Optional[List[str]] = None,
         skip_default: bool = False,
-        readonly_values: bool = False,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """Export a dictionary of current configuration keys and values.
 
         This function is design to provide a single point which handles
@@ -566,57 +538,17 @@ class ConfigModule(ModuleType):
                 not be exported
             skip_default does two things. One if a key has not been modified
                 it skips it.
-            readonly_values when True, enables caching of the result.
-                The caller owns the returned dict but must not mutate
-                its values. When False (default), no caching is used.
         """
-
-        keys_to_update, config = None, None
-        cache_key = (
-            tuple(ignored_keys) if ignored_keys else (),
-            tuple(ignored_prefixes) if ignored_prefixes else (),
-            skip_default,
-        )
-
-        # Try to take a shortcut and only update dirty keys on top of a cached base.
-        cache = self._get_dict_cache_var.get()
-        if readonly_values:
-            if cache is None:
-                cache = {}
-                self._get_dict_cache_var.set(cache)
-            dirty_keys = self._get_dict_dirty_keys_var.get()
-            cached = cache.get(cache_key)
-            if cached is not None and dirty_keys is not None:
-                # Shortcut: copy the cached base and update only dirty keys.
-                # The cache entry itself is never mutated.
-                keys_to_update = dirty_keys
-                config = dict(cached)
-            elif dirty_keys is None:
-                # Fully dirty — clear entire cache and recompute
-                cache = {}
-                self._get_dict_cache_var.set(cache)
-                self._get_dict_dirty_keys_var.set(set())
-
-        # Recompute everything otherwise.
-        if keys_to_update is None:
-            keys_to_update = self._config.keys()
-        if config is None:
-            config = {}
-
-        for key in keys_to_update:
-            entry = self._config[key]
+        config: Dict[str, Any] = {}
+        for key, entry in self._config.items():
             if entry.alias is not None:
-                config.pop(key, None)
                 continue
             if ignored_keys and key in ignored_keys:
-                config.pop(key, None)
                 continue
             if ignored_prefixes:
                 if any(key.startswith(prefix) for prefix in ignored_prefixes):
-                    config.pop(key, None)
                     continue
             if skip_default and self._is_default(key):
-                config.pop(key, None)
                 continue
 
             # Read value directly, bypassing __getattr__ overhead
@@ -636,8 +568,6 @@ class ConfigModule(ModuleType):
                 val = copy.deepcopy(val)
             config[key] = val
 
-        if readonly_values and cache_key not in cache:
-            cache[cache_key] = dict(config)
         return config
 
     def get_type(self, config_name: str) -> type:
@@ -647,34 +577,30 @@ class ConfigModule(ModuleType):
         """Convert config to a pickled blob"""
         ignored_keys = getattr(self, "_save_config_ignore", [])
         return pickle.dumps(
-            self._get_dict(ignored_keys=ignored_keys, readonly_values=True),
+            self._get_dict(ignored_keys=ignored_keys),
             protocol=2,
         )
 
     def save_config_portable(
-        self, *, ignore_private_configs: bool = True, readonly_values: bool = False
-    ) -> dict[str, Any]:
+        self, *, ignore_private_configs: bool = True
+    ) -> Dict[str, Any]:
         """Convert config to portable format"""
         prefixes = []
         if ignore_private_configs:
             prefixes.append("_")
         prefixes.extend(getattr(self, "_cache_config_ignore_prefix", []))
-        config = self._get_dict(
-            ignored_prefixes=prefixes, readonly_values=readonly_values
-        )
-        factory_keys = getattr(self, "_cache_config_factory_keys", [])
-        if factory_keys:
-            for key in factory_keys:
-                if key in config and config[key] is not None:
-                    instance = config[key]()
-                    if hasattr(instance, "uuid"):
-                        config[key] = instance.uuid()
-                    else:
-                        raise RuntimeError(
-                            f"Config '{key}' is set to {config[key]} which does not "
-                            f"implement uuid(). Implement uuid() for cache key "
-                            f"participation."
-                        )
+        config = self._get_dict(ignored_prefixes=prefixes)
+        for key in getattr(self, "_cache_config_factory_keys", []):
+            if key in config and config[key] is not None:
+                instance = config[key]()
+                if hasattr(instance, "uuid"):
+                    config[key] = instance.uuid()
+                else:
+                    raise RuntimeError(
+                        f"Config '{key}' is set to {config[key]} which does not "
+                        f"implement uuid(). Implement uuid() for cache key "
+                        f"participation."
+                    )
         return config
 
     def codegen_config(self) -> str:
@@ -698,7 +624,7 @@ class ConfigModule(ModuleType):
             if module_name:
                 imports.add(module_name)
 
-        def list_of_callables_to_string(v: list | set) -> list[str]:
+        def list_of_callables_to_string(v: Union[list, set]) -> List[str]:
             return [f"{get_module_name(item, True)}{item.__name__}" for item in v]
 
         def importable_callable(v: Any) -> bool:
@@ -735,9 +661,7 @@ class ConfigModule(ModuleType):
         lines = []
         mod = self.__name__
         for k, v in self._get_dict(
-            ignored_keys=getattr(self, "_save_config_ignore", []),
-            skip_default=True,
-            readonly_values=True,
+            ignored_keys=getattr(self, "_save_config_ignore", []), skip_default=True
         ).items():
             lines.append(get_config_line(mod, k, v))
         for import_name in imports:
@@ -746,23 +670,14 @@ class ConfigModule(ModuleType):
 
     def get_hash(self) -> bytes:
         """Hashes the configs that are not compile_ignored"""
-        if self._hash_dirty_var.get() or self._hash_cache_var.get() is None:
-            dict_to_hash = self._get_dict(
-                ignored_keys=list(self._compile_ignored_keys), readonly_values=True
-            )
+        if self._is_dirty or self._hash_digest is None:
+            dict_to_hash = self._get_dict(ignored_keys=list(self._compile_ignored_keys))
             string_to_hash = repr(sorted(dict_to_hash.items()))
-            self._hash_cache_var.set(
-                hashlib.md5(
-                    string_to_hash.encode("utf-8"), usedforsecurity=False
-                ).digest()
-            )
-            self._hash_dirty_var.set(False)
-        result = self._hash_cache_var.get()
-        if result is None:
-            raise AssertionError(
-                "_hash_cache_var should not be None after recomputation"
-            )
-        return result
+            self._hash_digest = hashlib.md5(
+                string_to_hash.encode("utf-8"), usedforsecurity=False
+            ).digest()
+            self._is_dirty = False
+        return self._hash_digest
 
     @deprecated(
         "`config.to_dict()` has been deprecated. It no longer changes the underlying config."
@@ -770,7 +685,7 @@ class ConfigModule(ModuleType):
         "config.load_config if you need mutable access",
         category=FutureWarning,
     )
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         return self.get_config_copy()
 
     @deprecated(
@@ -779,10 +694,10 @@ class ConfigModule(ModuleType):
         "config.load_config if you need mutable access",
         category=FutureWarning,
     )
-    def shallow_copy_dict(self) -> dict[str, Any]:
+    def shallow_copy_dict(self) -> Dict[str, Any]:
         return self.get_config_copy()
 
-    def load_config(self, maybe_pickled_config: bytes | dict[str, Any]) -> None:
+    def load_config(self, maybe_pickled_config: Union[bytes, Dict[str, Any]]) -> None:
         """Restore from a prior call to save_config() or shallow_copy_dict()"""
         if not isinstance(maybe_pickled_config, dict):
             config = pickle.loads(maybe_pickled_config)
@@ -796,17 +711,17 @@ class ConfigModule(ModuleType):
 
                 warn_once(f"key {k} with value {v} is not understood by this config")
 
-    def get_config_copy(self) -> dict[str, Any]:
+    def get_config_copy(self) -> Dict[str, Any]:
         return self._get_dict()
 
-    def get_serializable_config_copy(self) -> dict[str, Any]:
+    def get_serializable_config_copy(self) -> Dict[str, Any]:
         return self._get_dict(ignored_keys=getattr(self, "_save_config_ignore", []))
 
     def patch(
         self,
-        arg1: str | dict[str, Any] | None = None,
+        arg1: Union[str, Dict[str, Any]] | None = None,
         arg2: Any = None,
-        **kwargs: dict[str, Any],
+        **kwargs: Dict[str, Any],
     ) -> "ContextDecorator":
         """
         Decorator and/or context manager to make temporary changes to a config.  Note that patched settings are thread-local.
@@ -824,7 +739,7 @@ class ConfigModule(ModuleType):
             with config.patch("name", val):
                 ...
         """
-        changes: dict[str, Any]
+        changes: Dict[str, Any]
         if arg1 is not None:
             if arg2 is not None:
                 if not isinstance(arg1, str):
@@ -858,13 +773,13 @@ class ConfigModule(ModuleType):
         class ConfigPatch(ContextDecorator):
             def __init__(self) -> None:
                 self.changes = changes
-                self._prior: ContextVar[tuple[dict[str, Any], ...]] = ContextVar(
+                self._prior: ContextVar[Tuple[Dict[str, Any], ...]] = ContextVar(
                     f"{config.__name__}.ConfigPatch[{id(self)}]",
                     default=(),
                 )
 
             def __enter__(self) -> None:
-                prior: dict[str, Any] = {}
+                prior: Dict[str, Any] = {}
                 for key in self.changes:
                     # KeyError on invalid entry
                     prior[key] = config.__getattr__(key)
@@ -890,7 +805,7 @@ class ConfigModule(ModuleType):
 
         return ConfigPatch()
 
-    def _make_closure_patcher(self, **changes: dict[str, Any]) -> Any:
+    def _make_closure_patcher(self, **changes: Dict[str, Any]) -> Any:
         """
         A lower-overhead version of patch() for things on the critical path.
 
@@ -913,15 +828,11 @@ class ConfigModule(ModuleType):
         def change() -> Callable[[], None]:
             prior = {k: config[k].user_override.get() for k in changes}
             for k, v in changes.items():
-                config[k].user_override.set(v)
-                self._hash_dirty_var.set(True)
-                self._mark_get_dict_dirty(k)
+                self._config[k].user_override.set(v)
 
             def revert() -> None:
                 for k, v in prior.items():
-                    config[k].user_override.set(v)
-                    self._hash_dirty_var.set(True)
-                    self._mark_get_dict_dirty(k)
+                    self._config[k].user_override.set(v)
 
             return revert
 
@@ -990,7 +901,7 @@ class SubConfigProxy:
         return self._config.__delattr__(self._prefix + name)
 
 
-def get_tristate_env(name: str, default: Any = None) -> bool | None:
+def get_tristate_env(name: str, default: Any = None) -> Optional[bool]:
     value = os.environ.get(name)
     if value == "1":
         return True

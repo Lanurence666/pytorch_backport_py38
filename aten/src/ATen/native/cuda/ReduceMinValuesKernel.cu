@@ -1,5 +1,6 @@
 #define TORCH_ASSERT_NO_OPERATORS
 #include <ATen/native/TensorIterator.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/cuda/Reduce.cuh>
 #include <ATen/native/cuda/ReduceOps.h>
 #include <ATen/native/DispatchStub.h>
@@ -22,7 +23,8 @@ namespace at::native {
 template <typename acc_t>
 struct MinNanFunctor {
   __device__ __forceinline__ acc_t operator()(acc_t a, acc_t b) const {
-      return (at::_isnan(a) || a < b) ? a : b;
+      using opmath_t = at::opmath_type<acc_t>;
+      return (at::_isnan(a) || static_cast<opmath_t>(a) < static_cast<opmath_t>(b)) ? a : b;
   }
 };
 

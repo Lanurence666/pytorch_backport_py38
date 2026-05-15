@@ -1,11 +1,15 @@
+from __future__ import annotations
+
 import asyncio
 import sys
 import weakref
 from asyncio import AbstractEventLoop, Future
-from collections.abc import Awaitable, Callable, Coroutine, Generator, Iterator
+
 from contextlib import contextmanager, ExitStack
 from contextvars import Context
-from typing import Any, Protocol, TypeVar
+from typing import Any, Awaitable, Callable, Coroutine, Generator, Iterator, List, Optional, Set, Type, TypeVar, Union
+from typing_extensions import Protocol
+
 
 from torch.utils._ordered_set import OrderedSet
 
@@ -19,8 +23,8 @@ if sys.version_info >= (3, 11):
         def __call__(
             self,
             __loop: AbstractEventLoop,
-            __factory: Coroutine[None, None, object] | Generator[None, None, object],
-            __context: Context | None = None,
+            __factory: Union[Coroutine[None, None, object], Generator[None, None, object]],
+            __context: Optional[Context] = None,
             /,
         ) -> asyncio.futures.Future[object]: ...
 
@@ -81,7 +85,7 @@ def get_loop(
 
 @contextmanager
 def _new_loop(
-    task_factory: TaskFactoryType | None = None,
+    task_factory: Optional[TaskFactoryType] = None
 ) -> Iterator[asyncio.AbstractEventLoop]:
     loop = asyncio.new_event_loop()
     tasks = _patch_loop(loop)
@@ -133,19 +137,19 @@ def _cancel_all_tasks(
 def _patch_loop(loop: AbstractEventLoop) -> OrderedSet[Future]:  # type: ignore[type-arg]
     tasks: weakref.WeakSet[Future] = weakref.WeakSet()  # type: ignore[type-arg]
 
-    task_factories: list[TaskFactoryType | None] = [None]
+    task_factories: List[Optional[TaskFactoryType]] = Union[[None]]
 
-    def _set_task_factory(factory: TaskFactoryType | None) -> None:
+    def _set_task_factory(factory: Optional[TaskFactoryType]) -> None:
         task_factories[0] = factory
 
-    def _get_task_factory() -> TaskFactoryType | None:
+    def _get_task_factory() -> Optional[TaskFactoryType]:
         return task_factories[0]
 
     def _safe_task_factory(
         loop: AbstractEventLoop,
         coro: TCoro,  # type: ignore[type-arg]
         *,
-        context: Context | None = None,
+        context: Optional[Context] = None,
     ) -> asyncio.Future:  # type: ignore[valid-type, type-arg]
         task_factory = task_factories[0]
         if task_factory is None:

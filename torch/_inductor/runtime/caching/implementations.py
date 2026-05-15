@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Cache implementation classes
 
 This module provides concrete implementations of caching backends including
@@ -7,7 +8,7 @@ appropriate locking mechanisms.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Generator
+
 from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
@@ -15,7 +16,7 @@ from io import BufferedReader, BufferedWriter
 from os import PathLike
 from pathlib import Path
 from threading import Lock
-from typing import Generic, TypeVar
+from typing import Dict, Generator, Generic, Optional, Type, TypeVar
 from typing_extensions import override
 
 from filelock import BaseFileLock, FileLock
@@ -88,14 +89,14 @@ class _CacheImpl(ABC, Generic[_V]):
         """
 
         def _lock_with_timeout(
-            timeout: float | None = None,
+            timeout: Optional[float]= None,
         ) -> locks._LockContextManager:
             return locks._acquire_lock_with_timeout(self._lock, timeout)
 
         return _lock_with_timeout
 
     @abstractmethod
-    def get(self, key: str) -> Hit[_V] | None:
+    def get(self, key: str) -> Optional[Hit[_V]]:
         """Retrieve a value from the cache.
 
         Args:
@@ -133,10 +134,10 @@ class _InMemoryCacheImpl(_CacheImpl[_V], Generic[_V]):
     def __init__(self) -> None:
         """Initialize the in-memory cache with an empty dictionary."""
         super().__init__()
-        self._memory: dict[str, _V] = {}
+        self._memory: Dict[str, _V] = {}
 
     @override
-    def get(self, key: str) -> Hit[_V] | None:
+    def get(self, key: str) -> Optional[Hit[_V]]:
         """Retrieve a value from the in-memory cache.
 
         Args:
@@ -186,7 +187,7 @@ class _OnDiskCacheImpl(_CacheImpl[bytes]):
     _version: int = 0
     _version_header_length: int = 4
 
-    def __init__(self, sub_dir: PathLike[str] | None = None) -> None:
+    def __init__(self, sub_dir: Optional[PathLike[str]] = None) -> None:
         """Initialize the on-disk cache with a specified subdirectory.
 
         Args:
@@ -262,14 +263,14 @@ class _OnDiskCacheImpl(_CacheImpl[bytes]):
         """
 
         def _lock_with_timeout(
-            timeout: float | None = None,
+            timeout: Optional[float]= None,
         ) -> locks._LockContextManager:
             return locks._acquire_flock_with_timeout(self._flock, timeout)
 
         return _lock_with_timeout
 
     @override
-    def get(self, key: str) -> Hit[bytes] | None:
+    def get(self, key: str) -> Optional[Hit[bytes]]:
         """Retrieve a value from the on-disk cache.
 
         Args:
@@ -284,7 +285,7 @@ class _OnDiskCacheImpl(_CacheImpl[bytes]):
         if not fpath.is_file():
             return None
 
-        pickled_value: bytes | None = None
+        pickled_value: Optional[bytes]= None
         with open(fpath, "rb") as fp:
             if self._version_header_matches(fp):
                 pickled_value = fp.read()
@@ -390,14 +391,14 @@ except ModuleNotFoundError:
 
             @contextmanager
             def pseudo_lock(
-                timeout: float | None = None,
+                timeout: Optional[float]= None,
             ) -> Generator[None, None, None]:
                 yield
 
             return pseudo_lock
 
         @override
-        def get(self, key: str) -> Hit[bytes] | None:
+        def get(self, key: str) -> Optional[Hit[bytes]]:
             """Raise NotImplementedError for remote cache get operations.
 
             Args:

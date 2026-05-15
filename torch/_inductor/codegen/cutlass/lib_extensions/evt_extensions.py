@@ -1,5 +1,7 @@
-from collections.abc import Callable
-from typing import Any
+from __future__ import annotations
+
+
+from typing import Any, Callable, Dict, Optional, Set, Tuple, Type, Union
 
 from sympy import Expr
 
@@ -14,7 +16,7 @@ from ..utils import cutlass_arch, torch_dtype_to_cutlass_type, try_import_cutlas
 
 
 EpilogueFunctor = Any  # EpilogueFunctor local class defined in _trace
-Buffer = ComputedBuffer | InputBuffer
+Buffer = Union[ComputedBuffer, InputBuffer]
 CutlassTupleType = Any  # cutlass.backend.c_types.tuple_factory_.<locals>.TupleType
 CutlassVisitorType = Any  # cutlass.backend.c_types.visitor_factory.<locals>.VisitorType
 CutlassArgType = (
@@ -64,7 +66,7 @@ if try_import_cutlass():
         """Handles mapping buffer names to variable names in the cpp kernel signature and body"""
 
         def __init__(self) -> None:
-            self.buf_renames: dict[str, str] = {}
+            self.buf_renames: Dict[str, str] = {}
 
         def new_name(self, name: str) -> str:
             if name in self.buf_renames:
@@ -78,10 +80,10 @@ if try_import_cutlass():
             return self.buf_renames.get(name, name)
 
     def create_example_tensors(
-        var_name_to_buffer_name: dict[str, str],
-        name_to_buffer: dict[str, Buffer],
-        size_hint_fn: Callable[[Expr | int], int],
-    ) -> dict[str, CutlassTensor]:
+        var_name_to_buffer_name: Dict[str, str],
+        name_to_buffer: Dict[str, Buffer],
+        size_hint_fn: Callable[[Union[Expr, int]], int],
+    ) -> Dict[str, CutlassTensor]:
         def cutlass_tensor_from_buffer(
             buffer: Buffer,
         ) -> CutlassTensor:
@@ -114,17 +116,17 @@ non-contiguous layout, received stride: {stride} and shape: {shape}"
 
     def trace(
         fn_src: str,
-        example_tensors: dict[str, CutlassTensor],
+        example_tensors: Dict[str, CutlassTensor],
         accum_type: DataType,
         output_type: DataType,
         tile_description: TileDescription,
         epilogue_schedule: EpilogueScheduleType,
-        name_to_buffer: dict[str, Buffer],
-        size_hint_fn: Callable[[Expr | int], int],
-        kernel_schedule: Any | None = None,
+        name_to_buffer: Dict[str, Buffer],
+        size_hint_fn: Callable[[Union[Expr, int]], int],
+        kernel_schedule: Optional[Any] = None,
         device_type: str = "cuda",
-        **kwargs: dict[str, Any],
-    ) -> tuple[str, str, str, EVTArgRenames]:
+        **kwargs: Dict[str, Any],
+    ) -> Tuple[str, str, str, EVTArgRenames]:
         arch = int(cutlass_arch(device_type))
         assert device_type != "cuda" or arch >= 90, (
             "For CUDA, only SM90+ is supported for EVT"
@@ -171,7 +173,7 @@ non-contiguous layout, received stride: {stride} and shape: {shape}"
     # The reason for this is that inspect.getsource does not work with functions defined at runtime via exec/eval
     def _trace(
         fn_src: str,
-        example_tensors: dict[str, CutlassTensor],
+        example_tensors: Dict[str, CutlassTensor],
         cc: int,
         **kwargs: Any,
     ) -> EpilogueFunctor:
@@ -182,7 +184,7 @@ non-contiguous layout, received stride: {stride} and shape: {shape}"
 
             def parse(
                 self,
-                example_inputs: dict[str, CutlassTensor],
+                example_inputs: Dict[str, CutlassTensor],
             ) -> None:
                 self.example_inputs = example_inputs
                 self.ast = ast.parse(self.source)
@@ -195,9 +197,9 @@ non-contiguous layout, received stride: {stride} and shape: {shape}"
 
     def _render_argument_type(
         epilogue_functor: EpilogueFunctor,
-        name_to_buffer: dict[str, Buffer],
-        size_hint_fn: Callable[[Expr | int], int],
-    ) -> tuple[str, EVTArgRenames]:
+        name_to_buffer: Dict[str, Buffer],
+        size_hint_fn: Callable[[Union[Expr, int]], int],
+    ) -> Tuple[str, EVTArgRenames]:
         epilogue_thread_type = epilogue_functor.epilogue_thread_type
         arg_renames = EVTArgRenames()
 
@@ -256,7 +258,7 @@ non-contiguous layout, received stride: {stride} and shape: {shape}"
     def _get_arg_from_node(
         arg_ty: type,
         node: Buffer,
-        size_hint_fn: Callable[[Expr | int], int],
+        size_hint_fn: Callable[[Union[Expr, int]], int],
         arg_renames: EVTArgRenames,
     ) -> str:
         from ..template import CUTLASSTemplate

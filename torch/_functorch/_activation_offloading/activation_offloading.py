@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Activation offloading for memory optimization during compilation.
 
 This module provides functionality to offload activations to CPU during the forward
@@ -22,6 +23,7 @@ from torch.utils._ordered_set import OrderedSet
 
 from .. import config
 from ..partitioners import _size_of, get_default_op_list, OpTypes
+from typing import Dict, List, Set, Tuple, Type
 
 
 log: logging.Logger = logging.getLogger(__name__)
@@ -60,7 +62,7 @@ class ReloadNodeInfo:
       transfer completes. Must remain at the point where the data is first needed.
     """
 
-    reload_group_nodes: list[fx.Node]
+    reload_group_nodes: List[fx.Node]
     wait_event_node: fx.Node
     transfer_size_bytes: int
     transfer_time_ms: float
@@ -102,11 +104,11 @@ def offload_activation_fw(graph: fx.Graph) -> None:
 
     output_node: fx.Node = graph.find_nodes(op="output")[0]
     # pyrefly: ignore [bad-assignment]
-    fwd_outputs: tuple[fx.Node, ...] = output_node.args[
+    fwd_outputs: Tuple[fx.Node, ...] = output_node.args[
         0
     ]  # pyrefly: ignore [bad-assignment]
-    node_to_offload: dict[fx.Node, fx.Node] = dict()
-    node_to_index: dict[fx.Node, int] = {
+    node_to_offload: Dict[fx.Node, fx.Node] = dict()
+    node_to_index: Dict[fx.Node, int] = {
         node: idx for idx, node in enumerate(graph.nodes)
     }
 
@@ -150,7 +152,7 @@ def reload_activation_bw(graph: fx.Graph) -> None:
         graph: The backward graph to modify
     """
 
-    node_to_index: dict[fx.Node, int] = {
+    node_to_index: Dict[fx.Node, int] = {
         node: idx for idx, node in enumerate(graph.nodes)
     }
     output_node: fx.Node = graph.find_nodes(op="output")[0]
@@ -196,11 +198,11 @@ def offload_activation_fw_async(graph: fx.Graph) -> None:
 
     output_node: fx.Node = graph.find_nodes(op="output")[0]
     # pyrefly: ignore [bad-assignment]
-    fwd_outputs: tuple[fx.Node, ...] = output_node.args[
+    fwd_outputs: Tuple[fx.Node, ...] = output_node.args[
         0
     ]  # pyrefly: ignore [bad-assignment]
-    node_to_offload: dict[fx.Node, fx.Node] = dict()
-    node_to_index: dict[fx.Node, int] = {
+    node_to_offload: Dict[fx.Node, fx.Node] = dict()
+    node_to_index: Dict[fx.Node, int] = {
         node: idx for idx, node in enumerate(graph.nodes)
     }
 
@@ -252,7 +254,7 @@ def reload_activation_bw_async(graph: fx.Graph) -> None:
     producing a clean 2-node IR per reloaded tensor.
     """
 
-    node_to_index: dict[fx.Node, int] = {
+    node_to_index: Dict[fx.Node, int] = {
         node: idx for idx, node in enumerate(graph.nodes)
     }
 
@@ -284,14 +286,14 @@ def reload_activation_bw_async(graph: fx.Graph) -> None:
             )
             wait_node: fx.Node = graph.call_function(
                 torch.ops.ao.wait_tensor.default,
-                args=(reload_node, node),
+                args=(reload_node,),
                 name=str(node.name).replace(CPU_OFFLOAD_PREFIX, GPU_RELOAD_PREFIX),
             )
             wait_node.meta["val"] = reload_node.meta["val"]
             wait_node.meta["tensor_meta"] = reload_node.meta["tensor_meta"]
 
         for user in list(node.users.keys()):
-            if user != reload_node and user != wait_node:
+            if user != reload_node:
                 user.replace_input_with(node, wait_node)
 
 
@@ -422,7 +424,7 @@ def offload_chosen_sets(
     offload_activation_fw(fwd_module.graph)
 
     # Update backward graph inputs to be offloaded tensors
-    bwd_inputs: dict[str, fx.Node] = {
+    bwd_inputs: Dict[str, fx.Node] = {
         node.name: node for node in bwd_module.graph.find_nodes(op="placeholder")
     }
     for fwd_node in fwd_module.graph.find_nodes(op="output")[0].args[0]:
@@ -461,7 +463,7 @@ def offload_chosen_sets_async(
     # For each offloaded forward output, find the matching backward input and swap
     # it with a new placeholder carrying the CPU tensor's metadata, then mark it
     # for reloading.
-    bwd_inputs: dict[str, fx.Node] = {
+    bwd_inputs: Dict[str, fx.Node] = {
         node.name: node for node in bwd_module.graph.find_nodes(op="placeholder")
     }
     for fwd_node in fwd_module.graph.find_nodes(op="output")[0].args[0]:
@@ -495,7 +497,7 @@ def activation_offload_sink_wait_async(fwd_module: fx.GraphModule) -> None:
     graph: fx.Graph = fwd_module.graph
     output_node: fx.Node = graph.find_nodes(op="output")[0]
 
-    wait_nodes_to_sink: list[fx.Node] = [
+    wait_nodes_to_sink: List[fx.Node] = [
         node
         for node in graph.nodes
         if node.op == "call_function"
@@ -517,10 +519,10 @@ def activation_reload_prefetch_async(bwd_module: fx.GraphModule) -> None:
     ao.wait_tensor at its original position.
     """
     graph: fx.Graph = bwd_module.graph
-    nodes_list: list[fx.Node] = list(graph.nodes)
+    nodes_list: List[fx.Node] = list(graph.nodes)
 
     # Identify reload + wait pairs
-    reload_patterns: dict[fx.Node, ReloadNodeInfo] = {}
+    reload_patterns: Dict[fx.Node, ReloadNodeInfo] = {}
     for node in graph.nodes:
         if not (
             node.op == "call_function" and node.target == torch.ops.ao.reload.default
@@ -569,8 +571,8 @@ def _estimate_transfer_time_in_ms(transfer_size_bytes: int) -> float:
 
 
 def identify_reload_patterns(
-    graph: fx.Graph, nodes_list: list[fx.Node], node_to_idx: dict[fx.Node, int]
-) -> dict[fx.Node, ReloadNodeInfo]:
+    graph: fx.Graph, nodes_list: List[fx.Node], node_to_idx: Dict[fx.Node, int]
+) -> Dict[fx.Node, ReloadNodeInfo]:
     """
     Identify backward reload patterns in the graph.
 
@@ -587,10 +589,10 @@ def identify_reload_patterns(
     - transfer_size_bytes: size of data being transferred
     - transfer_time_ms: estimated transfer time in milliseconds
     """
-    patterns: dict[fx.Node, ReloadNodeInfo] = {}
+    patterns: Dict[fx.Node, ReloadNodeInfo] = {}
 
     # Find all GPU reload device_put nodes whose inputs are placeholder nodes
-    reload_nodes: list[fx.Node] = [
+    reload_nodes: List[fx.Node] = [
         node
         for node in graph.find_nodes(
             op="call_function", target=torch.ops.prims.device_put.default
@@ -644,8 +646,8 @@ def identify_reload_patterns(
 
 
 def reorder_for_prefetch(
-    nodes_list: list[fx.Node],
-    reload_patterns: dict[fx.Node, ReloadNodeInfo],
+    nodes_list: List[fx.Node],
+    reload_patterns: Dict[fx.Node, ReloadNodeInfo],
 ) -> None:
     """
     Reorder nodes to prefetch reload operations by directly manipulating the graph.
@@ -659,12 +661,12 @@ def reorder_for_prefetch(
     """
 
     # Build a set of all nodes in reload groups for quick lookup
-    reload_group_nodes_set: set[fx.Node] = set()
+    reload_group_nodes_set: Set[fx.Node] = set()
     for pattern in reload_patterns.values():
         reload_group_nodes_set.update(pattern.reload_group_nodes)
 
     # Queue to hold reload group nodes waiting to be placed (FIFO)
-    reload_queue: list[ReloadQueueEntry] = []
+    reload_queue: List[ReloadQueueEntry] = []
 
     # Loop through nodes in reverse
     for node in reversed(nodes_list):
@@ -712,11 +714,11 @@ def activation_offload_sink_wait(fwd_module: fx.GraphModule) -> None:
         fwd_module: Forward module graph
     """
     graph: fx.Graph = fwd_module.graph
-    nodes_list: list[fx.Node] = list(graph.nodes)
-    node_to_idx: dict[fx.Node, int] = {node: idx for idx, node in enumerate(nodes_list)}
+    nodes_list: List[fx.Node] = list(graph.nodes)
+    node_to_idx: Dict[fx.Node, int] = {node: idx for idx, node in enumerate(nodes_list)}
 
     # Find all CPU offload device_put nodes
-    offload_nodes: list[fx.Node] = [
+    offload_nodes: List[fx.Node] = [
         node
         for node in graph.find_nodes(
             op="call_function", target=torch.ops.prims.device_put.default
@@ -725,7 +727,7 @@ def activation_offload_sink_wait(fwd_module: fx.GraphModule) -> None:
     ]
 
     # Collect all wait_event nodes that need to be moved
-    wait_nodes_to_sink: list[fx.Node] = []
+    wait_nodes_to_sink: List[fx.Node] = []
     for offload_node in offload_nodes:
         offload_idx: int = node_to_idx[offload_node]
         wait_event_node: fx.Node = nodes_list[offload_idx + 3]
@@ -761,11 +763,11 @@ def activation_reload_prefetch(bwd_module: fx.GraphModule) -> None:
         bwd_module: Backward module graph
     """
     graph: fx.Graph = bwd_module.graph
-    nodes_list: list[fx.Node] = list(graph.nodes)
-    node_to_idx: dict[fx.Node, int] = {node: idx for idx, node in enumerate(nodes_list)}
+    nodes_list: List[fx.Node] = list(graph.nodes)
+    node_to_idx: Dict[fx.Node, int] = {node: idx for idx, node in enumerate(nodes_list)}
 
     # Step 1: Identify reload patterns
-    reload_patterns: dict[fx.Node, ReloadNodeInfo] = identify_reload_patterns(
+    reload_patterns: Dict[fx.Node, ReloadNodeInfo] = identify_reload_patterns(
         graph, nodes_list, node_to_idx
     )
 

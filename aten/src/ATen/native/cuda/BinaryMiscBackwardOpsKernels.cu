@@ -9,6 +9,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/cuda/Loops.cuh>
 #include <ATen/native/cuda/JitLoops.cuh>
+#include <ATen/OpMathType.h>
 
 // NOTE: CUDA on Windows requires that the enclosing function
 // of a __device__ lambda not have internal linkage.

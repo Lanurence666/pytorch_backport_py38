@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import enum
 
 import torch
@@ -59,7 +61,7 @@ class ModuleCreationMode(enum.Enum):
 class MyModuleInterface:
     def forward(
         self, tensor: Tensor, number: int, word: str = "default"
-    ) -> tuple[str, int, Tensor]:
+    ) -> Tuple[str, int, Tensor]:
         # pyre-ignore[7]: Pyre and torch.jit.interface don't mix well
         pass
 
@@ -68,13 +70,13 @@ class MyModuleInterface:
 class RemoteMyModuleInterface:
     def forward(
         self, tensor: Tensor, number: int, word: str = "default"
-    ) -> tuple[str, int, Tensor]:
+    ) -> Tuple[str, int, Tensor]:
         # pyre-ignore[7]: Pyre and torch.jit.interface don't mix well
         pass
 
     def forward_async(
         self, tensor: Tensor, number: int, word: str = "default"
-    ) -> Future[tuple[str, int, Tensor]]:
+    ) -> Future[Tuple[str, int, Tensor]]:
         pass
 
 
@@ -85,7 +87,7 @@ class MyModule(nn.Module):
 
     def forward(
         self, tensor: Tensor, number: int, word: str = "default"
-    ) -> tuple[str, int, Tensor]:
+    ) -> Tuple[str, int, Tensor]:
         return word, number, tensor
 
 
@@ -477,12 +479,7 @@ class RemoteModuleTest(CommonRemoteModuleTest):
         for remote_module in self._create_remote_module_iter(
             dst_worker_name, modes=[ModuleCreationMode.MODULE_CTOR_WITH_INTERFACE]
         ):
-            with (
-                TemporaryFileName() as fname,
-                self.assertRaisesRegex(
-                    torch.jit.Error, "can only be pickled when using RPC"
-                ),
-            ):
+            with TemporaryFileName() as fname, self.assertRaisesRegex( torch.jit.Error, "can only be pickled when using RPC" ):
                 torch.save(remote_module, fname)
 
 

@@ -11,6 +11,7 @@
 #include <ATen/ops/_foreach_lerp_native.h>
 
 #include <ATen/ops/empty_like_native.h>
+#include <ATen/OpMathType.h>
 #endif
 
 namespace at::native {

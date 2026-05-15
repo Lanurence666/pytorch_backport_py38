@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 from itertools import combinations
-from typing import Any, NamedTuple, TYPE_CHECKING
+from typing import Any, Dict, Iterable, List, Optional, TYPE_CHECKING, Tuple, Type
+from typing_extensions import NamedTuple
+
 
 import torch
 from torch.fx.operator_schemas import _normalize_function_or_error
@@ -12,7 +14,7 @@ from torch.utils._pytree import tree_map
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    
 
     from torch._ops import OpOverload
 
@@ -61,8 +63,8 @@ def is_iterable_of_tensors(iterable: Iterable[Any]) -> bool:
     return True
 
 
-def clone_inputs(args: Iterable[Any]) -> list[Any]:
-    inputs: list[Any] = []
+def clone_inputs(args: Iterable[Any]) -> List[Any]:
+    inputs: List[Any] = []
 
     for arg in args:
         if isinstance(arg, torch.Tensor):
@@ -80,9 +82,9 @@ class SchemaCheckMode(TorchDispatchMode):
         # Information recorded for testing purposes. For example:
         #  - incorrect schemas
         #  - overly conservative schemas
-        self.ops: list[str] = []
-        self.mutated: list[Mutation] = []
-        self.aliasing: list[Aliasing] = []
+        self.ops: List[str] = []
+        self.mutated: List[Mutation] = []
+        self.aliasing: List[Aliasing] = []
 
     def reset_cache(self) -> None:
         self.ops.clear()
@@ -95,9 +97,9 @@ class SchemaCheckMode(TorchDispatchMode):
     def __torch_dispatch__(
         self,
         func: OpOverload,
-        types: tuple[type[Any], ...],
-        args: tuple[Any, ...] = (),
-        kwargs: dict[str, Any] | None = None,
+        types: Tuple[Type[Any], ...],
+        args: Tuple[Any, ...] = (),
+        kwargs: Optional[Dict[str, Any]]= None,
     ) -> Any:
         def bitwise_equal(lhs: torch.Tensor, rhs: torch.Tensor) -> bool:
             if lhs.is_quantized:
@@ -108,7 +110,7 @@ class SchemaCheckMode(TorchDispatchMode):
                 return torch.allclose(lhs, rhs, equal_nan=True)
 
         def has_mutated(
-            before: Any, after: Any, md: tuple[tuple[int, ...], int] | None
+            before: Optional[Any, after: Any, md: Tuple[Tuple[int, ...], int]]
         ) -> bool:
             are_tensors = type(before) is torch.Tensor and type(after) is torch.Tensor
             if (
@@ -146,7 +148,7 @@ class SchemaCheckMode(TorchDispatchMode):
                     return e
             return e
 
-        def parse_metadata(e: Any) -> tuple[tuple[int, ...], int] | None:
+        def parse_metadata(e: Any) -> Optional[Tuple[Tuple[int, ...], int]]:
             if isinstance(e, torch.Tensor):
                 if type(e) is not torch.Tensor:
                     try:

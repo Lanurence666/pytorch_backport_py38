@@ -6,7 +6,7 @@ import abc
 import dataclasses
 import inspect
 import logging
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Mapping, Optional, Sequence, Set, TYPE_CHECKING, Type, Union, cast, overload
 
 import torch
 import torch._dispatch.python
@@ -26,7 +26,7 @@ from torch.utils import _python_dispatch, _pytree
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable
     from types import ModuleType
 
     from torch._subclasses import fake_tensor
@@ -289,7 +289,7 @@ class ReductionTypePromotionRule(TypePromotionRule):
         arg = args[0]
         if not isinstance(arg, torch.Tensor):
             raise AssertionError(f"{type(arg)=} is not torch.Tensor")
-        dtype: torch.dtype | None = kwargs.get("dtype")
+        dtype: Optional[torch.dtype]= kwargs.get("dtype")
 
         computation_dtype, result_dtype = _prims_common.reduction_dtypes(
             arg, self.promotion_kind, dtype
@@ -357,7 +357,7 @@ class SumLikeReductionTypePromotionRule(ReductionTypePromotionRule):
         arg = args[0]
         if not isinstance(arg, torch.Tensor):
             raise AssertionError(f"{type(arg)=} is not torch.Tensor")
-        dtype: torch.dtype | None = kwargs.get("dtype")
+        dtype: Optional[torch.dtype]= kwargs.get("dtype")
         # The below logic is copied from `torch/_refs/__init__.py` reduction ops impl.
         if dtype is None:
             if _prims_common.is_boolean_dtype(
@@ -1130,7 +1130,7 @@ class ElementwiseTypePromotionRuleSetGenerator:
     """
 
     @classmethod
-    def generate_from_torch_refs(cls) -> set[ElementwiseTypePromotionRule]:
+    def generate_from_torch_refs(cls) -> Set[ElementwiseTypePromotionRule]:
         """Parse type promotion rules from reference ops under torch._C._refs."""
         rule_set = set()
         rule_set.update(cls._parse_torch_refs(_refs))
@@ -1143,7 +1143,7 @@ class ElementwiseTypePromotionRuleSetGenerator:
     @classmethod
     def _parse_torch_refs(
         cls, ref_module: ModuleType
-    ) -> set[ElementwiseTypePromotionRule]:
+    ) -> Set[ElementwiseTypePromotionRule]:
         logger.info("Processing module: %s", ref_module.__name__)
         rule_set = set()
         for name in ref_module.__all__:
@@ -1158,7 +1158,7 @@ class ElementwiseTypePromotionRuleSetGenerator:
     def _parse_type_promotion_rule_from_refs_op(
         cls,
         decorated_op: Callable,
-    ) -> ElementwiseTypePromotionRule | None:
+    ) -> Optional[ElementwiseTypePromotionRule]:
         """Retrieve and parse type promotion decorator from op under torch._refs."""
         fn = decorated_op
         type_promo_wrapper = None
@@ -1232,7 +1232,7 @@ class TypePromotionTable:
             raise ValueError(f"Invalid type promotion rule: {rule}")
         self._rule_table[f"{rule.namespace}.{rule.op_name}"] = rule
 
-    def get_rule(self, py_op: torch._ops.OpOverloadPacket) -> TypePromotionRule | None:
+    def get_rule(self, py_op: torch._ops.OpOverloadPacket) -> Optional[TypePromotionRule]:
         """Get type promotion rule for a python op under 'torch.ops.<namespace>'."""
         return self._rule_table.get(str(py_op), None)
 
@@ -1240,7 +1240,7 @@ class TypePromotionTable:
 def get_type_promotion_rule(
     node: torch.fx.Node,
     type_promotion_table: TypePromotionTable,
-) -> TypePromotionRule | None:
+) -> Optional[TypePromotionRule]:
     """Get type promotion rule for a node.
 
     Args:
@@ -1451,7 +1451,7 @@ class _TypePromotionInterpreter(torch.fx.Interpreter):
         self,
         node: torch.fx.Node,
         fx_arg: torch.fx.node.Argument,
-        dtype: torch.dtype | None,
+        dtype: Union[torch.dtype, None,]
     ) -> torch.fx.node.Argument:
         """Promote fx_arg to dtype if necessary."""
         if dtype is None:
@@ -1611,7 +1611,7 @@ class InsertTypePromotion(_pass.Transform):
     def __init__(
         self,
         module: torch.fx.GraphModule,
-        type_promotion_table: TypePromotionTable | None = None,
+        type_promotion_table: Optional[TypePromotionTable]= None,
     ) -> None:
         super().__init__(module)
         self.interpreter = _TypePromotionInterpreter(

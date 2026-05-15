@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Bootstrap Git pre‑push hook with isolated virtual environment.
 
@@ -19,7 +20,6 @@ Users would need to either:
 3. Switch back to a branch with the new scripts/lintrunner.py
 """
 
-from __future__ import annotations
 
 import shlex
 import shutil

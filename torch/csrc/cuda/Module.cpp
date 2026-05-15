@@ -52,6 +52,7 @@
 #include <sstream>
 #include <thread>
 #include <unordered_map>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 using namespace torch;
 

@@ -1,6 +1,7 @@
 # Owner(s): ["module: serialization"]
 # ruff: noqa: F841
 
+from __future__ import annotations
 import contextlib
 import copy
 import functools
@@ -1417,7 +1418,10 @@ class TestSerialization(TestCase, SerializationMixin):
 
     def test_weights_only_blocked_func_error_msg(self):
         import datetime
-        import zoneinfo
+        try:
+            import zoneinfo
+        except ImportError:
+            from backports import zoneinfo
 
         data = {
             "a": torch.tensor([1, 2, 3]),
@@ -1434,7 +1438,10 @@ class TestSerialization(TestCase, SerializationMixin):
 
     def test_weights_only_with_zoneinfo_unpickle_registration_success(self):
         import datetime
-        import zoneinfo
+        try:
+            import zoneinfo
+        except ImportError:
+            from backports import zoneinfo
 
         data = {
             "a": torch.tensor([1, 2, 3]),

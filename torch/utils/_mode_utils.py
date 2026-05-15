@@ -1,5 +1,5 @@
 # mypy: allow-untyped-defs
-from typing import TypeVar
+from typing import Type, TypeVar
 
 import torch
 

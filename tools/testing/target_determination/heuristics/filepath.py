@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, TYPE_CHECKING
+from warnings import warn
 
 from tools.testing.target_determination.heuristics.interface import (
     HeuristicInterface,
@@ -18,12 +19,12 @@ from tools.testing.test_run import TestRun
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    pass
 
 
 REPO_ROOT = Path(__file__).parents[3]
 
-keyword_synonyms: dict[str, list[str]] = {
+keyword_synonyms: Dict[str, List[str]] = {
     "amp": ["mixed_precision"],
     "quant": ["quantized", "quantization", "quantize"],
     "decomp": ["decomposition", "decompositions"],
@@ -35,7 +36,7 @@ keyword_synonyms: dict[str, list[str]] = {
 }
 
 
-custom_matchers: dict[str, Callable[[str], bool]] = {
+custom_matchers: Dict[str, Callable[[str], bool]] = {
     "nn": lambda x: "nn" in x.replace("onnx", "_"),
     "c10": lambda x: "c10" in x.replace("c10d", "_"),
 }
@@ -59,7 +60,7 @@ def is_valid_keyword(keyword: str) -> bool:
 
 
 @lru_cache(maxsize=1)
-def get_keywords(file: str) -> list[str]:
+def get_keywords(file: str) -> List[str]:
     keywords = []
     for folder in Path(file).parts[:-1]:
         folder = sanitize_name(folder)
@@ -71,7 +72,7 @@ def get_keywords(file: str) -> list[str]:
 
 
 def sanitize_name(folder_name: str) -> str:
-    folder_name = folder_name.removeprefix("_")
+    folder_name = (folder_name[len("_"):] if folder_name.startswith("_") else folder_name)
 
     for syn_rep, syns in keyword_synonyms.items():
         if folder_name in syns or folder_name == syn_rep:
@@ -91,14 +92,14 @@ def file_matches_keyword(file: str, keyword: str) -> bool:
     )
 
 
-def get_freq_dict(tests: list[str], changed_files: list[str]) -> dict[str, int]:
-    keyword_frequency: dict[str, int] = defaultdict(int)
+def get_freq_dict(tests: List[str], changed_files: List[str]) -> Dict[str, int]:
+    keyword_frequency: Dict[str, int] = defaultdict(int)
     for cf in changed_files:
         keywords = get_keywords(cf)
         for keyword in keywords:
             keyword_frequency[keyword] += 1
 
-    test_ratings: dict[str, int] = defaultdict(int)
+    test_ratings: Dict[str, int] = defaultdict(int)
 
     for test in tests:
         for keyword, frequency in keyword_frequency.items():
@@ -110,11 +111,15 @@ def get_freq_dict(tests: list[str], changed_files: list[str]) -> dict[str, int]:
 class Filepath(HeuristicInterface):
     # Heuristic based on folders in the file path.  Takes each folder of each
     # changed file and attempts to find matches based on those folders
-    def __init__(self, **kwargs: dict[str, Any]) -> None:
+    def __init__(self, **kwargs: Dict[str, Any]) -> None:
         super().__init__(**kwargs)
 
-    def get_prediction_confidence(self, tests: list[str]) -> TestPrioritizations:
-        changed_files = query_changed_files()
+    def get_prediction_confidence(self, tests: List[str]) -> TestPrioritizations:
+        try:
+            changed_files = query_changed_files()
+        except Exception as e:
+            warn(f"Can't query changed test files due to {e}")
+            changed_files = []
 
         # If only documentation files (.rst, .md) were modified, skip all tests
         if is_docs_only_change(changed_files):

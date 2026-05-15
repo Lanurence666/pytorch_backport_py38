@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import os
 import sys
 
 from torch.utils._config_module import install_config_module
+from typing import Optional
 
 
 # Whether to use c10d._time_estimator for collectives runtime estimations.
@@ -13,12 +16,12 @@ runtime_estimations_use_nccl_lib_estimations: bool = False
 runtime_estimations_align_across_all_distributed_ranks: bool = False
 
 reorder_iterative_debug_memory_recompute: bool = False
-reorder_iterative_debug_limit_to_reorder: int | None = (
+reorder_iterative_debug_limit_to_reorder: Optional[int]= (
     None
     if (env_str := os.getenv("PYTORCH_REORDER_COLLECTIVES_LIMIT")) is None
     else int(env_str)
 )
-sink_waits_iterative_debug_limit_to_sink: int | None = (
+sink_waits_iterative_debug_limit_to_sink: Optional[int]= (
     # pyrefly: ignore[unbound-name]
     None if (env_str := os.getenv("PYTORCH_SINK_WAITS_LIMIT")) is None else int(env_str)
 )

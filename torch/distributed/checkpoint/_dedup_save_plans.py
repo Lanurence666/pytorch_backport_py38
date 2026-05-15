@@ -1,7 +1,9 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 import dataclasses
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import Dict, List, Set, TYPE_CHECKING
 
 from torch.distributed.checkpoint.planner import SavePlan, WriteItem
 
@@ -13,9 +15,9 @@ __all__ = ["dedup_save_plans"]
 
 
 def dedup_save_plans(
-    all_plans: list[SavePlan],
+    all_plans: List[SavePlan],
     save_to_lowest_rank: bool = False,
-) -> list[SavePlan]:
+) -> List[SavePlan]:
     """
     Removes duplicate entries from appearing on multiple SavePlans. For each duplicate across
     a set of SavePlans, only the smallest SavePlan in terms of planned storage keeps the entry.
@@ -24,12 +26,12 @@ def dedup_save_plans(
     """
 
     # Map to query the plan indices that a write item is duplicated in
-    write_item_to_plan_indices: dict[MetadataIndex, set[int]] = defaultdict(set)
+    write_item_to_plan_indices: Dict[MetadataIndex, Set[int]] = defaultdict(set)
     # Map to query the write item from its index
-    write_item_idx_to_write_item: dict[MetadataIndex, WriteItem] = {}
+    write_item_idx_to_write_item: Dict[MetadataIndex, WriteItem] = {}
     # Set of write item indices that are present in each plan
     # After deduplication, this will be the set of write item indices that are present in the final plans
-    plan_to_item_indices: list[set[MetadataIndex]] = [
+    plan_to_item_indices: List[Set[MetadataIndex]] = [
         {item.index for item in plan.items} for plan in all_plans
     ]
 

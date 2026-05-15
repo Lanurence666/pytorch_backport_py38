@@ -1,11 +1,14 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch import inf, Tensor
 from torch.distributions import Categorical, constraints
 from torch.distributions.binomial import Binomial
 from torch.distributions.distribution import Distribution
 from torch.distributions.utils import broadcast_all
+from typing import Optional
 
 
 __all__ = ["Multinomial"]
@@ -64,9 +67,9 @@ class Multinomial(Distribution):
     def __init__(
         self,
         total_count: int = 1,
-        probs: Tensor | None = None,
-        logits: Tensor | None = None,
-        validate_args: bool | None = None,
+        probs: Optional[Tensor]= None,
+        logits: Optional[Tensor]= None,
+        validate_args: Optional[bool]= None,
     ) -> None:
         if not isinstance(total_count, int):
             raise NotImplementedError("inhomogeneous total_count is not supported")

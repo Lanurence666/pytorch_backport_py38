@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import builtins
 
 import torch
@@ -5,6 +7,7 @@ import torch.utils._pytree as pytree
 from torch._ops import HigherOrderOperator
 from torch._subclasses.fake_tensor import FakeTensorMode
 from torch.fx.experimental.proxy_tensor import ProxyTorchDispatchMode
+from typing import Dict, overload
 
 
 class Print(HigherOrderOperator):
@@ -95,7 +98,7 @@ def print_fake_tensor_mode(mode, format_str: str, *args: object, **kwargs: objec
 # pyre-ignore
 def print_impl(format_str: str, *args: object, **kwargs: object) -> None:
     # Ensure all immutable_dict/list in args and kwargs are converted to regular dict/list
-    map_types: dict[type, type] = {
+    map_types: Dict[type, type] = {
         torch.fx.immutable_collections.immutable_dict: dict,
         torch.fx.immutable_collections.immutable_list: list,
     }

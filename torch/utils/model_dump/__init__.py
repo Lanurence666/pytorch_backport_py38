@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 model_dump: a one-stop shop for TorchScript model inspection.
@@ -79,6 +80,7 @@ from pathlib import Path
 import warnings
 
 import torch.utils.show_pickle
+from typing import Dict
 
 
 DEFAULT_EXTRA_FILE_SIZE_LIMIT = 16 * 1024
@@ -271,7 +273,7 @@ def get_model_info(
         # so reused strings are stored efficiently.
         # However, JSON has no way of representing this,
         # so we have to do it manually.
-        interned_strings : dict[str, int] = {}
+        interned_strings : Dict[str, int] = {}
 
         def intern(s):
             if s not in interned_strings:

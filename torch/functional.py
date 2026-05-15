@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import itertools
 import operator
-from collections.abc import Sequence
-from typing import Any, TYPE_CHECKING
+
+from typing import Any, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type, Union, overload
 
 import torch
 import torch.nn.functional as F
@@ -120,9 +122,9 @@ def broadcast_shapes(*shapes):
 
 def split(
     tensor: Tensor,
-    split_size_or_sections: int | list[int],
+    split_size_or_sections: Union[int, List[int]],
     dim: int = 0,
-) -> tuple[Tensor, ...]:
+) -> Tuple[Tensor, ...]:
     r"""Splits the tensor into chunks. Each chunk is a view of the original tensor.
 
     If :attr:`split_size_or_sections` is an integer type, then :attr:`tensor` will
@@ -387,13 +389,13 @@ def einsum(*args: Any) -> Tensor:
 if TYPE_CHECKING:
     # The JIT doesn't understand Union, so only add type annotation for mypy
     def meshgrid(
-        *tensors: Tensor | list[Tensor], indexing: str | None = None
-    ) -> tuple[Tensor, ...]:
+        *tensors: Union[Tensor, List[Tensor]], indexing: Optional[str] = None
+    ) -> Tuple[Tensor, ...]:
         return _meshgrid(*tensors, indexing=indexing)
 
 else:
 
-    def meshgrid(*tensors, indexing: str | None = None) -> tuple[Tensor, ...]:
+    def meshgrid(*tensors, indexing: Optional[str] = None) -> Tuple[Tensor, ...]:
         r"""Creates grids of coordinates specified by the 1D inputs in `attr`:tensors.
 
         This is helpful when you want to visualize data over some
@@ -490,7 +492,7 @@ else:
         return _meshgrid(*tensors, indexing=indexing)
 
 
-def _meshgrid(*tensors, indexing: str | None):
+def _meshgrid(*tensors, indexing: Optional[str]):
     if has_torch_function(tensors):
         return handle_torch_function(meshgrid, tensors, *tensors, indexing=indexing)
     if len(tensors) == 1 and isinstance(tensors[0], (list, tuple)):
@@ -508,15 +510,15 @@ def _meshgrid(*tensors, indexing: str | None):
 def stft(
     input: Tensor,
     n_fft: int,
-    hop_length: int | None = None,
-    win_length: int | None = None,
-    window: Tensor | None = None,
+    hop_length: Optional[int] = None,
+    win_length: Optional[int] = None,
+    window: Optional[Tensor] = None,
     center: bool = True,
     pad_mode: str = "reflect",
     normalized: bool = False,
-    onesided: bool | None = None,
-    return_complex: bool | None = None,
-    align_to_window: bool | None = None,
+    onesided: Optional[bool] = None,
+    return_complex: Optional[bool] = None,
+    align_to_window: Optional[bool] = None,
 ) -> Tensor:
     r"""Short-time Fourier transform (STFT).
 
@@ -780,7 +782,7 @@ if TYPE_CHECKING:
     # done by the caller of the _impl function
     _unique_impl_out = Any
 else:
-    _unique_impl_out = tuple[Tensor, Tensor, Tensor]
+    _unique_impl_out = Tuple[Tensor, Tensor, Tensor]
 
 
 def _unique_impl(
@@ -788,9 +790,9 @@ def _unique_impl(
     sorted: bool = True,
     return_inverse: bool = False,
     return_counts: bool = False,
-    dim: int | None = None,
+    dim: Optional[int] = None,
 ) -> _unique_impl_out:
-    r"""unique(input, sorted=True, return_inverse=False, return_counts=False, dim=None) -> tuple[Tensor, Tensor, Tensor]
+    r"""unique(input, sorted=True, return_inverse=False, return_counts=False, dim=None) -> Tuple[Tensor, Tensor, Tensor]
 
     Returns the unique elements of the input tensor.
 
@@ -977,7 +979,7 @@ def _unique_consecutive_impl(
     input: Tensor,
     return_inverse: bool = False,
     return_counts: bool = False,
-    dim: int | None = None,
+    dim: Optional[int] = None,
 ) -> _unique_impl_out:
     r"""Eliminates all but the first element from every consecutive group of equivalent elements.
 
@@ -1050,7 +1052,7 @@ def _return_counts(
     return_counts=False,
     dim=None,
 ):
-    # type: (Tensor, bool, bool, bool, Optional[int]) -> tuple[Tensor, Tensor]
+    # type: (Tensor, bool, bool, bool, Optional[int]) -> Tuple[Tensor, Tensor]
 
     if has_torch_function_unary(input):
         return _unique_impl(input, sorted, return_inverse, return_counts, dim)
@@ -1082,7 +1084,7 @@ def _return_inverse(
     return_counts=False,
     dim=None,
 ):
-    # type: (Tensor, bool, bool, bool, Optional[int]) -> tuple[Tensor, Tensor]
+    # type: (Tensor, bool, bool, bool, Optional[int]) -> Tuple[Tensor, Tensor]
 
     if has_torch_function_unary(input):
         return _unique_impl(input, sorted, return_inverse, return_counts, dim)
@@ -1134,7 +1136,7 @@ def _consecutive_return_counts(
     return_counts=False,
     dim=None,
 ):
-    # type: (Tensor, bool, bool, Optional[int]) -> tuple[Tensor, Tensor]
+    # type: (Tensor, bool, bool, Optional[int]) -> Tuple[Tensor, Tensor]
 
     if has_torch_function_unary(input):
         return _unique_consecutive_impl(input, return_inverse, return_counts, dim)
@@ -1166,7 +1168,7 @@ def _consecutive_return_inverse(
     return_counts=False,
     dim=None,
 ):
-    # type: (Tensor, bool, bool, Optional[int]) -> tuple[Tensor, Tensor]
+    # type: (Tensor, bool, bool, Optional[int]) -> Tuple[Tensor, Tensor]
 
     if has_torch_function_unary(input):
         return _unique_consecutive_impl(input, return_inverse, return_counts, dim)
@@ -1222,7 +1224,7 @@ else:
         a,
         b,
         dims: int = 2,
-        out: torch.Tensor | None = None,
+        out: Optional[torch.Tensor] = None,
     ):
         pass
 
@@ -1230,8 +1232,8 @@ else:
     def tensordot(  # noqa: F811
         a,
         b,
-        dims: tuple[list[int], list[int]],
-        out: torch.Tensor | None = None,
+        dims: Tuple[List[int], List[int]],
+        out: Optional[torch.Tensor] = None,
     ):
         pass
 
@@ -1239,8 +1241,8 @@ else:
     def tensordot(  # noqa: F811
         a,
         b,
-        dims: list[list[int]],
-        out: torch.Tensor | None = None,
+        dims: List[List[int]],
+        out: Optional[torch.Tensor] = None,
     ):
         pass
 
@@ -1249,7 +1251,7 @@ else:
         a,
         b,
         dims: torch.Tensor,
-        out: torch.Tensor | None = None,
+        out: Optional[torch.Tensor] = None,
     ):
         pass
 
@@ -1258,7 +1260,7 @@ def tensordot(
     a,
     b,
     dims=2,
-    out: torch.Tensor | None = None,
+    out: Optional[torch.Tensor] = None,
 ):
     r"""Returns a contraction of a and b over multiple dimensions.
 
@@ -1317,13 +1319,13 @@ def tensordot(
     if not isinstance(dims, (tuple, list, torch.Tensor, int, torch.SymInt)):
         raise RuntimeError(
             "tensordot expects dims to be int or "
-            + "tuple[list[int], list[int]] or "
-            + "list[list[int]] containing two lists, but got "
+            + "Tuple[List[int], List[int]] or "
+            + "List[List[int]] containing two lists, but got "
             + f"dims={dims}"
         )
 
-    dims_a: list[int] = []
-    dims_b: list[int] = []
+    dims_a: List[int] = []
+    dims_b: List[int] = []
 
     if isinstance(dims, (tuple, list)):
         dims_a, dims_b = dims
@@ -1335,8 +1337,8 @@ def tensordot(
                 raise AssertionError(
                     f"dims tensor must have size 2 in first dimension, got {dims.size()[0]}"
                 )
-            dims_a = torch.jit.annotate(list[int], dims[0].tolist())
-            dims_b = torch.jit.annotate(list[int], dims[1].tolist())
+            dims_a = torch.jit.annotate(List[int], dims[0].tolist())
+            dims_b = torch.jit.annotate(List[int], dims[1].tolist())
         else:
             dims_val = int(dims.item())
             if dims_val < 0:
@@ -1684,7 +1686,7 @@ else:
 
 def norm(
     input,
-    p: float | str | None = "fro",
+    p: Optional[Union[float, str]] = "fro",
     dim=None,
     keepdim=False,
     out=None,
@@ -1907,8 +1909,8 @@ def norm(
 
 def unravel_index(
     indices: Tensor,
-    shape: int | Sequence[int] | torch.Size,
-) -> tuple[Tensor, ...]:
+    shape: Union[int, Sequence[int]] | torch.Size,
+) -> Tuple[Tensor, ...]:
     r"""Converts a tensor of flat indices into a tuple of coordinate tensors that
     index into an arbitrary tensor of the specified shape.
 
@@ -1963,7 +1965,7 @@ def unravel_index(
     return res_tensor.unbind(-1)
 
 
-def _unravel_index(indices: Tensor, shape: int | Sequence[int]) -> Tensor:
+def _unravel_index(indices: Tensor, shape: Union[int, Sequence[int]]) -> Tensor:
     torch._check_type(
         not indices.is_complex()
         and not indices.is_floating_point()
@@ -2053,7 +2055,7 @@ def chain_matmul(*matrices, out=None):
 
 
 def _lu_impl(A, pivot=True, get_infos=False, out=None):
-    # type: (Tensor, bool, bool, Any) -> tuple[Tensor, Tensor, Tensor]
+    # type: (Tensor, bool, bool, Any) -> Tuple[Tensor, Tensor, Tensor]
     r"""Computes the LU factorization of a matrix or batches of matrices
     :attr:`A`. Returns a tuple containing the LU factorization and
     pivots of :attr:`A`.  Pivoting is done if :attr:`pivot` is set to
@@ -2156,7 +2158,7 @@ def _lu_impl(A, pivot=True, get_infos=False, out=None):
 if TYPE_CHECKING:
     _ListOrSeq = Sequence[Tensor]
 else:
-    _ListOrSeq = list[Tensor]
+    _ListOrSeq = List[Tensor]
 
 
 def _check_list_size(out_len: int, get_infos: bool, out: _ListOrSeq) -> None:
@@ -2172,7 +2174,7 @@ def _check_list_size(out_len: int, get_infos: bool, out: _ListOrSeq) -> None:
 
 
 def _lu_with_infos(A, pivot=True, get_infos=False, out=None):
-    # type: (Tensor, bool, bool, Optional[tuple[Tensor, Tensor, Tensor]]) -> tuple[Tensor, Tensor, Tensor]
+    # type: (Tensor, bool, bool, Optional[Tuple[Tensor, Tensor, Tensor]]) -> Tuple[Tensor, Tensor, Tensor]
     if has_torch_function_unary(A):
         return handle_torch_function(
             lu, (A,), A, pivot=pivot, get_infos=get_infos, out=out
@@ -2188,7 +2190,7 @@ def _lu_with_infos(A, pivot=True, get_infos=False, out=None):
 
 
 def _lu_no_infos(A, pivot=True, get_infos=False, out=None):
-    # type: (Tensor, bool, bool, Optional[tuple[Tensor, Tensor]]) -> tuple[Tensor, Tensor]
+    # type: (Tensor, bool, bool, Optional[Tuple[Tensor, Tensor]]) -> Tuple[Tensor, Tensor]
     # need to check for torch_function here so that we exit if
     if has_torch_function_unary(A):
         return handle_torch_function(

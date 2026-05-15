@@ -7,13 +7,15 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import logging
 import os
 import time
-from collections.abc import Callable
+
 from concurrent.futures.thread import ThreadPoolExecutor
 from threading import Event
-from typing import TextIO, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, TYPE_CHECKING, TextIO
 
 
 if TYPE_CHECKING:
@@ -30,7 +32,7 @@ def tail_logfile(
     dst: TextIO,
     finished: Event,
     interval_sec: float,
-    log_line_filter: Callable[[str], bool] | None = None,
+    log_line_filter: Optional[Callable[[str], bool]] = None
 ):
     while not os.path.exists(file):
         if finished.is_set():
@@ -96,9 +98,9 @@ class TailLog:
     def __init__(
         self,
         name: str,
-        log_files: dict[int, str],
+        log_files: Dict[int, str],
         dst: TextIO,
-        log_line_prefixes: dict[int, str] | None = None,
+        log_line_prefixes: Optional[Dict[int, str]]= None,
         interval_sec: float = 0.1,
         log_line_filter: Callable[[str], bool] = (lambda _: True),
     ):
@@ -115,10 +117,10 @@ class TailLog:
         self._log_files = log_files
         self._log_line_prefixes = log_line_prefixes
         self._log_line_filter = log_line_filter
-        self._finished_events: dict[int, Event] = {
+        self._finished_events: Dict[int, Event] = {
             local_rank: Event() for local_rank in log_files
         }
-        self._futs: list[Future] = []
+        self._futs: List[Future] = []
         self._interval_sec = interval_sec
         self._stopped = False
 

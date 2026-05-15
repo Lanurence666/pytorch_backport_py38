@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List
 import os
 import sys
 import unittest
@@ -38,7 +40,7 @@ PYPIP_INSTALL_NAME = "python pip install install1"
 
 class TestSegmentGenerator(unittest.TestCase):
     def test_generate_empty_records(self) -> None:
-        records: list[UtilizationRecord] = []
+        records: List[UtilizationRecord] = []
 
         # execute
         generator = SegmentGenerator()
@@ -160,7 +162,7 @@ class TestSegmentGenerator(unittest.TestCase):
         self.assertEqual(segment.end_at, end_at)
 
 
-def get_base_test_records() -> list[UtilizationRecord]:
+def get_base_test_records() -> List[UtilizationRecord]:
     record1 = UtilizationRecord(
         timestamp=TEST_TS_BASE, cmd_names=[PYTEST1_NAME], level="PYTHON_CMD"
     )

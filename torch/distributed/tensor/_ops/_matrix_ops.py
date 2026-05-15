@@ -2,6 +2,10 @@
 # implement matrix related ops for distributed tensor
 
 
+from __future__ import annotations
+from typing import Optional, Union
+
+
 import copy
 
 import torch
@@ -63,7 +67,7 @@ def transpose_strategy(op_schema: OpSchema) -> OpStrategy:
         if ndim <= 1:
             output_placements = list(input_spec.placements)
         else:
-            output_placements: list[Placement] = []
+            output_placements: List[Placement] = []
             for p in input_spec.placements:
                 if isinstance(p, _StridedShard):
                     output_placements.append(
@@ -185,10 +189,10 @@ def _addmm_like_strategy(
 
 
 def _scaled_mm_scale_placement(
-    data_placement: Placement | _ShardingPlaceholder,
+    data_placement: Union[Placement, _ShardingPlaceholder],
     scale_shape: torch.Size,
     contracting_dim: int,
-) -> Placement | _ShardingPlaceholder | None:
+) -> Union[Placement, Optional[_ShardingPlaceholder]]:
     """
     Derive scale placement from data operand placement for _scaled_mm.
 
@@ -240,8 +244,8 @@ from ._einsum_strategy import EinsumDims
 def gen_single_dim_einsum_strategies(
     equation: str,
     *,
-    bias_shape: torch.Size | None = None,
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    bias_shape: Optional[torch.Size] = None,
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     """
     Generate a strategy list for the ops that follow einsum style notation.
 
@@ -280,7 +284,7 @@ def gen_single_dim_einsum_strategies(
     # Compute broadcast dims map for bias if provided
     # Maps output dims to bias dims, -1 for broadcast dims (dims that don't exist in bias
     # or have size 1)
-    broadcast_dims_map: list[int] | None = None
+    broadcast_dims_map: Optional[List[int]] = None
     if bias_shape is not None:
         output_ndim = len(output_dim)
         bias_ndim = len(bias_shape)
@@ -299,8 +303,8 @@ def gen_single_dim_einsum_strategies(
                     broadcast_dims_map.append(bias_dim_idx)
 
     def _derive_bias_placement(
-        output_placement: Placement | _ShardingPlaceholder,
-    ) -> Placement | _ShardingPlaceholder:
+        output_placement: Union[Placement, _ShardingPlaceholder],
+    ) -> Union[Placement, _ShardingPlaceholder]:
         """Derive bias placement from output placement, accounting for broadcast."""
         if broadcast_dims_map is None:
             return copy.copy(output_placement)
@@ -317,8 +321,8 @@ def gen_single_dim_einsum_strategies(
             return copy.copy(output_placement)
 
     def _maybe_add_bias(
-        placement_list: list[Placement | _ShardingPlaceholder],
-    ) -> list[Placement | _ShardingPlaceholder]:
+        placement_list: List[Union[Placement, _ShardingPlaceholder]],
+    ) -> List[Union[Placement, _ShardingPlaceholder]]:
         """Insert bias placement after output if bias_shape is provided."""
         if bias_shape is None:
             return placement_list
@@ -327,8 +331,8 @@ def gen_single_dim_einsum_strategies(
         return [placement_list[0], bias_placement] + placement_list[1:]
 
     # generate strategies for each mesh dim and do cartesian product for final strategy. E.g., for a 2D mesh, we can have [P(),R,R]
-    strategies_over_one_mesh_dim: list[list[Placement | _ShardingPlaceholder]] = []
-    placement_list: list[Placement | _ShardingPlaceholder]
+    strategies_over_one_mesh_dim: List[List[Union[Placement, _ShardingPlaceholder]]] = []
+    placement_list: List[Union[Placement, _ShardingPlaceholder]]
     # split batch dim
     for batch_dim in edims.batch_dims:
         output_batch_dim = output_dim.index(batch_dim)
@@ -357,7 +361,7 @@ def gen_single_dim_einsum_strategies(
         lhs_free_dim_input = input_dims[0].index(lhs_dim)
         # this means split the lhs input and output
         # i.e. S(0), R -> S(0)
-        lhs_placement_list: list[Placement | _ShardingPlaceholder] = [
+        lhs_placement_list: List[Union[Placement, _ShardingPlaceholder]] = [
             _ShardingPlaceholder(lhs_free_dim_output),
             _ShardingPlaceholder(lhs_free_dim_input),
             Replicate(),
@@ -368,7 +372,7 @@ def gen_single_dim_einsum_strategies(
     for rhs_dim in edims.rhs_out_only_dims:
         rhs_free_dim_output = output_dim.index(rhs_dim)
         rhs_free_dim_input = input_dims[1].index(rhs_dim)
-        rhs_placement_list: list[Placement | _ShardingPlaceholder] = [
+        rhs_placement_list: List[Union[Placement, _ShardingPlaceholder]] = [
             _ShardingPlaceholder(rhs_free_dim_output),
             Replicate(),
             _ShardingPlaceholder(rhs_free_dim_input),
@@ -395,7 +399,7 @@ def gen_single_dim_einsum_strategies(
         and not edims.rhs_out_only_dims
     ):
         for reduce_op in Partial.LINEAR_REDUCE_OPS:
-            linearity_placements: list[Placement | _ShardingPlaceholder] = [
+            linearity_placements: List[Union[Placement, _ShardingPlaceholder]] = [
                 Partial(reduce_op)
             ] + [Partial(reduce_op) for _ in input_dims]
             strategies_over_one_mesh_dim.append(_maybe_add_bias(linearity_placements))
@@ -406,7 +410,7 @@ def gen_single_dim_einsum_strategies(
 @register_single_dim_strategy(aten.mm.default, allow_unbacked_sharding=True)
 def mm_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     return gen_single_dim_einsum_strategies("mk,kn->mn")
 
 
@@ -419,7 +423,7 @@ def addmm_strategy(op_schema: OpSchema) -> OpStrategy:
 @register_single_dim_strategy(aten.addmm.default, allow_unbacked_sharding=True)
 def addmm_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     bias_meta = args_schema[0]
     if not isinstance(bias_meta, TensorMeta):
         raise AssertionError
@@ -435,7 +439,7 @@ def bmm_strategy(op_schema: OpSchema) -> OpStrategy:
 @register_single_dim_strategy(aten.bmm.default, allow_unbacked_sharding=True)
 def bmm_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     return gen_single_dim_einsum_strategies("bmk,bkn->bmn")
 
 
@@ -448,7 +452,7 @@ def baddbmm_strategy(op_schema: OpSchema) -> OpStrategy:
 @register_single_dim_strategy(aten.baddbmm.default, allow_unbacked_sharding=True)
 def baddbmm_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     bias_meta = args_schema[0]
     if not isinstance(bias_meta, TensorMeta):
         raise AssertionError
@@ -458,7 +462,7 @@ def baddbmm_single_dim_strategy(
 @register_single_dim_strategy(aten._scaled_mm.default, allow_unbacked_sharding=True)
 def scaled_mm_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     scale_self_meta = args_schema[2]
     scale_mat2_meta = args_schema[3]
     if not isinstance(scale_self_meta, TensorMeta):
@@ -489,7 +493,7 @@ def scaled_mm_single_dim_strategy(
 
 def _scaled_dot_product_flash_attention_base_strategies(
     op_schema: OpSchema,
-) -> list[PlacementList]:
+) -> List[PlacementList]:
     """Helper that returns list of base placement strategies (without CP)."""
     return_debug_mask = len(op_schema.args_schema) >= 6 and op_schema.args_schema[5]
     q_input_strategy = op_schema.args_schema[0]
@@ -585,7 +589,7 @@ def scaled_dot_product_flash_attention_strategy(op_schema: OpSchema) -> OpStrate
 
 def _scaled_dot_product_flash_attention_backward_base_strategies(
     op_schema: OpSchema,
-) -> list[PlacementList]:
+) -> List[PlacementList]:
     """Helper that returns list of base placement strategies (without CP)."""
     q_input_strategy = op_schema.args_schema[1]
     if not isinstance(q_input_strategy, OpStrategy):
@@ -673,7 +677,7 @@ def scaled_dot_product_flash_attention_backward_strategy(
 )
 def constant_pad_nd_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     # Allow sharding on non-padded dimensions; ban sharding on dims
     # that have non-zero padding (where the pad value must be inserted).
     input_meta = args_schema[0]
@@ -695,7 +699,7 @@ def constant_pad_nd_single_dim_strategy(
 
     # Shard on any non-padded dim: output and input share the same placement.
     # All-Replicate is added automatically by the framework.
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: List[List[Union[Placement, _ShardingPlaceholder]]] = []
     for dim in range(ndim):
         if dim not in padded_dims:
             strategies.append([_ShardingPlaceholder(dim), _ShardingPlaceholder(dim)])
@@ -718,7 +722,7 @@ def constant_pad_nd_single_dim_strategy(
 
 def _scaled_dot_product_efficient_attention_base_strategies(
     op_schema: OpSchema,
-) -> list[PlacementList]:
+) -> List[PlacementList]:
     """Helper that returns list of base placement strategies (without CP)."""
     q_input_strategy = op_schema.args_schema[0]
     if not isinstance(q_input_strategy, OpStrategy):
@@ -728,7 +732,7 @@ def _scaled_dot_product_efficient_attention_base_strategies(
     has_attn_bias = op_schema.args_schema[3] is not None
     compute_log_sumexp = op_schema.args_schema[4]
 
-    single_mesh_dim_strategies: list[PlacementList] = []
+    single_mesh_dim_strategies: List[PlacementList] = []
 
     # placement list stores placements of [outputs, inputs]
     # in the spda case, we have 2 valid tensor outputs and 3 or 4 tensor inputs
@@ -813,7 +817,7 @@ def scaled_dot_product_efficient_attention_strategy(op_schema: OpSchema) -> OpSt
 
 def _scaled_dot_product_efficient_attention_backward_base_strategies(
     op_schema: OpSchema,
-) -> list[PlacementList]:
+) -> List[PlacementList]:
     """Helper that returns list of base placement strategies (without CP)."""
     q_input_strategy = op_schema.args_schema[1]
     if not isinstance(q_input_strategy, OpStrategy):
@@ -908,7 +912,7 @@ def scaled_dot_product_efficient_attention_backward_strategy(
 
 def _scaled_dot_product_cudnn_attention_base_strategies(
     op_schema: OpSchema,
-) -> list[PlacementList]:
+) -> List[PlacementList]:
     """Helper that returns list of base placement strategies (without CP)."""
     (
         query_strategy,  # query
@@ -920,7 +924,7 @@ def _scaled_dot_product_cudnn_attention_base_strategies(
     ) = op_schema.args_schema
     return_debug_mask = len(op_schema.args_schema) >= 8 and rest_args[2]
     has_attn_bias = attn_bias_strategy is not None
-    debug_attn_mask_sharding: Placement | None = (
+    debug_attn_mask_sharding: Optional[Placement] = (
         Replicate() if return_debug_mask else None
     )
 
@@ -1016,7 +1020,7 @@ def scaled_dot_product_cudnn_attention_strategy(op_schema: OpSchema) -> OpStrate
 
 def _scaled_dot_product_cudnn_attention_backward_base_strategies(
     op_schema: OpSchema,
-) -> list[PlacementList]:
+) -> List[PlacementList]:
     """Helper that returns list of base placement strategies (without CP)."""
     if len(op_schema.args_schema) < 15:
         raise AssertionError(
@@ -1269,13 +1273,13 @@ def grouped_mm_strategy(op_schema: OpSchema) -> OpStrategy:
         )
 
     def valid_grouped_mm_strides(
-        input_specs: list[DTensorSpec],
-        output_specs: DTensorSpec | tuple[DTensorSpec | None, ...],
+        input_specs: List[DTensorSpec],
+        output_specs: Union[DTensorSpec, Tuple[DTensorSpec, None, ...]],
     ) -> bool:
         # 1. compute the local-tensor shape/strides given this sharding proposal
         # 2. apply the logic from the groped_mm meta function
         # UGH the input DTensorSpecs are missing their tensormetas... so i can get them another way
-        def local_meta(spec: OpSpec, placements: tuple[Placement, ...]) -> TensorMeta:
+        def local_meta(spec: OpSpec, placements: Tuple[Placement, ...]) -> TensorMeta:
             if not isinstance(spec.output_specs, DTensorSpec):
                 raise AssertionError(
                     f"Expected DTensorSpec, got {type(spec.output_specs)}"

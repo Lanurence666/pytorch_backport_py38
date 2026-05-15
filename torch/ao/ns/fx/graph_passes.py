@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union, cast
 
 import torch
 from torch.ao.ns.fx.mappings import get_node_type_to_io_type_map
@@ -24,7 +26,7 @@ from .utils import (
 )
 
 
-def _maybe_get_fqn(node: Node, gm: GraphModule) -> str | None:
+def _maybe_get_fqn(node: Node, gm: GraphModule) -> Optional[str]:
     fqn = None
     if hasattr(gm, "_node_name_to_scope"):
         # fqn on observers is not present, because they do not
@@ -53,7 +55,7 @@ def _insert_logger_after_node(
     results_type: str,
     index_within_arg: int,
     index_of_arg: int,
-    fqn: str | None,
+    fqn: Optional[str],
 ) -> Node:
     """
     Given a starting graph of
@@ -91,8 +93,8 @@ def _insert_logger_after_node(
 
 def add_loggers_to_model(
     gm: GraphModule,
-    node_to_instrument_inputs_to_ref_node_name: dict[Node, tuple[str, str]],
-    node_to_instrument_outputs_to_ref_node_name: dict[Node, tuple[str, str]],
+    node_to_instrument_inputs_to_ref_node_name: Dict[Node, Tuple[str, str]],
+    node_to_instrument_outputs_to_ref_node_name: Dict[Node, Tuple[str, str]],
     logger_cls: Callable,
     model_name: str,
 ) -> GraphModule:
@@ -103,7 +105,7 @@ def add_loggers_to_model(
     """
 
     new_graph = Graph()
-    env: dict[str, Any] = {}
+    env: Dict[str, Any] = {}
 
     def load_arg(a):
         return map_arg(a, lambda node: env[node.name])
@@ -203,8 +205,8 @@ def _insert_quantize_per_tensor_node(
     node_a: Node,
     gm_b: GraphModule,
     graph_c: Graph,
-    scale: torch.Tensor | float,
-    zero_point: torch.Tensor | int,
+    scale: Union[torch.Tensor, float],
+    zero_point: Union[torch.Tensor, int],
     dtype_cast_name: str,
 ) -> Node:
     # copy scale
@@ -234,14 +236,14 @@ def _insert_quantize_per_tensor_node(
 def _insert_dtype_cast_after_node(
     node_a: Node,
     node_c: Node,
-    prev_node_c: Node | list[Node],
+    prev_node_c: Union[Node, List[Node]],
     gm_a: GraphModule,
     gm_b: GraphModule,
     graph_c: Graph,
     node_name_prefix: str,
     logger_cls: Callable,
-    node_type_to_io_type_map: dict[str, set[NSNodeTargetType]],
-) -> Node | list[Node]:
+    node_type_to_io_type_map: Dict[str, Set[NSNodeTargetType]],
+) -> Union[Node, List[Node]]:
     """
     Given a starting graph C (derived from graph B) of
 
@@ -526,8 +528,8 @@ def _can_insert_copy_of_subgraph_a(
 
 
 def _insert_copy_of_subgraph_a_after_input_node_c(
-    input_node_c: Node | list[Node],
-    input_node_c_2: Node | list[Node] | None,
+    input_node_c: Union[Node, List[Node]],
+    input_node_c_2: Union[Node, Optional[List[Node]]],
     subgraph_a: NSSubgraph,
     gm_a: GraphModule,
     gm_b: GraphModule,
@@ -570,8 +572,8 @@ def _insert_copy_of_subgraph_a_after_input_node_c(
 
 
 def _insert_copy_of_node_a_after_input_node_c(
-    input_node_c: Node | list[Node],
-    input_node_c_2: Node | list[Node] | None,
+    input_node_c: Union[Node, List[Node]],
+    input_node_c_2: Union[Node, Optional[List[Node]]],
     node_a: Node,
     gm_a: GraphModule,
     gm_b: GraphModule,
@@ -718,10 +720,10 @@ def create_a_shadows_b(
     gm_a: GraphModule,
     name_b: str,
     gm_b: GraphModule,
-    matched_subgraph_pairs: dict[str, tuple[NSSubgraph, NSSubgraph]],
+    matched_subgraph_pairs: Dict[str, Tuple[NSSubgraph, NSSubgraph]],
     logger_cls: Callable,
     should_log_inputs: bool,
-    node_type_to_io_type_map: dict[str, set[NSNodeTargetType]] | None = None,
+    node_type_to_io_type_map: Optional[Dict[str, Set[NSNodeTargetType]]] = None
 ) -> GraphModule:
     """
     Creates a new GraphModule consisting of the graph of C, with the meaningful
@@ -755,7 +757,7 @@ def create_a_shadows_b(
     # graph_c is the graph created from copying the nodes of graph_b and inserting
     # the shadows with the nodes copied from graph_a
     graph_c = Graph()
-    env_c: dict[str, Any] = {}
+    env_c: Dict[str, Any] = {}
 
     def load_arg(a):
         return map_arg(a, lambda node: env_c[node.name])
@@ -1005,7 +1007,7 @@ def create_a_shadows_b(
                             index_of_arg=0,
                             fqn=fqn_base_a,
                         )
-                        input_logger: Node | list[Node] = dtype_cast_node
+                        input_logger: Union[Node, List[Node]] = dtype_cast_node
                     else:
                         if not isinstance(dtype_cast_node, list):
                             raise AssertionError(

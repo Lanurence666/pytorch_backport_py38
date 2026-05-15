@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import builtins
 import functools
 import logging
 import math
 import operator
-from collections.abc import Callable
+
 from dataclasses import dataclass
-from typing import Any, overload, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, List, Mapping, Optional, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union, cast, overload
 
 import sympy
 
@@ -67,7 +69,7 @@ try:
         if not z3.is_expr(e):
             raise AssertionError(f"unsupported expression type: {e}")
 
-        def get_args_str(e: z3.ExprRef) -> list[str]:
+        def get_args_str(e: z3.ExprRef) -> List[str]:
             return [z3str(e.arg(i)) for i in range(e.num_args())]
 
         # First, we simplify the given expression.
@@ -94,7 +96,7 @@ try:
             # Collect the arguments of chains of ADD and MUL.
             # This is safe, since they are associative.
 
-            def collect_str_args(e: z3.ExprRef) -> list[str]:
+            def collect_str_args(e: z3.ExprRef) -> List[str]:
                 if not (z3.is_app(e) and e.decl().kind() == kind):
                     return [z3str(e)]
                 else:
@@ -154,7 +156,7 @@ try:
     # We assume that integers are 64 bit.
     # If all args are boolean, then use the boolean bitwise op implementation instead, if provided.
     def _bitwise_op(
-        bitwise_func: Callable[..., Any], bool_func: Callable[..., Any] | None
+        bitwise_func: Optional[Callable[..., Any], bool_func: Callable[..., Any]]
     ) -> Callable[..., Any]:
         @functools.wraps(bitwise_func)
         def wrapper(self: "_Z3Ops", *args: z3.ExprRef) -> Any:
@@ -365,13 +367,13 @@ try:
             super().__init__(module, garbage_collect_values=True)
 
         def placeholder(
-            self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
+            self, target: Target, args: Tuple[Argument, ...], kwargs: Dict[str, Any]
         ) -> Any:
             symbol = fx_traceback.get_current_meta()["symbol"]
             return self.validator.z3var(symbol)
 
         def call_function(
-            self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
+            self, target: Target, args: Tuple[Argument, ...], kwargs: Dict[str, Any]
         ) -> Any:
             if target is not torch._assert:
                 # Lift and runs the node target function
@@ -400,7 +402,7 @@ try:
             self._validator = validator
             self._ops = _Z3Ops(self._validator)
 
-        def constant(self, value: int | float | bool, dtype: torch.dtype) -> z3.ExprRef:
+        def constant(self, value: Union[Union[int, float], bool], dtype: torch.dtype) -> z3.ExprRef:
             # TODO: Probably OK to relax this and allow lower precision
             if dtype is torch.int64:
                 return z3.IntVal(int(value))
@@ -500,21 +502,21 @@ try:
             log.debug("new instance")
 
             # Mapping of SymPy symbols to Z3 variables.
-            self.symbols: dict[sympy.Symbol, z3.ExprRef] = {}
+            self.symbols: Dict[sympy.Symbol, z3.ExprRef] = {}
 
             # Set of source Z3 expressions.
             # They represent the generated guards without any kind of
             # simplification or transformation.
-            self._source_exprs: set[z3.BoolRef] = set()
+            self._source_exprs: Set[z3.BoolRef] = set()
 
             # Set of target Z3 expressions.
             # They represent the actual checked guards at runtime. They might
             # be simplified or transformed versions of the source guards.
-            self._target_exprs: set[z3.BoolRef] = set()
+            self._target_exprs: Set[z3.BoolRef] = set()
 
             # Set of Z3 expressions representing assertions over both the
             # source and target expressions.
-            self._assertions: set[z3.BoolRef] = set()
+            self._assertions: Set[z3.BoolRef] = set()
 
         # Retrieves the corresponding Z3 variable.
         def z3var(self, symbol: sympy.Symbol) -> z3.ExprRef:
@@ -573,7 +575,7 @@ try:
                 log.debug("add target guard: %s", z3str(z3expr))
             self._target_exprs.add(z3expr)
 
-        def add_assertion(self, e: z3.BoolRef | sympy.Basic) -> None:
+        def add_assertion(self, e: Union[z3.BoolRef, sympy.Basic]) -> None:
             if isinstance(e, sympy.Basic):
                 self._check_freesymbols(e)
                 ref = self.to_z3_boolean_expr(e)
@@ -802,8 +804,8 @@ def bisect(shape_env: "ShapeEnv") -> None:
     ) -> FakeTensorMeta: ...
 
     def new_with_shape_env(
-        shape_env: ShapeEnv, fake: int | torch.SymInt | torch.SymFloat | FakeTensorMeta
-    ) -> int | torch.SymInt | torch.SymFloat | FakeTensorMeta:
+        shape_env: Union[ShapeEnv, fake: int, torch.SymInt, torch.SymFloat, FakeTensorMeta]
+    ) -> Union[int, torch.SymInt, torch.SymFloat, FakeTensorMeta]:
         if isinstance(fake, int):
             return fake
         if isinstance(fake, torch.SymInt):
@@ -821,8 +823,8 @@ def bisect(shape_env: "ShapeEnv") -> None:
 
     # Checks whether the given shape_env fails when produce_guards is called.
     def check_shapeenv_fails(
-        shape_env: ShapeEnv, tracked_fakes: list["TrackedFake"] | None
-    ) -> ValidationException | None:
+        shape_env: Optional[ShapeEnv, tracked_fakes: List["TrackedFake"]]
+    ) -> Optional[ValidationException]:
         if tracked_fakes is None:
             raise AssertionError("tracked_fakes is None")
         try:
@@ -841,7 +843,7 @@ def bisect(shape_env: "ShapeEnv") -> None:
 
     # Checks whether the ShapeEnv reconstructed by replaying the events until
     # node is created fails when produce_guards is called.
-    def check_node_fails(node: torch.fx.Node) -> ValidationException | None:
+    def check_node_fails(node: torch.fx.Node) -> Optional[ValidationException]:
         number = node.meta[SHAPEENV_EVENT_KEY]
         # Reconstruct shape_env until the event at event_number.
         shape_env = replay_shape_env_events(events[: number + 1])

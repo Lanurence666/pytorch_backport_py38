@@ -10,7 +10,7 @@ import subprocess
 import sys
 import warnings
 from enum import Enum
-from functools import cache
+from functools import lru_cache
 from logging import info
 from typing import Any, TYPE_CHECKING
 from urllib.request import Request, urlopen
@@ -121,7 +121,7 @@ def parse_args() -> Any:
     return parser.parse_args()
 
 
-@cache
+@lru_cache(maxsize=None)
 def get_pr_info(pr_number: int) -> dict[str, Any]:
     """
     Dynamically get PR information

@@ -1,3 +1,4 @@
+from typing import Set, Type
 # mypy: ignore-errors
 
 """Define analogs of numpy dtypes supported by pytorch.

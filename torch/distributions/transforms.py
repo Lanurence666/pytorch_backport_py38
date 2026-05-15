@@ -1,7 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import math
 import operator
+import weakref
 from collections.abc import Sequence
 
 import torch
@@ -18,6 +21,7 @@ from torch.distributions.utils import (
 )
 from torch.nn.functional import pad, softplus
 from torch.types import _Number
+from typing import List, Optional, Sequence, Type, Union
 
 
 __all__ = [
@@ -95,7 +99,7 @@ class Transform:
 
     def __init__(self, cache_size: int = 0) -> None:
         self._cache_size = cache_size
-        self._inv: Transform | None = None
+        self._inv: Optional[weakref.ReferenceType[Transform]] = None
         if cache_size == 0:
             pass  # default behavior
         elif cache_size == 1:
@@ -121,10 +125,12 @@ class Transform:
         Returns the inverse :class:`Transform` of this transform.
         This should satisfy ``t.inv.inv is t``.
         """
-        inv = self._inv
+        inv = None
+        if self._inv is not None:
+            inv = self._inv()
         if inv is None:
             inv = _InverseTransform(self)
-            self._inv = inv
+            self._inv = weakref.ref(inv)
         return inv
 
     @property
@@ -219,7 +225,7 @@ class _InverseTransform(Transform):
 
     def __init__(self, transform: Transform) -> None:
         super().__init__(cache_size=transform._cache_size)
-        self._inv: Transform | None = transform
+        self._inv: Transform = transform  # type: ignore[assignment]
 
     @constraints.dependent_property(is_discrete=False)
     # pyrefly: ignore [bad-override]
@@ -249,7 +255,7 @@ class _InverseTransform(Transform):
 
     @property
     def inv(self) -> Transform:
-        return self._inv  # pyrefly: ignore[bad-return]
+        return self._inv
 
     def with_cache(self, cache_size=1):
         if self._inv is None:
@@ -277,10 +283,10 @@ class _InverseTransform(Transform):
         return -self._inv.log_abs_det_jacobian(y, x)
 
     def forward_shape(self, shape):
-        return self._inv.inverse_shape(shape)  # pyrefly: ignore[missing-attribute]
+        return self._inv.inverse_shape(shape)
 
     def inverse_shape(self, shape):
-        return self._inv.forward_shape(shape)  # pyrefly: ignore[missing-attribute]
+        return self._inv.forward_shape(shape)
 
 
 class ComposeTransform(Transform):
@@ -294,7 +300,7 @@ class ComposeTransform(Transform):
             the latest single value is cached. Only 0 and 1 are supported.
     """
 
-    def __init__(self, parts: list[Transform], cache_size: int = 0) -> None:
+    def __init__(self, parts: List[Transform], cache_size: int = 0) -> None:
         if cache_size:
             parts = [part.with_cache(cache_size) for part in parts]
         super().__init__(cache_size=cache_size)
@@ -356,11 +362,13 @@ class ComposeTransform(Transform):
 
     @property
     def inv(self) -> Transform:
-        inv = self._inv
+        inv = None
+        if self._inv is not None:
+            inv = self._inv()
         if inv is None:
             inv = ComposeTransform([p.inv for p in reversed(self.parts)])
-            self._inv = inv
-            inv._inv = self
+            self._inv = weakref.ref(inv)
+            inv._inv = weakref.ref(self)
         return inv
 
     def with_cache(self, cache_size=1):
@@ -765,8 +773,8 @@ class AffineTransform(Transform):
 
     def __init__(
         self,
-        loc: Tensor | float,
-        scale: Tensor | float,
+        loc: Union[Tensor, float],
+        scale: Union[Tensor, float],
         event_dim: int = 0,
         cache_size: int = 0,
     ) -> None:
@@ -821,7 +829,7 @@ class AffineTransform(Transform):
         return True
 
     @property
-    def sign(self) -> Tensor | int:  # type: ignore[override]
+    def sign(self) -> Union[Tensor, int]:  # type: ignore[override]
         if isinstance(self.scale, _Number):
             return 1 if float(self.scale) > 0 else -1 if float(self.scale) < 0 else 0
         return self.scale.sign()
@@ -1088,13 +1096,13 @@ class CatTransform(Transform):
        y = t(x)
     """
 
-    transforms: list[Transform]
+    transforms: List[Transform]
 
     def __init__(
         self,
         tseq: Sequence[Transform],
         dim: int = 0,
-        lengths: Sequence[int] | None = None,
+        lengths: Optional[Sequence[int]] = None,
         cache_size: int = 0,
     ) -> None:
         if not all(isinstance(t, Transform) for t in tseq):
@@ -1228,7 +1236,7 @@ class StackTransform(Transform):
        y = t(x)
     """
 
-    transforms: list[Transform]
+    transforms: List[Transform]
 
     def __init__(
         self, tseq: Sequence[Transform], dim: int = 0, cache_size: int = 0
@@ -1344,7 +1352,7 @@ class CumulativeDistributionTransform(Transform):
         self.distribution = distribution
 
     @property
-    def domain(self) -> constraints.Constraint | None:  # type: ignore[override]
+    def domain(self) -> Optional[constraints.Constraint]:  # type: ignore[override]
         return self.distribution.support
 
     def _call(self, x):

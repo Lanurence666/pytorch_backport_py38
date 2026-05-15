@@ -1,9 +1,13 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
-from collections.abc import Callable
+
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type
+from typing_extensions import NamedTuple
+
 
 import torch
 import torch.nn as nn
@@ -30,7 +34,7 @@ class TracingConfig:
     """
 
     tracer: torch.fx.Tracer = field(default_factory=torch.fx.Tracer)
-    concrete_args: dict[str, Any] | None = None
+    concrete_args: Optional[Dict[str, Any]]= None
 
 
 class _ParamUsageInfo(NamedTuple):
@@ -53,7 +57,7 @@ class _ParamUsageInfo(NamedTuple):
     """
 
     module: nn.Module
-    named_params: list[tuple[str, nn.Parameter]]
+    named_params: List[Tuple[str, nn.Parameter]]
 
 
 class _ExecutionInfo:
@@ -80,17 +84,17 @@ class _ExecutionInfo:
 
     def __init__(self, root_module: nn.Module) -> None:
         self.curr_module: nn.Module = root_module
-        self.module_forward_order: list[nn.Module] = [root_module]
-        self.module_to_param_usage_infos: dict[nn.Module, list[_ParamUsageInfo]] = {
+        self.module_forward_order: List[nn.Module] = [root_module]
+        self.module_to_param_usage_infos: Dict[nn.Module, List[_ParamUsageInfo]] = {
             root_module: []
         }
-        self.param_forward_order: list[nn.Parameter] = []
-        self.visited_params: set[nn.Parameter] = set()
+        self.param_forward_order: List[nn.Parameter] = []
+        self.visited_params: Set[nn.Parameter] = set()
 
 
 class _ExecOrderTracer:
     def __init__(self) -> None:
-        self.exec_info: _ExecutionInfo | None = None
+        self.exec_info: Optional[_ExecutionInfo] = None
 
     @contextmanager
     def patch_tracer(self, tracer: torch.fx.Tracer, root_module: nn.Module):
@@ -120,8 +124,8 @@ class _ExecOrderTracer:
         # Below are the expected arguments to `call_module()`
         module: nn.Module,
         forward: Callable,
-        args: tuple[Any, ...],
-        kwargs: dict[str, Any],
+        args: Tuple[Any, ...],
+        kwargs: Dict[str, Any],
     ) -> Any:
         """
         Overrides ``call_module`` to save execution information to
@@ -162,15 +166,15 @@ class _ExecOrderTracer:
         self,
         create_proxy: Callable,
         exec_info: _ExecutionInfo,
-        fqn_to_param: dict[str, nn.Parameter],
+        fqn_to_param: Dict[str, nn.Parameter],
         # Below are the expected arguments to `create_proxy()`
         kind: str,
         target: torch.fx.node.Target,
-        args: tuple[Any, ...],
-        kwargs: dict[str, Any],
-        name: str | None = None,
-        type_expr: Any | None = None,
-        proxy_factory_fn: Callable[[torch.fx.Node], torch.fx.Proxy] | None = None,
+        args: Tuple[Any, ...],
+        kwargs: Dict[str, Any],
+        name: Optional[str]= None,
+        type_expr: Optional[Any]= None,
+        proxy_factory_fn: Optional[Callable[[torch.fx.Node], torch.fx.Proxy]]= None,
     ) -> torch.fx.Proxy:
         """
         Overrides ``create_proxy`` to save execution information to
@@ -212,7 +216,7 @@ class _ExecOrderTracer:
         curr_module = exec_info.curr_module
         if kind in ("call_function", "call_method"):
             if args is not None:
-                named_params: list[tuple[str, nn.Parameter]] = []
+                named_params: List[Tuple[str, nn.Parameter]] = []
                 for arg in args:
                     if (
                         isinstance(arg, torch.fx.Proxy)

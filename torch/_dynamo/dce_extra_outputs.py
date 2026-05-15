@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Dict, List, Set, Tuple
 """
 DCE pass for unused extra outputs in HOP subgraphs.
 
@@ -44,8 +46,8 @@ def dce_hop_extra_outputs(gm: torch.fx.GraphModule) -> bool:
         True if any modifications were made, False otherwise
     """
     # Collect all subgraph usages: subgraph_id -> list of (parent_gm, subgraph_name, hop_node)
-    subgraph_id_to_callers: dict[
-        int, list[tuple[torch.fx.GraphModule, str, torch.fx.Node]]
+    subgraph_id_to_callers: Dict[
+        int, List[Tuple[torch.fx.GraphModule, str, torch.fx.Node]]
     ] = collections.defaultdict(list)
     _collect_all_subgraph_usages(gm, subgraph_id_to_callers)
 
@@ -67,7 +69,7 @@ def dce_hop_extra_outputs(gm: torch.fx.GraphModule) -> bool:
             continue
 
         num_outputs = len(output_args)
-        used_indices: set[int] = set()
+        used_indices: Set[int] = set()
 
         # Check which outputs are used by any caller
         for idx in range(num_outputs):
@@ -84,8 +86,8 @@ def dce_hop_extra_outputs(gm: torch.fx.GraphModule) -> bool:
 
 def _collect_all_subgraph_usages(
     gm: torch.fx.GraphModule,
-    subgraph_id_to_callers: dict[
-        int, list[tuple[torch.fx.GraphModule, str, torch.fx.Node]]
+    subgraph_id_to_callers: Dict[
+        int, List[Tuple[torch.fx.GraphModule, str, torch.fx.Node]]
     ],
 ) -> None:
     """Recursively collect all HOP usages across the graph tree."""
@@ -97,10 +99,7 @@ def _collect_all_subgraph_usages(
                 and subgraph_attr.op == "get_attr"
             ):
                 subgraph_name = subgraph_attr.target
-                if not isinstance(subgraph_name, str):
-                    raise AssertionError(
-                        f"Expected subgraph_name to be str, got {type(subgraph_name)}"
-                    )
+                assert isinstance(subgraph_name, str)
                 subgraph = getattr(gm, subgraph_name, None)
                 if isinstance(subgraph, torch.fx.GraphModule):
                     subgraph_id = id(subgraph)
@@ -112,7 +111,7 @@ def _collect_all_subgraph_usages(
 
 def _is_output_used(
     output_idx: int,
-    callers: list[tuple[torch.fx.GraphModule, str, torch.fx.Node]],
+    callers: List[Tuple[torch.fx.GraphModule, str, torch.fx.Node]],
 ) -> bool:
     """Check if output_idx is used by ANY caller (has a getitem with users)."""
     for _parent_gm, _subgraph_name, hop_node in callers:
@@ -125,8 +124,8 @@ def _is_output_used(
 
 def _dce_subgraph(
     subgraph: torch.fx.GraphModule,
-    callers: list[tuple[torch.fx.GraphModule, str, torch.fx.Node]],
-    used_indices: set[int],
+    callers: List[Tuple[torch.fx.GraphModule, str, torch.fx.Node]],
+    used_indices: Set[int],
 ) -> bool:
     """
     DCE a subgraph by removing unused output indices.
@@ -157,7 +156,7 @@ def _dce_subgraph(
         return False
 
     # Build mapping from old indices to new indices
-    old_to_new: dict[int, int] = {}
+    old_to_new: Dict[int, int] = {}
     new_outputs = []
     new_idx = 0
 
@@ -179,16 +178,10 @@ def _dce_subgraph(
         for user in list(hop_node.users):
             if user.op == "call_function" and user.target == operator.getitem:
                 old_idx = user.args[1]
-                if not isinstance(old_idx, int):
-                    raise AssertionError(
-                        f"Expected getitem index to be int, got {type(old_idx)}"
-                    )
+                assert isinstance(old_idx, int)
 
                 if old_idx not in old_to_new:
-                    if len(list(user.users)) != 0:
-                        raise AssertionError(
-                            f"Expected unused getitem node at index {old_idx} to have no users"
-                        )
+                    assert len(list(user.users)) == 0
                     parent_gm.graph.erase_node(user)
                     continue
 
@@ -206,10 +199,7 @@ def _dce_subgraph(
         # Update example_value metadata on hop_node
         if "example_value" in hop_node.meta:
             old_example = hop_node.meta["example_value"]
-            if not isinstance(old_example, (tuple, list)):
-                raise AssertionError(
-                    f"Expected example_value to be tuple or list, got {type(old_example)}"
-                )
+            assert isinstance(old_example, (tuple, list))
             new_example = tuple(
                 old_example[old_idx]
                 for old_idx in range(len(old_outputs))

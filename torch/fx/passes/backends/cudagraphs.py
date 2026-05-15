@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import operator
-from collections.abc import Mapping, Sequence
-from typing import Any
+
+from typing import Any, Dict, Mapping, Sequence
 
 import torch
 
@@ -29,7 +31,7 @@ class CudaGraphsSupport(OperatorSupport):
 
         found_not_cuda = False
 
-        def meta_fk(meta: dict[str, Any]) -> torch.Tensor:
+        def meta_fk(meta: Dict[str, Any]) -> torch.Tensor:
             return meta["val"] if "val" in meta else meta["fake_result"]
 
         def find_not_cuda(t: object) -> None:

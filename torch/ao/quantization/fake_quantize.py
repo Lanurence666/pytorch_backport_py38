@@ -1,10 +1,11 @@
+from __future__ import annotations
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
 """Implements modules  used to perform fake quantization."""
 
 import re
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Set, Tuple
 
 import torch
 from torch.ao.quantization.observer import (
@@ -408,7 +409,7 @@ class FusedMovingAvgObsFakeQuantize(FakeQuantize):
         )
 
     @torch.jit.export
-    def calculate_qparams(self) -> tuple[torch.Tensor, torch.Tensor]:  # type: ignore[override]
+    def calculate_qparams(self) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore[override]
         return self.activation_post_process.calculate_qparams()
 
     @torch.jit.export

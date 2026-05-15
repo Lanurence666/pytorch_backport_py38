@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 This module implements TorchDynamo's backend registry system for managing compiler backends.
 
@@ -60,9 +62,14 @@ optimized_model = torch.compile(model, backend="my_compiler")
 
 import functools
 import logging
-from collections.abc import Callable, Sequence
-from importlib.metadata import EntryPoint
-from typing import Any, Protocol
+
+try:
+    from importlib.metadata import EntryPoint
+except ImportError:
+    from importlib_metadata import EntryPoint
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, Union
+from typing_extensions import Protocol
+
 
 import torch
 from torch import fx
@@ -72,19 +79,19 @@ log = logging.getLogger(__name__)
 
 
 class CompiledFn(Protocol):
-    def __call__(self, *args: torch.Tensor) -> tuple[torch.Tensor, ...]: ...
+    def __call__(self, *args: torch.Tensor) -> Tuple[torch.Tensor, ...]: ...
 
 
-CompilerFn = Callable[[fx.GraphModule, list[torch.Tensor]], CompiledFn]
+CompilerFn = Callable[[fx.GraphModule, List[torch.Tensor]], CompiledFn]
 
-_BACKENDS: dict[str, EntryPoint | None] = {}
-_COMPILER_FNS: dict[str, CompilerFn] = {}
-_default_backend: str | CompilerFn = "inductor"
+_BACKENDS: Union[Dict[str, EntryPoint, None]]= {}
+_COMPILER_FNS: Dict[str, CompilerFn] = {}
+_default_backend: Union[str, CompilerFn]= "inductor"
 
 
 def register_backend(
-    compiler_fn: CompilerFn | None = None,
-    name: str | None = None,
+    compiler_fn: Optional[CompilerFn]= None,
+    name: Optional[str]= None,
     tags: Sequence[str] = (),
 ) -> Callable[..., Any]:
     """
@@ -101,11 +108,9 @@ def register_backend(
     if compiler_fn is None:
         # @register_backend(name="") syntax
         return functools.partial(register_backend, name=name, tags=tags)  # type: ignore[return-value]
-    if not callable(compiler_fn):
-        raise AssertionError(f"compiler_fn must be callable, got {type(compiler_fn)}")
+    assert callable(compiler_fn)
     name = name or compiler_fn.__name__
-    if name in _COMPILER_FNS:
-        raise AssertionError(f"duplicate name: {name}")
+    assert name not in _COMPILER_FNS, f"duplicate name: {name}"
     if compiler_fn not in _BACKENDS:
         _BACKENDS[name] = None
     _COMPILER_FNS[name] = compiler_fn
@@ -119,7 +124,7 @@ register_experimental_backend = functools.partial(
 )
 
 
-def lookup_backend(compiler_fn: str | CompilerFn) -> CompilerFn:
+def lookup_backend(compiler_fn: Union[str, CompilerFn]) -> CompilerFn:
     """Expand backend strings to functions"""
     if isinstance(compiler_fn, str):
         if compiler_fn not in _BACKENDS:
@@ -138,7 +143,7 @@ def lookup_backend(compiler_fn: str | CompilerFn) -> CompilerFn:
 
 
 # NOTE: can't type this due to public api mismatch; follow up with dev team
-def list_backends(exclude_tags=("debug", "experimental")) -> list[str]:  # type: ignore[no-untyped-def]
+def list_backends(exclude_tags=("debug", "experimental")) -> List[str]:  # type: ignore[no-untyped-def]
     """
     Return valid strings that can be passed to:
 
@@ -156,7 +161,7 @@ def list_backends(exclude_tags=("debug", "experimental")) -> list[str]:  # type:
     return sorted(backends)
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _lazy_import() -> None:
     from .. import backends
     from ..utils import import_submodule
@@ -165,16 +170,18 @@ def _lazy_import() -> None:
 
     from ..repro.after_dynamo import dynamo_minifier_backend
 
-    if dynamo_minifier_backend is None:
-        raise AssertionError("dynamo_minifier_backend failed to load")
+    assert dynamo_minifier_backend is not None
 
     _discover_entrypoint_backends()
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _discover_entrypoint_backends() -> None:
     # importing here so it will pick up the mocked version in test_backends.py
-    from importlib.metadata import entry_points
+    try:
+        from importlib.metadata import entry_points
+    except ImportError:
+        from importlib_metadata import entry_points
 
     group_name = "torch_dynamo_backends"
     eps = entry_points(group=group_name)
@@ -210,7 +217,7 @@ def _is_registered_backend(compiler_fn: CompilerFn) -> bool:
     return False
 
 
-def set_default_backend(backend: str | CompilerFn | None) -> None:
+def set_default_backend(backend: Optional[Union[str, CompilerFn]]) -> None:
     """Set the default backend used by torch.compile when no backend is explicitly specified.
 
     Pass None to reset to the default ("inductor").
@@ -224,6 +231,6 @@ def set_default_backend(backend: str | CompilerFn | None) -> None:
     _default_backend = backend
 
 
-def get_default_backend() -> str | CompilerFn:
+def get_default_backend() -> Union[str, CompilerFn]:
     """Return the current default backend for torch.compile."""
     return _default_backend

@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs, disable-error-code="attr-defined, valid-type"
+from __future__ import annotations
+
 import functools
 import logging
 import random
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, List, Set, Tuple, Type
 
 import torch
 from torch._inductor import config
@@ -95,7 +97,7 @@ class CKTileGemmOperation:
         return asdict(self).items()
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def ops():
     """
     Generate the supported instance dataclasses
@@ -297,7 +299,7 @@ class CKTileGemmTemplate(CKTileTemplate):
 
     def __init__(
         self,
-        input_nodes: list[Buffer],
+        input_nodes: List[Buffer],
         layout: Layout,
     ) -> None:
         super().__init__(
@@ -918,7 +920,7 @@ class CKTileGemmTemplate(CKTileTemplate):
                     kBatch=k_batch,
                 )
 
-    def k_batch_choices(self, op: "CKTileGemmOperation") -> tuple[int, ...]:
+    def k_batch_choices(self, op: "CKTileGemmOperation") -> Tuple[int, ...]:
         """
         Returns a list of k_batch choices for the template.
         """
@@ -966,10 +968,10 @@ class CKTileGemmTemplate(CKTileTemplate):
 
         return M, N, K, LDA, LDB, LDC
 
-    def get_runtime_arg_info(self) -> list[ArgInfo]:
+    def get_runtime_arg_info(self) -> List[ArgInfo]:
         return [ArgInfo("kBatch", "int32_t")]
 
-    def get_runtime_arg_values(self, **kwargs: Any) -> list[Any]:
+    def get_runtime_arg_values(self, **kwargs: Any) -> List[Any]:
         # maybe_append_choice kwarg for k_batch must match the name of the argument
         arg_names = OrderedSet([arg.name for arg in self.get_runtime_arg_info()])
         if not arg_names.issubset(kwargs):

@@ -7,6 +7,7 @@ from collections.abc import Mapping, MutableMapping
 from weakref import ref
 
 from torch import Tensor
+from typing import Dict, Mapping, MutableMapping, Type
 
 
 WeakRef = ref

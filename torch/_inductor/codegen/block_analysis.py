@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import collections
 import functools
 import textwrap
@@ -10,6 +12,7 @@ from torch.utils._sympy.functions import FloorDiv, ModularIndexing
 
 from ..utils import sympy_dot, sympy_subs
 from ..virtualized import V
+from typing import List, Optional, Set, Tuple
 
 
 class BlockPatternMatcher:
@@ -63,7 +66,7 @@ class BlockPatternMatcher:
         return expr_out
 
     @staticmethod
-    def get_slice_numels(dims: list[Expr]) -> list[Expr]:
+    def get_slice_numels(dims: List[Expr]) -> List[Expr]:
         """
         Compute the cumulative size of each dimension's slice.
         This proceeds from the last dim up to the second.
@@ -90,7 +93,7 @@ class BlockPatternMatcher:
         index_var: Symbol,
         numel: Expr,
         num_dims: int,
-    ) -> tuple[list[Expr], list[Expr], list[Expr]] | None:
+    ) -> Optional[Tuple[List[Expr], List[Expr], List[Expr]]]:
         """
         Matches modular indexing expressions, converting them to implied block dimensions and strides.
         See triton.py for more information.
@@ -109,10 +112,10 @@ class BlockPatternMatcher:
         wild_signed_int = functools.partial(
             cls._indexing_wild_signed_int, exclude=[index_var]
         )
-        dims: list[Expr] = [
+        dims: List[Expr] = [
             wild_unsigned_int(f"dim_mod{idx}") for idx in range(num_dims)
         ]
-        strides: list[Expr] = [
+        strides: List[Expr] = [
             wild_signed_int(f"stride_mod{idx}") for idx in range(num_dims)
         ]
 
@@ -204,7 +207,7 @@ class BlockPatternMatcher:
         cls,
         index: Expr,
         index_var: Symbol,
-    ) -> Expr | None:
+    ) -> Optional[Expr]:
         """
         Matches simple expressions of the form stride * index, returning the
         stride.

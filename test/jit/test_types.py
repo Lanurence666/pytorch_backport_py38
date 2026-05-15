@@ -1,6 +1,7 @@
 # Owner(s): ["oncall: jit"]
 # ruff: noqa: F841
 
+from __future__ import annotations
 import inspect
 import os
 import sys

@@ -1,10 +1,10 @@
+from __future__ import annotations
 """ONNX operators as native torch.fx operators.
 
 This module provides a set of functions to create ONNX operators in the FX graph
 which are exportable to ONNX.
 """
 
-from __future__ import annotations
 
 
 __all__ = [
@@ -16,14 +16,14 @@ __all__ = [
 ]
 
 
-from typing import TYPE_CHECKING
+from typing import Callable, Dict, Optional, Sequence, TYPE_CHECKING, Tuple, Union
 
 import torch
 from torch.onnx.ops import _impl, _symbolic_impl
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable
 
 
 # https://github.com/onnx/onnx/blob/f542e1f06699ea7e1db5f62af53355b64338c723/onnx/onnx.proto#L597
@@ -54,12 +54,12 @@ _TORCH_DTYPE_TO_ONNX_DTYPE = {
 }
 
 
-def aten_decompositions() -> dict[torch._ops.OpOverload, Callable]:
+def aten_decompositions() -> Dict[torch._ops.OpOverload, Callable]:
     """Return the ONNX to ATen decomp table."""
     return _impl.ONNX_ATEN_DECOMP_TABLE
 
 
-def _parse_domain_op_type(domain_op: str) -> tuple[str, str]:
+def _parse_domain_op_type(domain_op: str) -> Tuple[str, str]:
     split = domain_op.split("::", 1)
     if len(split) == 1:
         domain = ""
@@ -73,8 +73,8 @@ def _parse_domain_op_type(domain_op: str) -> tuple[str, str]:
 def symbolic(
     domain_op: str,
     /,
-    inputs: Sequence[torch.Tensor | None],
-    attrs: dict[
+    inputs: Sequence[Optional[torch.Tensor]],
+    attrs: Dict[
         str,
         int
         | float
@@ -87,10 +87,10 @@ def symbolic(
     ]
     | None = None,
     *,
-    dtype: torch.dtype | int,
-    shape: Sequence[int | torch.SymInt],
-    version: int | None = None,
-    metadata_props: dict[str, str] | None = None,
+    dtype: Union[torch.dtype, int],
+    shape: Sequence[Union[int, torch.SymInt]],
+    version: Optional[int] = None,
+    metadata_props: Optional[Dict[str, str]] = None,
 ) -> torch.Tensor:
     """Create a symbolic FX operator to represent an arbitrary ONNX operator.
 
@@ -174,8 +174,8 @@ def symbolic(
 def symbolic_multi_out(
     domain_op: str,
     /,
-    inputs: Sequence[torch.Tensor | None],
-    attrs: dict[
+    inputs: Sequence[Optional[torch.Tensor]],
+    attrs: Dict[
         str,
         int
         | float
@@ -188,10 +188,10 @@ def symbolic_multi_out(
     ]
     | None = None,
     *,
-    dtypes: Sequence[torch.dtype | int],
-    shapes: Sequence[Sequence[int | torch.SymInt]],
-    version: int | None = None,
-    metadata_props: dict[str, str] | None = None,
+    dtypes: Sequence[Union[torch.dtype, int]],
+    shapes: Sequence[Sequence[Union[int, torch.SymInt]]],
+    version: Optional[int] = None,
+    metadata_props: Optional[Dict[str, str]] = None,
 ) -> Sequence[torch.Tensor]:
     """Create a symbolic FX operator to represent an arbitrary ONNX operator with multiple outputs.
 
@@ -283,7 +283,7 @@ def rotary_embedding(
     X: torch.Tensor,
     cos_cache: torch.Tensor,
     sin_cache: torch.Tensor,
-    position_ids: torch.Tensor | None = None,
+    position_ids: Optional[torch.Tensor] = None,
     *,
     interleaved: bool = False,
     num_heads: int = 0,
@@ -349,18 +349,18 @@ def attention(
     Q: torch.Tensor,
     K: torch.Tensor,
     V: torch.Tensor,
-    attn_mask: torch.Tensor | None = None,
-    past_key: torch.Tensor | None = None,
-    past_value: torch.Tensor | None = None,
+    attn_mask: Optional[torch.Tensor] = None,
+    past_key: Optional[torch.Tensor] = None,
+    past_value: Optional[torch.Tensor] = None,
     *,
     is_causal: bool = False,
     kv_num_heads: int = 0,
     q_num_heads: int = 0,
     qk_matmul_output_mode: int = 0,
-    scale: float | None = None,
+    scale: Optional[float] = None,
     softcap: float = 0.0,
-    softmax_precision: int | None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    softmax_precision: Optional[int] = None,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Attention op in ONNX.
 
     https://onnx.ai/onnx/operators/onnx__Attention.html

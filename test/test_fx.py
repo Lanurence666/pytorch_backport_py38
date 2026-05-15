@@ -2,6 +2,7 @@
 # ruff: noqa: F841
 # flake8: noqa: E221
 
+from __future__ import annotations
 import builtins
 import collections
 import contextlib
@@ -4697,11 +4698,6 @@ def run_getitem_target():
 
 class TestOperatorSignatures(JitTestCase):
     def setUp(self):
-        # Don't call super().setUp() — JitTestCase.setUp installs JIT emit
-        # hooks that cause segfaults during process cleanup. Record state
-        # baselines that tearDown checks for.
-        self._prev_torch_function_mode_stack_len = torch._C._len_torch_function_stack()
-        self._prev_torch_function_state = torch._C._get_torch_function_state()
         # Checking for mutable operations while tracing is feature flagged
         # Enable it in testing but not by default
         self.orig_tracer_mutable_flag = (
@@ -5380,11 +5376,6 @@ instantiate_device_type_tests(TestOperatorSignatures, globals())
 @skipIfNoTorchVision
 class TestVisionTracing(JitTestCase):
     def setUp(self):
-        # Don't call super().setUp() — JitTestCase.setUp installs JIT emit
-        # hooks that cause segfaults during process cleanup. Record state
-        # baselines that tearDown checks for.
-        self._prev_torch_function_mode_stack_len = torch._C._len_torch_function_stack()
-        self._prev_torch_function_state = torch._C._get_torch_function_state()
         # Checking for mutable operations while tracing is feature flagged
         # Enable it in testing but not by default
         self.orig_tracer_mutable_flag = (

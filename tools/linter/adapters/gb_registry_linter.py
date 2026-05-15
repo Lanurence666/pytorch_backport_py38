@@ -10,7 +10,7 @@ import random
 import sys
 from enum import Enum
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Dict, List, NamedTuple, Tuple, Union
 
 
 # Patch ast._splitlines_no_ff with caching to avoid O(n²) re-splitting.
@@ -42,18 +42,18 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
-def _is_noqa_suppressed(source_lines: list[str], lineno: int) -> bool:
+def _is_noqa_suppressed(source_lines: List[str], lineno: int) -> bool:
     if lineno <= 0 or lineno > len(source_lines):
         return False
     if source_lines[lineno - 1].rstrip().endswith(f"# noqa: {LINTER_CODE}"):
@@ -75,8 +75,8 @@ def _is_forbidden_raise(node: ast.Raise) -> bool:
 
 def _collect_forbidden_unsupported_raises(
     dynamo_dir: Path,
-) -> list[tuple[Path, int, int]]:
-    forbidden_raises: list[tuple[Path, int, int]] = []
+) -> List[Tuple[Path, int, int]]:
+    forbidden_raises: List[Tuple[Path, int, int]] = []
 
     for py_file in dynamo_dir.rglob("*.py"):
         source = py_file.read_text(encoding="utf-8")
@@ -98,9 +98,9 @@ def _collect_forbidden_unsupported_raises(
 
 def _collect_all_calls(
     dynamo_dir: Path,
-) -> dict[str, list[tuple[dict[str, Any], Path]]]:
+) -> Dict[str, List[Tuple[Dict[str, Any], Path]]]:
     """Return mapping *gb_type → list[(call_info, file_path)]* for all occurrences."""
-    gb_type_calls: dict[str, list[tuple[dict[str, Any], Path]]] = {}
+    gb_type_calls: Dict[str, List[Tuple[Dict[str, Any], Path]]] = {}
 
     for py_file in dynamo_dir.rglob("*.py"):
         for call in find_unimplemented_calls(py_file, dynamo_dir):
@@ -113,8 +113,8 @@ def _collect_all_calls(
 
 
 def _create_registry_entry(
-    gb_type: str, context: str, explanation: str, hints: list[str]
-) -> dict[str, Any]:
+    gb_type: str, context: str, explanation: str, hints: List[str]
+) -> Dict[str, Any]:
     """Create a registry entry with consistent format."""
     return {
         "Gb_type": gb_type,
@@ -126,17 +126,17 @@ def _create_registry_entry(
 
 def _update_registry_with_changes(
     registry: dict,
-    calls: dict[str, tuple[dict[str, Any], Path]],
-    renames: dict[str, str] | None = None,
+    calls: Dict[str, Tuple[Dict[str, Any], Path]],
+    renames: Union[Dict[str, str], None] = None,
 ) -> dict:
     """Calculate what the updated registry should look like."""
     renames = renames or {}
     updated_registry = dict(registry)
 
-    latest_entry: dict[str, Any] = {
+    latest_entry: Dict[str, Any] = {
         entries[0]["Gb_type"]: entries[0] for entries in registry.values()
     }
-    gb_type_to_key: dict[str, str] = {
+    gb_type_to_key: Dict[str, str] = {
         entries[0]["Gb_type"]: key for key, entries in registry.items()
     }
 
@@ -163,7 +163,7 @@ def _update_registry_with_changes(
         del gb_type_to_key[old_gb_type]
 
     # Collect new entries separately to insert them all at once
-    new_entries: list[tuple[str, list[dict[str, Any]]]] = []
+    new_entries: List[Tuple[str, List[Dict[str, Any]]]] = []
 
     for gb_type, (call, file_path) in calls.items():
         if gb_type in latest_entry:
@@ -214,7 +214,7 @@ def _update_registry_with_changes(
     return updated_registry
 
 
-def check_registry_sync(dynamo_dir: Path, registry_path: Path) -> list[LintMessage]:
+def check_registry_sync(dynamo_dir: Path, registry_path: Path) -> List[LintMessage]:
     """Check registry sync and return lint messages."""
     lint_messages = []
 
@@ -282,7 +282,7 @@ def check_registry_sync(dynamo_dir: Path, registry_path: Path) -> list[LintMessa
     registry = load_registry(registry_path)
 
     # Check for duplicate gb_types across different GB IDs in the registry
-    gb_type_to_ids: dict[str, list[str]] = {}
+    gb_type_to_ids: Dict[str, List[str]] = {}
     for gb_id, entries in registry.items():
         gb_type = entries[0]["Gb_type"]
         if gb_type not in gb_type_to_ids:
@@ -314,11 +314,11 @@ def check_registry_sync(dynamo_dir: Path, registry_path: Path) -> list[LintMessa
             )
         return lint_messages
 
-    latest_entry: dict[str, Any] = {
+    latest_entry: Dict[str, Any] = {
         entries[0]["Gb_type"]: entries[0] for entries in registry.values()
     }
 
-    renames: dict[str, str] = {}
+    renames: Dict[str, str] = {}
     remaining_calls = dict(calls)
 
     for gb_type, (call, file_path) in calls.items():

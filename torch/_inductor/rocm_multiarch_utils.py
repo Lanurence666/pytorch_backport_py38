@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 ROCm Multi-Architecture Support Utilities
 Compile LLVM IR to multi-arch bundles that HIP can load automatically.
@@ -10,6 +11,7 @@ import subprocess
 
 import torch
 from torch.utils.cpp_extension import _join_rocm_home, ROCM_HOME
+from typing import Dict, List, Optional
 
 
 log = logging.getLogger(__name__)
@@ -72,7 +74,7 @@ def get_rocm_bundler() -> str:
     return bundler_path
 
 
-def get_rocm_target_archs() -> list[str]:
+def get_rocm_target_archs() -> List[str]:
     env_archs = os.environ.get("PYTORCH_ROCM_ARCH", "").strip()
     if env_archs:
         archs = [arch.strip() for arch in env_archs.replace(";", ",").split(",")]
@@ -259,7 +261,7 @@ def create_multiarch_bundle(code_objects: dict, output_bundle_path: str) -> bool
 
 
 def compile_multiarch_bundle_from_llvm_ir(
-    llvm_ir_path: str, output_bundle_path: str, target_archs: list[str] | None = None
+    llvm_ir_path: Optional[str, output_bundle_path: str, target_archs: List[str]]= None
 ) -> bool:
     """
     Complete workflow: LLVM IR → multiple code objects → bundle.

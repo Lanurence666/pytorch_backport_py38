@@ -1,9 +1,11 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 import contextlib
 import logging
 import warnings
-from collections.abc import Sequence
-from typing import cast
+
+from typing import Dict, List, Optional, Sequence, Tuple, Type, cast
 
 import torch
 import torch.distributed as dist
@@ -62,8 +64,8 @@ logger.setLevel = _setLevel_and_reinit  # type: ignore[method-assign]
 
 def as_strided_handler(
     op_call: torch._ops.OpOverload,
-    args: tuple[object, ...],
-    kwargs: dict[str, object],
+    args: Tuple[object, ...],
+    kwargs: Dict[str, object],
 ):
     args, kwargs = fill_defaults(op_call._schema, args, kwargs)
     if kwargs:
@@ -80,8 +82,8 @@ def as_strided_handler(
 
 def is_same_size_handler(
     op_call: torch._ops.OpOverload,
-    args: tuple[object, ...],
-    kwargs: dict[str, object],
+    args: Tuple[object, ...],
+    kwargs: Dict[str, object],
 ) -> bool:
     lhs = cast(torch.Tensor, args[0])
     rhs = cast(torch.Tensor, args[1])
@@ -90,8 +92,8 @@ def is_same_size_handler(
 
 def is_pinned_handler(
     op_call: torch._ops.OpOverload,
-    args: tuple[object, ...],
-    kwargs: dict[str, object],
+    args: Tuple[object, ...],
+    kwargs: Dict[str, object],
 ) -> bool:
     tensor = cast(dtensor.DTensor, args[0])
     return tensor._local_tensor.is_pinned()
@@ -99,22 +101,22 @@ def is_pinned_handler(
 
 def found_inf_reduce_handler(
     op_call: torch._ops.OpOverload,
-    args: tuple[object, ...],
-    kwargs: dict[str, object],
+    args: Tuple[object, ...],
+    kwargs: Dict[str, object],
 ) -> None:
     op_info = dtensor.DTensor._op_dispatcher.unwrap_to_op_info(op_call, args, kwargs)
     local_tensor_args = pytree.tree_unflatten(
-        cast(list[object], op_info.local_args),
+        cast(List[object], op_info.local_args),
         op_info.args_tree_spec,  # type: ignore[arg-type]
     )
-    local_tensor_args = cast(tuple[object, ...], local_tensor_args)
+    local_tensor_args = cast(Tuple[object, ...], local_tensor_args)
     op_call(*local_tensor_args, **op_info.local_kwargs)
 
-    grad_dtensor = cast(list[dtensor.DTensor], args[0])[0]
+    grad_dtensor = cast(List[dtensor.DTensor], args[0])[0]
     grad_placements = grad_dtensor.placements
     mesh = grad_dtensor.device_mesh
 
-    found_inf_placements: list[Placement] = []
+    found_inf_placements: List[Placement] = []
     for placement in grad_placements:
         if isinstance(placement, Replicate):
             found_inf_placements.append(placement)
@@ -210,8 +212,8 @@ class OpDispatcher:
     def _propagate_op_sharding_dispatch_slow_path(
         self,
         op_call: torch._ops.OpOverload,
-        args: tuple[object, ...],
-        kwargs: dict[str, object],
+        args: Tuple[object, ...],
+        kwargs: Dict[str, object],
         op_info: OpInfo,
         # The logic here is a bit messy.  There are several reasons why the
         # C++ fastpath may have bailed out.  If we just cache missed, we will
@@ -276,7 +278,7 @@ class OpDispatcher:
     def _dispatch_get_local_results_slow_path(
         self,
         op_call: torch._ops.OpOverload,
-        args: tuple[object, ...],
+        args: Tuple[object, ...],
         op_info: OpInfo,
     ) -> object:
         output_sharding = op_info.output_sharding
@@ -308,7 +310,7 @@ class OpDispatcher:
 
             local_tensor_args = (
                 pytree.tree_unflatten(
-                    cast(list[object], op_info.local_args),
+                    cast(List[object], op_info.local_args),
                     # pyrefly: ignore [bad-argument-type]
                     op_info.args_tree_spec,
                 )
@@ -317,7 +319,7 @@ class OpDispatcher:
             )
 
             # run local op computation with potentially modified args/kwargs
-            local_tensor_args = cast(tuple[object, ...], local_tensor_args)
+            local_tensor_args = cast(Tuple[object, ...], local_tensor_args)
             if op_call in self._random_ops:
                 if not random._rng_tracker and is_rng_supported_mesh(mesh):
                     # Default to `OffsetBasedRNGTracker` if the parallelism API did not already construct one
@@ -450,8 +452,8 @@ class OpDispatcher:
     def _dispatch_fast_path_python_tail(
         self,
         op_call: torch._ops.OpOverload,
-        args: tuple[object, ...],
-        kwargs: dict[str, object],
+        args: Tuple[object, ...],
+        kwargs: Dict[str, object],
         compute_mesh: DeviceMesh,
         output_sharding: OutputSharding,
         local_results: object,
@@ -548,7 +550,7 @@ class OpDispatcher:
         else:
             flatten_args_schema_to_reshard = suggested_input_schema.args_schema
 
-        new_local_args: list[object] = []
+        new_local_args: List[object] = []
         for i, arg_spec in enumerate(op_info.flat_args_schema):
             reshard_arg_spec = flatten_args_schema_to_reshard[i]
             if isinstance(arg_spec, DTensorSpec):
@@ -601,16 +603,16 @@ class OpDispatcher:
     def unwrap_to_op_info(
         self,
         op_call: torch._ops.OpOverload,
-        args: tuple[object, ...],
-        kwargs: dict[str, object],
+        args: Tuple[object, ...],
+        kwargs: Dict[str, object],
     ) -> OpInfo:
         return self._unwrap_to_op_info_impl(op_call, args, kwargs, True)
 
     def _unwrap_to_op_info_impl(
         self,
         op_call: torch._ops.OpOverload,
-        args: tuple[object, ...],
-        kwargs: dict[str, object],
+        args: Tuple[object, ...],
+        kwargs: Dict[str, object],
         create_schema: bool,
     ) -> OpInfo:
         # get runtime schema info to determine whether to use pytree to flatten inputs
@@ -641,11 +643,11 @@ class OpDispatcher:
         else:
             args_list, args_spec = args, None
 
-        args_schema: list[object] = []
-        kwargs_schema: dict[str, object] = {}
-        local_args: list[object] = []
-        local_kwargs: dict[str, object] = {}
-        compute_mesh: DeviceMesh | None = None
+        args_schema: List[object] = []
+        kwargs_schema: Dict[str, object] = {}
+        local_args: List[object] = []
+        local_kwargs: Dict[str, object] = {}
+        compute_mesh: Optional[DeviceMesh]= None
 
         for arg in args_list:
             if isinstance(arg, dtensor.DTensor):

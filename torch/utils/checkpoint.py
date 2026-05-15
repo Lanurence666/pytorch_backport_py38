@@ -8,7 +8,7 @@ import uuid
 import warnings
 import weakref
 from collections import defaultdict
-from typing import *  # noqa: F403
+from typing import *  # noqa: F403, Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Type, Union
 from typing_extensions import Self
 import enum
 from weakref import ReferenceType
@@ -43,11 +43,11 @@ __all__ = [
 
 _DEFAULT_DETERMINISM_MODE = "default"
 
-_checkpoint_debug_enabled: bool | None = None
+_checkpoint_debug_enabled: Optional[bool]= None
 
 
 @contextlib.contextmanager
-def set_checkpoint_debug_enabled(enabled: bool | None):
+def set_checkpoint_debug_enabled(enabled: Optional[bool]):
     """
     Context manager that sets whether checkpoint should print additional debug
     information when running. See the ``debug`` flag for
@@ -110,7 +110,7 @@ class DefaultDeviceType:
     to save and restore for recomputation.
     """
 
-    _default_device_type: str | None = None
+    _default_device_type: Optional[str]= None
 
     @staticmethod
     def set_device_type(device: str = "cuda") -> None:
@@ -207,7 +207,7 @@ def set_device_states(devices, states, *, device_type=None) -> None:
     if device_type == "meta":
         return
     device_module = _get_device_module(device_type)
-    for device, state in zip(devices, states, strict=False):
+    for device, state in zip(devices, states):
         with device_module.device(device):
             device_module.set_rng_state(state)
 
@@ -355,7 +355,7 @@ def noop_context_fn():
 def checkpoint(
     function,
     *args,
-    use_reentrant: bool | None = None,
+    use_reentrant: Optional[bool]= None,
     context_fn: Callable[[], Tuple[ContextManager, ContextManager]] = noop_context_fn,
     determinism_check: str = _DEFAULT_DETERMINISM_MODE,
     debug: bool = False,
@@ -754,12 +754,12 @@ def _internal_assert(cond) -> None:
 #    by holder=None. We skip over them. We still save x at (4) (since its holder
 #    is still alive.)
 
-_enable_checkpoint_early_stop: bool | None = None
+_enable_checkpoint_early_stop: Optional[bool]= None
 
 
 @contextlib.contextmanager
 def set_checkpoint_early_stop(enable: bool):
-    """Controls whether checkpoint should stop recomputation early.
+    """Context manager that sets whether checkpoint should stop recomputation early.
 
     By default, non-reentrant checkpoint stops recomputation as soon as it
     has computed all needed Tensors. This context manager can be used to disable
@@ -770,14 +770,14 @@ def set_checkpoint_early_stop(enable: bool):
 
     Example::
 
-        >>> # xdoctest: +SKIP(failing)
-        >>> message = "saved tensors default hooks are disabled"
-        >>> with set_checkpoint_early_stop(False):
-        ...     # Any checkpoint under this context manager will respect this
-        ...     # context manager, even if its backward is performed outside.
-        ...     out = checkpoint(fn, inputs)
-        ...
-        >>> out.backward()
+    >>> # xdoctest: +SKIP(failing)
+    >>> message = "saved tensors default hooks are disabled"
+    >>> with set_checkpoint_early_stop(False):
+    ...     # Any checkpoint under this context manager will respect this
+    ...     # context manager, even if its backward is performed outside.
+    ...     out = checkpoint(fn, inputs)
+    ...
+    >>> out.backward()
     """
     global _enable_checkpoint_early_stop
     try:
@@ -794,7 +794,7 @@ class _Handle:
 
 class _Holder:
     def __init__(self) -> None:
-        self.handles: dict[int, _Handle | None] = {}
+        self.handles: Dict[int, Optional[_Handle]] = {}
 
 
 class _CheckpointFrame:
@@ -1019,7 +1019,7 @@ def _get_debug_context_and_cb() -> Tuple[Callable[[], Any], Callable[[Checkpoint
         def get_str_tb(label, capture_logs):
             out = ""
             total_len = len(capture_logs.logs)
-            for i, (log, tb) in enumerate(zip(capture_logs.logs, capture_logs.tbs, strict=False)):
+            for i, (log, tb) in enumerate(zip(capture_logs.logs, capture_logs.tbs)):
                 out += f"{log}   ({i + 1} of {total_len} in {label})\n\n"
                 found_torch_dispatch = False
                 for line in tb:
@@ -1070,7 +1070,7 @@ class _StopRecomputationError(Exception):
 
 
 class _recomputation_hook(torch.autograd.graph.saved_tensors_hooks):
-    def __init__(self, target_frame_ref: ReferenceType, gid: GraphExecGroup | int) -> None:
+    def __init__(self, target_frame_ref: ReferenceType, gid: Union[GraphExecGroup, int]) -> None:
         # Dynamo guards on WeakKeyDictionary internals are unstable here
         # (dict length/keys change every call), causing recompilation storms.
         # with `.compile()` so we disable
@@ -1148,7 +1148,7 @@ class _checkpoint_hook(torch.autograd.graph.saved_tensors_hooks):
 
         def unpack_hook(holder):
             # First check if we're inside a GraphExecGroup context
-            gid: GraphExecGroup | None | int = GraphExecGroup._get_current_group()
+            gid: Optional[Union[GraphExecGroup, int]]= GraphExecGroup._get_current_group()
             if gid is None:
                 # Fallback to using the current graph task id
                 gid = torch._C._current_graph_task_id()
@@ -1212,8 +1212,8 @@ def _is_compiling(func, args, kwargs):
 class _VersionWrapper:
     # Check that cached tensors are not mutated.
     def __init__(self, val) -> None:
-        self.val: torch.Tensor | Any = val
-        self.version: int | None = val._version if isinstance(val, torch.Tensor) else None
+        self.val: Union[torch.Tensor, Any] = val
+        self.version: Optional[int] = val._version if isinstance(val, torch.Tensor) else None
 
     def get_val(self, allow_cache_entry_mutation):
         if self.version is not None and not allow_cache_entry_mutation:
@@ -1643,13 +1643,7 @@ def _checkpoint_without_reentrant_generator(
                 if is_non_strict_tracing
                 else contextlib.nullcontext()
             )
-            with (
-                device_autocast_ctx,
-                torch.amp.autocast("cpu", **cpu_autocast_kwargs),
-                recompute_context,
-                device_ctx,
-                nested_fx_trace_ctx,
-            ):  # type: ignore[attr-defined]
+            with device_autocast_ctx, torch.amp.autocast("cpu", **cpu_autocast_kwargs), recompute_context, device_ctx, nested_fx_trace_ctx:  # type: ignore[attr-defined]
                 fn(*args, **kwargs)
 
     new_frame = _CheckpointFrame(
@@ -1710,7 +1704,7 @@ class GraphExecGroup:
         torch._C._set_graph_exec_group(None)
 
     @classmethod
-    def _get_current_group(cls) -> GraphExecGroup | None:
+    def _get_current_group(cls) -> Optional[GraphExecGroup]:
         # Private API to be used by utils like AC
         return torch._C._get_graph_exec_group()
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import itertools
 import operator
 
@@ -5,11 +7,12 @@ import torch
 from torch.fx._symbolic_trace import symbolic_trace
 from torch.fx.node import Node
 from torch.fx.passes.tools_common import legalize_graph
+from typing import Dict, List, Tuple, Union
 
 
 def split_result_tensors(
-    result: torch.Tensor, inputs: list[torch.Tensor]
-) -> tuple[torch.Tensor, ...]:
+    result: torch.Tensor, inputs: List[torch.Tensor]
+) -> Tuple[torch.Tensor, ...]:
     """
     A free function for use in the merge_matmul graph transformation below that
     splits the output from a merged matmul into the individual results for each
@@ -69,7 +72,7 @@ def may_depend_on(a: Node, b: Node, search_depth: int = 6) -> bool:
     return False
 
 
-def are_nodes_independent(nodes: list[Node]) -> bool:
+def are_nodes_independent(nodes: List[Node]) -> bool:
     """
     Check if all of the given nodes are pairwise-data independent.
 
@@ -95,16 +98,16 @@ def merge_matmul(in_mod: torch.nn.Module) -> torch.fx.GraphModule:
     ::
 
                    ____      _________        _________
-          ----    |    |    |         |     M|  A * C  |
-        M| A  |  T| B  | * K|    C    | =    |---------|
-          ---- ,  |    |    |         |     T|  B * C  |
+          ----    |    |    |         |     Union[M, A] * C  |
+        Union[Union[M, A], Union[T, B]]  | * Union[K, C]    | =    |---------|
+          ---- ,  |    |    |         |     Union[T, B] * C  |
            K       ----      ---------        ---------
                     K            R                R
     """
     gm = symbolic_trace(in_mod)
 
-    rhs_users: dict[Node, list[Node]] = {}
-    lhs_users: dict[Node, list[Node]] = {}
+    rhs_users: Dict[Node, List[Node]] = {}
+    lhs_users: Dict[Node, List[Node]] = {}
 
     # Populate rhs_users and lhs_users - maps from LHS/RHS matrix multiply operands to
     # the matmul of which they are the LHS/RHS.

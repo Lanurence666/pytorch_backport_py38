@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module contains utility functions that are explicitly allowed to be called during
 TorchDynamo compilation. These functions are carefully vetted to ensure they work
@@ -22,8 +23,8 @@ Key functionality groups:
 
 import functools
 import warnings
-from collections.abc import Callable
-from typing import Any, TYPE_CHECKING, TypeVar
+
+from typing import Any, Callable, List, Optional, TYPE_CHECKING, Tuple, Type, TypeVar, Union
 from typing_extensions import deprecated, ParamSpec
 
 import torch
@@ -72,7 +73,7 @@ def wrap_inline(fn: Callable[_P, _R]) -> Callable[_P, _R]:
 
 
 def call_hook(
-    hook: Callable[..., torch.Tensor | None], *args: Any, **kwargs: Any
+    hook: Callable[..., Optional[torch.Tensor]], *args: Any, **kwargs: Any
 ) -> torch.Tensor:
     """
     Used by compiled autograd to handle hook returning None.
@@ -108,7 +109,7 @@ class FakeBackwardCFunction:
     def __init__(
         self,
         real: torch.autograd.function.BackwardCFunction,
-        saved_tensors: list[torch.Tensor],
+        saved_tensors: List[torch.Tensor],
     ) -> None:
         self.real = real
         self.saved_tensors = saved_tensors
@@ -126,9 +127,9 @@ class FakeBackwardCFunction:
 
 def call_backward(
     backward_c_function: torch.autograd.function.BackwardCFunction,
-    saved_tensors: list[torch.Tensor],
+    saved_tensors: List[torch.Tensor],
     *args: Any,
-) -> torch.Tensor | tuple[torch.Tensor, ...]:
+) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
     fake = FakeBackwardCFunction(backward_c_function, saved_tensors)
     grads = fake._forward_cls.backward(fake, *args)  # type: ignore[attr-defined]
 
@@ -138,7 +139,7 @@ def call_backward(
     return grads
 
 
-def normalize_as_list(x: Any) -> list[Any]:
+def normalize_as_list(x: Any) -> List[Any]:
     if isinstance(x, tuple):
         return list(x)
     elif isinstance(x, list):
@@ -153,12 +154,12 @@ def untyped_storage_size(x: torch.Tensor) -> int:
 class FakeCompiledAutogradEngine:
     @staticmethod
     def queue_callback(
-        final_callbacks: list[Callable[[], None]], cb: Callable[[], None]
+        final_callbacks: List[Callable[[], None]], cb: Callable[[], None]
     ) -> None:
         final_callbacks.append(cb)
 
     @staticmethod
-    def exec_final_callbacks(final_callbacks: list[Callable[[], None]]) -> None:
+    def exec_final_callbacks(final_callbacks: List[Callable[[], None]]) -> None:
         i = 0
         while i < len(final_callbacks):
             cb = final_callbacks[i]
@@ -175,6 +176,30 @@ def call_hook_from_backward_state(
     *args: Any, bw_state: Any, hook_name: str, **kwargs: Any
 ) -> Any:
     return getattr(bw_state, hook_name)(*args, **kwargs)
+
+
+class _ApplyBackwardHook(torch.autograd.Function):
+    """Custom autograd function that applies a hook during backward.
+
+    This is used to implement register_hook on intermediate tensors without
+    requiring compiled autograd. The hook function is captured in the context
+    and applied during the backward pass.
+    """
+
+    @staticmethod
+    # pyre-ignore[14]: Inconsistent override is expected for autograd.Function
+    def forward(
+        ctx: Any, tensor: torch.Tensor, hook_fn: Callable[..., Any]
+    ) -> torch.Tensor:  # type: ignore[override]
+        ctx.hook_fn = hook_fn
+        return tensor.view_as(tensor)
+
+    @staticmethod
+    def backward(ctx: Any, grad: torch.Tensor) -> Tuple[torch.Tensor, None]:  # type: ignore[override]
+        result = ctx.hook_fn(grad)
+        if result is None:
+            result = grad
+        return result, None
 
 
 def call_module_hooks_from_backward_state(
@@ -219,7 +244,7 @@ def wrap_dunder_call_ctx_manager(self: Any, func: Callable[_P, _R]) -> Callable[
 
 # Use only on ints marked dynamic via torch.empty(0, integer)
 # Currently only way to mark ints as dynamic: https://github.com/pytorch/pytorch/issues/129623
-def unwrap_maybe_dynamic_int(x: torch.Tensor | int) -> int:
+def unwrap_maybe_dynamic_int(x: Union[torch.Tensor, int]) -> int:
     if isinstance(x, torch.Tensor):
         # x.size() is expected to be [0, dynamic_int]
         return x.size(1)
@@ -256,7 +281,7 @@ def wrap_inline_with_error_on_graph_break(
     return wrapper
 
 
-def filter_out_const_values(tup: tuple[Any, ...], masks: list[bool]) -> tuple[Any, ...]:
+def filter_out_const_values(tup: Tuple[Any, ...], masks: List[bool]) -> Tuple[Any, ...]:
     """
     masks is a list of bools, where True means the corresponding element in tup
     is a const value. Filter out the const values.
@@ -269,8 +294,8 @@ def filter_out_const_values(tup: tuple[Any, ...], masks: list[bool]) -> tuple[An
 
 
 def insert_const_values_with_mask(
-    tup: tuple[Any, ...], masks: list[bool], values: tuple[Any, ...]
-) -> tuple[Any, ...]:
+    tup: Tuple[Any, ...], masks: List[bool], values: Tuple[Any, ...]
+) -> Tuple[Any, ...]:
     """
     masks and values are of same length. For indices where the mask is True, use
     the const_values to fill in.

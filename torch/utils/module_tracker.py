@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 import weakref
-from typing import TYPE_CHECKING
+from typing import Dict, List, Set, TYPE_CHECKING
 
 import torch
 from torch.autograd.graph import register_multi_grad_hook
@@ -56,7 +58,7 @@ class ModuleTracker:
 
     """
 
-    parents: set[str]
+    parents: Set[str]
     """
     A Set containing the fqn for each module currently running their forward
     """
@@ -66,7 +68,7 @@ class ModuleTracker:
         self._known_modules: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
         self._seen_modules: weakref.WeakSet = weakref.WeakSet()
         self._has_callback = False
-        self._hooks: list[RemovableHandle] = []
+        self._hooks: List[RemovableHandle] = []
 
     def _maybe_set_engine_callback(self) -> None:
         # This assumes no concurrent calls to backward

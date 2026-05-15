@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import numbers
 import warnings
 from typing_extensions import deprecated
@@ -9,6 +11,7 @@ from torch import Tensor
 from torch._jit_internal import Dict, List, Optional, Tuple, Union  # noqa: F401
 from torch.ao.nn.quantized.modules.utils import _quantize_weight
 from torch.nn.utils.rnn import PackedSequence
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 
 __all__ = [
@@ -250,7 +253,7 @@ class RNNBase(torch.nn.Module):
 
     def get_expected_hidden_size(
         self, input: Tensor, batch_sizes: Optional[Tensor]
-    ) -> tuple[int, int, int]:
+    ) -> Tuple[int, int, int]:
         if batch_sizes is not None:
             mini_batch = int(batch_sizes[0])
         else:
@@ -266,7 +269,7 @@ class RNNBase(torch.nn.Module):
     def check_hidden_size(
         self,
         hx: Tensor,
-        expected_hidden_size: tuple[int, int, int],
+        expected_hidden_size: Tuple[int, int, int],
         msg: str = "Expected hidden size {}, got {}",
     ) -> None:
         if hx.size() != expected_hidden_size:
@@ -538,11 +541,11 @@ class LSTM(RNNBase):
     def forward_impl(
         self,
         input: Tensor,
-        hx: Optional[tuple[Tensor, Tensor]],
+        hx: Optional[Tuple[Tensor, Tensor]],
         batch_sizes: Optional[Tensor],
         max_batch_size: int,
         sorted_indices: Optional[Tensor],
-    ) -> tuple[Tensor, tuple[Tensor, Tensor]]:
+    ) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
         if hx is None:
             num_directions = 2 if self.bidirectional else 1
             zeros = torch.zeros(
@@ -596,8 +599,8 @@ class LSTM(RNNBase):
 
     @torch.jit.export
     def forward_tensor(
-        self, input: Tensor, hx: Optional[tuple[Tensor, Tensor]] = None
-    ) -> tuple[Tensor, tuple[Tensor, Tensor]]:
+        self, input: Tensor, hx: Optional[Tuple[Tensor, Tensor]] = None
+    ) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
         batch_sizes = None
         max_batch_size = input.size(0) if self.batch_first else input.size(1)
         sorted_indices = None
@@ -611,8 +614,8 @@ class LSTM(RNNBase):
 
     @torch.jit.export
     def forward_packed(
-        self, input: PackedSequence, hx: Optional[tuple[Tensor, Tensor]] = None
-    ) -> tuple[PackedSequence, tuple[Tensor, Tensor]]:
+        self, input: PackedSequence, hx: Optional[Tuple[Tensor, Tensor]] = None
+    ) -> Tuple[PackedSequence, Tuple[Tensor, Tensor]]:
         input_, batch_sizes, sorted_indices, unsorted_indices = input
         max_batch_size = int(batch_sizes[0])
 
@@ -626,9 +629,9 @@ class LSTM(RNNBase):
     # "type: ignore" is required due to issue #43072
     def permute_hidden(  # type: ignore[override]
         self,
-        hx: tuple[Tensor, Tensor],
+        hx: Tuple[Tensor, Tensor],
         permutation: Optional[Tensor],
-    ) -> tuple[Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor]:
         if permutation is None:
             return hx
         return _apply_permutation(hx[0], permutation), _apply_permutation(
@@ -639,7 +642,7 @@ class LSTM(RNNBase):
     def check_forward_args(  # type: ignore[override]
         self,
         input: Tensor,
-        hidden: tuple[Tensor, Tensor],
+        hidden: Tuple[Tensor, Tensor],
         batch_sizes: Optional[Tensor],
     ) -> None:
         self.check_input(input, batch_sizes)
@@ -840,7 +843,7 @@ class GRU(RNNBase):
         batch_sizes: Optional[Tensor],
         max_batch_size: int,
         sorted_indices: Optional[Tensor],
-    ) -> tuple[Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor]:
         if hx is None:
             num_directions = 2 if self.bidirectional else 1
             zeros = torch.zeros(
@@ -891,7 +894,7 @@ class GRU(RNNBase):
     @torch.jit.export
     def forward_tensor(
         self, input: Tensor, hx: Optional[Tensor] = None
-    ) -> tuple[Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor]:
         batch_sizes = None
         max_batch_size = input.size(0) if self.batch_first else input.size(1)
         sorted_indices = None
@@ -906,7 +909,7 @@ class GRU(RNNBase):
     @torch.jit.export
     def forward_packed(
         self, input: PackedSequence, hx: Optional[Tensor] = None
-    ) -> tuple[PackedSequence, Tensor]:
+    ) -> Tuple[PackedSequence, Tensor]:
         input_, batch_sizes, sorted_indices, unsorted_indices = input
         max_batch_size = int(batch_sizes[0])
         output_, hidden = self.forward_impl(
@@ -1301,8 +1304,8 @@ class LSTMCell(RNNCellBase):
         return "DynamicQuantizedLSTMCell"
 
     def forward(
-        self, input: Tensor, hx: Optional[tuple[Tensor, Tensor]] = None
-    ) -> tuple[Tensor, Tensor]:
+        self, input: Tensor, hx: Optional[Tuple[Tensor, Tensor]] = None
+    ) -> Tuple[Tensor, Tensor]:
         self.check_forward_input(input)
         if hx is None:
             zeros = torch.zeros(

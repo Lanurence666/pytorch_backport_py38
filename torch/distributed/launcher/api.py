@@ -6,12 +6,14 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+from __future__ import annotations
+
 import os
 import sys
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import torch
 import torch.distributed.elastic.rendezvous.registry as rdzv_registry
@@ -101,26 +103,26 @@ class LaunchConfig:
     min_nodes: int
     max_nodes: int
     nproc_per_node: int
-    logs_specs: LogsSpecs | None = None
+    logs_specs: Optional[LogsSpecs] = None
     run_id: str = ""
     role: str = "default_role"
     rdzv_endpoint: str = ""
     rdzv_backend: str = "etcd"
-    rdzv_configs: dict[str, Any] = field(default_factory=dict)
+    rdzv_configs: Dict[str, Any] = field(default_factory=dict)
     rdzv_timeout: int = -1
     max_restarts: int = 3
     monitor_interval: float = 0.1
     start_method: str = "spawn"
-    log_line_prefix_template: str | None = None
-    metrics_cfg: dict[str, str] = field(default_factory=dict)
-    local_addr: str | None = None
+    log_line_prefix_template: Optional[str] = None
+    metrics_cfg: Dict[str, str] = field(default_factory=dict)
+    local_addr: Optional[str] = None
     event_log_handler: str = "null"
-    numa_options: NumaOptions | None = None
+    numa_options: Optional[NumaOptions] = None
     signals_to_handle: str = "SIGTERM,SIGINT,SIGHUP,SIGQUIT"
-    duplicate_stdout_filters: list[str] | None = None
-    duplicate_stderr_filters: list[str] | None = None
+    duplicate_stdout_filters: Optional[List[str]] = None
+    duplicate_stderr_filters: Optional[List[str]] = None
     virtual_local_rank: bool = False
-    shutdown_timeout: int | None = None
+    shutdown_timeout: Optional[int] = None
 
     def __post_init__(self):
         default_timeout = 900
@@ -183,8 +185,8 @@ class elastic_launch:
     def __init__(
         self,
         config: LaunchConfig,
-        entrypoint: Callable | str | None,
-        health_check_server: HealthCheckServer | None = None,
+        entrypoint: Union[Callable, Optional[str]],
+        health_check_server: Optional[HealthCheckServer] = None,
     ):
         self._config = config
         self._entrypoint = entrypoint
@@ -199,7 +201,7 @@ class elastic_launch:
         )
 
 
-def _get_entrypoint_name(entrypoint: Callable | str | None, args: list[Any]) -> str:
+def _get_entrypoint_name(entrypoint: Optional[Union[Callable, str]], args: List[Any]) -> str:
     """Retrieve entrypoint name with the rule:
     1. If entrypoint is a function, use ``entrypoint.__qualname__``.
     2. If entrypoint is a string, check its value:
@@ -221,7 +223,7 @@ def _get_entrypoint_name(entrypoint: Callable | str | None, args: list[Any]) -> 
 
 def _get_addr_and_port(
     rdzv_parameters: RendezvousParameters,
-) -> tuple[str | None, int | None]:
+) -> Tuple[Optional[str], Optional[int]]:
     if rdzv_parameters.backend != "static":
         return (None, None)
     endpoint = rdzv_parameters.endpoint
@@ -240,10 +242,10 @@ def _get_addr_and_port(
 
 def launch_agent(
     config: LaunchConfig,
-    entrypoint: Callable | str | None,
-    args: list[Any],
-    health_check_server: HealthCheckServer | None = None,
-) -> dict[int, Any]:
+    entrypoint: Union[Callable, Optional[str]],
+    args: List[Any],
+    health_check_server: Optional[HealthCheckServer] = None,
+) -> Dict[int, Any]:
     if not config.run_id:
         run_id = str(uuid.uuid4().int)
         logger.warning("config has no run_id, generated a random run_id: %s", run_id)

@@ -1,6 +1,7 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/core/Tensor.h>
 #include <ATen/AccumulateType.h>
+#include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/Dispatch.h>
 #include <ATen/Utils.h>
@@ -57,19 +58,19 @@ __global__ void renormRowsL1(scalar_t* dist, long rows, long cols) {
     scalar_t sum = static_cast<scalar_t>(0);
     for (int64_t col = threadIdx.x; col < cols; col += blockDim.x) {
       val = dist[row * cols + col];
-      CUDA_KERNEL_ASSERT(!(val < zero)); // ! < 0 for NaN handling
+      CUDA_KERNEL_ASSERT(!(static_cast<at::opmath_type<scalar_t>>(val) < at::opmath_type<scalar_t>(0))); // ! < 0 for NaN handling
       sum = sum + val;
     }
 
     sum = cuda_utils::BlockReduceSum(sum, smem);
     if (threadIdx.x == 0) {
-      CUDA_KERNEL_ASSERT(!(val < zero)); // ! < 0 for NaN handling
+      CUDA_KERNEL_ASSERT(!(static_cast<at::opmath_type<scalar_t>>(val) < at::opmath_type<scalar_t>(0))); // ! < 0 for NaN handling
       smem[0] = sum;
     }
     __syncthreads();
 
     sum = smem[0];
-    if (sum > zero) {
+    if (static_cast<at::opmath_type<scalar_t>>(sum) > at::opmath_type<scalar_t>(0)) {
       for (int64_t col = threadIdx.x; col < cols; col += blockDim.x) {
         dist[row * cols + col] = dist[row * cols + col] / sum;
       }
@@ -109,13 +110,13 @@ __device__ int binarySearchForMultinomial(const scalar_t* cumdist,
   int start = 0;
   int end = size;
   // cumdist[size - 1] = 0 => all zero prob dist
-  CUDA_KERNEL_ASSERT(cumdist[size - 1] > static_cast<scalar_t>(0));
+  CUDA_KERNEL_ASSERT(static_cast<at::opmath_type<scalar_t>>(cumdist[size - 1]) > at::opmath_type<scalar_t>(0));
 
   while (end - start > 0) {
     int mid = start + (end - start) / 2;
 
     scalar_t midVal = cumdist[mid];
-    if (midVal < val) {
+    if (static_cast<at::opmath_type<scalar_t>>(midVal) < static_cast<at::opmath_type<scalar_t>>(val)) {
       start = mid + 1;
     } else {
       end = mid;
@@ -131,7 +132,7 @@ __device__ int binarySearchForMultinomial(const scalar_t* cumdist,
     start = size - 1;
   }
 
-  while(start >= 1 && dist[start] == 0) start--;
+  while(start >= 1 && static_cast<at::opmath_type<scalar_t>>(dist[start]) == at::opmath_type<scalar_t>(0)) start--;
 
   return start;
 }
@@ -215,7 +216,7 @@ __global__ void sampleMultinomialOnce(
       val = dist[curDist * stride_dist + cat * stride_categories];
       CUDA_KERNEL_ASSERT(!at::_isnan(val));
       CUDA_KERNEL_ASSERT(!_isinf(val));
-      CUDA_KERNEL_ASSERT(!(val < zero));
+      CUDA_KERNEL_ASSERT(!(static_cast<at::opmath_type<scalar_t>>(val) < at::opmath_type<scalar_t>(0)));
       sum = sum + static_cast<accscalar_t>(val);
     }
 
@@ -286,9 +287,9 @@ __global__ void sampleMultinomialOnce(
                           : smem[threadIdx.x - 1] + prevHighProb);
       bool inBucket =
           (cat < categories) &&
-          (!(sample >= curBucket) &&
-          (sample >= prevBucket) &&
-          (dist_val > zero));
+          (!(static_cast<at::opmath_type<scalar_t>>(sample) >= static_cast<at::opmath_type<scalar_t>>(curBucket)) &&
+          (static_cast<at::opmath_type<scalar_t>>(sample) >= static_cast<at::opmath_type<scalar_t>>(prevBucket)) &&
+          (dist_val > accZero));
 
       if (inBucket) {
         // We're done; we have the sample
@@ -314,7 +315,7 @@ __global__ void sampleMultinomialOnce(
         // where the distribution is non-zero. This is obviously terribly inefficient, but due to the
         // rarity in which this occurs, this should not be an issue.
         for (int cat = categories - 1; cat >= 0; --cat) {
-          if (dist[curDist * stride_dist + cat * stride_categories] > zero) {
+          if (static_cast<at::opmath_type<scalar_t>>(dist[curDist * stride_dist + cat * stride_categories]) > at::opmath_type<scalar_t>(0)) {
             dest[curDist] = cat;
             break;
           }

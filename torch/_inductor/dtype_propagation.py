@@ -1,7 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
-from collections.abc import Callable, Sequence
-from typing import Any, Optional, Protocol, TYPE_CHECKING, TypeVar
+
+from typing import Any, Callable, Dict, FrozenSet, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union
+from typing_extensions import Protocol
+
 
 import sympy
 
@@ -20,7 +24,7 @@ from .virtualized import OpsValue, V
 
 T = TypeVar("T")
 _MISSING_SHAPE = object()
-_UNSIGNED_INT_DTYPES: frozenset[torch.dtype] = frozenset(
+_UNSIGNED_INT_DTYPES: FrozenSet[torch.dtype] = frozenset(
     (
         torch.uint8,
         torch.uint16,
@@ -35,17 +39,17 @@ class DTypeVar(Protocol):
     def dtype(self) -> torch.dtype: ...
 
 
-DTypeArg = DTypeVar | torch.types.Number | str | OpsValue
+DTypeArg = Union[DTypeVar, torch.types.Number, str, OpsValue]
 
 
 # Inputs need to be cacheable (e.g., not a CSEVar) in order for the cache to be effective
 # So first decompose CSEVars -> tuple before calling this
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def get_promoted_dtype(
-    *args: Sequence[tuple[torch.dtype, bool]],
-    type_promotion_kind: ELEMENTWISE_TYPE_PROMOTION_KIND | None = None,
+    *args: Sequence[Tuple[torch.dtype, bool]],
+    type_promotion_kind: Optional[ELEMENTWISE_TYPE_PROMOTION_KIND] = None
 ):
     def construct_input(inp):
         if inp[1]:
@@ -67,7 +71,7 @@ def get_promoted_dtype(
 
 def promote_types(
     args: Sequence[DTypeArg],
-    type_promotion_kind: ELEMENTWISE_TYPE_PROMOTION_KIND | None = None,
+    type_promotion_kind: Optional[ELEMENTWISE_TYPE_PROMOTION_KIND] = None
 ):
     dtype_prop_candidates = []
 
@@ -92,7 +96,7 @@ def promote_types(
     return dtype
 
 
-def _unwrap_dtype_arg(arg: DTypeArg) -> DTypeVar | torch.types.Number | str:
+def _unwrap_dtype_arg(arg: DTypeArg) -> Union[DTypeVar, torch.types.Number, str]:
     if isinstance(arg, OpsValue):
         return arg.value
     return arg
@@ -253,7 +257,7 @@ class DtypePropagationOpsHandler:
     def to_dtype(
         x: DTypeArg,
         dtype: torch.dtype,
-        src_dtype: torch.dtype | None = None,
+        src_dtype: Optional[torch.dtype]= None,
         use_compute_types=True,
     ) -> torch.dtype:
         return upcast_compute_type(dtype) if use_compute_types else dtype
@@ -328,7 +332,7 @@ class DtypePropagationOpsHandler:
         return dtype
 
     @staticmethod
-    def store(name: str, index, value: DTypeArg, mode: str | None = None) -> None:
+    def store(name: str, index, value: DTypeArg, mode: Optional[str] = None) -> None:
         return None
 
     @staticmethod
@@ -336,7 +340,7 @@ class DtypePropagationOpsHandler:
         name: str,
         reduction_type: str,
         value: DTypeArg,
-        extra_meta: dict[str, Any],
+        extra_meta: Dict[str, Any],
     ) -> None:
         return None
 
@@ -362,10 +366,10 @@ class DtypePropagationOpsHandler:
 
     @staticmethod
     def scan(
-        dtypes: tuple[torch.dtype, ...],
-        combine_fn: Callable[[tuple[T, ...], tuple[T, ...]], tuple[T, ...]],
-        values: tuple[T, ...],
-    ) -> tuple[torch.dtype, ...]:
+        dtypes: Tuple[torch.dtype, ...],
+        combine_fn: Callable[[Tuple[T, ...], Tuple[T, ...]], Tuple[T, ...]],
+        values: Tuple[T, ...],
+    ) -> Tuple[torch.dtype, ...]:
         return dtypes
 
     @staticmethod
@@ -381,17 +385,17 @@ class DtypePropagationOpsHandler:
         return promote_types([x])
 
     @staticmethod
-    def frexp(x: DTypeArg) -> tuple[torch.dtype, torch.dtype]:
+    def frexp(x: DTypeArg) -> Tuple[torch.dtype, torch.dtype]:
         # TODO - need to handle multiple outputs
         return (promote_types([x]), torch.int32)
 
     @staticmethod
     def sort(
-        dtypes: tuple[torch.dtype, ...],
-        values: tuple[T, ...],
+        dtypes: Tuple[torch.dtype, ...],
+        values: Tuple[T, ...],
         stable: bool,
         descending: bool,
-    ) -> tuple[torch.dtype, ...]:
+    ) -> Tuple[torch.dtype, ...]:
         return dtypes
 
     @staticmethod
@@ -401,12 +405,12 @@ class DtypePropagationOpsHandler:
     @staticmethod
     def bucketize(
         values: DTypeArg,
-        boundaries: tuple[str, sympy.Expr, sympy.Expr, sympy.Expr],
+        boundaries: Tuple[str, sympy.Expr, sympy.Expr, sympy.Expr],
         boundary_indices: DTypeArg,
         indexing_dtype: torch.dtype,
         right: bool,
-        sorter: tuple[str, sympy.Expr] | None = None,
-        sorter_indices: T | None = None,
+        sorter: Optional[Tuple[str, sympy.Expr]]= None,
+        sorter_indices: Optional[T]= None,
     ) -> torch.dtype:
         return indexing_dtype
 

@@ -6,6 +6,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 """
 Library that launches and manages ``n`` copies of worker subprocesses either specified by a function or a binary.
 
@@ -64,7 +66,7 @@ implementations of the parent :class:`api.PContext` class.
 """
 
 from collections.abc import Callable
-from typing import Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from torch.distributed.elastic.multiprocessing.api import (
     _validate_full_rank,
@@ -102,15 +104,15 @@ __all__ = [
 
 def start_processes(
     name: str,
-    entrypoint: Callable | str,
-    args: dict[int, tuple],
-    envs: dict[int, dict[str, str]],
+    entrypoint: Union[Callable, str],
+    args: Dict[int, tuple],
+    envs: Dict[int, Dict[str, str]],
     logs_specs: LogsSpecs,
-    log_line_prefixes: dict[int, str] | None = None,
+    log_line_prefixes: Optional[Dict[int, str]] = None,
     start_method: str = "spawn",
-    numa_options: NumaOptions | None = None,
-    duplicate_stdout_filters: list[str] | None = None,
-    duplicate_stderr_filters: list[str] | None = None,
+    numa_options: Optional[NumaOptions] = None,
+    duplicate_stdout_filters: Optional[List[str]] = None,
+    duplicate_stderr_filters: Optional[List[str]] = None,
 ) -> PContext:
     """
     Start ``n`` copies of ``entrypoint`` processes with the provided options.

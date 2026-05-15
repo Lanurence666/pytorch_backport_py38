@@ -1,5 +1,6 @@
 # Owner(s): ["module: tests"]
 
+from __future__ import annotations
 import contextlib
 import torch
 import numpy as np

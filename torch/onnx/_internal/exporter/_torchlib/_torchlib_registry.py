@@ -1,13 +1,13 @@
+from __future__ import annotations
 """Registry for aten functions."""
 
-from __future__ import annotations
 
 
 __all__ = ["onnx_impl", "get_torchlib_ops"]
 
 import logging
-from collections.abc import Callable, Sequence
-from typing import Any, TypeVar
+from collections.abc import Sequence
+from typing import Any, Callable, List, Sequence, Tuple, Type, TypeVar, Union, overload
 from typing_extensions import ParamSpec
 
 import onnxscript
@@ -23,11 +23,11 @@ _R = TypeVar("_R")
 logger = logging.getLogger("__name__")
 
 
-_registry: list[_registration.OnnxDecompMeta] = []
+_registry: List[_registration.OnnxDecompMeta] = []
 
 
 def onnx_impl(
-    target: _registration.TorchOp | tuple[_registration.TorchOp, ...],
+    target: Union[_registration.TorchOp, Tuple[_registration.TorchOp, ...]],
     *,
     trace_only: bool = False,
     complex: bool = False,
@@ -85,7 +85,7 @@ def onnx_impl(
     return wrapper
 
 
-def get_torchlib_ops() -> tuple[_registration.OnnxDecompMeta, ...]:
+def get_torchlib_ops() -> Tuple[_registration.OnnxDecompMeta, ...]:
     # Trigger op registration
     from torch.onnx._internal.exporter._torchlib import ops
 

@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import warnings
 from collections.abc import Callable
 
 from torch.ao.pruning.sparsifier.base_sparsifier import BaseSparsifier
 
 from .base_scheduler import BaseScheduler
+from typing import Callable, List, Set
 
 
 __all__ = ["LambdaSL"]
@@ -35,7 +38,7 @@ class LambdaSL(BaseScheduler):
     def __init__(
         self,
         sparsifier: BaseSparsifier,
-        sl_lambda: Callable[[int], float] | list[Callable[[int], float]],
+        sl_lambda: Callable[[int], float] | List[Callable[[int], float]],
         last_epoch: int = -1,
         verbose: bool = False,
     ) -> None:
@@ -51,7 +54,7 @@ class LambdaSL(BaseScheduler):
             self.sl_lambdas = list(sl_lambda)
         super().__init__(sparsifier, last_epoch, verbose)  # type: ignore[no-untyped-call]
 
-    def get_sl(self) -> list[float]:
+    def get_sl(self) -> List[float]:
         if not self._get_sl_called_within_step:
             warnings.warn(
                 "To get the last sparsity level computed by the scheduler, "

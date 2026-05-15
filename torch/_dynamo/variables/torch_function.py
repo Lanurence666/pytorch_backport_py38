@@ -1,3 +1,4 @@
+from __future__ import annotations
 """TorchDynamo support for __torch_function__ tensor subclasses.
 
 This module implements support for tensor subclasses with __torch_function__ overrides.
@@ -29,9 +30,9 @@ import contextlib
 import functools
 import inspect
 import operator
-from collections.abc import Generator, Iterable, Sequence
+
 from types import TracebackType
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Generator, Iterable, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type
 
 import torch._C
 import torch.utils._pytree as pytree
@@ -131,7 +132,7 @@ banned_attrs = [
 ]
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def get_prev_stack_var_name() -> str:
     from ..bytecode_transformation import unique_id
 
@@ -140,7 +141,7 @@ def get_prev_stack_var_name() -> str:
 
 class TorchFunctionModeVariable(GenericContextWrappingVariable):
     @staticmethod
-    def is_supported_torch_function_mode(ty: type[TorchFunctionMode]) -> bool:
+    def is_supported_torch_function_mode(ty: Type[TorchFunctionMode]) -> bool:
         # Supported in this sense means we can support graph breaks under the
         # context.
         # We are able to trace custom modes but if there are graph breaks under them
@@ -157,8 +158,8 @@ class TorchFunctionModeVariable(GenericContextWrappingVariable):
 
     def __init__(
         self,
-        value: TorchFunctionMode | None,
-        source: Source | None = None,
+        value: Optional[TorchFunctionMode],
+        source: Optional[Source] = None,
         **kwargs: Any,
     ) -> None:
         if value is not None:
@@ -170,10 +171,7 @@ class TorchFunctionModeVariable(GenericContextWrappingVariable):
 
     def reconstruct(self, codegen: "PyCodegen") -> None:
         # This shouldn't be called unless we have a source
-        if not self.source:
-            raise AssertionError(
-                "TorchFunctionModeVariable requires a source for reconstruct"
-            )
+        assert self.source
         self.source.reconstruct(codegen)
 
     def module_name(self) -> str:
@@ -191,7 +189,7 @@ class TorchFunctionModeVariable(GenericContextWrappingVariable):
         fn: VariableTracker,
         types: TupleVariable,
         args: Iterable[Any],
-        kwargs: dict[str, Any],
+        kwargs: Dict[str, Any],
     ) -> VariableTracker:
         return call_torch_function(
             tx,
@@ -240,7 +238,7 @@ class TorchFunctionModeVariable(GenericContextWrappingVariable):
 # Used to clear/restore the python torch function mode stack and temporarily restore it as needed
 class TorchFunctionModeStackStateManager:
     def __init__(self) -> None:
-        self.stack: list[Any] = []
+        self.stack: List[Any] = []
 
     def __enter__(self) -> None:
         self.stack = torch.overrides._get_current_function_mode_stack()
@@ -248,9 +246,9 @@ class TorchFunctionModeStackStateManager:
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
     ) -> None:
         set_torch_function_mode_stack(self.stack)
         self.stack = []
@@ -321,7 +319,7 @@ class SymbolicTorchFunctionState:
         fn: VariableTracker,
         types: TupleVariable,
         args: Iterable[Any],
-        kwargs: dict[str, Any],
+        kwargs: Dict[str, Any],
     ) -> Any:
         with self._pop_mode_for_inlining() as cur_mode:
             return cur_mode.call_torch_function(tx, fn, types, args, kwargs)
@@ -410,12 +408,12 @@ class TorchFunctionModeStackVariable(VariableTracker):
 
 
 def _get_all_args(
-    args: Iterable[Any], kwargs: dict[str, Any]
+    args: Iterable[Any], kwargs: Dict[str, Any]
 ) -> Iterable[VariableTracker]:
     return _flatten_vts(pytree.arg_tree_leaves(*args, **kwargs))
 
 
-def _flatten_vts(vts: Iterable[VariableTracker]) -> list[VariableTracker]:
+def _flatten_vts(vts: Iterable[VariableTracker]) -> List[VariableTracker]:
     from collections import deque
 
     from .dicts import ConstDictVariable
@@ -444,8 +442,7 @@ def _flatten_vts(vts: Iterable[VariableTracker]) -> list[VariableTracker]:
 
 
 def _get_subclass_type(var: VariableTracker) -> type:
-    if not isinstance(var, (TensorWithTFOverrideVariable, UserDefinedObjectVariable)):
-        raise AssertionError(f"Unexpected type {type(var)}")
+    assert isinstance(var, (TensorWithTFOverrideVariable, UserDefinedObjectVariable))
     return var.python_type()
 
 
@@ -471,7 +468,7 @@ def _is_attr_overridden(
     overridden = False
     try:
         attr_val = inspect.getattr_static(var.python_type(), name)
-        overridden |= attr_val != getattr(torch.Tensor, name)
+        overridden.update(attr_val) != getattr(torch.Tensor, name)
     except AttributeError:
         pass
 
@@ -484,7 +481,7 @@ def call_torch_function(
     fn: VariableTracker,
     types: TupleVariable,
     args: Iterable[Any],
-    kwargs: dict[str, Any],
+    kwargs: Dict[str, Any],
     *,
     is_subclass_dispatch: bool = False,
 ) -> Any:
@@ -530,7 +527,7 @@ def get_torch_function_fn(
 
 
 def can_dispatch_torch_function(
-    tx: "InstructionTranslator", args: Iterable[Any], kwargs: dict[str, Any]
+    tx: "InstructionTranslator", args: Iterable[Any], kwargs: Dict[str, Any]
 ) -> bool:
     has_overridden_args = any(
         has_torch_function(arg) for arg in _get_all_args(args, kwargs)
@@ -545,7 +542,7 @@ def dispatch_torch_function(
     tx: "InstructionTranslator",
     fn: VariableTracker,
     args: Iterable[Any],
-    kwargs: dict[str, Any],
+    kwargs: Dict[str, Any],
 ) -> Any:
     """Gathers all args that are TensorWithTFOverrideVariable and dispatches based on the ordering in _get_overloaded_args"""
 
@@ -598,7 +595,7 @@ class TensorWithTFOverrideVariable(TensorVariable):
         tx: "InstructionTranslator",
         tensor_var: VariableTracker,
         class_type: type,
-        cls_source: Source | None,
+        cls_source: Optional[Source],
     ) -> "TensorWithTFOverrideVariable":
         # [Note: __torch_function__] coerce `tensor_var` into a
         # TensorWithTFOverrideVariable. In eager, this is just a type change.
@@ -607,13 +604,11 @@ class TensorWithTFOverrideVariable(TensorVariable):
         # This simulates shallow-copying the tensor object.
         kwargs = dict(tensor_var.__dict__)
         input_tensor_type = kwargs.pop("class_type")
-        if not (
-            input_tensor_type in (torch.Tensor, torch.nn.Parameter)
-            or issubclass(input_tensor_type, torch.Tensor)
-        ):
-            raise AssertionError(
-                f"invalid class type {input_tensor_type} in TensorWithTFOverrideVariable.from_tensor_var"
-            )
+        assert input_tensor_type in (torch.Tensor, torch.nn.Parameter) or issubclass(
+            input_tensor_type, torch.Tensor
+        ), (
+            f"invalid class type {input_tensor_type} in TensorWithTFOverrideVariable.from_tensor_var"
+        )
         var = cls(class_type=class_type, **kwargs)
         var.install_global(tx)
         return var
@@ -667,7 +662,7 @@ class TensorWithTFOverrideVariable(TensorVariable):
             and not inspect.ismethoddescriptor(getattr(torch.Tensor, name))
         ):
             args = [self]
-            kwargs: dict[Any, Any] = {}
+            kwargs: Dict[Any, Any] = {}
             if can_dispatch_torch_function(tx, args, kwargs):
                 get_fn = VariableTracker.build(tx, getattr(torch.Tensor, name).__get__)
 
@@ -730,7 +725,7 @@ class TensorWithTFOverrideVariable(TensorVariable):
         fn: VariableTracker,
         types: TupleVariable,
         args: Iterable[Any],
-        kwargs: dict[str, Any],
+        kwargs: Dict[str, Any],
     ) -> Any:
         # NOTE this assumes `__torch_function__` isn't modified during tracing.
         if not hasattr(self, "torch_function_fn"):
@@ -751,7 +746,7 @@ class TensorWithTFOverrideVariable(TensorVariable):
         tx: "InstructionTranslator",
         name: str,
         args: Sequence[VariableTracker],
-        kwargs: "dict[str, VariableTracker]",
+        kwargs: "Dict[str, VariableTracker]",
     ) -> "VariableTracker":
         # This code block implements inlining the __torch_function__ override
         # of `call_method`.

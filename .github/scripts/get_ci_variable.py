@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Helper script - Return CI variables such as stable cuda, min python version, etc."""
 
 import argparse

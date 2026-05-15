@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
-from typing import Any
+from typing import Any, List, Union
 
 
 try:
@@ -26,8 +26,8 @@ except ImportError:
     print("rich not found, for color output use 'pip install rich'")
 
 
-def parse_junit_reports(path_to_reports: str) -> list[TestCase]:  # type: ignore[no-any-unimported]
-    def parse_file(path: str) -> list[TestCase]:  # type: ignore[no-any-unimported]
+def parse_junit_reports(path_to_reports: str) -> List[TestCase]:  # type: ignore[no-any-unimported]
+    def parse_file(path: str) -> List[TestCase]:  # type: ignore[no-any-unimported]
         try:
             return convert_junit_to_testcases(JUnitXml.fromfile(path))
         except Exception as err:
@@ -49,7 +49,7 @@ def parse_junit_reports(path_to_reports: str) -> list[TestCase]:  # type: ignore
     return ret_xml
 
 
-def convert_junit_to_testcases(xml: JUnitXml | TestSuite) -> list[TestCase]:  # type: ignore[no-any-unimported]
+def convert_junit_to_testcases(xml: Union[JUnitXml, TestSuite]) -> List[TestCase]:  # type: ignore[no-any-unimported]
     testcases = []
     for item in xml:
         if isinstance(item, TestSuite):
@@ -59,7 +59,7 @@ def convert_junit_to_testcases(xml: JUnitXml | TestSuite) -> list[TestCase]:  # 
     return testcases
 
 
-def render_tests(testcases: list[TestCase]) -> None:  # type: ignore[no-any-unimported]
+def render_tests(testcases: List[TestCase]) -> None:  # type: ignore[no-any-unimported]
     num_passed = 0
     num_skipped = 0
     num_failed = 0

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module implements variable tracking for PyTorch optimizers during Dynamo tracing.
 
@@ -22,8 +23,8 @@ optimizer-specific optimizations and safety guarantees.
 
 import logging
 import weakref
-from collections.abc import Iterable
-from typing import Any, TYPE_CHECKING
+
+from typing import Any, Dict, Iterable, List, Optional, Set, TYPE_CHECKING, Tuple
 
 import torch
 from torch._dynamo.variables.tensor import TensorVariable
@@ -72,8 +73,7 @@ def _is_static_for_cudagraphs(x: torch.Tensor) -> bool:
         manager = get_manager(x.device.index, False)
         is_static_address = torch._dynamo.utils.get_static_address_type(x) is not None
         if manager:
-            if manager.current_node is None:
-                raise AssertionError("CUDA graph manager has no current node")
+            assert manager.current_node is not None
             return (
                 is_static_address
                 or manager.current_node._is_cuda_graph_recorded_tensor(x)
@@ -96,9 +96,9 @@ class OptimizerVariable(UserDefinedObjectVariable):
     def __init__(
         self,
         value: torch.optim.Optimizer,
-        grad_to_source: dict[Any, GradSource] | None = None,
-        static_tensor_names: set[str] | None = None,
-        tensor_to_source: dict[torch.Tensor, Source] | None = None,
+        grad_to_source: Optional[Dict[Any, GradSource]]= None,
+        static_tensor_names: Optional[Set[str]]= None,
+        tensor_to_source: Optional[Dict[torch.Tensor, Source]]= None,
         **kwargs: Any,
     ) -> None:
         super().__init__(value, **kwargs)
@@ -112,8 +112,8 @@ class OptimizerVariable(UserDefinedObjectVariable):
         self,
         tx: "InstructionTranslator",
         name: str,
-        args: list[VariableTracker],
-        kwargs: dict[str, VariableTracker],
+        args: List[VariableTracker],
+        kwargs: Dict[str, VariableTracker],
     ) -> "VariableTracker":
         """This is an optimization to avoid tracing the very slow initialization of the optimizer"""
         if name == "_init_group":
@@ -149,10 +149,7 @@ class OptimizerVariable(UserDefinedObjectVariable):
         # in the typical case, we return a UserMethodVariable
         # which will directly inline
         if name in ("_init_group"):
-            if not self.source:
-                raise AssertionError(
-                    "OptimizerVariable requires a source for var_getattr"
-                )
+            assert self.source
             return GetAttrVariable(
                 self,
                 name,
@@ -195,7 +192,7 @@ class OptimizerVariable(UserDefinedObjectVariable):
 
         # We only set capturable if params are on cuda
         # and the state is not initialized
-        def safe_to_set_capturable(group: dict[str, Any]) -> bool:
+        def safe_to_set_capturable(group: Dict[str, Any]) -> bool:
             all_uninitialized = True
             all_gpu = True
 
@@ -222,7 +219,7 @@ class OptimizerVariable(UserDefinedObjectVariable):
 
     def get_python_args(
         self, *args: Any, **kwargs: Any
-    ) -> tuple[list[Any], dict[str, Any]]:
+    ) -> Tuple[List[Any], Dict[str, Any]]:
         """Get python values equivalent to the variable tracker args"""
 
         def map_arg(arg: Any) -> Any:
@@ -281,8 +278,7 @@ class OptimizerVariable(UserDefinedObjectVariable):
         # We need to realize the top level state dict to populate
         # the guard locals
         state_vt.realize()
-        if state_source is None:
-            raise AssertionError("state_source must not be None")
+        assert state_source is not None
         tx.output.guard_on_key_order.add(state_source)
 
         # Populate self.grad_to_source and self.tensor_to_source so that we can
@@ -399,10 +395,9 @@ class OptimizerVariable(UserDefinedObjectVariable):
         """Update the args and kwargs to the traced optimizer call"""
         for arg, py_arg in zip(args, py_args):
             if isinstance(arg, ListVariable):
-                if not isinstance(py_arg, list):
-                    raise AssertionError(
-                        "py_arg should be a list in optimizer variable"
-                    )
+                assert isinstance(py_arg, list), (
+                    "py_arg should be a list in optimizer variable"
+                )
                 for i, val in enumerate(py_arg):
                     tx.output.side_effects.mutation(arg)
                     if isinstance(val, torch.Tensor):

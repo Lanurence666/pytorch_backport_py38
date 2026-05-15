@@ -1,15 +1,15 @@
+from __future__ import annotations
 """
 Python polyfills for builtins
 """
 
-from __future__ import annotations
 
 import builtins
 import functools
 import operator
 import typing
 from collections.abc import Callable
-from typing import TYPE_CHECKING, TypeVar
+from typing import Callable, Iterable, TYPE_CHECKING, Tuple, Type, TypeVar, cast
 
 from ..decorators import substitute_in_graph
 
@@ -47,7 +47,7 @@ def any(iterable: Iterable[object], /) -> bool:
 
 
 @substitute_in_graph(builtins.enumerate, is_embedded_type=True)  # type: ignore[arg-type]
-def enumerate(iterable: Iterable[_T], start: int = 0) -> Iterable[tuple[int, _T]]:
+def enumerate(iterable: Iterable[_T], start: int = 0) -> Iterable[Tuple[int, _T]]:
     if not isinstance(start, int):
         raise TypeError(
             f"{type(start).__name__!r} object cannot be interpreted as an integer"

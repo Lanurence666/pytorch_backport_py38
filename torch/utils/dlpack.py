@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Dict, Optional, Set, Type
 
 import torch
 import enum
@@ -58,8 +60,8 @@ The DLPack capsule shares the tensor's memory.
 def from_dlpack(
     ext_tensor: Any,
     *,
-    device: _Device | None = None,
-    copy: bool | None = None
+    device: Optional[_Device]= None,
+    copy: Optional[bool]= None
 ) -> 'torch.Tensor':
     """from_dlpack(ext_tensor) -> Tensor
 
@@ -122,7 +124,7 @@ def from_dlpack(
     if hasattr(ext_tensor, '__dlpack__'):
         # Only populate kwargs if any of the optional arguments are, in fact, not None. Otherwise,
         # leave them out, since we might end up falling back to no-extra-kwargs __dlpack__ call.
-        kwargs: dict[str, Any] = {}
+        kwargs: Dict[str, Any] = {}
         kwargs["max_version"] = (1, 0)
 
         # Track copy request for potential manual handling

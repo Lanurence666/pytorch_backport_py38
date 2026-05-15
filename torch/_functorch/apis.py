@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import functools
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, Iterable, Optional, Set, TYPE_CHECKING, Tuple, Type
 from typing_extensions import ParamSpec, TypeVar
 
 from torch._functorch.utils import argnums_t, exposed_in
@@ -24,7 +24,7 @@ from torch._functorch.vmap import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    
 
     import torch
 
@@ -45,7 +45,7 @@ def vmap(
     out_dims: out_dims_t = 0,
     randomness: str = "error",
     *,
-    chunk_size: int | None = None,
+    chunk_size: Optional[int] = None
 ) -> Callable[_P, _R]:
     """
     vmap is the vectorizing map; ``vmap(func)`` returns a new function that
@@ -178,7 +178,7 @@ def vmap(
     If the input is a Python struct, ``in_dims`` must be a tuple containing a struct
     matching the shape of the input:
 
-        >>> f = lambda dict: torch.dot(dict["x"], dict["y"])
+        >>> f = lambda dict: torch.dot(Dict["x"], Dict["y"])
         >>> x, y = torch.randn(2, 5), torch.randn(5)
         >>> input = {"x": x, "y": y}
         >>> batched_dot = torch.vmap(f, in_dims=({"x": 0, "y": None},))
@@ -284,7 +284,7 @@ def chunk_vmap(
 
     def _get_chunk_flat_args(
         flat_args_: Iterable[Any],
-        flat_in_dims_: Iterable[int | None],
+        flat_in_dims_: Iterable[Optional[int]],
         chunks_: int,
     ) -> Iterable[Any]:
         flat_args_chunks = tuple(
@@ -429,7 +429,7 @@ def grad(
     import torch._functorch.eager_transforms as eager_transforms
     from torch.compiler import is_compiling
 
-    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> tuple[Any, torch.Tensor]:
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> Tuple[Any, torch.Tensor]:
         return eager_transforms.grad_impl(func, argnums, has_aux, args, kwargs)
 
     if not is_compiling():
@@ -442,7 +442,7 @@ def grad(
 @exposed_in("torch.func")
 def grad_and_value(
     func: Callable[_P, Any], argnums: argnums_t = 0, has_aux: bool = False
-) -> Callable[_P, tuple[Any, Any]]:
+) -> Callable[_P, Tuple[Any, Any]]:
     """
     Returns a function to compute a tuple of the gradient and primal, or
     forward, computation.
@@ -473,7 +473,7 @@ def grad_and_value(
     from torch._functorch import eager_transforms
     from torch.compiler import is_compiling
 
-    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> tuple[Any, torch.Tensor]:
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> Tuple[Any, torch.Tensor]:
         return eager_transforms.grad_and_value_impl(
             func, argnums, has_aux, args, kwargs
         )

@@ -6,7 +6,9 @@ import itertools
 import re
 import warnings
 from io import StringIO
-from typing import Any, Generic, Literal, NamedTuple, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, Generic, List, Optional, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union, cast
+from typing_extensions import Literal, NamedTuple
+
 from unittest.mock import patch
 
 import sympy
@@ -33,7 +35,7 @@ AtomicMode = Literal[
     "atomic_cas",
     "atomic_xchg",
 ]
-StoreMode = AtomicMode | Literal["tma"] | None
+StoreMode = Optional[Union[AtomicMode, Literal["tma"]]]
 ReductionType = Literal[
     "argmax",
     "argmin",
@@ -86,7 +88,7 @@ class OpsHandler(Generic[T]):
     all the metaprogramming has run.
     """
 
-    def constant(self, value: bool | float | int, dtype: torch.dtype) -> T:
+    def constant(self, value: Union[Union[bool, float], int], dtype: torch.dtype) -> T:
         """Produces a scalar constant of type dtype."""
         raise NotImplementedError
 
@@ -144,7 +146,7 @@ class OpsHandler(Generic[T]):
         self,
         x: T,
         dtype: torch.dtype,
-        src_dtype: torch.dtype | None = None,
+        src_dtype: Optional[torch.dtype]= None,
         use_compute_types: bool = True,
     ) -> T:
         """
@@ -248,7 +250,7 @@ class OpsHandler(Generic[T]):
         src_dtype: torch.dtype,
         reduction_type: ReductionType,
         value: T,
-    ) -> T | tuple[T, ...]:
+    ) -> Union[T, Tuple[T, ...]]:
         """
         Perform a 'reduction_type' reduction on 'value' of dtype 'src_dtype',
         using 'dtype' as the accumulation dtype for the reduction.  The result
@@ -273,10 +275,10 @@ class OpsHandler(Generic[T]):
 
     def scan(
         self,
-        dtypes: tuple[torch.dtype, ...],
-        combine_fn: Callable[[tuple[T, ...], tuple[T, ...]], tuple[T, ...]],
-        values: tuple[T, ...],
-    ) -> tuple[T, ...]:
+        dtypes: Tuple[torch.dtype, ...],
+        combine_fn: Callable[[Tuple[T, ...], Tuple[T, ...]], Tuple[T, ...]],
+        values: Tuple[T, ...],
+    ) -> Tuple[T, ...]:
         """
         Perform an associative scan on 'value'.
         """
@@ -285,11 +287,11 @@ class OpsHandler(Generic[T]):
 
     def sort(
         self,
-        dtypes: tuple[torch.dtype, ...],
-        values: tuple[T, ...],
+        dtypes: Tuple[torch.dtype, ...],
+        values: Tuple[T, ...],
         stable: bool,
         descending: bool,
-    ) -> tuple[T, ...]:
+    ) -> Tuple[T, ...]:
         """
         Sort values along the reduction dimension.
         """
@@ -298,12 +300,12 @@ class OpsHandler(Generic[T]):
     def bucketize(
         self,
         values: T,
-        boundaries: tuple[str, sympy.Expr, sympy.Expr, sympy.Expr],
+        boundaries: Tuple[str, sympy.Expr, sympy.Expr, sympy.Expr],
         boundary_indices: T,
         indexing_dtype: torch.dtype,
         right: bool,
-        sorter: tuple[str, sympy.Expr] | None = None,
-        sorter_indices: T | None = None,
+        sorter: Optional[Tuple[str, sympy.Expr]]= None,
+        sorter_indices: Optional[T]= None,
     ) -> T:
         # See [Note: Inductor bucketize op]
         raise NotImplementedError
@@ -313,7 +315,7 @@ class OpsHandler(Generic[T]):
         name: str,
         reduction_type: ReductionType,
         value: T,
-        extra_meta: dict[str, Any],
+        extra_meta: Dict[str, Any],
     ) -> None:
         raise NotImplementedError
 
@@ -737,11 +739,11 @@ class OpsHandler(Generic[T]):
         self,
         *inputs: T,
         asm: str,
-        constraints: str | None = None,
+        constraints: Optional[str]= None,
         dtype: torch.dtype = torch.float32,
         is_pure: bool = True,
         pack: int = 1,
-        input_dtypes: tuple[torch.dtype, ...] | None = None,
+        input_dtypes: Optional[Tuple[torch.dtype, ...]]= None,
     ) -> T:
         raise NotImplementedError
 
@@ -760,7 +762,7 @@ class OpsHandler(Generic[T]):
 _ignore_op_re = re.compile(r"_.*|paren").fullmatch
 
 
-def list_ops(cls: type[Any]):
+def list_ops(cls: Type[Any]):
     return OrderedSet([x for x in dir(cls) if not _ignore_op_re(x)])
 
 
@@ -768,7 +770,7 @@ OP_NAMES = list_ops(OpsHandler)
 
 
 class DefaultHandler(OpsHandler[Any]):
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         """
         Default implementation for all ops.  Override in a subclass to
         provide generic op behavior.
@@ -832,7 +834,7 @@ class DefaultHandler(OpsHandler[Any]):
                 # slower fallback for ops with default or variadic arguments
                 setattr(cls, target, cls._call_default(target))
 
-        ctx: dict[str, Any] = {}
+        ctx: Dict[str, Any] = {}
         exec(code.getvalue(), ctx)
         for target, impl in ctx.items():
             if target in OP_NAMES:
@@ -845,7 +847,7 @@ DefaultHandler._init_cls()
 class NoopHandler(DefaultHandler):
     name = "NoopHandler"
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         return None
 
     @staticmethod
@@ -854,15 +856,15 @@ class NoopHandler(DefaultHandler):
 
     @staticmethod
     # pyrefly: ignore [bad-override]
-    def frexp(x) -> tuple[None, None]:
+    def frexp(x) -> Tuple[None, None]:
         return (None, None)
 
     @staticmethod
-    def scan(dtypes, combine_fn, values) -> tuple[None, ...]:
+    def scan(dtypes, combine_fn, values) -> Tuple[None, ...]:
         return (None,) * len(values)
 
     @staticmethod
-    def sort(dtypes, values, stable, descending) -> tuple[None, ...]:
+    def sort(dtypes, values, stable, descending) -> Tuple[None, ...]:
         return (None,) * len(values)
 
     @staticmethod
@@ -953,7 +955,7 @@ class BasicMathOpsMixin:
 class MockHandler(BasicMathOpsMixin, DefaultHandler):
     name = "MockHandler"
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         fargs = [*map(_arg_str, args)]
         for k, v in kwargs.items():
             fargs.append(f"{k}={_arg_str(v)}")
@@ -1015,10 +1017,7 @@ class KernelFormatterHandler(DefaultHandler):
                 )
                 formatter._output.writeline(f"{lhs} = {name}")
 
-        with (
-            V.set_ops_handler(formatter),
-            patch.object(FlexibleLayout, "allow_indexing", True),
-        ):
+        with V.set_ops_handler(formatter), patch.object(FlexibleLayout, "allow_indexing", True):
             result = ir_fn(*args)
             return formatter.getvalue(result)
 
@@ -1031,7 +1030,7 @@ class KernelFormatterHandler(DefaultHandler):
         self._output.writeline(f"{varname} = {line}")
         return varname
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         return pytree.tree_map(
             self._write, getattr(self.parent_handler, name)(*args, **kwargs)
         )
@@ -1041,8 +1040,8 @@ class KernelFormatterHandler(DefaultHandler):
         dtype: torch.dtype,
         src_dtype: torch.dtype,
         reduction_type: ReductionType,
-        value: str | tuple[str, ...],
-    ) -> str | tuple[str, ...]:
+        value: Union[str, Tuple[str, ...],]
+    ) -> Union[str, Tuple[str, ...]]:
         line = self.parent_handler.reduction(dtype, src_dtype, reduction_type, value)
         num_values = reduction_num_outputs(reduction_type)
         varnames = [f"tmp{next(self.var_counter)}" for _ in range(num_values)]
@@ -1058,12 +1057,12 @@ class WrapperHandler(DefaultHandler):
     def __init__(self, inner: OpsHandler[Any]):
         self._inner = inner
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         return getattr(self._inner, name)(*args, **kwargs)
 
 
 class AddParenHandler(WrapperHandler):
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         val = getattr(self._inner, name)(*args, **kwargs)
         if not val or isinstance(val, (sympy.Expr, tuple, list)):
             return val
@@ -1073,7 +1072,7 @@ class AddParenHandler(WrapperHandler):
 class OpCountResult(NamedTuple):
     num_ops: int
     used_ops: OrderedSet[str]
-    read_buffers: list[str]
+    read_buffers: List[str]
     nontrivial_read_count: int
 
 
@@ -1084,12 +1083,12 @@ class OpCounterCSE(DefaultHandler):
         super().__init__()
         self.parent_handler = inner
         self.op_count = 0
-        self.var_names: dict[str, str] = {}
+        self.var_names: Dict[str, str] = {}
         self._used_ops: OrderedSet[str] = OrderedSet()
-        self._read_names: list[str] = []
+        self._read_names: List[str] = []
         self._nontrivial_read_count = 0
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         self._used_ops.add(name)
         return pytree.tree_map(
             self._update_count, getattr(self.parent_handler, name)(*args, **kwargs)
@@ -1126,12 +1125,12 @@ class OpCounterCSE(DefaultHandler):
     def bucketize(
         self,
         values: T,
-        boundaries: tuple[str, sympy.Expr, sympy.Expr, sympy.Expr],
+        boundaries: Tuple[str, sympy.Expr, sympy.Expr, sympy.Expr],
         boundary_indices: T,
         indexing_dtype: torch.dtype,
         right: bool,
-        sorter: tuple[str, sympy.Expr] | None = None,
-        sorter_indices: T | None = None,
+        sorter: Optional[Tuple[str, sympy.Expr]]= None,
+        sorter_indices: Optional[T]= None,
     ) -> T:
         """
         See [Note: Inductor bucketize op]
@@ -1159,7 +1158,7 @@ class OpCounterCSE(DefaultHandler):
 
 
 class ExtractConstantsHandler(NoopHandler):
-    def __init__(self, device: torch.device | None):
+    def __init__(self, device: Optional[torch.device]):
         self.device = device
 
     def constant(self, value: Any, dtype: torch.dtype) -> torch._inductor.ir.Constant:
@@ -1179,7 +1178,7 @@ class SimpleCSEHandler(WrapperHandler):
 
     def __init__(self, inner: Any):
         super().__init__(inner)
-        self.cse_cache: dict[str, Any | tuple[Any, ...]] = {}
+        self.cse_cache: Dict[str, Union[Any, Tuple[Any, ...]]] = {}
         self.mock = MockHandler()
 
     def indirect_indexing(self, *args, **kwargs) -> sympy.Expr:
@@ -1191,7 +1190,7 @@ class SimpleCSEHandler(WrapperHandler):
     def store_reduction(self, *args, **kwargs) -> None:
         raise NotImplementedError("store not implemented")
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         key = getattr(self.mock, name)(*args, **kwargs)
         val = self.cse_cache.get(key)
         if val is not None:

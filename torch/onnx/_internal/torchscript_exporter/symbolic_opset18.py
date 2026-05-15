@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Optional
+
 # mypy: allow-untyped-defs
 """This file exports ONNX ops for opset 18.
 
@@ -72,7 +75,7 @@ def col2im(
     stride: Sequence[int],
 ):
     # convert [i0, i1, ..., in] into [i0, i0, i1, i1, ..., in, in]
-    adjusted_padding: list[int] = []
+    adjusted_padding: List[int] = []
     for pad in padding:
         adjusted_padding.extend(pad for _ in range(2))
 
@@ -124,7 +127,7 @@ def _native_layer_norm(
     weight: _C.Value,
     bias: _C.Value,
     eps: float,
-) -> tuple[_C.Value, _C.Value, _C.Value]:
+) -> Tuple[_C.Value, _C.Value, _C.Value]:
     return opset9.native_layer_norm(g, input, normalized_shape, weight, bias, eps)
 
 
@@ -224,7 +227,7 @@ def _linalg_matrix_norm(
     g: jit_utils.GraphContext,
     self: torch._C.Value,
     ord: torch._C.Value,
-    dim: list[int],
+    dim: List[int],
     keepdim: bool,
     dtype: torch._C.Value,
 ):
@@ -265,7 +268,7 @@ def linalg_vector_norm(
     g: jit_utils.GraphContext,
     self: torch._C.Value,
     ord: float,
-    dim: Sequence[int] | None,
+    dim: Optional[Sequence[int]],
     keepdim: bool,
     dtype: torch._C.Value,
 ):

@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import logging
 import time
-from collections.abc import Callable
-from typing import Any, TypeVar
+
+from typing import Any, Callable, Dict, List, Type, TypeVar
 from typing_extensions import ParamSpec
 from uuid import uuid4
 
@@ -14,7 +16,7 @@ from torch.distributed.checkpoint.logging_handlers import DCP_LOGGER_NAME
 logger = logging.getLogger()
 
 
-__all__: list[str] = []
+__all__: List[str] = []
 
 # pyrefly: ignore [unknown-name]
 global _dcp_logger
@@ -24,7 +26,7 @@ _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
 
-def _msg_dict_from_dcp_method_args(*args, **kwargs) -> dict[str, Any]:
+def _msg_dict_from_dcp_method_args(*args, **kwargs) -> Dict[str, Any]:
     """
     Extracts log data from dcp method args
     """
@@ -59,7 +61,7 @@ def _msg_dict_from_dcp_method_args(*args, **kwargs) -> dict[str, Any]:
     return msg_dict
 
 
-def _get_msg_dict(func_name, *args, **kwargs) -> dict[str, Any]:
+def _get_msg_dict(func_name, *args, **kwargs) -> Dict[str, Any]:
     msg_dict = _msg_dict_from_dcp_method_args(*args, **kwargs)
     msg_dict.update(c10d_logger._get_msg_dict(func_name, *args, **kwargs))
 

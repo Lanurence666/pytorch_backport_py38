@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import itertools
-from collections.abc import Generator, Iterable, Iterator, Sequence
+
 from contextlib import contextmanager
 from os import linesep
-from typing import Any
+from typing import Any, Dict, Generator, Iterable, Iterator, List, Optional, Sequence, Set, Tuple, Union
 
 import sympy
 
@@ -21,8 +23,8 @@ _ACCUMULATOR_ARG_NAME = "accum"
 
 
 def scaled_mm_evt(
-    scale_A_name: str, scale_B_name: str, bias_name: str | None, output_name: str
-) -> tuple[list[str], dict[str, Any], str]:
+    scale_A_name: Union[str, scale_B_name: str, bias_name: str, None, output_name: str]
+) -> Tuple[List[str], Dict[str, Any], str]:
     evt_read_names = [scale_A_name, scale_B_name]
     var_name_to_buffer_name = {n: n for n in [scale_A_name, scale_B_name]}
     var_name_to_buffer_name["D"] = output_name
@@ -57,7 +59,7 @@ class CutlassEVTOpsMixIn:
     def to_dtype(
         x: str,
         dtype: Any,
-        src_dtype: torch.dtype | None = None,
+        src_dtype: Optional[torch.dtype]= None,
         use_compute_types: bool = False,
     ) -> str:
         return x
@@ -111,7 +113,7 @@ class _AssignmentFormatter(DefaultHandler):
     def __init__(self, parent_handler: "CutlassEVTCodegen"):
         self.parent_handler = parent_handler
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         # Handle op dispatch here
         if hasattr(self.parent_handler, name):
             fn = getattr(self.parent_handler, name)
@@ -157,17 +159,17 @@ class CutlassEVTCodegen(CutlassEVTOpsMixIn):
         self.accumulator_node_name: str = accumulator_node_name  #
         self.body: IndentedBuffer = IndentedBuffer(1)  # The body buffer for codegen
         self.var_counter: Iterator[int] = itertools.count()
-        self.store_name_to_value: dict[str, OpsValue] = (
+        self.store_name_to_value: Dict[str, OpsValue] = (
             dict()
         )  # Aliases for subexpression functors
         self.reads: OrderedSet[str] = OrderedSet([])
         # Used for creating example tensors
-        self.var_name_to_buffer_name: dict[str, str] = {
+        self.var_name_to_buffer_name: Dict[str, str] = {
             _ACCUMULATOR_ARG_NAME: accumulator_node_name
         }
         self.removed_buffers: OrderedSet[str] = removed_buffers
-        self.cur_node: ComputedBuffer | None = None
-        self.name_to_buffer = V.graph.name_to_buffer | V.graph.graph_inputs
+        self.cur_node: Optional[ComputedBuffer] = None
+        self.name_to_buffer = Union[V.graph.name_to_buffer, V.graph.graph_inputs]
         for name in V.graph.constants:
             # pyrefly: ignore [unsupported-operation]
             self.name_to_buffer[name] = V.graph.add_tensor_constant(
@@ -185,9 +187,9 @@ class CutlassEVTCodegen(CutlassEVTOpsMixIn):
     @staticmethod
     def ir_to_evt_python_code(
         cutlass_template_node_name: str,
-        epilogue_nodes: list[BaseSchedulerNode],
+        epilogue_nodes: List[BaseSchedulerNode],
         removed_buffers: OrderedSet[str],
-    ) -> tuple[list[str], list[str], dict[str, Any], str]:
+    ) -> Tuple[List[str], List[str], Dict[str, Any], str]:
         codegen = CutlassEVTCodegen(cutlass_template_node_name, removed_buffers)
         handler = _AssignmentFormatter(codegen)
 
@@ -237,13 +239,13 @@ class CutlassEVTCodegen(CutlassEVTOpsMixIn):
         finally:
             self.cur_node = prev_node
 
-    def get_renames(self) -> dict[str, str]:
+    def get_renames(self) -> Dict[str, str]:
         return dict(self.var_name_to_buffer_name)
 
-    def get_reads(self) -> list[str]:
+    def get_reads(self) -> List[str]:
         return list(self.reads.difference(self.store_name_to_value.keys()))
 
-    def get_writes(self) -> list[str]:
+    def get_writes(self) -> List[str]:
         return list(self.store_name_to_value.keys())
 
     def load(self, name: str, index: Any) -> str:

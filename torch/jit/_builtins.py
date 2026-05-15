@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import cmath
 import math
 import warnings
@@ -15,7 +17,7 @@ from torch.nn.modules.utils import (
 )
 
 
-_builtin_table: dict[int, str] | None = None
+_builtin_table: Optional[Dict[int, str]]= None
 
 _modules_containing_builtins = (
     torch,

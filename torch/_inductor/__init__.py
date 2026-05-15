@@ -5,7 +5,9 @@ import dataclasses
 import io
 import logging
 import os
-from typing import Any, IO, Literal, Optional, TYPE_CHECKING, Union
+from typing import Any, Callable, Dict, IO, List, Optional, TYPE_CHECKING, Tuple, Type, Union
+from typing_extensions import Literal
+
 
 import torch.fx
 
@@ -33,8 +35,8 @@ log = logging.getLogger(__name__)
 
 def compile(
     gm: torch.fx.GraphModule,
-    example_inputs: list[InputType],
-    options: dict[str, Any] | None = None,
+    example_inputs: List[InputType],
+    options: Optional[Dict[str, Any]]= None,
 ):
     """
     Compile a given FX graph with TorchInductor.  This allows compiling
@@ -58,8 +60,8 @@ def aoti_compile_and_package(
     _deprecated_unused_args=None,
     _deprecated_unused_kwargs=None,
     *,
-    package_path: FileLike | None = None,
-    inductor_configs: dict[str, Any] | None = None,
+    package_path: Optional[FileLike]= None,
+    inductor_configs: Optional[Dict[str, Any]]= None,
 ) -> str:
     """
     Compiles the exported program with AOTInductor, and packages it into a .pt2
@@ -160,13 +162,13 @@ def aoti_compile_and_package(
 def _aoti_compile_and_package_inner(
     gm: torch.nn.Module,
     # flat_example_inputs: List[Any],
-    args: tuple[Any],
-    kwargs: dict[str, Any] | None = None,
+    args: Tuple[Any],
+    kwargs: Optional[Dict[str, Any]]= None,
     *,
     load_and_run: bool = False,
-    check_accuracy: str | None = None,
-    package_path: str | io.BytesIO | None = None,
-    inductor_configs: dict[str, Any] | None = None,
+    check_accuracy: Optional[str]= None,
+    package_path: Optional[Union[str, io.BytesIO]]= None,
+    inductor_configs: Optional[Dict[str, Any]]= None,
 ):
     """
     See docstring for aoti_compile_and_package.
@@ -272,11 +274,11 @@ def aoti_load_package(
 
 def aot_compile(
     gm: torch.fx.GraphModule,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any] | None = None,
+    args: Tuple[Any, ...],
+    kwargs: Optional[Dict[str, Any]]= None,
     *,
-    options: dict[str, Any] | None = None,
-) -> str | list[str | Weights] | torch.fx.GraphModule:
+    options: Optional[Dict[str, Any]]= None,
+) -> Union[str, List[str, Weights], torch.fx.GraphModule]:
     """
     Ahead-of-time compile a given FX graph with TorchInductor into a shared library.
 
@@ -335,8 +337,8 @@ lite_mode_options = {
 
 
 def list_mode_options(
-    mode: str | None = None, dynamic: bool | None = None
-) -> dict[str, Any]:
+    mode: Optional[str]= None, dynamic: Optional[bool] = None
+) -> Dict[str, Any]:
     r"""Returns a dictionary describing the optimizations that each of the available
     modes passed to `torch.compile()` performs.
 
@@ -349,7 +351,7 @@ def list_mode_options(
         >>> torch._inductor.list_mode_options()
     """
 
-    mode_options: dict[str, dict[str, bool]] = {
+    mode_options: Dict[str, Dict[str, bool]] = {
         "default": {},
         # lite backend for opt-in optimizations
         "lite": lite_mode_options,
@@ -378,7 +380,7 @@ def list_mode_options(
         ) from e
 
 
-def list_options() -> list[str]:
+def list_options() -> List[str]:
     r"""Returns a dictionary describing the optimizations and debug configurations
     that are available to `torch.compile()`.
 
@@ -391,7 +393,7 @@ def list_options() -> list[str]:
 
     from torch._inductor import config
 
-    current_config: dict[str, Any] = config.get_config_copy()
+    current_config: Dict[str, Any] = config.get_config_copy()
 
     return list(current_config.keys())
 
@@ -405,10 +407,10 @@ def cudagraph_mark_step_begin():
 
 def standalone_compile(
     gm: torch.fx.GraphModule,
-    example_inputs: list[InputType],
+    example_inputs: List[InputType],
     *,
     dynamic_shapes: DynamicShapesType = "from_graph",
-    options: dict[str, Any] | None = None,
+    options: Optional[Dict[str, Any]]= None,
     aot: bool = False,  # AOT mode, which uses BundledAOTAutogradCache
     donate_graph_module: bool = False,
 ) -> CompiledArtifact:
@@ -456,5 +458,5 @@ def standalone_compile(
 
 @dataclasses.dataclass
 class _CudagraphAnnotation:
-    fwd: bool | None
-    bwd: bool | None
+    fwd: Optional[bool]
+    bwd: Optional[bool]

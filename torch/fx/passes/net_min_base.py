@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import logging
-from collections.abc import Callable
+
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, cast
 
 import torch
 import torch.fx
@@ -106,12 +108,12 @@ class _MinimizerBase:
         module: torch.fx.GraphModule,
         sample_input: Tensors,
         compare_fn: Callable[
-            [TensorOrTensors, TensorOrTensors, Names], tuple[float, bool]
+            [TensorOrTensors, TensorOrTensors, Names], Tuple[float, bool]
         ],
         settings: _MinimizerSettingBase,
         module_exporter: Callable[[Tensors, torch.fx.GraphModule, str], None]
         | None = None,
-        exclusion_fn: Callable[[NodeList, int, int], None] | None = None,
+        exclusion_fn: Optional[Callable[[NodeList, int, int], None]]= None,
     ) -> None:
         if not isinstance(module, torch.fx.GraphModule):
             raise AssertionError(f"Expected GraphModule, got {type(module)}")
@@ -124,16 +126,16 @@ class _MinimizerBase:
         self.exclusion_fn = exclusion_fn
 
         # Stores outputs of run_a function
-        self.a_outputs: dict[str, Any] = {}
+        self.a_outputs: Dict[str, Any] = {}
 
         # Stores outputs of run_b function
-        self.b_outputs: dict[str, Any] = {}
+        self.b_outputs: Dict[str, Any] = {}
 
         # Stores the results of compare_fn
-        self.results: dict[Any, Any] = {}
+        self.results: Dict[Any, Any] = {}
 
         # Stores the report for the runs
-        self.reports: list[list[str]] = []
+        self.reports: List[List[str]] = []
 
         # Current iteration
         self.iteration: int = 0
@@ -216,7 +218,7 @@ class _MinimizerBase:
 
     def _get_submod_inputs(
         self, main_module: torch.fx.GraphModule, submod_path: str
-    ) -> tuple[Tensors, Tensors]:
+    ) -> Tuple[Tensors, Tensors]:
         """
         Try get submodule inputs from stored outputs. If not found then use
         torch_glow.get_submod_inputs to get the inputs.
@@ -250,7 +252,7 @@ class _MinimizerBase:
             if self.settings.accumulate_error:
                 print(f"Can't find previous stored outputs named {placeholders}!")
 
-            def get_inputs(self: torch.nn.Module, inputs: tuple[Any, ...]) -> None:
+            def get_inputs(self: torch.nn.Module, inputs: Tuple[Any, ...]) -> None:
                 nonlocal a_input
                 a_input = inputs
 
@@ -291,7 +293,7 @@ class _MinimizerBase:
             else:
                 node.tag = "main_0"
 
-    def _build_submodule(self, nodes: NodeSet) -> tuple[torch.fx.GraphModule, str]:
+    def _build_submodule(self, nodes: NodeSet) -> Tuple[torch.fx.GraphModule, str]:
         """
         Split self.module so that one submodule consists of `nodes` and only `nodes`.
 
@@ -431,7 +433,7 @@ class _MinimizerBase:
         culprits: NodeSet = set()
         nodes: NodeList = all_nodes[start_idx:end_idx]
 
-        report: list[str] = []
+        report: List[str] = []
         if self.exclusion_fn is not None:
             self.exclusion_fn(nodes, start_idx, end_idx)
             if len(nodes) == 0:
@@ -503,7 +505,7 @@ class _MinimizerBase:
         culprits: NodeSet = set()
 
         for node in nodes:
-            report: list[str] = []
+            report: List[str] = []
             self.reports.append(report)
             self.iteration += 1
             report.append(f"Sequential traverse iteration {self.iteration}.")
@@ -547,13 +549,13 @@ class _MinimizerBase:
 
     def _block_traverse_impl(
         self, nodes: NodeList, start_idx: int, end_idx: int, find_last_node: bool
-    ) -> int | None:
+    ) -> Optional[int]:
         """
         Recursive block search implementation.
         find_last_node: If True, search for the last node which result in numerics difference
         if False: find first node in sorted node list
         """
-        report: list[str] = []
+        report: List[str] = []
 
         mid = (start_idx + end_idx) // 2
         cur_nodes_list: NodeList = nodes[: mid + 1] if find_last_node else nodes[mid:]
@@ -651,7 +653,7 @@ class _MinimizerBase:
             else:
                 return self._block_traverse_impl(nodes, start_idx, mid, find_last_node)
 
-    def _block_traverse(self, nodes: NodeList, find_last_node: bool | None) -> NodeSet:
+    def _block_traverse(self, nodes: NodeList, find_last_node: Optional[bool]) -> NodeSet:
         """
         Traverse topologically sorted node list
         Find minimum block (start_idx, end_idx) which contains the culprit
@@ -671,8 +673,8 @@ class _MinimizerBase:
         start_idx = 0
         end_idx = len(nodes) - 1
 
-        final_start_idx: int | None = start_idx
-        final_end_idx: int | None = end_idx
+        final_start_idx: Optional[int]= start_idx
+        final_end_idx: Optional[int]= end_idx
 
         run_both = find_last_node is None
 
@@ -766,7 +768,7 @@ class _MinimizerBase:
             return culprits
 
         for node in nodes:
-            report: list[str] = []
+            report: List[str] = []
             self.reports.append(report)
             self.iteration += 1
             report.append(f"Accumulate traverse iteration {self.iteration}.")
@@ -809,7 +811,7 @@ class _MinimizerBase:
             for node in nodes:
                 if node in self.fusions:
                     cur_nodes.update(self.fusions[node])
-        report: list[str] = []
+        report: List[str] = []
         self.reports.append(report)
         self.iteration += 1
         report.append(f" Nodes block {self.iteration}.")
@@ -836,7 +838,7 @@ class _MinimizerBase:
             self.print_report(report)
             return set()
 
-    def _skip_traverse(self, all_nodes: NodeList, skip_nodes: list[str]) -> NodeSet:
+    def _skip_traverse(self, all_nodes: NodeList, skip_nodes: List[str]) -> NodeSet:
         """
         Skip certain nodes in graph based on settings
         """
@@ -856,7 +858,7 @@ class _MinimizerBase:
 
         return culprits
 
-    def _collect_nodes(self, start: str | None, end: str | None) -> NodeList:
+    def _collect_nodes(self, start: Optional[str], end: Optional[str]) -> NodeList:
         """
         Collect nodes in the model that between nodes with name of `start` and `end`.
         These two nodes are also included.
@@ -879,7 +881,7 @@ class _MinimizerBase:
 
         return nodes
 
-    def run_nodes(self, start: str | None = None, end: str | None = None) -> None:
+    def run_nodes(self, start: Optional[str] = None, end: Optional[str] = None) -> None:
         """
         Run part of the model from `start` node to `end` node. If `start` is None
         then we start from the beginning of the model. If `end` is None then we
@@ -900,7 +902,7 @@ class _MinimizerBase:
             if node in self.fusions:
                 cur_nodes.update(self.fusions[node])
 
-        output_names: list[str] = []
+        output_names: List[str] = []
         if self.settings.return_intermediate:
             output_names = [node.name for node in nodes]
 
@@ -913,7 +915,7 @@ class _MinimizerBase:
         ) as e:
             print(e)
 
-    def print_report(self, report: list[str]) -> None:
+    def print_report(self, report: List[str]) -> None:
         for i in range(len(report)):
             if i > 0:
                 print(" . " + report[i])
@@ -926,10 +928,10 @@ class _MinimizerBase:
 
     def minimize(
         self,
-        start: str | None = None,
-        end: str | None = None,
-        skip_nodes: list[str] | None = None,
-        find_last_node: bool | None = None,
+        start: Optional[str]= None,
+        end: Optional[str]= None,
+        skip_nodes: Optional[List[str]]= None,
+        find_last_node: Optional[bool]= None,
     ) -> NodeSet:
         """
         Minimizing the model from node with name `start` to node with name `end` base

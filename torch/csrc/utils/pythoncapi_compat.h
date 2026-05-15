@@ -676,6 +676,43 @@ error:
 }
 #endif
 
+// gh-105922 added PyObject_VectorcallDict() to Python 3.12.0a5
+#if PY_VERSION_HEX < 0x030C00A5
+static inline PyObject*
+PyObject_VectorcallDict(PyObject *callable, PyObject *const *args,
+                        size_t nargsf, PyObject *kwdict)
+{
+    Py_ssize_t nargs = (Py_ssize_t)PyVectorcall_NARGS(nargsf);
+    PyObject *tuple = PyTuple_New(nargs);
+    if (tuple == NULL) {
+        return NULL;
+    }
+    for (Py_ssize_t i = 0; i < nargs; i++) {
+        PyTuple_SET_ITEM(tuple, i, Py_NewRef(args[i]));
+    }
+    PyObject *result = PyObject_Call(callable, tuple, kwdict);
+    Py_DECREF(tuple);
+    return result;
+}
+#endif
+
+// gh-105922 added PyObject_VectorcallMethod() to Python 3.12.0a5
+#if PY_VERSION_HEX < 0x030C00A5
+static inline PyObject*
+PyObject_VectorcallMethod(PyObject *name, PyObject *const *args,
+                          size_t nargsf, PyObject *kwnames)
+{
+    PyObject *callable = PyObject_GetAttr(args[0], name);
+    if (callable == NULL) {
+        return NULL;
+    }
+    PyObject *result = PyObject_Vectorcall(callable, &args[1],
+                                           nargsf - 1, kwnames);
+    Py_DECREF(callable);
+    return result;
+}
+#endif
+
 
 // gh-106521 added PyObject_GetOptionalAttr() and
 // PyObject_GetOptionalAttrString() to Python 3.13.0a1
@@ -911,6 +948,27 @@ static inline int PyLong_AsInt(PyObject *obj)
 #else
     return _PyLong_AsInt(obj);
 #endif
+}
+#endif
+
+// gh-101578 added PyErr_GetRaisedException() and PyErr_SetRaisedException()
+// to Python 3.12.0a1
+#if PY_VERSION_HEX < 0x030C00A1
+static inline PyObject* PyErr_GetRaisedException(void)
+{
+    PyObject *exc_type, *exc_value, *exc_tb;
+    PyErr_Fetch(&exc_type, &exc_value, &exc_tb);
+    PyErr_NormalizeException(&exc_type, &exc_value, &exc_tb);
+    Py_XDECREF(exc_type);
+    Py_XDECREF(exc_tb);
+    return exc_value;
+}
+
+static inline int PyErr_SetRaisedException(PyObject *exc)
+{
+    PyErr_SetObject((PyObject*)Py_TYPE(exc), exc);
+    Py_DECREF(exc);
+    return 0;
 }
 #endif
 

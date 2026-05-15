@@ -4,6 +4,7 @@ from collections import namedtuple
 
 import torch
 import torch.utils._pytree as pytree
+from typing import Sequence
 
 
 # NOTE [CustomOp autograd kernel indirection]

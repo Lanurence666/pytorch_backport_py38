@@ -1,13 +1,16 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 
 import torch
 from torch._C import _len_torch_function_stack
 from torch.overrides import _pop_mode, _push_mode, TorchFunctionMode
 from torch.utils._contextlib import context_decorator
+from typing import Optional, Set
 
 
-CURRENT_DEVICE: torch.device | None = None
+CURRENT_DEVICE: Optional[torch.device]= None
 
 
 @functools.lru_cache(1)
@@ -68,7 +71,7 @@ def _device_constructors():
 class DeviceContext(TorchFunctionMode):
     def __init__(self, device) -> None:
         self.device = torch.device(device)
-        self.prev_mode: DeviceContext | None = None
+        self.prev_mode: Optional[DeviceContext] = None
 
     def __enter__(self):
         global CURRENT_DEVICE

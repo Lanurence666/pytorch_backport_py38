@@ -1,6 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import contextlib
 import copy
 import functools
@@ -2360,10 +2361,7 @@ class outer_fn(torch.nn.Module):
             model.train()
 
             x = torch.randn(4, 16, device=device)
-            with (
-                torch._dynamo.config.patch(fake_tensor_cache_enabled=False),
-                torch.fx.traceback.preserve_node_meta(),
-            ):
+            with torch._dynamo.config.patch(fake_tensor_cache_enabled=False), torch.fx.traceback.preserve_node_meta():
                 gm = dynamo_graph_capture_for_export(model)(x)
                 tracing_context = gm.meta["tracing_context"]
 

@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import enum
 from collections.abc import Callable
-from typing import Any, NamedTuple
+from typing import Any, Callable, Dict, List, Tuple, Type, Union
+from typing_extensions import NamedTuple
+
 
 from torch.fx.graph import Node
 
@@ -44,7 +48,7 @@ class NSSubgraph(NamedTuple):
 #   # string representation of qconfig responsible for creating this logger
 #   'qconfig_str': 'QConfig(...)',
 # }
-NSSingleResultType = dict[str, Any]
+NSSingleResultType = Dict[str, Any]
 
 # {
 #   'layer_name_1': {  # subgraph name
@@ -57,10 +61,10 @@ NSSingleResultType = dict[str, Any]
 #   },
 # }
 #
-NSResultsType = dict[str, dict[str, dict[str, list[NSSingleResultType]]]]
+NSResultsType = Dict[str, Dict[str, Dict[str, List[NSSingleResultType]]]]
 
 # Defines the underlying target type of a node, for example:
 # `F.conv1d` for a `call_function` conv node
 # `nn.Conv1d` for a `call_module` node calling the forward of a `nn.Conv1d` module
 # `'sigmoid'` for a `call_method` node calling `x.sigmoid()`
-NSNodeTargetType = Callable | str
+NSNodeTargetType = Union[Callable, str]

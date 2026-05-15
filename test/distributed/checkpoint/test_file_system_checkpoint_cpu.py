@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import sys
 import tempfile
 from typing import Any, IO

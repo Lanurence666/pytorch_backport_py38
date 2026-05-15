@@ -6,12 +6,15 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import logging
 
 from torch.distributed._shard.sharded_tensor.logging_handlers import _log_handlers
+from typing import List, Tuple
 
 
-__all__: list[str] = []
+__all__: List[str] = []
 
 
 def _get_or_create_logger() -> logging.Logger:
@@ -29,7 +32,7 @@ def _get_or_create_logger() -> logging.Logger:
 
 def _get_logging_handler(
     destination: str = "default",
-) -> tuple[logging.Handler, str]:
+) -> Tuple[logging.Handler, str]:
     log_handler = _log_handlers[destination]
     log_handler_name = type(log_handler).__name__
     return (log_handler, log_handler_name)

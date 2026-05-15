@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import copy
 import operator
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Optional, TYPE_CHECKING, Tuple
 
 import torch
 from torch.ao.quantization import (
@@ -22,13 +24,13 @@ if TYPE_CHECKING:
 # TODO: move all LSTM util functions from fx/utils.py to this file
 def _get_lstm_with_individually_observed_parts(
     float_lstm: torch.nn.LSTM,
-    example_inputs: tuple[Any, ...],
-    backend_config: BackendConfig | None = None,
-    linear_output_obs_ctr: _PartialWrapper | None = None,
-    sigmoid_obs_ctr: _PartialWrapper | None = None,
-    tanh_obs_ctr: _PartialWrapper | None = None,
-    cell_state_obs_ctr: _PartialWrapper | None = None,
-    hidden_state_obs_ctr: _PartialWrapper | None = None,
+    example_inputs: Tuple[Any, ...],
+    backend_config: Optional[BackendConfig]= None,
+    linear_output_obs_ctr: Optional[_PartialWrapper]= None,
+    sigmoid_obs_ctr: Optional[_PartialWrapper]= None,
+    tanh_obs_ctr: Optional[_PartialWrapper]= None,
+    cell_state_obs_ctr: Optional[_PartialWrapper]= None,
+    hidden_state_obs_ctr: Optional[_PartialWrapper]= None,
     split_gates: bool = False,
 ) -> torch.ao.nn.quantizable.LSTM:
     """
@@ -139,7 +141,7 @@ def _get_lstm_with_individually_observed_parts(
         add_count = 0
         mul_count = 0
         for node in cell.graph.nodes:
-            op_index: tuple[Callable, int] | None = None  # e.g. (torch.add, 1)
+            op_index: Optional[Tuple[Callable, int]]= None  # e.g. (torch.add, 1)
             if node.target is torch.add:
                 op_index = (torch.add, add_count)
                 add_count += 1
@@ -167,7 +169,7 @@ def _get_lstm_with_individually_observed_parts(
 
 def _get_reference_quantized_lstm_module(
     observed_lstm: torch.ao.nn.quantizable.LSTM,
-    backend_config: BackendConfig | None = None,
+    backend_config: Optional[BackendConfig]= None,
 ) -> torch.ao.nn.quantized.LSTM:
     """
     Return a `torch.ao.nn.quantized.LSTM` created from a `torch.ao.nn.quantizable.LSTM`

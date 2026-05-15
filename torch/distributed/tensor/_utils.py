@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import logging
 import threading
-from collections.abc import Callable, Sequence
-from typing import Any
+
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, Union
 
 import torch
 import torch.distributed._functional_collectives as funcol
@@ -94,7 +96,7 @@ def compute_local_shape_and_global_offset(
     mesh: DeviceMesh,
     placements: Sequence[Placement],
     skip_offset: bool = False,
-) -> tuple[tuple[int, ...], tuple[int, ...]]:
+) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
     """
     Compute the local tensor shape and the global offsets into the original tensor
     of a DTensor on its current global rank. This is useful for checkpointing purpose.
@@ -152,12 +154,12 @@ def _get_shard_size_and_offsets(
     curr_local_size: int,
     mesh_dim_size: int,
     rank: RankType,
-    placement: Shard | _StridedShard,
+    placement: Union[Shard, _StridedShard],
     previous_offsets,
     zero_global_offset: int,
     skip_offset: bool,
-) -> tuple[int, torch.Tensor | None]:
-    kwargs: dict[str, Any] = {
+) -> Tuple[int, Optional[torch.Tensor]]:
+    kwargs: Dict[str, Any] = {
         "curr_local_size": curr_local_size,
         "num_chunks": mesh_dim_size,
         "rank": rank,
@@ -192,10 +194,10 @@ def _get_first_offset(offsets: torch.Tensor) -> int:
 def _compute_local_shape_and_global_offset(
     global_shape: ShapeType,
     mesh_shape: ShapeType,
-    my_coordinate: list[int] | Callable[[int], RankType] | None,
+    my_coordinate: Union[List[int], Callable[[int]], RankType] | None,
     placements: Sequence[Placement],
     skip_offset: bool = False,
-) -> tuple[tuple[int, ...], tuple[int, ...]]:
+) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
     """
     Suppose you have a full tensor with size global_shape, and you have sharded
     it according to placements for mesh_shape.  This function returns, for a
@@ -214,7 +216,7 @@ def _compute_local_shape_and_global_offset(
     Args:
         global_shape (ShapeType): The global shape of the tensor.
         mesh_shape (ShapeType): The shape of the device mesh.
-        my_coordinate (Optional[list[int]]): The coordinate of the current rank in the device mesh.
+        my_coordinate (Optional[List[int]]): The coordinate of the current rank in the device mesh.
         placements (Sequence[Placement]): The placements of the DTensor.
         skip_offset (bool): If True, skip computing the global offsets and return an empty
             tuple for global_offset. This can improve performance when only the local shape
@@ -222,14 +224,14 @@ def _compute_local_shape_and_global_offset(
 
     Returns:
         tuple: A tuple containing:
-            - local_shape (tuple[int, ...]): The shape of the local shard on the current rank.
-            - global_offset (tuple[int, ...]): The offsets for each dimension identifying where
+            - local_shape (Tuple[int, ...]): The shape of the local shard on the current rank.
+            - global_offset (Tuple[int, ...]): The offsets for each dimension identifying where
               this shard begins in the global tensor. If skip_offset is True, this will be an
               empty tuple.
     """
 
     if isinstance(my_coordinate, (list, tuple)):
-        _coord: list | tuple = my_coordinate
+        _coord: Union[list, tuple] = my_coordinate
 
         def coordinate_lookup(dim: int) -> RankType:
             return _coord[dim]
@@ -288,7 +290,7 @@ def compute_local_tensor_info(
     global_tensor: torch.Tensor,
     mesh: DeviceMesh,
     placements: Sequence[Placement],
-) -> tuple[list[int], list[int]]:
+) -> Tuple[List[int], List[int]]:
     """
     Compute the local size and stride of a DTensor from the given global tensor info.
 
@@ -448,7 +450,7 @@ def try_find_mesh_from_args(
 
 def compute_local_stride(
     global_stride: ShapeType, local_shape: ShapeType
-) -> tuple[int, ...]:
+) -> Tuple[int, ...]:
     """
     Compute the stride of a local tensor shard, given the global stride and local shape.
 
@@ -512,7 +514,7 @@ def assert_no_mixed_partial_types(placements: Sequence[Placement]) -> None:
     Raises:
         ValueError: If the placements contain more than one distinct Partial reduce type.
     """
-    partial_reduce_ops: set[str] = set()
+    partial_reduce_ops: Set[str] = set()
     for p in placements:
         if isinstance(p, Partial):
             partial_reduce_ops.add(p.reduce_op)

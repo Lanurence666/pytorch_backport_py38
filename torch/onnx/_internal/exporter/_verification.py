@@ -9,7 +9,7 @@ __all__ = [
 import dataclasses
 import logging
 import math
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, IO, List, Optional, TYPE_CHECKING, Tuple, Union
 
 import torch
 from torch.utils import _pytree
@@ -49,8 +49,8 @@ class VerificationInfo:
     name: str
     max_abs_diff: float
     max_rel_diff: float
-    abs_diff_hist: tuple[torch.Tensor, torch.Tensor]
-    rel_diff_hist: tuple[torch.Tensor, torch.Tensor]
+    abs_diff_hist: Tuple[torch.Tensor, torch.Tensor]
+    rel_diff_hist: Tuple[torch.Tensor, torch.Tensor]
     expected_dtype: torch.dtype
     actual_dtype: torch.dtype
     # NOTE: We don't need to include shape because the expected shape is already known
@@ -60,8 +60,8 @@ class VerificationInfo:
     def from_tensors(
         cls,
         name: str,
-        expected: torch.Tensor | float | int | bool,
-        actual: torch.Tensor | float | int | bool,
+        expected: Union[Union[torch.Tensor, float], Union[int, bool]],
+        actual: Union[Union[torch.Tensor, float], Union[int, bool]],
     ) -> VerificationInfo:
         """Create a VerificationInfo object from two tensors.
 
@@ -97,7 +97,7 @@ class VerificationInfo:
             actual_dtype=actual.dtype,
         )
 
-    def asdict(self) -> dict[str, Any]:
+    def asdict(self) -> Dict[str, Any]:
         """Convert the VerificationInfo object to a dictionary.
 
         Returns:
@@ -123,7 +123,7 @@ class VerificationInfo:
 def _compare_tensors(
     expected: torch.Tensor,
     actual: torch.Tensor,
-) -> tuple[float, float, torch.Tensor, torch.Tensor]:
+) -> Tuple[float, float, torch.Tensor, torch.Tensor]:
     # Move tensors to the same device
     expected = expected.detach().cpu()
     actual = actual.detach().cpu()
@@ -147,10 +147,10 @@ def _compare_tensors(
 
 def verify_onnx_program(
     onnx_program: _onnx_program.ONNXProgram,
-    args: tuple[Any, ...] | None = None,
-    kwargs: dict[str, Any] | None = None,
+    args: Optional[Tuple[Any, ...]] = None,
+    kwargs: Optional[Dict[str, Any]] = None,
     compare_intermediates: bool = False,
-) -> list[VerificationInfo]:
+) -> List[VerificationInfo]:
     """Verify the ONNX model by comparing the values with the expected values from ExportedProgram.
 
     Args:
@@ -212,7 +212,7 @@ def verify_onnx_program(
     return interpreter.verification_infos
 
 
-def _create_value_mapping(graph: ir.Graph) -> dict[str, ir.Value]:
+def _create_value_mapping(graph: ir.Graph) -> Dict[str, ir.Value]:
     """Return a dictionary mapping names to values in the graph.
 
     The mapping does not include values from subgraphs.
@@ -223,7 +223,7 @@ def _create_value_mapping(graph: ir.Graph) -> dict[str, ir.Value]:
     Returns:
         A dictionary mapping names to values.
     """
-    values: dict[str, ir.Value] = {}
+    values: Dict[str, ir.Value] = {}
     values.update(graph.initializers)
     # The names of the values can be None or "", which we need to exclude
     for input in graph.inputs:
@@ -277,13 +277,13 @@ class _VerificationInterpreter(torch.fx.Interpreter):
         super().__init__(onnx_program.exported_program.module())
         self._onnx_program = onnx_program
         self._onnx_values = _create_value_mapping(onnx_program.model.graph)
-        self._args: tuple[Any, ...] = ()
-        self.verification_infos: list[VerificationInfo] = []
+        self._args: Tuple[Any, ...] = ()
+        self.verification_infos: List[VerificationInfo] = []
 
     def run(
         self,
         *args: Any,
-        initial_env: dict[torch.fx.Node, Any] | None = None,
+        initial_env: Optional[Dict[torch.fx.Node, Any]] = None,
         enable_io_processing: bool = True,
     ) -> Any:
         """Run the interpreter with the given input arguments.

@@ -4,7 +4,7 @@ import os
 import tempfile
 import textwrap
 from functools import lru_cache
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Tuple, Type, Union
 
 from torch._dynamo.exc import BackendCompilerFailed, ShortenTraceback
 
@@ -29,7 +29,7 @@ else:
 
 class OperatorIssue(RuntimeError):
     @staticmethod
-    def operator_str(target: Any, args: list[Any], kwargs: dict[str, Any]) -> str:
+    def operator_str(target: Any, args: List[Any], kwargs: Dict[str, Any]) -> str:
         lines = [f"target: {target}"] + [
             f"args[{i}]: {arg}" for i, arg in enumerate(args)
         ]
@@ -39,13 +39,13 @@ class OperatorIssue(RuntimeError):
 
 
 class MissingOperatorWithoutDecomp(OperatorIssue):
-    def __init__(self, target: Any, args: list[Any], kwargs: dict[str, Any]) -> None:
+    def __init__(self, target: Any, args: List[Any], kwargs: Dict[str, Any]) -> None:
         _record_missing_op(target)
         super().__init__(f"missing lowering\n{self.operator_str(target, args, kwargs)}")
 
 
 class MissingOperatorWithDecomp(OperatorIssue):
-    def __init__(self, target: Any, args: list[Any], kwargs: dict[str, Any]) -> None:
+    def __init__(self, target: Any, args: List[Any], kwargs: Dict[str, Any]) -> None:
         _record_missing_op(target)
         super().__init__(
             f"missing decomposition\n{self.operator_str(target, args, kwargs)}"
@@ -65,9 +65,9 @@ class LoweringException(OperatorIssue):
         self,
         exc: Exception,
         target: Any,
-        args: list[Any],
-        kwargs: dict[str, Any],
-        stack_trace: str | None = None,
+        args: List[Any],
+        kwargs: Dict[str, Any],
+        stack_trace: Optional[str]= None,
     ) -> None:
         msg = f"{type(exc).__name__}: {exc}\n{self.operator_str(target, args, kwargs)}"
         if stack_trace:
@@ -94,7 +94,7 @@ class CppWrapperCodegenError(RuntimeError):
 
 
 class CppCompileError(RuntimeError):
-    def __init__(self, cmd: list[str], output: str) -> None:
+    def __init__(self, cmd: List[str], output: str) -> None:
         if isinstance(output, bytes):
             output = output.decode("utf-8")
 
@@ -117,7 +117,7 @@ class CppCompileError(RuntimeError):
             .format(cmd=" ".join(cmd), output=output)
         )
 
-    def __reduce__(self) -> tuple[type, tuple[list[str], str]]:
+    def __reduce__(self) -> Tuple[type, Tuple[List[str], str]]:
         return (self.__class__, (self.cmd, self.output))
 
 
@@ -126,7 +126,7 @@ class CUDACompileError(CppCompileError):
 
 
 class TritonMissing(ShortenTraceback):
-    def __init__(self, first_useful_frame: types.FrameType | None) -> None:
+    def __init__(self, first_useful_frame: Optional[types.FrameType]) -> None:
         super().__init__(
             "Cannot find a working triton installation. "
             "Either the package is not installed or it is too old. "
@@ -140,7 +140,7 @@ class GPUTooOldForTriton(ShortenTraceback):
         self,
         # pyrefly: ignore [not-a-type]
         device_props: _CudaDeviceProperties,
-        first_useful_frame: types.FrameType | None,
+        first_useful_frame: Union[types.FrameType, None,]
     ) -> None:
         super().__init__(
             f"Found {device_props.name} which is too old to be supported by the triton GPU compiler, "
@@ -156,7 +156,7 @@ class InductorError(BackendCompilerFailed):
     def __init__(
         self,
         inner_exception: Exception,
-        first_useful_frame: types.FrameType | None,
+        first_useful_frame: Union[types.FrameType, None,]
     ) -> None:
         self.inner_exception = inner_exception
         ShortenTraceback.__init__(

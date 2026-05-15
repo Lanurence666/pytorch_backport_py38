@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -170,7 +172,7 @@ class RNNCell(RNNCellBase):
         nonlinearity: str = "tanh",
         device=None,
         dtype=None,
-        weight_qparams_dict: dict[str, Any] | None = None,
+        weight_qparams_dict: Optional[Dict[str, Any]]= None,
     ) -> None:
         factory_kwargs = {
             "device": device,
@@ -185,7 +187,7 @@ class RNNCell(RNNCellBase):
 
     # TODO: refactor nn.RNNCell to have a _forward that takes weight_ih and weight_hh as input
     # and remove duplicated code, same for the other two Cell modules
-    def forward(self, input: Tensor, hx: Tensor | None = None) -> Tensor:
+    def forward(self, input: Tensor, hx: Optional[Tensor] = None) -> Tensor:
         if input.dim() not in (1, 2):
             raise AssertionError(
                 f"RNNCell: Expected input to be 1-D or 2-D but received {input.dim()}-D tensor"
@@ -260,7 +262,7 @@ class LSTMCell(RNNCellBase):
         bias: bool = True,
         device=None,
         dtype=None,
-        weight_qparams_dict: dict[str, Any] | None = None,
+        weight_qparams_dict: Optional[Dict[str, Any]]= None,
     ) -> None:
         factory_kwargs = {
             "device": device,
@@ -273,8 +275,8 @@ class LSTMCell(RNNCellBase):
         return "QuantizedLSTMCell(Reference)"
 
     def forward(
-        self, input: Tensor, hx: tuple[Tensor, Tensor] | None = None
-    ) -> tuple[Tensor, Tensor]:
+        self, input: Tensor, hx: Optional[Tuple[Tensor, Tensor]] = None
+    ) -> Tuple[Tensor, Tensor]:
         if input.dim() not in (1, 2):
             raise AssertionError(
                 f"LSTMCell: Expected input to be 1-D or 2-D but received {input.dim()}-D tensor"
@@ -335,7 +337,7 @@ class GRUCell(RNNCellBase):
         bias: bool = True,
         device=None,
         dtype=None,
-        weight_qparams_dict: dict[str, Any] | None = None,
+        weight_qparams_dict: Optional[Dict[str, Any]]= None,
     ) -> None:
         factory_kwargs = {
             "device": device,
@@ -347,7 +349,7 @@ class GRUCell(RNNCellBase):
     def _get_name(self):
         return "QuantizedGRUCell(Reference)"
 
-    def forward(self, input: Tensor, hx: Tensor | None = None) -> Tensor:
+    def forward(self, input: Tensor, hx: Optional[Tensor] = None) -> Tensor:
         if input.dim() not in (1, 2):
             raise AssertionError(
                 f"GRUCell: Expected input to be 1-D or 2-D but received {input.dim()}-D tensor"
@@ -408,7 +410,7 @@ class RNNBase(nn.RNNBase):
         proj_size: int = 0,
         device=None,
         dtype=None,
-        weight_qparams_dict: dict[str, Any] | None = None,
+        weight_qparams_dict: Optional[Dict[str, Any]]= None,
     ) -> None:
         super().__init__(
             mode,
@@ -495,9 +497,9 @@ class LSTM(RNNBase):
     # Same as above, see torch/nn/modules/module.py::_forward_unimplemented
     def permute_hidden(  # type: ignore[override]
         self,
-        hx: tuple[Tensor, Tensor],
-        permutation: Tensor | None,
-    ) -> tuple[Tensor, Tensor]:
+        hx: Tuple[Tensor, Tensor],
+        permutation: Union[Tensor, None,]
+    ) -> Tuple[Tensor, Tensor]:
         if permutation is None:
             return hx
         return _apply_permutation(hx[0], permutation), _apply_permutation(
@@ -505,8 +507,8 @@ class LSTM(RNNBase):
         )
 
     def get_expected_cell_size(
-        self, input: Tensor, batch_sizes: Tensor | None
-    ) -> tuple[int, int, int]:
+        self, input: Tensor, batch_sizes: Optional[Tensor]
+    ) -> Tuple[int, int, int]:
         if batch_sizes is not None:
             mini_batch = int(batch_sizes[0])
         else:
@@ -524,8 +526,8 @@ class LSTM(RNNBase):
     def check_forward_args(  # type: ignore[override]
         self,
         input: Tensor,
-        hidden: tuple[Tensor, Tensor],
-        batch_sizes: Tensor | None,
+        hidden: Tuple[Tensor, Tensor],
+        batch_sizes: Union[Tensor, None,]
     ):
         self.check_input(input, batch_sizes)
         self.check_hidden_size(

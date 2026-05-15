@@ -191,13 +191,14 @@ void smooth_l1_backward_cuda_kernel(TensorIterator& iter, const Scalar& norm, do
       auto norm_val = norm.to<scalar_t>();
       scalar_t beta_val(beta);
       gpu_kernel(iter, [norm_val, beta_val]GPU_LAMBDA(scalar_t input, scalar_t target, scalar_t grad_output) -> scalar_t {
-        const auto x = input - target;
-        if (x < -beta_val)
+        const auto x = static_cast<float>(input - target);
+        auto fb = static_cast<float>(beta_val);
+        if (x < -fb)
           return -norm_val * grad_output;
-        else if (x > beta_val)
+        else if (x > fb)
           return norm_val * grad_output;
         else
-          return norm_val * x * grad_output / beta_val;
+          return norm_val * (input - target) * grad_output / beta_val;
     });
   });
 }
@@ -207,13 +208,14 @@ void huber_backward_cuda_kernel(TensorIterator& iter, const Scalar& norm, double
     auto norm_val = norm.to<scalar_t>();
     scalar_t delta_val(delta);
     gpu_kernel(iter, [norm_val, delta_val]GPU_LAMBDA(scalar_t input, scalar_t target, scalar_t grad_output) -> scalar_t {
-      const auto x = input - target;
-      if (x < -delta_val) {
+      const auto x = static_cast<float>(input - target);
+      auto fd = static_cast<float>(delta_val);
+      if (x < -fd) {
         return -norm_val * grad_output * delta_val;
-      } else if (x > delta_val) {
+      } else if (x > fd) {
         return norm_val * grad_output * delta_val;
       } else {
-        return norm_val * x * grad_output;
+        return norm_val * (input - target) * grad_output;
       }
     });
   });

@@ -1,5 +1,6 @@
 # Owner(s): ["module: functorch"]
 # ruff: noqa: F841
+from __future__ import annotations
 import unittest
 from collections import deque
 from functools import partial
@@ -91,7 +92,6 @@ def make_inputs_non_leaves(inps):
 @unittest.skipIf(not torch._dynamo.is_dynamo_supported(), "dynamo isn't support")
 class TestWithEffects(TestCase):
     def setUp(self):
-        super().setUp()
         init_torchbind_implementations()
 
     def test_print(self):
@@ -1012,10 +1012,7 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1, arg5_1):
             self.assertTrue(torch.allclose(model(x)[0], out2[0]))
 
             # Test when we unlift the tokens from the graph. This is used in the inductor path.
-            with (
-                tracing(TracingContext(None)),
-                torch._functorch.config.patch(unlift_effect_tokens=True),
-            ):
+            with tracing(TracingContext(None)), torch._functorch.config.patch(unlift_effect_tokens=True):
                 gm, gs = aot_export_module(ep.module(), (x,), trace_joint=False)
                 self.assertExpectedInline(
                     str(gm.code).strip(),
@@ -1139,12 +1136,7 @@ def forward(self, tangents_1, tangents_token):
         x = torch.randn(3, 3)
         y = torch.randn(3, 3)
 
-        with (
-            torch._C._ExcludeDispatchKeyGuard(
-                torch._C.DispatchKeySet(torch._C.DispatchKey.Functionalize)
-            ),
-            FunctionalTensorMode(),
-        ):
+        with torch._C._ExcludeDispatchKeyGuard( torch._C.DispatchKeySet(torch._C.DispatchKey.Functionalize) ), FunctionalTensorMode():
             x_func = FunctionalTensor.to_functional(x)
             y_func = FunctionalTensor.to_functional(y)
             result = fn_with_effects(x_func, y_func)

@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import collections
 import functools
 import warnings
-from typing import Any
+from typing import Any, List, Optional, Type, cast
 
 import torch
 from torch.types import _dtype
@@ -222,9 +224,9 @@ class autocast:
     def __init__(
         self,
         device_type: str,
-        dtype: _dtype | None = None,
+        dtype: Optional[_dtype]= None,
         enabled: bool = True,
-        cache_enabled: bool | None = None,
+        cache_enabled: Optional[bool]= None,
     ):
         if not isinstance(device_type, str):
             raise ValueError(
@@ -303,6 +305,18 @@ class autocast:
                 )
                 warnings.warn(error_message, stacklevel=2)
                 enabled = False
+                # Special case for MPS bfloat16 support on macOS < 14
+                if (
+                    self.device == "mps"
+                    and self.fast_dtype == torch.bfloat16
+                    and not torch.backends.mps.is_macos_or_newer(14, 0)
+                ):
+                    error_message = (
+                        "In MPS autocast, but the target dtype torch.bfloat16 is not supported "
+                        "on macOS versions below 14. Disabling autocast."
+                    )
+                    warnings.warn(error_message, stacklevel=2)
+                    enabled = False
         self._enabled = enabled
 
     def __enter__(self):
@@ -442,7 +456,7 @@ def custom_fwd(
     fwd=None,
     *,
     device_type: str,
-    cast_inputs: _dtype | None = None,
+    cast_inputs: Optional[_dtype] = None,
 ):
     """
     Create a helper decorator for ``forward`` methods of custom autograd functions.

@@ -3,6 +3,7 @@
 #include <torch/csrc/Stream.h>
 #include <torch/csrc/utils/pycfunction_helpers.h>
 #include <torch/csrc/utils/python_arg_parser.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 #include <c10/core/DeviceGuard.h>
 #include <c10/core/Stream.h>
@@ -294,7 +295,8 @@ static PyObject* THPStream_enter(PyObject* _self, PyObject* unused) {
 
   // No operation is performed if the stream does not belong to an accelerator.
   if (C10_UNLIKELY(!at::accelerator::isAccelerator(stream_device_type))) {
-    return Py_NewRef(_self);
+    Py_INCREF(_self);
+    return _self;
   }
 
   // Note [Reentrant Stream Context Manager]
@@ -327,7 +329,8 @@ static PyObject* THPStream_enter(PyObject* _self, PyObject* unused) {
     if (PyList_Append(self->context, Py_None) < 0) {
       throw python_error();
     }
-    return Py_NewRef(_self);
+    Py_INCREF(_self);
+    return _self;
   }
 
   // If the stream is not on the current device, switch the current device to
@@ -356,7 +359,8 @@ static PyObject* THPStream_enter(PyObject* _self, PyObject* unused) {
   if (PyList_Append(self->context, dict.get()) < 0) {
     throw python_error();
   }
-  return Py_NewRef(_self);
+  Py_INCREF(_self);
+  return _self;
   END_HANDLE_TH_ERRORS
 }
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import dataclasses as dc
 import token
-from functools import cached_property
-from typing import TYPE_CHECKING
+from functools import lru_cached_property
+from typing import Dict, List, TYPE_CHECKING
 
 from . import is_empty
 from .bracket_pairs import bracket_pairs
@@ -17,15 +17,15 @@ if TYPE_CHECKING:
 class LineWithSets:
     """A logical line of Python tokens, terminated by a NEWLINE or the end of file"""
 
-    tokens: list[TokenInfo]
+    tokens: List[TokenInfo]
 
     @cached_property
-    def sets(self) -> list[TokenInfo]:
+    def sets(self) -> List[TokenInfo]:
         """A list of tokens which use the built-in set symbol"""
         return [t for i, t in enumerate(self.tokens) if self.is_set(i)]
 
     @cached_property
-    def braced_sets(self) -> list[list[TokenInfo]]:
+    def braced_sets(self) -> List[List[TokenInfo]]:
         """A list of lists of tokens, each representing a braced set, like {1}"""
         return [
             self.tokens[b : e + 1]
@@ -34,7 +34,7 @@ class LineWithSets:
         ]
 
     @cached_property
-    def bracket_pairs(self) -> dict[int, int]:
+    def bracket_pairs(self) -> Dict[int, int]:
         return bracket_pairs(self.tokens)
 
     def is_set(self, i: int) -> bool:

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeAlias
+from typing import List, Optional, Sequence, TYPE_CHECKING, Tuple, Type, Union
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 
 if TYPE_CHECKING:
@@ -88,7 +92,7 @@ class Disj(Constraint):
 
 
 class Prod(Constraint):
-    def __init__(self, products: Sequence[DVar | int | _DynType]) -> None:
+    def __init__(self, products: Union[Sequence[Union[DVar, int], _DynType]]) -> None:
         """
         :param products: lists of dimensions to multiply
         """
@@ -139,7 +143,7 @@ class BinaryConstraint(Constraint):
     Represents all binary operations
     """
 
-    def __init__(self, lhs: _Operand, rhs: _Operand, op: str | None) -> None:
+    def __init__(self, lhs: _Operand, rhs: _Operand, op: Optional[str]) -> None:
         """
         :param lhs: lhs of the constraint
         :param rhs: rhs of the constraint
@@ -166,7 +170,7 @@ class BinConstraintT(BinaryConstraint):
     Binary constraints about tensors
     """
 
-    def __init__(self, lhs: _Operand, rhs: _Operand, op: str | None) -> None:
+    def __init__(self, lhs: _Operand, rhs: _Operand, op: Optional[str]) -> None:
         if not (
             (isinstance(lhs, (TVar, TensorType, int)) or lhs == Dyn)
             and (isinstance(rhs, (TVar, TensorType, int)) or rhs == Dyn)
@@ -180,7 +184,7 @@ class BinConstraintD(BinaryConstraint):
     Binary constraints about dimensions
     """
 
-    def __init__(self, lhs: _Operand, rhs: _Operand, op: str | None) -> None:
+    def __init__(self, lhs: _Operand, rhs: _Operand, op: Optional[str]) -> None:
         if not (is_algebraic_expression(lhs) or is_dim(lhs) or is_bool_expr(lhs)):
             raise AssertionError(f"Invalid lhs type: {type(lhs)}")
         if not (is_algebraic_expression(rhs) or is_dim(rhs) or is_bool_expr(rhs)):
@@ -225,9 +229,9 @@ class DGreatestUpperBound(Constraint):
 
     def __init__(
         self,
-        res: DVar | int | _DynType,
-        rhs1: DVar | int | _DynType,
-        rhs2: DVar | int | _DynType,
+        res: Union[Union[DVar, int], _DynType],
+        rhs1: Union[Union[DVar, int], _DynType],
+        rhs2: Union[Union[DVar, int], _DynType],
     ) -> None:
         """
         :param res: Dimension variable to store the result
@@ -287,7 +291,7 @@ class IndexSelect(Constraint):
         self,
         tensor_size: int,
         input_var: TVar,
-        dim_replace: DVar | _DynType,
+        dim_replace: Union[DVar, _DynType],
         index: int,
         output: TVar,
     ) -> None:
@@ -423,7 +427,7 @@ class GetItemTensor(Constraint):
     def __init__(
         self,
         tensor_size: int,
-        index_tuple: tuple[None | slice, ...],
+        index_tuple: Tuple[Optional[slice], ...],
         res: TVar,
         input_var: TVar,
     ) -> None:
@@ -465,11 +469,11 @@ class CalcConv(Constraint):
         conv_result: TVar,
         input_var: TVar,
         c_out: int,
-        kernel: int | tuple[int, int],
-        padding: int | tuple[int, int],
-        stride: int | tuple[int, int],
-        dilation: int | tuple[int, int],
-        matching_constraint_vars: list[DVar],
+        kernel: Union[int, Tuple[int, int]],
+        padding: Union[int, Tuple[int, int]],
+        stride: Union[int, Tuple[int, int]],
+        dilation: Union[int, Tuple[int, int]],
+        matching_constraint_vars: List[DVar],
     ) -> None:
         """
         :param conv_result: the convolution result
@@ -516,11 +520,11 @@ class CalcMaxPool(Constraint):
         self,
         maxpool_result: TVar,
         input_var: TVar,
-        kernel: int | tuple[int, int],
-        padding: int | tuple[int, int],
-        stride: int | tuple[int, int],
-        dilation: int | tuple[int, int],
-        matching_constraint_vars: list[DVar],
+        kernel: Union[int, Tuple[int, int]],
+        padding: Union[int, Tuple[int, int]],
+        stride: Union[int, Tuple[int, int]],
+        dilation: Union[int, Tuple[int, int]],
+        matching_constraint_vars: List[DVar],
     ) -> None:
         """
         :param maxpool_result: the result of maxpool
@@ -597,7 +601,7 @@ class CalcProduct(Constraint):
     """
 
     def __init__(
-        self, start: int, end: int, flattened: TVar, dims_to_flatten: list[DVar]
+        self, start: int, end: int, flattened: TVar, dims_to_flatten: List[DVar]
     ) -> None:
         """
         :param start: start index

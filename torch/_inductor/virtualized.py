@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 This file provides a number of "global" variables/handlers that are actually
@@ -55,11 +56,10 @@ In particular, we typically have an operator for every basic pointwise PyTorch o
 supported.
 """
 
-from __future__ import annotations
 
 from contextlib import AbstractContextManager, contextmanager
 from threading import local
-from typing import Any, cast, Generic, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, Generic, List, Set, TYPE_CHECKING, Tuple, Type, TypeVar, cast, overload
 
 from torch.utils._ordered_set import OrderedSet
 
@@ -75,7 +75,7 @@ from .ops_handler import (  # noqa: F401
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
 
     import torch
     from torch._inductor.choices import InductorChoices
@@ -122,7 +122,7 @@ class Virtualized(Generic[T]):
     store other things, like booleans.
     """
 
-    def __init__(self, vname: str, default: Callable[[], T] | type[NullHandler]):
+    def __init__(self, vname: str, default: Callable[[], T] | Type[NullHandler]):
         self._vname = vname
         self._key: str = f"__torchinductor_{vname}"
         self._default = default
@@ -185,13 +185,13 @@ class NullKernelHandler(NullHandler):
 
 
 _ops: Virtualized[OpsHandler[Any]] = Virtualized(
-    "ops", cast(type[OpsHandler[Any]], MockHandler)
+    "ops", cast(Type[OpsHandler[Any]], MockHandler)
 )
 _graph: Virtualized[GraphLowering] = Virtualized("graph", NullHandler)
-_extern_kernel_nodes: Virtualized[list[ExternKernelNode]] = Virtualized(
+_extern_kernel_nodes: Virtualized[List[ExternKernelNode]] = Virtualized(
     "extern_kernel_nodes", NullHandler
 )
-_real_inputs: Virtualized[list[torch.Tensor]] = Virtualized("real_inputs", NullHandler)
+_real_inputs: Virtualized[List[torch.Tensor]] = Virtualized("real_inputs", NullHandler)
 _fake_mode: Virtualized[FakeTensorMode] = Virtualized("fake_mode", NullHandler)
 _kernel: Virtualized[NullKernelHandler] = Virtualized(
     "kernel", NullKernelHandler
@@ -331,7 +331,7 @@ class OpsWrapper(DefaultHandler):
     can overload the magic methods for writing mathematical expressions fluently.
     """
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         new_args = [OpsWrapper._unwrap(a) for a in args]
         new_kwargs = {k: OpsWrapper._unwrap(v) for k, v in kwargs.items()}
         return OpsWrapper._wrap(getattr(_ops, name)(*new_args, **new_kwargs))
@@ -371,7 +371,7 @@ class _V:
     )
     get_ops_handler: Callable[[], OpsHandler[Any]] = _ops._get_handler
     set_graph_handler: Callable[[GraphLowering], Any] = _graph._set_handler
-    set_extern_kernel_nodes: Callable[[list[ExternKernelNode]], Any] = (
+    set_extern_kernel_nodes: Callable[[List[ExternKernelNode]], Any] = (
         _extern_kernel_nodes._set_handler
     )
     set_real_inputs: Callable[[Any], Any] = _real_inputs._set_handler
@@ -412,7 +412,7 @@ class _V:
         return _graph._get_handler()
 
     @property
-    def extern_kernel_nodes(self) -> list[ExternKernelNode]:
+    def extern_kernel_nodes(self) -> List[ExternKernelNode]:
         """
         The extern_kernel_nodes needed for the entire graph, including the
         subgraphs.

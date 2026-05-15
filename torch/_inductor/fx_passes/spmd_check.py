@@ -1,3 +1,4 @@
+from __future__ import annotations
 """SPMD graph verification for overlap scheduling.
 
 Verifies all ranks have identical FX graph structure before collective
@@ -12,12 +13,13 @@ from collections import Counter
 import torch
 from torch._inductor import config
 from torch._logging import trace_structured
+from typing import List, Optional, Set, Tuple, Union
 
 
 log = logging.getLogger(__name__)
 
 
-def _compute_hash(gm: torch.fx.GraphModule) -> int | None:
+def _compute_hash(gm: torch.fx.GraphModule) -> Optional[int]:
     """Compute a structural hash of the graph including tensor metadata.
 
     Uses FxGraphCachePickler(device_id_agnostic=True) to serialize
@@ -50,14 +52,14 @@ def _compute_hash(gm: torch.fx.GraphModule) -> int | None:
 
 def _build_diag_fingerprint(
     gm: torch.fx.GraphModule,
-) -> tuple[tuple[str, str | None], ...]:
+) -> Union[Tuple[Tuple[str, str, None], ...]]:
     """Build human-readable fingerprint for mismatch diagnostics.
 
     Only called on the rare mismatch path.
     """
     from torch._inductor.codecache import extract_tensor_metadata_for_cache_key
 
-    entries: list[tuple[str, str | None]] = []
+    entries: Union[List[Tuple[str, str, None]]]= Union[[]]
     for n in gm.graph.nodes:
         if n.op != "call_function":
             continue
@@ -72,7 +74,7 @@ def _build_diag_fingerprint(
     return tuple(entries)
 
 
-def _format_val_metadata(val: object, extract_fn: object) -> str | None:
+def _format_val_metadata(val: object, extract_fn: object) -> Optional[str]:
     """Format node val metadata for human-readable diagnostics."""
     if val is None:
         return None
@@ -116,7 +118,7 @@ def spmd_check(gm: torch.fx.GraphModule) -> bool:
     rank = dist.get_rank()
 
     with unset_fake_temporarily():
-        all_hashes: list[int] = [0] * world_size
+        all_hashes: List[int] = [0] * world_size
         dist.all_gather_object(all_hashes, structure_hash, pg)
 
     if all(h == all_hashes[0] for h in all_hashes):
@@ -125,7 +127,7 @@ def spmd_check(gm: torch.fx.GraphModule) -> bool:
     # Mismatch detected — build and gather diagnostic fingerprints
     fingerprint = _build_diag_fingerprint(gm)
     with unset_fake_temporarily():
-        all_fingerprints: list[tuple[object, ...]] = [() for _ in range(world_size)]
+        all_fingerprints: List[Tuple[object, ...]] = [() for _ in range(world_size)]
         dist.all_gather_object(all_fingerprints, fingerprint, pg)
 
     report = _build_mismatch_report(all_fingerprints, rank, world_size)
@@ -169,7 +171,7 @@ def _entry_metadata(entry: object) -> str:
 
 
 def _build_mismatch_report(
-    all_fingerprints: list[tuple[object, ...]],
+    all_fingerprints: List[Tuple[object, ...]],
     rank: int,
     world_size: int,
 ) -> str:

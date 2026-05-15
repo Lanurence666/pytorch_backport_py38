@@ -11,7 +11,7 @@ from dataclasses import is_dataclass
 from enum import auto, Enum
 from pathlib import Path
 from pprint import pformat
-from typing import Any, Generic, TYPE_CHECKING, TypeVar
+from typing import Any, Dict, FrozenSet, Generic, List, Set, TYPE_CHECKING, Tuple, TypeVar, Union
 from typing_extensions import assert_never, Self
 
 from torchgen.code_template import CodeTemplate
@@ -19,7 +19,7 @@ from torchgen.code_template import CodeTemplate
 
 if TYPE_CHECKING:
     from argparse import Namespace
-    from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 
 
 TORCHGEN_ROOT = Path(__file__).absolute().parent
@@ -53,7 +53,7 @@ IDENT_REGEX = r"(^|\W){}($|\W)"
 
 
 # TODO: Use a real parser here; this will get bamboozled
-def split_name_params(schema: str) -> tuple[str, list[str]]:
+def split_name_params(schema: str) -> Tuple[str, List[str]]:
     m = re.match(r"(\w+)(\.\w+)?\((.*)\)", schema)
     if m is None:
         raise RuntimeError(f"Unsupported function schema: {schema}")
@@ -69,7 +69,7 @@ S = TypeVar("S")
 
 
 # Map over function that may return None; omit Nones from output sequence
-def mapMaybe(func: Callable[[T], S | None], xs: Iterable[T]) -> Iterator[S]:
+def mapMaybe(func: Callable[[T], Union[S, None]], xs: Iterable[T]) -> Iterator[S]:
     for x in xs:
         r = func(x)
         if r is not None:
@@ -98,14 +98,14 @@ def context(msg_fn: Callable[[], str]) -> Iterator[None]:
         raise
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _read_template(template_fn: str) -> CodeTemplate:
     return CodeTemplate.from_file(template_fn)
 
 
 # String hash that's stable across different executions, unlike builtin hash
 def string_stable_hash(s: str) -> int:
-    sha1 = hashlib.sha1(s.encode("latin1"), usedforsecurity=False).digest()
+    sha1 = hashlib.sha1(s.encode("latin1")).digest()
     return int.from_bytes(sha1, byteorder="little")
 
 
@@ -115,22 +115,22 @@ def string_stable_hash(s: str) -> int:
 class FileManager:
     def __init__(
         self,
-        install_dir: str | Path,
-        template_dir: str | Path,
+        install_dir: Union[str, Path],
+        template_dir: Union[str, Path],
         dry_run: bool,
     ) -> None:
         self.install_dir = Path(install_dir)
         self.template_dir = Path(template_dir)
-        self.files: set[Path] = set()
+        self.files: Set[Path] = set()
         self.dry_run = dry_run
 
     @property
-    def filenames(self) -> frozenset[str]:
+    def filenames(self) -> FrozenSet[str]:
         return frozenset({file.as_posix() for file in self.files})
 
-    def _write_if_changed(self, filename: str | Path, contents: str) -> None:
+    def _write_if_changed(self, filename: Union[str, Path], contents: str) -> None:
         file = Path(filename)
-        old_contents: str | None = None
+        old_contents: Union[str, None] = None
         try:
             old_contents = file.read_text(encoding="utf-8")
         except OSError:
@@ -143,8 +143,8 @@ class FileManager:
     # Read from template file and replace pattern with callable (type could be dict or str).
     def substitute_with_template(
         self,
-        template_fn: str | Path,
-        env_callable: Callable[[], str | dict[str, Any]],
+        template_fn: Union[str, Path],
+        env_callable: Callable[[], Union[str, Dict[str, Any]]],
     ) -> str:
         if Path(template_fn).is_absolute():
             raise AssertionError(f"template_fn must be relative: {template_fn}")
@@ -196,9 +196,9 @@ class FileManager:
 
     def write_with_template(
         self,
-        filename: str | Path,
-        template_fn: str | Path,
-        env_callable: Callable[[], str | dict[str, Any]],
+        filename: Union[str, Path],
+        template_fn: Union[str, Path],
+        env_callable: Callable[[], Union[str, Dict[str, Any]]],
     ) -> None:
         filename = Path(filename)
         if filename.is_absolute():
@@ -216,21 +216,21 @@ class FileManager:
 
     def write(
         self,
-        filename: str | Path,
-        env_callable: Callable[[], str | dict[str, Any]],
+        filename: Union[str, Path],
+        env_callable: Callable[[], Union[str, Dict[str, Any]]],
     ) -> None:
         self.write_with_template(filename, filename, env_callable)
 
     def write_sharded(
         self,
-        filename: str | Path,
+        filename: Union[str, Path],
         items: Iterable[T],
         *,
         key_fn: Callable[[T], str],
-        env_callable: Callable[[T], dict[str, list[str]]],
+        env_callable: Callable[[T], Dict[str, List[str]]],
         num_shards: int,
-        base_env: dict[str, Any] | None = None,
-        sharded_keys: set[str],
+        base_env: Union[Dict[str, Any], None] = None,
+        sharded_keys: Set[str],
     ) -> None:
         self.write_sharded_with_template(
             filename,
@@ -245,21 +245,21 @@ class FileManager:
 
     def write_sharded_with_template(
         self,
-        filename: str | Path,
-        template_fn: str | Path,
+        filename: Union[str, Path],
+        template_fn: Union[str, Path],
         items: Iterable[T],
         *,
         key_fn: Callable[[T], str],
-        env_callable: Callable[[T], dict[str, list[str]]],
+        env_callable: Callable[[T], Dict[str, List[str]]],
         num_shards: int,
-        base_env: dict[str, Any] | None = None,
-        sharded_keys: set[str],
+        base_env: Union[Dict[str, Any], None] = None,
+        sharded_keys: Set[str],
     ) -> None:
         file = Path(filename)
         if file.is_absolute():
             raise AssertionError(f"filename must be relative: {filename}")
-        everything: dict[str, Any] = {"shard_id": "Everything"}
-        shards: list[dict[str, Any]] = [
+        everything: Dict[str, Any] = {"shard_id": "Everything"}
+        shards: List[Dict[str, Any]] = [
             {"shard_id": f"_{i}"} for i in range(num_shards)
         ]
         all_shards = [everything] + shards
@@ -277,7 +277,7 @@ class FileManager:
                 else:
                     shard[key] = []
 
-        def merge_env(into: dict[str, list[str]], from_: dict[str, list[str]]) -> None:
+        def merge_env(into: Dict[str, List[str]], from_: Dict[str, List[str]]) -> None:
             for k, v in from_.items():
                 if k not in sharded_keys:
                     raise AssertionError(f"undeclared sharded key {k}")
@@ -298,15 +298,15 @@ class FileManager:
         for shard in all_shards:
             shard_id = shard["shard_id"]
             self.write_with_template(
-                file.with_stem(f"{file.stem}{shard_id}"),
+                file.with_name(f"{file.stem}{shard_id}{file.suffix}"),
                 template_fn,
                 lambda: shard,
             )
 
         # filenames is used to track compiled files, but FooEverything.cpp isn't meant to be compiled
-        self.files.discard(self.install_dir / file.with_stem(f"{file.stem}Everything"))
+        self.files.discard(self.install_dir / file.with_name(f"{file.stem}Everything{file.suffix}"))
 
-    def write_outputs(self, variable_name: str, filename: str | Path) -> None:
+    def write_outputs(self, variable_name: str, filename: Union[str, Path]) -> None:
         """Write a file containing the list of all outputs which are generated by this script."""
         content = "\n".join(
             (
@@ -331,7 +331,7 @@ class FileManager:
 # Helper function to generate file manager
 def make_file_manager(
     options: Namespace,
-    install_dir: str | Path | None = None,
+    install_dir: Union[str, Path, None] = None,
 ) -> FileManager:
     template_dir = os.path.join(options.source_path, "templates")
     install_dir = install_dir if install_dir else options.install_dir
@@ -352,7 +352,7 @@ def dataclass_repr(
 
 
 def _format_dict(
-    attr: dict[Any, Any],
+    attr: Dict[Any, Any],
     indent: int,
     width: int,
     curr_indent: int,
@@ -372,7 +372,7 @@ def _format_dict(
 
 
 def _format_list(
-    attr: list[Any] | set[Any] | tuple[Any, ...],
+    attr: Union[List[Any], Set[Any], Tuple[Any, Ellipsis]],
     indent: int,
     width: int,
     curr_indent: int,
@@ -387,7 +387,7 @@ def _format_list(
 
 
 def _format(
-    fields_str: list[str],
+    fields_str: List[str],
     indent: int,
     width: int,
     curr_indent: int,
@@ -477,9 +477,9 @@ class NamespaceHelper:
 
 
 class OrderedSet(Generic[T]):
-    storage: dict[T, None]
+    storage: Dict[T, None]
 
-    def __init__(self, iterable: Iterable[T] | None = None) -> None:
+    def __init__(self, iterable: Union[Iterable[T], None] = None) -> None:
         if iterable is None:
             self.storage = {}
         else:

@@ -1,7 +1,13 @@
+from __future__ import annotations
+
 import logging
-from collections.abc import Callable, Iterable
+
 from dataclasses import dataclass, field
-from typing import ParamSpec, TypeVar
+from typing import Callable, Dict, FrozenSet, Iterable, List, Optional, Set, Tuple, Type, TypeVar, Union, overload
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec
 
 import torch.library
 
@@ -42,16 +48,16 @@ class _OverrideNode:
     active: bool = True
 
 
-UserOrderingFn = Callable[[str, str, list[_OverrideNode]], list[_OverrideNode]]
+UserOrderingFn = Callable[[str, str, List[_OverrideNode]], List[_OverrideNode]]
 
 
 @dataclass
 class _FilterState:
     """Manages filtering state for override nodes."""
 
-    _dsl_names: set[str] = field(default_factory=set)
-    _op_symbols: set[str] = field(default_factory=set)
-    _dispatch_keys: set[str] = field(default_factory=set)
+    _dsl_names: Set[str] = field(default_factory=set)
+    _op_symbols: Set[str] = field(default_factory=set)
+    _dispatch_keys: Set[str] = field(default_factory=set)
 
     def check_enabled(self, node: _OverrideNode) -> bool:
         """
@@ -76,13 +82,13 @@ class _FilterState:
 
     def update(
         self,
-        dsl_names: str | Iterable[str] | None,
-        op_symbols: str | Iterable[str] | None,
-        dispatch_keys: str | Iterable[str] | None,
+        dsl_names: Union[str, Optional[Iterable[str]]],
+        op_symbols: Union[str, Optional[Iterable[str]]],
+        dispatch_keys: Union[str, Optional[Iterable[str]]],
         remove_keys: bool = False,
     ) -> None:
         """
-        Update filter sets as (current | new) or (current ~ new).
+        Update filter sets as (Union[current, new]) or (current ~ new).
 
         Args:
             dsl_names: DSL names to add/remove from filter
@@ -103,12 +109,12 @@ class _FilterState:
             self._op_symbols |= set(_resolve_iterable(op_symbols))
             self._dispatch_keys |= set(_resolve_iterable(dispatch_keys))
 
-    def build_disable_key_set(self) -> set[tuple[str, str]]:
+    def build_disable_key_set(self) -> Set[Tuple[str, str]]:
         """
         Build a set of dictionary keys based on the current filter state.
 
         Returns:
-            set[tuple[str, str]]: Set of (op_symbol, dispatch_key) tuples
+            Set[Tuple[str, str]]: Set of (op_symbol, dispatch_key) tuples
         """
         return _build_key_set(
             self._dsl_names,
@@ -137,13 +143,13 @@ class _FilterState:
 _filter_state: _FilterState = _FilterState()
 
 # Store torch.library.Library instances
-_libs: dict[tuple[str, str], torch.library.Library] = {}
+_libs: Dict[Tuple[str, str], torch.library.Library] = {}
 
 # store graph structures
-_GraphsType = dict[tuple[str, str], list[_OverrideNode]]
+_GraphsType = Dict[Tuple[str, str], List[_OverrideNode]]
 _graphs: _GraphsType = {}
 
-_MappingType = dict[str, list[tuple[str, str]]]
+_MappingType = Dict[str, List[Tuple[str, str]]]
 
 # map a {dsl, op, dispatch_key} to keys to all graphs that contain it
 _dsl_name_to_lib_graph: _MappingType = {}
@@ -161,16 +167,16 @@ _node_id_counter: int = 0
 # fake kernel for `_native::<id>` redispatches to the aten op's meta — if
 # the override lived at Meta or CompositeImplicitAutograd, that
 # redispatch would loop back into the router.
-_DISALLOWED_DISPATCH_KEYS: frozenset[str] = frozenset(
+_DISALLOWED_DISPATCH_KEYS: FrozenSet[str] = frozenset(
     {"Meta", "CompositeImplicitAutograd", "CompositeExplicitAutograd"}
 )
 
 
 def _build_key_set(
-    dsl_names: str | Iterable[str] | None,
-    op_symbols: str | Iterable[str] | None,
-    dispatch_keys: str | Iterable[str] | None,
-) -> set[tuple[str, str]]:
+    dsl_names: Union[str, Optional[Iterable[str]]],
+    op_symbols: Union[str, Optional[Iterable[str]]],
+    dispatch_keys: Union[str, Optional[Iterable[str]]],
+) -> Set[Tuple[str, str]]:
     """
     Build a set of dictionary keys based on filter criteria.
 
@@ -180,12 +186,12 @@ def _build_key_set(
         dispatch_keys: Dispatch keys to include in key set
 
     Returns:
-        set[tuple[str, str]]: Set of (op_symbol, dispatch_key) tuples
+        Set[Tuple[str, str]]: Set of (op_symbol, dispatch_key) tuples
     """
-    key_set: set[tuple[str, str]] = set()
+    key_set: Set[Tuple[str, str]] = set()
 
     def _append_to_set(
-        entries: str | Iterable[str] | None, graph_lib_dict: _MappingType
+        entries: Union[str, Iterable[str]] | None, graph_lib_dict: _MappingType
     ) -> None:
         """Helper to add matching keys from graph_lib_dict to key_set."""
         resolved_entries = _resolve_iterable(entries)
@@ -222,15 +228,15 @@ def _print_override_graphs(*, print_inactive: bool = False) -> None:
 
 
 # One DEF/FRAGMENT library per namespace — only one is allowed per process.
-_def_libs: dict[str, torch.library.Library] = {}
+_def_libs: Dict[str, torch.library.Library] = {}
 # Ops that have already been `define`d on the _native namespace.
-_defined_native_ops: set[str] = set()
+_defined_native_ops: Set[str] = set()
 # IMPL libraries on the aten namespace, keyed by (op_symbol, dispatch_key).
 # One library per op/key pair so we can call `_destroy()` on it to tear down
 # just that one override without affecting other ops at the same dispatch
 # key. Torch's Library has no per-kernel removal API — `_destroy` on the
 # library is the only teardown mechanism.
-_aten_override_libs: dict[tuple[str, str], torch.library.Library] = {}
+_aten_override_libs: Dict[Tuple[str, str], torch.library.Library] = {}
 
 
 def _get_def_library(namespace: str) -> torch.library.Library:
@@ -282,7 +288,7 @@ def _destroy_aten_override(op_symbol: str, dispatch_key: str) -> None:
         lib._destroy()
 
 
-def _resolve_aten_overload(op_symbol: str) -> "torch._ops.OpOverload | None":
+def _resolve_aten_overload(op_symbol: str) -> "Optional[torch._ops.OpOverload]":
     """
     Resolve `op_symbol` to a concrete OpOverload on `torch.ops.aten`.
 
@@ -369,7 +375,7 @@ def _register_node_impl(
     )
 
 
-def _resolve_iterable(iterable: str | Iterable[str] | None) -> Iterable[str]:
+def _resolve_iterable(iterable: Union[str, Iterable[str]] | None) -> Iterable[str]:
     """
     Resolve various input types to a consistent iterable of strings.
 
@@ -390,9 +396,9 @@ def _resolve_iterable(iterable: str | Iterable[str] | None) -> Iterable[str]:
 
 def reenable_op_overrides(
     *,
-    enable_dsl_names: str | list[str] | None = None,
-    enable_op_symbols: str | list[str] | None = None,
-    enable_dispatch_keys: str | list[str] | None = None,
+    enable_dsl_names: Union[str, List[str]] | None = None,
+    enable_op_symbols: Union[str, List[str]] | None = None,
+    enable_dispatch_keys: Union[str, List[str]] | None = None,
 ) -> None:
     """
     Re-enable overrides by removing them from filter state and reregistering.
@@ -423,7 +429,7 @@ def reenable_op_overrides(
     )
 
     # Get the set of keys that need to be reprocessed
-    key_set: set[tuple[str, str]] = _build_key_set(
+    key_set: Set[Tuple[str, str]] = _build_key_set(
         enable_dsl_names,
         enable_op_symbols,
         enable_dispatch_keys,
@@ -443,9 +449,9 @@ def reenable_op_overrides(
 
 def deregister_op_overrides(
     *,
-    disable_dsl_names: str | list[str] | None = None,
-    disable_op_symbols: str | list[str] | None = None,
-    disable_dispatch_keys: str | list[str] | None = None,
+    disable_dsl_names: Union[str, List[str]] | None = None,
+    disable_op_symbols: Union[str, List[str]] | None = None,
+    disable_dispatch_keys: Union[str, List[str]] | None = None,
 ) -> None:
     """
     De-register overrides by updating filter state and reregistering graphs.
@@ -470,7 +476,7 @@ def deregister_op_overrides(
     _filter_state.update(disable_dsl_names, disable_op_symbols, disable_dispatch_keys)
 
     # Get the set of keys that need to be reprocessed
-    key_set: set[tuple[str, str]] = _filter_state.build_disable_key_set()
+    key_set: Set[Tuple[str, str]] = _filter_state.build_disable_key_set()
 
     # Process each affected graph with filter state
     for key in key_set:
@@ -485,7 +491,7 @@ def deregister_op_overrides(
             )
 
 
-def get_dsl_operations(dsl_name: str) -> list[str]:
+def get_dsl_operations(dsl_name: str) -> List[str]:
     """Get list of operations registered by a specific DSL.
 
     Args:
@@ -507,7 +513,7 @@ def _update_registration_maps(
     dsl_name: str,
     op_symbol: str,
     dispatch_key: str,
-    key: tuple[str, str],
+    key: Tuple[str, str],
 ) -> None:
     """
     Update the registration mapping dictionaries.
@@ -523,9 +529,9 @@ def _update_registration_maps(
     global _dispatch_key_to_lib_graph
 
     def _get_new_entry_or_append(
-        registration: dict[str, list[tuple[str, str]]],
+        registration: Dict[str, List[Tuple[str, str]]],
         symbol: str,
-        key: tuple[str, str],
+        key: Tuple[str, str],
     ) -> None:
         """Helper to add key to registration list or create new entry."""
         entry_list = registration.get(symbol)
@@ -550,7 +556,7 @@ def register_op_override(
     lib_symbol: str,
     op_symbol: str,
     dispatch_key: str,
-    cond: _OpCondFn | None,
+    cond: Optional[_OpCondFn],
     impl: _OpImplFn,
     *,
     allow_multiple_override: bool = False,
@@ -626,8 +632,8 @@ def register_op_override(
 
 
 def _should_reregister_graph(
-    original_graph: list[_OverrideNode],
-    new_graph: list[_OverrideNode],
+    original_graph: List[_OverrideNode],
+    new_graph: List[_OverrideNode],
     *,
     force_reregister: bool = False,
 ) -> bool:
@@ -652,9 +658,9 @@ def _should_reregister_graph(
 def _cleanup_and_reregister_graph(
     op_symbol: str,
     dispatch_key: str,
-    graph: list[_OverrideNode],
+    graph: List[_OverrideNode],
     *,
-    filter_state: _FilterState | None = None,
+    filter_state: Optional[_FilterState] = None,
 ) -> None:
     """
     Reregister a graph's routes from scratch.
@@ -679,9 +685,9 @@ def _cleanup_and_reregister_graph(
 def _apply_graph_transformation(
     transformation_fn: UserOrderingFn,
     *,
-    keys_to_process: set[tuple[str, str]] | None = None,
+    keys_to_process: Set[Tuple[str, str]] | None = None,
     reregister_overrides: bool = False,
-    filter_state: _FilterState | None = None,
+    filter_state: Optional[_FilterState] = None,
 ) -> None:
     """
     Apply a transformation function to graphs and optionally reregister.
@@ -760,9 +766,9 @@ def _apply_graph_transformation(
 def _register_overrides_from_graph(
     op_symbol: str,
     dispatch_key: str,
-    graph: list[_OverrideNode],
+    graph: List[_OverrideNode],
     *,
-    filter_state: _FilterState | None = None,
+    filter_state: Optional[_FilterState] = None,
 ) -> None:
     """
     Register all overrides in a single graph.
@@ -775,7 +781,7 @@ def _register_overrides_from_graph(
     """
     lib = _get_or_create_library(dispatch_key)
 
-    cond_impl: list[tuple[_OpCondFn, str]] = []
+    cond_impl: List[Tuple[_OpCondFn, str]] = []
 
     # node.node_id is minted once at `register_op_override` time and is
     # stable across reorder / deregister / reenable — never regenerate it
@@ -906,8 +912,8 @@ def _apply_graph_filter(
     """
 
     def filtering_transformation(
-        op_symbol: str, dispatch_key: str, graph: list[_OverrideNode]
-    ) -> list[_OverrideNode]:
+        op_symbol: str, dispatch_key: str, graph: List[_OverrideNode]
+    ) -> List[_OverrideNode]:
         """Apply filter_fn to graph with error handling."""
         try:
             return [node for node in graph if filter_fn(op_symbol, dispatch_key, node)]
@@ -964,8 +970,8 @@ def _apply_selective_reordering(
     """
 
     def conditional_transformation(
-        op_symbol: str, dispatch_key: str, graph: list[_OverrideNode]
-    ) -> list[_OverrideNode]:
+        op_symbol: str, dispatch_key: str, graph: List[_OverrideNode]
+    ) -> List[_OverrideNode]:
         """Apply ordering_fn conditionally based on condition_fn result."""
         try:
             should_reorder = condition_fn(op_symbol, dispatch_key)

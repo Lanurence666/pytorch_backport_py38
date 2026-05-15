@@ -1,5 +1,6 @@
 # Owner(s): ["module: nn"]
 
+from __future__ import annotations
 import math
 import unittest
 

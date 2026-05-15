@@ -1,4 +1,5 @@
 # Owner(s): ["oncall: distributed"]
+from __future__ import annotations
 import sys
 
 import torch

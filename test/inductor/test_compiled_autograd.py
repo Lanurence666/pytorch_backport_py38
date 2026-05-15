@@ -153,13 +153,7 @@ class TestCompiledAutograd(TestCase):
             torch.manual_seed(123)
             expected = list(fn())
             torch.manual_seed(123)
-            with (
-                compiled_autograd._enable(compiler_fn),
-                mock.patch(
-                    "torch._functorch.aot_autograd.AOT_COUNTER",
-                    new_callable=itertools.count,
-                ),
-            ):
+            with compiled_autograd._enable(compiler_fn), mock.patch( "torch._functorch.aot_autograd.AOT_COUNTER", new_callable=itertools.count, ):
                 opt_fn = torch.compile(fn) if compile_fn else fn
                 actual = list(opt_fn())
             self.assertEqual(expected, actual)
@@ -3071,10 +3065,7 @@ main()
         loss = reduce_to_scalar_loss(out)
 
         stderr_msgs = io.StringIO()
-        with (
-            mock.patch("sys.stderr", stderr_msgs),
-            compiled_autograd._enable(compiler_fn),
-        ):
+        with mock.patch("sys.stderr", stderr_msgs), compiled_autograd._enable(compiler_fn):
             torch._inductor.config.triton.cudagraphs = True
             loss.backward()
             torch._inductor.config.triton.cudagraphs = False
@@ -3095,10 +3086,7 @@ main()
         out = model(inputs)
         loss = reduce_to_scalar_loss(out)
 
-        with (
-            torch._inductor.config.patch(graph_partition=graph_partition),
-            compiled_autograd._enable(compiler_fn),
-        ):
+        with torch._inductor.config.patch(graph_partition=graph_partition), compiled_autograd._enable(compiler_fn):
             torch._inductor.config.triton.cudagraphs = True
             loss.backward()
             torch._inductor.config.triton.cudagraphs = False
@@ -3117,10 +3105,7 @@ main()
         value = torch.rand(32, 8, 128, 64, dtype=torch.float16, device=GPU_TYPE)
         out = torch.nn.functional.scaled_dot_product_attention(query, key, value)
 
-        with (
-            config.patch(compiled_autograd=True),
-            inductor_config.patch("triton.cudagraphs", True),
-        ):
+        with config.patch(compiled_autograd=True), inductor_config.patch("triton.cudagraphs", True):
             opt_bwd = torch.compile(lambda: out.sum().backward())
             opt_bwd()
 
@@ -3148,10 +3133,7 @@ main()
 
         x = torch.randn(10, requires_grad=True, device="cuda")
         out = MyFn.apply(x)
-        with (
-            config.patch(compiled_autograd=True),
-            inductor_config.patch("triton.cudagraphs", True),
-        ):
+        with config.patch(compiled_autograd=True), inductor_config.patch("triton.cudagraphs", True):
             opt_bwd = torch.compile(lambda: out.backward())
             opt_bwd()
 
@@ -3217,10 +3199,7 @@ TORCH_LIBRARY(test_cudagraphs_cpu_scalar_used_in_cpp_custom_op, m) {
         )
 
         x = torch.randn(2, 2, requires_grad=True, device="cuda")
-        with (
-            config.patch(compiled_autograd=True),
-            inductor_config.patch("triton.cudagraphs", True),
-        ):
+        with config.patch(compiled_autograd=True), inductor_config.patch("triton.cudagraphs", True):
             out = torch.ops.test_cudagraphs_cpu_scalar_used_in_cpp_custom_op.custom_op_backed_by_autograd_fn(
                 x
             )
@@ -3624,13 +3603,7 @@ TORCH_LIBRARY(test_cudagraphs_cpu_scalar_used_in_cpp_custom_op, m) {
                 graphs.append(gm)
                 return inner_compiler_fn(gm)
 
-            with (
-                compiled_autograd._enable(compiler_fn),
-                mock.patch(
-                    "torch._functorch.aot_autograd.AOT_COUNTER",
-                    new_callable=itertools.count,
-                ),
-            ):
+            with compiled_autograd._enable(compiler_fn), mock.patch( "torch._functorch.aot_autograd.AOT_COUNTER", new_callable=itertools.count, ):
                 res = fn(x)
                 res.sum().backward()
 
@@ -3860,10 +3833,7 @@ class CompiledAutograd0(torch.nn.Module):
 
         x = torch.ones(4, requires_grad=True)
         y = torch.ones(4, requires_grad=False)
-        with (
-            torch.autograd.graph.saved_tensors_hooks(pack_hook, unpack_hook),
-            compiled_autograd._enable(make_compiler_fn(fullgraph=False)),
-        ):
+        with torch.autograd.graph.saved_tensors_hooks(pack_hook, unpack_hook), compiled_autograd._enable(make_compiler_fn(fullgraph=False)):
             out_test = f(x, y)
             self.assertEqual(pack_count, 1)
             self.assertEqual(unpack_count, 0)
@@ -4447,16 +4417,7 @@ class CompiledAutograd1(torch.nn.Module):
             model = DDP(model)
             inputs = torch.randn(10, 10)
             loss = model(inputs).sum()
-            with (
-                compiled_autograd._enable(compiler_fn),
-                self.assertRaisesRegex(
-                    RuntimeError,
-                    (
-                        r"Compiled autograd is not compatible with C\+\+ DDP Reducer, "
-                        r'please use torch._dynamo.config.optimize_ddp="python_reducer"'
-                    ),
-                ),
-            ):
+            with compiled_autograd._enable(compiler_fn), self.assertRaisesRegex( RuntimeError, ( r"Compiled autograd is not compatible with C\+\+ DDP Reducer, " r'please use torch._dynamo.config.optimize_ddp="python_reducer"' ), ):
                 loss.backward()
 
         finally:
@@ -5350,7 +5311,6 @@ xfail_by_backend = {
         "test_select_sum",  # batched gradients
         "test_custom_autograd_no_early_free",  # batched gradients
         "test_grad_batched_grad",  # batched gradients
-        "test_grad_dict_inputs_batched_grads",  # batched gradients
         # Uncategorized
         "test_lobpcg",  # NaNs
         "test_autograd_simple_views_python",  # gradient is None

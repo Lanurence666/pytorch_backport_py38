@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import logging
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import torch
 from torch._dynamo.utils import counters
@@ -130,7 +132,7 @@ blackwell_ws_persistent_device_tma_mm_template = TritonTemplate(
 
 
 # prevent duplication registration of extern functions
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def lazy_register_extern_choice(fn):
     return ExternKernelChoice(fn)
 
@@ -229,7 +231,7 @@ class DecomposeKSugraphTemplate(SubgraphTemplate):
 
     def generate(  # type: ignore[override]
         self,
-        input_nodes: list[Buffer],
+        input_nodes: List[Buffer],
         layout: Layout,
         k_split: int,
     ) -> SubgraphChoiceCaller:
@@ -270,7 +272,7 @@ class ContiguousTemplate(SubgraphTemplate):
 
     def generate(  # type: ignore[override]
         self,
-        input_nodes: list[Buffer],
+        input_nodes: List[Buffer],
         layout: Layout,
     ) -> SubgraphChoiceCaller:
         from torch._dispatch.python import enable_python_dispatcher
@@ -394,17 +396,17 @@ def tuned_mm(mat1, mat2, out_dtype=None, *, layout=None):
         layout,
     )
 
-    choices: list[ChoiceCaller] = []
+    choices: List[ChoiceCaller] = []
     static_shape, is_nonzero = _is_static_problem(layout)
 
     aten_handler: ExternKernelChoice = aten_mm
-    aten_extra_kwargs: dict[str, Any] = {}
+    aten_extra_kwargs: Dict[str, Any] = {}
     if out_dtype is not None:
         aten_handler = aten_mm_dtype
         aten_extra_kwargs = {"out_dtype": out_dtype}
 
-    templates_to_use: list[ExternKernelChoice | KernelTemplate] = []
-    kwarg_overrides: dict[str, dict[str, Any]] = {}
+    templates_to_use: Union[List[ExternKernelChoice, KernelTemplate]]= []
+    kwarg_overrides: Dict[str, Dict[str, Any]] = {}
     if use_aten_gemm_kernels():
         templates_to_use.append(aten_handler)
         if aten_extra_kwargs:
@@ -577,13 +579,13 @@ def tuned_int_mm(mat1, mat2, *, layout=None):
 
     static_shape, is_nonzero = _is_static_problem(layout)
     use_cutlass = static_shape and is_nonzero and use_cutlass_template(layout, m, n, k)
-    choices: list[ChoiceCaller] = []
+    choices: List[ChoiceCaller] = []
 
     # Create MMKernelInputs for Int MM
     kernel_inputs = MMKernelInputs([mat1, mat2], out_dtype=torch.int32)
 
     # Collect all templates for unified call
-    templates_to_use: list[ExternKernelChoice | KernelTemplate] = []
+    templates_to_use: Union[List[ExternKernelChoice, KernelTemplate]]= []
     if use_aten_gemm_kernels():
         templates_to_use.append(aten__int_mm)
 
@@ -637,7 +639,7 @@ def tuned_addmm(inp, mat1, mat2, *, alpha=1, beta=1, layout=None):
         [inp, mat1, mat2], scalars=dict(alpha=alpha, beta=beta)
     )
 
-    choices: list[ChoiceCaller] = []
+    choices: List[ChoiceCaller] = []
 
     # below is for getting an overview logging info of inductor mms
     counters["aten_mm_info"][f"aten.addmm_{m}_{n}_{k}"] += 1
@@ -665,10 +667,10 @@ def tuned_addmm(inp, mat1, mat2, *, alpha=1, beta=1, layout=None):
         )
         return node
 
-    templates_to_use: list[ExternKernelChoice | KernelTemplate] = []
+    templates_to_use: Union[List[ExternKernelChoice, KernelTemplate]]= []
 
     if use_aten_gemm_kernels():
-        aten_templates: list[ExternKernelChoice | KernelTemplate] = [aten_addmm]
+        aten_templates: Union[List[ExternKernelChoice, KernelTemplate]]= [aten_addmm]
         if (
             inp.get_stride()[0] == 0
             and len(inp.get_size()) == 2
@@ -842,31 +844,29 @@ def is_desired_scaling(
     scaling_type: ScalingType,
     transpose: bool = False,
 ) -> bool:
-    match scaling_type:
-        case ScalingType.TensorWise:
-            return _is_tensorwise_scaling(scale_size)
-        case ScalingType.RowWise:
-            return _is_rowwise_scaling(scale_size, transpose)
-        case ScalingType.BlockWise1x128:
-            return _is_blockwise1xTILESIZE_scaling(
-                scale_size, t.get_size(), 128, transpose
-            )
-        case ScalingType.BlockWise128x128:
-            return _is_blockwise128x128_scaling(scale_size, t.get_size())
-        case _:
-            raise AssertionError(f"Unsupported scaling type {scaling_type}")
+    if scaling_type == ScalingType.TensorWise:
+        return _is_tensorwise_scaling(scale_size)
+    elif scaling_type == ScalingType.RowWise:
+        return _is_rowwise_scaling(scale_size, transpose)
+    elif scaling_type == ScalingType.BlockWise1x128:
+        return _is_blockwise1xTILESIZE_scaling(
+            scale_size, t.get_size(), 128, transpose
+        )
+    elif scaling_type == ScalingType.BlockWise128x128:
+        return _is_blockwise128x128_scaling(scale_size, t.get_size())
+    else:
+        raise AssertionError(f"Unsupported scaling type {scaling_type}")
 
 
 def get_tile_size(scale_option) -> int:
-    match scale_option:
-        case ScalingType.BlockWise128x128:
-            return 128
-        case ScalingType.BlockWise1x128:
-            return 128
-        case _:
-            raise AssertionError(
-                f"Unsupported scaling type {scale_option} in get_tile_size"
-            )
+    if scale_option == ScalingType.BlockWise128x128:
+        return 128
+    elif scale_option == ScalingType.BlockWise1x128:
+        return 128
+    else:
+        raise AssertionError(
+            f"Unsupported scaling type {scale_option} in get_tile_size"
+        )
 
 
 def get_scaling_options(
@@ -874,7 +874,7 @@ def get_scaling_options(
     mat_b: Any,
     scale_a_size: torch.Tensor,
     scale_b_size: torch.Tensor,
-) -> tuple[ScalingType, ScalingType]:
+) -> Tuple[ScalingType, ScalingType]:
     for scale_option_a, scale_option_b in scaling_pairs:
         if is_desired_scaling(
             mat_a, scale_a_size, scale_option_a
@@ -933,7 +933,7 @@ def tuned_scaled_mm(
 
     scale_a_real, scale_b_real = realize_inputs(scale_a, scale_b)
 
-    input_nodes: list[Any]
+    input_nodes: List[Any]
 
     if not bias:
         input_nodes = [mat_a, mat_b, scale_a_real, scale_b_real]
@@ -946,10 +946,10 @@ def tuned_scaled_mm(
         input_nodes, mat1_idx=0, mat2_idx=1, out_dtype=out_dtype
     )
 
-    choices: list[ChoiceCaller] = []
+    choices: List[ChoiceCaller] = []
 
     # Collect all templates for unified call
-    templates_to_use: list[ExternKernelChoice | KernelTemplate] = []
+    templates_to_use: Union[List[ExternKernelChoice, KernelTemplate]]= []
     kwarg_overrides = {}
 
     if use_aten_gemm_kernels():
@@ -1068,8 +1068,8 @@ def tuned_scaled_mm(
     return node
 
 
-@functools.cache
-def _is_sm7x_or_older_gpu(index: int | None) -> bool:
+@functools.lru_cache(maxsize=None)
+def _is_sm7x_or_older_gpu(index: Optional[int]) -> bool:
     props = torch.cuda.get_device_properties(index or 0)
     return props.major <= 7
 
@@ -1089,7 +1089,7 @@ def mm_autoheuristic(
     input_nodes,
     ops,
     precondition,
-    top_k: int | None = None,
+    top_k: Optional[int]= None,
     always_included=None,
 ):
     m, n, k = get_size_hints(mat1, mat2, m, n, k)

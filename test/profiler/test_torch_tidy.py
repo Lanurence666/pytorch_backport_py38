@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: profiler"]
 
+from __future__ import annotations
 import gc
 import re
 import textwrap

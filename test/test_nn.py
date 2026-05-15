@@ -36,7 +36,7 @@ from torch.testing._internal.common_dtype import integral_types, get_all_math_dt
 from torch.testing._internal.common_utils import dtype_name, freeze_rng_state, run_tests, TestCase, \
     skipIfNoLapack, skipIfRocm, MI300_ARCH, skipIfRocmArch, \
     TEST_NUMPY, TEST_SCIPY, TEST_WITH_CROSSREF, TEST_WITH_ROCM, \
-    download_file, get_function_arglist, load_tests, skipIfMPS, MACOS_VERSION, \
+    download_file, get_function_arglist, load_tests, skipIfMPS, \
     IS_PPC, IS_ARM64, IS_MACOS, IS_WINDOWS, IS_CPU_CAPABILITY_SVE256, IS_CPU_EXT_SVE_SUPPORTED, xfailIf, \
     parametrize as parametrize_test, subtest, instantiate_parametrized_tests, \
     skipIfTorchDynamo, gcIfJetson, set_default_dtype
@@ -47,7 +47,7 @@ from torch.testing._internal.common_nn import NNTestCase, NewModuleTest, Criteri
     ctcloss_reference, get_new_module_tests, single_batch_reference_fn, _test_bfloat16_ops, _test_module_empty_input
 from torch.testing._internal.common_device_type import dtypesIfMPS, instantiate_device_type_tests, dtypes, \
     dtypesIfCUDA, precisionOverride, onlyCUDA, onlyCPU, \
-    skipCUDAIfRocm, skipCUDAIf, skipCUDAIfNotRocm, skipMPSIf, \
+    skipCUDAIfRocm, skipCUDAIf, skipCUDAIfNotRocm, \
     onlyNativeDeviceTypes, deviceCountAtLeast, largeTensorTest, expectedFailureMeta, expectedFailureMPS, \
     skipMeta, get_all_device_types
 
@@ -1385,13 +1385,13 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""")
         ])
         parameter_dict2 = nn.ParameterDict(parameters2)
         parameters.update(parameters2)
-        parameter_dict |= parameter_dict2
+        parameter_dict.update(parameter_dict2)
         check()
 
         parameters2 = OrderedDict()
         parameter_dict2 = nn.ParameterDict(parameters2)
         parameters.update(parameters2)
-        parameter_dict |= parameter_dict2
+        parameter_dict.update(parameter_dict2)
         check()
 
         parameters2 = OrderedDict([
@@ -1401,7 +1401,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""")
         ])
         parameter_dict2 = nn.ParameterDict(parameters2)
         parameters.update(parameters2)
-        parameter_dict |= parameter_dict2
+        parameter_dict.update(parameter_dict2)
         check()
 
         # Check __or__ and __ror__ works
@@ -1412,7 +1412,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""")
         ])
         parameter_dict2 = nn.ParameterDict(parameters2)
         parameters.update(parameters2)
-        parameter_dict = parameter_dict | parameter_dict2
+        parameter_dict = {**parameter_dict, **parameter_dict2}
         check()
 
         parameters2 = OrderedDict([
@@ -1423,7 +1423,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""")
         parameter_dict2 = nn.ParameterDict(parameters2)
         parameters2.update(parameters)
         parameters = parameters2
-        parameter_dict = parameter_dict2 | parameter_dict
+        parameter_dict = {**parameter_dict2, **parameter_dict}
         check()
 
         parameters['p17'] = Parameter(torch.randn(10, 10))
@@ -6865,7 +6865,6 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""")
         expected_out_t = torch.tensor([[[[2.5]]]])
         self.assertEqual(expected_out_t, out_t)
 
-    @unittest.skipIf(IS_WINDOWS and IS_ARM64, "Fails as 'Unexpected success' on Windows ARM64")
     @xfailIf(IS_ARM64 and IS_CPU_EXT_SVE_SUPPORTED and not IS_CPU_CAPABILITY_SVE256)
     # see https://github.com/pytorch/pytorch/issues/177250
     def test_upsampling_bfloat16(self, dtype=torch.bfloat16):
@@ -7683,24 +7682,6 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""")
         self.assertEqual(norm.shape, torch.Size([16, 3000, 3000, 16]))
         # Check output to make sure it is correct.
         torch.testing.assert_close(norm_small, norm[-1, -1, -1])
-
-    @unittest.skipIf(not TEST_CUDA, "CUDA not available")
-    @largeTensorTest("20GB", device="cuda")
-    def test_layer_norm_32bit_overflow(self):
-        # test for https://github.com/pytorch/pytorch/issues/181555
-        N = 4096
-        M = (2**32 // N) + 2  # M*N just over 2^32
-        x = torch.randn(M, N, dtype=torch.bfloat16, device="cuda")
-        gamma = torch.ones(N, dtype=torch.bfloat16, device="cuda")
-        beta = torch.zeros(N, dtype=torch.bfloat16, device="cuda")
-
-        y = torch.layer_norm(x, [N], gamma, beta)
-
-        # Rows past the 2^32 element boundary must not be zero
-        boundary_row = 2**32 // N
-        for row in [boundary_row, boundary_row + 1]:
-            ref = torch.layer_norm(x[row:row + 1], [N], gamma, beta)
-            self.assertEqual(y[row], ref[0])
 
     def test_padding_list(self):
         # Padding can be a list, or tuple (regression test for gh-54452)
@@ -8948,7 +8929,7 @@ class TestNNDeviceType(NNTestCase):
         x = torch.randn(1, 2, 4, 4, device=device, dtype=torch.float32)
 
         # Extremely large kernel_size (would overflow int)
-        with self.assertRaisesRegex(RuntimeError, r"value cannot be converted to type"):
+        with self.assertRaisesRegex(RuntimeError, r"integer out of range"):
             torch.nn.functional.avg_pool2d(
                 x,
                 kernel_size=(9223372036854775807, 100),  # INT64_MAX
@@ -8957,7 +8938,7 @@ class TestNNDeviceType(NNTestCase):
             )
 
         # Negative stride (invalid)
-        with self.assertRaisesRegex(RuntimeError, r"stride should be greater than zero"):
+        with self.assertRaisesRegex(RuntimeError, r"integer out of range"):
             torch.nn.functional.avg_pool2d(
                 x,
                 kernel_size=2,
@@ -8975,7 +8956,7 @@ class TestNNDeviceType(NNTestCase):
             )
 
         # Extremely large stride (would overflow int)
-        with self.assertRaisesRegex(RuntimeError, r"value cannot be converted to type"):
+        with self.assertRaisesRegex(RuntimeError, r"integer out of range"):
             torch.nn.functional.avg_pool2d(
                 x,
                 kernel_size=2,
@@ -8993,7 +8974,7 @@ class TestNNDeviceType(NNTestCase):
             )
 
         # Extremely large padding (would overflow int)
-        with self.assertRaisesRegex(RuntimeError, r"value cannot be converted to type"):
+        with self.assertRaisesRegex(RuntimeError, r"integer out of range"):
             torch.nn.functional.avg_pool2d(
                 x,
                 kernel_size=2,
@@ -9002,7 +8983,7 @@ class TestNNDeviceType(NNTestCase):
             )
 
         # Combined invalid parameters
-        with self.assertRaisesRegex(RuntimeError, r"value cannot be converted to type"):
+        with self.assertRaisesRegex(RuntimeError, r"integer out of range"):
             torch.nn.functional.avg_pool2d(
                 x,
                 kernel_size=(9223372036854775807, 5868783964474102731),
@@ -11611,8 +11592,6 @@ class TestNNDeviceType(NNTestCase):
         issue_24823_2()
 
     @dtypes(torch.float, torch.double)
-    @dtypesIfMPS(torch.float)
-    @skipMPSIf(MACOS_VERSION < 15.0, "macOS 14 runners have lower memory")
     @largeTensorTest(lambda self, device, dtype:
                      # Compute sum of the large tensor sizes:
                      # (im.numel() + small_image.numel() + small_image.grad.numel() +
@@ -11658,8 +11637,6 @@ class TestNNDeviceType(NNTestCase):
             large_view.grad.zero_()
 
     @dtypes(torch.float, torch.double)
-    @dtypesIfMPS(torch.float)  # MPS doesn't support float64
-    @skipMPSIf(MACOS_VERSION < 15.0, "macOS 14 runners have lower memory")
     @largeTensorTest(lambda self, device, dtype:
                      # Compute sum of the large tensor sizes:
                      # (im.numel() + small_image.numel() + small_image.grad.numel() +

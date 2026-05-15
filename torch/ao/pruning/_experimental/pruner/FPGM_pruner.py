@@ -1,9 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from collections.abc import Callable
 
 import torch
 
 from .base_structured_sparsifier import BaseStructuredSparsifier
+from typing import Callable, Optional, Union
 
 
 __all__ = ["FPGMPruner"]
@@ -27,7 +30,7 @@ class FPGMPruner(BaseStructuredSparsifier):
             - W: width of kernel
     """
 
-    def __init__(self, sparsity_level: float = 0.5, dist: Callable | int | None = None):
+    def __init__(self, sparsity_level: float = 0.5, dist: Optional[Union[Callable, int]] = None):
         defaults = {
             "sparsity_level": sparsity_level,
         }

@@ -1,10 +1,16 @@
+from __future__ import annotations
+
 import functools
 import logging
 import math
-from collections.abc import Callable, Sequence
+
 from enum import Enum
 from queue import Queue
-from typing import Any, TypeAlias
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 import torch
 from torch.fx import Graph, Node
@@ -78,17 +84,17 @@ class PropagateStatus(Enum):
     FAIL = 2
 
 
-_HandlerRetType: TypeAlias = PropagateStatus | tuple[PropagateStatus, PropagateStatus]
+_HandlerRetType: TypeAlias = Union[PropagateStatus, Tuple[PropagateStatus, PropagateStatus]]
 
 _HandlerType: TypeAlias = Callable[[Node], _HandlerRetType]
 
 # Rules to propagate chunking metadata from inputs to the current node
 # or from the current node back to its inputs
-propagate_rules: dict[torch._ops.OpOverload, _HandlerType] = {}
+propagate_rules: Dict[torch._ops.OpOverload, _HandlerType] = {}
 
 
 def _register_propagate_rule(
-    aten_op: torch._ops.OpOverload | Sequence[torch._ops.OpOverload],
+    aten_op: Union[torch._ops.OpOverload, Sequence[torch._ops.OpOverload]],
     handler: _HandlerType,
 ) -> _HandlerType:
     if not isinstance(aten_op, (list, tuple)):
@@ -124,7 +130,7 @@ def _register_propagate_rule(
 
 
 def register_propagate_rule(
-    aten_op: torch._ops.OpOverload | Sequence[torch._ops.OpOverload],
+    aten_op: Union[torch._ops.OpOverload, Sequence[torch._ops.OpOverload]],
 ) -> Callable[[_HandlerType], _HandlerType]:
     return functools.partial(_register_propagate_rule, aten_op)
 
@@ -143,11 +149,11 @@ def _enqueue(queue: Queue, item: Node) -> None:  # type: ignore[type-arg]
 
 def can_reach_amplified_node(
     graph: Graph, amplifier_node: Node, is_fwd: bool
-) -> dict[Node, bool]:
+) -> Dict[Node, bool]:
     """
     A amplified node means a node with the same numel as `amplifier_node`
     """
-    filter_obj: dict[Node, bool] = {}
+    filter_obj: Dict[Node, bool] = {}
     nodelist = reversed(graph.nodes) if is_fwd else graph.nodes
     target_numel = get_fake_tensor_from_node_arg(amplifier_node).numel()  # type: ignore[union-attr]
 
@@ -206,7 +212,7 @@ def propagate(amplifier_node: Node) -> None:
 
 
 def propagate_single_node(
-    queue: Queue, fwd_filter: dict[Node, bool], bwd_filter: dict[Node, bool], node: Node
+    queue: Queue, fwd_filter: Dict[Node, bool], bwd_filter: Dict[Node, bool], node: Node
 ) -> None:  # type: ignore[type-arg]
     log.debug("Propagate_single_node: %s", node.format_node())
 
@@ -588,7 +594,7 @@ def propagate_permute(permute_node: Node) -> _HandlerRetType:
 
         orig_chunk_dim = input_meta.chunk_dim
         # pyrefly: ignore [bad-argument-type, bad-assignment]
-        reverse_lookup: dict[int, int] = {v: k for k, v in enumerate(order)}
+        reverse_lookup: Dict[int, int] = {v: k for k, v in enumerate(order)}
         new_chunk_dim = reverse_lookup[orig_chunk_dim]
 
         # sanity check
@@ -686,7 +692,7 @@ def propagate_unsqueeze(unsqueeze_node: Node) -> _HandlerRetType:
 
 def _find_chunk_dim_after_reshape(
     old_shape: Sequence[int], new_shape: Sequence[int], chunk_dim: int
-) -> int | None:
+) -> Optional[int]:
     """
     Find the equivalent chunk_dim position after a reshape by matching
     the prefix product (number of elements before the dimension) and

@@ -1,8 +1,14 @@
+from __future__ import annotations
+
 import hashlib
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+
 from functools import lru_cache
-from typing import Any, TYPE_CHECKING, TypeAlias
+from typing import Any, Callable, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type, Union
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 import torch.fx.graph
 
@@ -50,7 +56,7 @@ class CustomGraphPass(ABC):
         """
 
     @abstractmethod
-    def uuid(self) -> Any | None:
+    def uuid(self) -> Optional[Any]:
         """
         Return an ID to uniquely identify your custom pass implementation. Return None
         to skip inductor code caching entirely.
@@ -82,7 +88,7 @@ class CustomGraphModulePass(ABC):
         """
 
     @abstractmethod
-    def uuid(self) -> Any | None:
+    def uuid(self) -> Optional[Any]:
         """
         Return an ID to uniquely identify your custom pass implementation. Return None
         to skip inductor code caching entirely.
@@ -102,13 +108,13 @@ class CustomInferenceAwareGraphPass(CustomGraphPass):
         """
 
 
-CustomGraphPassType: TypeAlias = (
-    CustomGraphPass | Callable[[torch.fx.graph.Graph], None] | None
-)
+CustomGraphPassType: TypeAlias = Optional[
+    Union[CustomGraphPass, Callable[[torch.fx.graph.Graph], None]]
+]
 
 
 @lru_cache(1)
-def get_hash_for_files(paths: tuple[str, ...], extra: str = "") -> bytes:
+def get_hash_for_files(paths: Tuple[str, ...], extra: str = "") -> bytes:
     """
     Helper to compute a unique string by hashing the contents of a list of files.
     """
@@ -147,7 +153,7 @@ class CustomPartitionerFn(ABC):
             gm: torch.fx.GraphModule,
             joint_inputs: Sequence[object],
             **kwargs: Any
-        ) -> tuple[torch.fx.GraphModule, torch.fx.GraphModule]:
+        ) -> Tuple[torch.fx.GraphModule, torch.fx.GraphModule]:
             # my custom partitioner implementation
             #     ...
 
@@ -159,20 +165,20 @@ class CustomPartitionerFn(ABC):
     @abstractmethod
     def __call__(
         self, gm: torch.fx.GraphModule, joint_inputs: Sequence[object], **kwargs: Any
-    ) -> tuple[torch.fx.GraphModule, torch.fx.GraphModule]:
+    ) -> Tuple[torch.fx.GraphModule, torch.fx.GraphModule]:
         """
         Implementation of the custom partitioner.
         """
 
     @abstractmethod
-    def uuid(self) -> Any | None:
+    def uuid(self) -> Optional[Any]:
         """
         Return an ID to uniquely identify your custom partitioner implementation.
         Return None to skip inductor code caching entirely.
         """
 
 
-CustomPartitionerFnType: TypeAlias = CustomPartitionerFn | None
+CustomPartitionerFnType: TypeAlias = Optional[CustomPartitionerFn]
 
 
 class CustomRuntimeEstimator(ABC):
@@ -219,7 +225,7 @@ class CustomRuntimeEstimator(ABC):
         """
 
     @abstractmethod
-    def uuid(self) -> Any | None:
+    def uuid(self) -> Optional[Any]:
         """
         Return an ID to uniquely identify your custom runtime estimator implementation.
         Return None to skip AOTAutograd caching entirely.
@@ -251,12 +257,12 @@ class CustomKnapsackSolver(ABC):
     class MyCustomKnapsackSolver(CustomKnapsackSolver):
         def __call__(
             self,
-            memory: list[float],
+            memory: List[float],
             joint_graph: fx.Graph,
             max_memory: float,
             node_info: NodeInfo,
-            all_recomputable_banned_nodes: list[fx.Node],
-        ) -> tuple[list[int], list[int]]:
+            all_recomputable_banned_nodes: List[fx.Node],
+        ) -> Tuple[List[int], List[int]]:
             # my custom knapsack solver logic
             return saved_node_idx, recomp_node_idx
 
@@ -267,18 +273,18 @@ class CustomKnapsackSolver(ABC):
     @abstractmethod
     def __call__(
         self,
-        memory: list[float],
+        memory: List[float],
         joint_graph: "torch.fx.Graph",
         max_memory: float,
         node_info: "NodeInfo",
-        all_recomputable_banned_nodes: list["torch.fx.Node"],
-    ) -> tuple[list[int], list[int]]:
+        all_recomputable_banned_nodes: List["torch.fx.Node"],
+    ) -> Tuple[List[int], List[int]]:
         """
         Implementation of the custom knapsack solver.
         """
 
     @abstractmethod
-    def uuid(self) -> Any | None:
+    def uuid(self) -> Optional[Any]:
         """
         Return an ID to uniquely identify your custom knapsack solver implementation.
         Return None to skip AOTAutograd caching entirely.

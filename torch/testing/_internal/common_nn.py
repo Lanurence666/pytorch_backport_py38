@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 from abc import abstractmethod
 import tempfile
 import unittest
@@ -24,7 +26,7 @@ from torch.autograd import Variable
 from torch.types import _TensorOrTensors
 import torch.backends.cudnn
 
-from typing import Any
+from typing import Any, Callable, Dict, List, Sequence, Tuple, Union
 from collections.abc import Callable
 from collections.abc import Sequence
 
@@ -508,7 +510,7 @@ def nllloss_no_reduce_test():
 
 def nllloss_no_reduce_ignore_index_test():
     t = Variable(torch.empty(15).uniform_().mul(10).floor().long())
-    kwargs: dict[str, int | str] = {'ignore_index': 2, 'reduction': 'none'}
+    kwargs: Dict[str, Union[int, str]] = {'ignore_index': 2, 'reduction': 'none'}
     return dict(
         fullname='NLLLoss_no_reduce_ignore_index',
         constructor=wrap_functional(
@@ -611,7 +613,7 @@ def nllloss2d_no_reduce_test():
 
 def nllloss2d_no_reduce_ignore_index_test():
     t = Variable(torch.rand(2, 5, 5).mul(3).floor().long())
-    kwargs: dict[str, int | str] = {'ignore_index': 1, 'reduction': 'none'}
+    kwargs: Dict[str, Union[int, str]] = {'ignore_index': 1, 'reduction': 'none'}
     return dict(
         fullname='NLLLoss2d_no_reduce_ignore_index',
         constructor=wrap_functional(
@@ -668,7 +670,7 @@ def nlllossNd_no_reduce_test():
 
 def nlllossNd_no_reduce_ignore_index_test():
     t = Variable(torch.rand(2, 5, 5, 2, 2).mul(3).floor().long())
-    kwargs: dict[str, int | str] = {'ignore_index': 1, 'reduction': 'none'}
+    kwargs: Dict[str, Union[int, str]] = {'ignore_index': 1, 'reduction': 'none'}
     return dict(
         fullname='NLLLossNd_no_reduce_ignore_index',
         constructor=wrap_functional(
@@ -2634,9 +2636,9 @@ def get_new_module_tests():
     ]
 
     # add conv padding mode tests:
-    for padding_mode, cpp_padding_mode in zip(
+    for padding_mode, cpp_padding_mode in _zip_strict(
             ['reflect', 'circular', 'replicate', 'zeros'],
-            ['torch::kReflect', 'torch::kCircular', 'torch::kReplicate', 'torch::kZeros'], strict=True):
+            ['torch::kReflect', 'torch::kCircular', 'torch::kReplicate', 'torch::kZeros']):
         # conv signature:
         #     in_channels, out_channels, kernel_size, stride=1,
         #     padding=0, dilation=1, groups=1,
@@ -2678,7 +2680,7 @@ def get_new_module_tests():
         'Sigmoid', 'SiLU', 'Mish', 'Softplus', 'Softshrink', 'Softsign', 'Tanh',
         'Tanhshrink', 'Threshold'
     ]
-    non_linear_activations_extra_info: dict[str, dict] = {
+    non_linear_activations_extra_info: Dict[str, dict] = {
         'CELU': {'constructor_args': (2.,), 'default_dtype': torch.double},
         'Threshold': {'constructor_args': (2., 1.)},
         'Hardsigmoid': {'check_gradgrad': False, 'check_jit': False, 'default_dtype': torch.double},
@@ -2876,8 +2878,8 @@ def nllloss_reference(input, target, weight=None, ignore_index=-100,
         return (result, norm)
 
     losses_and_weights = [nll_loss_helper(i, t, weight, ignore_index)
-                          for i, t in zip(input, target, strict=True)]
-    losses, weights = zip(*losses_and_weights, strict=True)
+                          for i, t in _zip_strict(input, target)]
+    losses, weights = _zip_strict(*losses_and_weights)
     losses_tensor = input.new_tensor(losses)
     if reduction == 'mean':
         return sum(losses_tensor) / sum(weights)
@@ -3092,7 +3094,7 @@ def ctcloss_reference(log_probs, targets, input_lengths, target_lengths, blank=0
     return output
 
 
-loss_reference_fns: dict['str', Callable] = {
+loss_reference_fns: Dict['str', Callable] = {
     'KLDivLoss': kldivloss_reference,
     'KLDivLoss_log_target': partial(kldivloss_reference, log_target=True),
     'NLLLoss': nllloss_reference,
@@ -3207,7 +3209,7 @@ classification_criterion_no_batch = [
     ),
     ('MultiLabelSoftMarginLoss', lambda: torch.randn(9, dtype=torch.double), lambda: torch.randn(9)),
 ]
-classification_criterion_no_batch_extra_info: dict[str, dict] = {
+classification_criterion_no_batch_extra_info: Dict[str, dict] = {
     'MultiLabelMarginLoss': {'check_gradgrad': False},
 }
 # TODO : Fix these discrepancies
@@ -3243,7 +3245,7 @@ class NNTestCase(TestCase):
         raise NotImplementedError
 
     @abstractmethod
-    def _get_parameters(self, module: nn.Module) -> tuple[list[nn.Parameter], list[nn.Parameter]]:
+    def _get_parameters(self, module: nn.Module) -> Tuple[List[nn.Parameter], List[nn.Parameter]]:
         raise NotImplementedError
 
     @abstractmethod
@@ -3253,7 +3255,7 @@ class NNTestCase(TestCase):
     @abstractmethod
     def _backward(self, module: nn.Module,
                   input: _TensorOrTensors, output: torch.Tensor,
-                  grad_output: torch.Tensor | Sequence[torch.Tensor],
+                  grad_output: Union[torch.Tensor, Sequence[torch.Tensor]],
                   create_graph: bool = False):
         raise NotImplementedError
 
@@ -3298,7 +3300,7 @@ class NNTestCase(TestCase):
         for i in range(output_size):
             param, d_param = self._get_parameters(module)
             # make non grad zeros
-            d_param = [torch.zeros_like(p) if d is None else d for (p, d) in zip(param, d_param, strict=True)]
+            d_param = [torch.zeros_like(p) if d is None else d for (p, d) in _zip_strict(param, d_param)]
 
             d_out = torch.zeros_like(output)
             flat_d_out = d_out.view(-1)
@@ -3317,7 +3319,7 @@ class NNTestCase(TestCase):
             if jacobian_parameters:
                 jacobian_param[:, i] = torch.cat(self._flatten_tensors(d_param), 0)
 
-        res: tuple[torch.Tensor, ...] = ()
+        res: Tuple[torch.Tensor, ...] = ()
         if jacobian_input:
             res += jacobian_inp,
         if jacobian_parameters:
@@ -3329,7 +3331,7 @@ class NNTestCase(TestCase):
         def fw(*input):
             return self._forward(module, input).detach()
 
-        res: tuple[torch.Tensor, ...] = ()
+        res: Tuple[torch.Tensor, ...] = ()
         if jacobian_input:
             res += _get_numerical_jacobian(fw, input, eps=1e-6),
         if jacobian_parameters:
@@ -3350,7 +3352,7 @@ class NNTestCase(TestCase):
         numerical_t = list(_iter_tensors(numerical))
 
         differences = []
-        for a, n in zip(analytical_t, numerical_t, strict=True):
+        for a, n in _zip_strict(analytical_t, numerical_t):
             if a.numel() != 0:
                 differences.append(a.add(n, alpha=-1).abs().max())
             # TODO: compare structure (ensure analytic jacobian has correct shape)
@@ -3564,7 +3566,7 @@ class ModuleTest(TestBase):
             gpu_module = self.constructor(*self.constructor_args).float().cuda()
             cpu_param = test_case._get_parameters(cpu_module)
             gpu_param = test_case._get_parameters(gpu_module)
-            for cpu_p, gpu_p in zip(cpu_param[0], gpu_param[0], strict=True):
+            for cpu_p, gpu_p in _zip_strict(cpu_param[0], gpu_param[0]):
                 gpu_p.data.copy_(cpu_p)
 
             test_case._zero_grad_input(cpu_input_tuple)
@@ -3585,7 +3587,7 @@ class ModuleTest(TestBase):
                 cpu_gradInput = test_case._backward(cpu_module, cpu_input_tuple, cpu_output, cpu_gradOutput)
                 gpu_gradInput = test_case._backward(gpu_module, gpu_input_tuple, gpu_output, gpu_gradOutput)
                 test_case.assertEqual(cpu_gradInput, gpu_gradInput, atol=self.precision, rtol=0, exact_dtype=False)
-                for cpu_d_p, gpu_d_p in zip(cpu_param[1], gpu_param[1], strict=True):
+                for cpu_d_p, gpu_d_p in _zip_strict(cpu_param[1], gpu_param[1]):
                     test_case.assertEqual(cpu_d_p, gpu_d_p, atol=self.precision, rtol=0)
 
             # Run double-backwards on CPU and GPU and compare results
@@ -3611,7 +3613,7 @@ class ModuleTest(TestBase):
                     gpu_gradOutput,
                     create_graph=True)
 
-                for cpu_d_i, gpu_d_i in zip(cpu_gradInputs, gpu_gradInputs, strict=True):
+                for cpu_d_i, gpu_d_i in _zip_strict(cpu_gradInputs, gpu_gradInputs):
                     test_case.assertEqual(cpu_d_i, gpu_d_i, atol=self.precision, rtol=0, exact_dtype=False)
 
                 # We mix output into the second backwards computation so that
@@ -3634,7 +3636,7 @@ class ModuleTest(TestBase):
                     gpu_input_tuple + (gpu_gradOutput,) + tuple(gpu_module.parameters()),
                     retain_graph=True)
                 test_case.assertEqual(cpu_gradInput, gpu_gradInput, atol=self.precision, rtol=0, exact_dtype=False)
-                for cpu_d_p, gpu_d_p in zip(cpu_gg, gpu_gg, strict=True):
+                for cpu_d_p, gpu_d_p in _zip_strict(cpu_gg, gpu_gg):
                     test_case.assertEqual(cpu_d_p, gpu_d_p, atol=self.precision, rtol=0, exact_dtype=False)
 
             self.test_noncontig(test_case, gpu_module, gpu_input_tuple)

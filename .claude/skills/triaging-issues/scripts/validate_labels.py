@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 PreToolUse hook to validate and sanitize labels during triage.
 

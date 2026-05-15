@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Dict, List
 import dataclasses
 import typing
 import unittest
@@ -344,7 +345,7 @@ class TestGenNativeFunctionDeclaration(unittest.TestCase):
             valid_tags=set(),
         )
 
-        backend_indices: dict[DispatchKey, dict[OperatorName, BackendMetadata]] = {
+        backend_indices: Dict[DispatchKey, Dict[OperatorName, BackendMetadata]] = {
             DispatchKey.CPU: {},
             DispatchKey.QuantizedCPU: {},
         }
@@ -394,8 +395,8 @@ TORCH_API bool kernel_1();
 # Test for native_function_generation
 class TestNativeFunctionGeneratrion(unittest.TestCase):
     def setUp(self) -> None:
-        self.native_functions: list[NativeFunction] = []
-        self.backend_indices: dict[DispatchKey, dict[OperatorName, BackendMetadata]] = (
+        self.native_functions: List[NativeFunction] = []
+        self.backend_indices: Dict[DispatchKey, Dict[OperatorName, BackendMetadata]] = (
             defaultdict(dict)
         )
         yaml_entry = """
@@ -478,7 +479,7 @@ class TestNativeFunctionGeneratrion(unittest.TestCase):
 # Test for static_dispatch
 class TestStaticDispatchGeneratrion(unittest.TestCase):
     def setUp(self) -> None:
-        self.backend_indices: dict[DispatchKey, dict[OperatorName, BackendMetadata]] = (
+        self.backend_indices: Dict[DispatchKey, Dict[OperatorName, BackendMetadata]] = (
             defaultdict(dict)
         )
         yaml_entry = """

@@ -1,0 +1,2 @@
+﻿WARNING: Redirecting 'python setup.py develop' to 'pip install -e . -v --no-build-isolation', for more info see https://github.com/pytorch/py
+torch/issues/152276

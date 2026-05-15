@@ -1,6 +1,7 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/core/Tensor.h>
 #include <ATen/AccumulateType.h>
+#include <ATen/OpMathType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/cuda/Atomic.cuh>
 #include <ATen/cuda/CUDAContext.h>
@@ -52,6 +53,7 @@ __global__ void fractional_max_pool2d_out_cuda_frame(
   int poolSizeH, int poolSizeW) {
 
   using accscalar_t = at::acc_type<scalar_t, /*is_cuda=*/true>;
+  using opmath_t = at::opmath_type<scalar_t>;
 
   int ourOutputPoint = threadIdx.x + blockIdx.x * blockDim.x;
   int plane = blockIdx.y;
@@ -76,8 +78,7 @@ __global__ void fractional_max_pool2d_out_cuda_frame(
       if (poolSizeW < 2 || poolSizeW > 7) {
         for (int w = poolW; w < poolW + poolSizeW; ++w) {
           scalar_t val = input[batch][plane][h][w];
-          // for consistency with THNN, favor the first max
-          if (val > maxVal || at::_isnan(val)) {
+          if (static_cast<opmath_t>(val) > static_cast<opmath_t>(maxVal) || at::_isnan(val)) {
             maxIndex = h * input.size(3) + w;
             maxVal = val;
           }
@@ -86,8 +87,7 @@ __global__ void fractional_max_pool2d_out_cuda_frame(
         for (int i = 0; i < poolSizeW; ++i) {
           int w = i + poolW;
           scalar_t val = input[batch][plane][h][w];
-          // for consistency with THNN, favor the first max
-          if (val > maxVal || at::_isnan(val)) {
+          if (static_cast<opmath_t>(val) > static_cast<opmath_t>(maxVal) || at::_isnan(val)) {
             maxIndex = h * input.size(3) + w;
             maxVal = val;
           }

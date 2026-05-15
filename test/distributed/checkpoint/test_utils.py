@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import io
 import sys
 import traceback
@@ -182,7 +183,6 @@ class TestWrapException(TestCase):
 
 class TestReaderView(TestCase):
     def setUp(self):
-        super().setUp()
         buffer = io.BytesIO(bytearray(range(ord("A"), ord("Z") + 1)))
         self.front_view = _create_file_view(buffer, 0, 5)
 

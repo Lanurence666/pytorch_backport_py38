@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Optional
+
 """
 Python polyfills for traceback
 """
@@ -13,7 +16,7 @@ __all__ = ["extract_tb", "clear_frames"]
 
 
 @substitute_in_graph(traceback.extract_tb, can_constant_fold_through=True)
-def extract_tb(tb: TracebackType | None, limit: int | None = None) -> StackSummary:
+def extract_tb(tb: Optional[TracebackType], limit: Optional[int] = None) -> StackSummary:
     if tb is None:
         return traceback.StackSummary.from_list([])
     # pyrefly: ignore [implicit-any]
@@ -34,6 +37,6 @@ def extract_tb(tb: TracebackType | None, limit: int | None = None) -> StackSumma
 
 
 @substitute_in_graph(traceback.clear_frames, can_constant_fold_through=True)
-def clear_frames(tb: TracebackType | None) -> None:
+def clear_frames(tb: Optional[TracebackType]) -> None:
     # no-op
     return None

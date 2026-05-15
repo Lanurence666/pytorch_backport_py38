@@ -1,7 +1,7 @@
 # mypy: allow-untyped-defs
 r"""Weight Normalization from https://arxiv.org/abs/1602.07868."""
 
-from typing import Any, TypeVar
+from typing import Any, Type, TypeVar
 from typing_extensions import deprecated
 
 from torch import _weight_norm, norm_except_dim

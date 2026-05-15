@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import sys
 
 import sympy
 from sympy.printing.precedence import PRECEDENCE, precedence
 from sympy.printing.str import StrPrinter
+from typing import Optional, Type, overload
 
 
 INDEX_TYPE = "int64_t"
@@ -23,7 +26,7 @@ class ExprPrinter(StrPrinter):
         # pyrefly: ignore [missing-attribute]
         return f"not ({self._print(expr.args[0])})"
 
-    def _print_Add(self, expr: sympy.Expr, order: str | None = None) -> str:
+    def _print_Add(self, expr: sympy.Expr, order: Optional[str] = None) -> str:
         return self.stringify(expr.args, " + ", precedence(expr))
 
     def _print_Relational(self, expr: sympy.Expr) -> str:
@@ -350,7 +353,7 @@ class PythonPrinter(ExprPrinter):
         # Convert Piecewise(expr_cond_pairs) to nested ternary expressions
         # Piecewise((e1, c1), (e2, c2), ..., (eN, cN))
         # becomes: e1 if c1 else (e2 if c2 else (... else eN))
-        result: str | None = None
+        result: Optional[str]= None
         for expr_i, cond_i in reversed(expr.args):
             # pyrefly: ignore [missing-attribute]
             expr_str = self._print(expr_i)
@@ -394,7 +397,7 @@ class CppPrinter(ExprPrinter):
         # Convert Piecewise(expr_cond_pairs) to nested ternary operators
         # Piecewise((e1, c1), (e2, c2), ..., (eN, cN))
         # becomes: c1 ? e1 : (c2 ? e2 : (... : eN))
-        result: str | None = None
+        result: Optional[str]= None
         for expr_i, cond_i in reversed(expr.args):
             expr_str = self.parenthesize(expr_i, PRECEDENCE["Atom"] - 0.5)
             if cond_i == True:  # noqa: E712

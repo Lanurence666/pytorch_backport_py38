@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import sys
 
 import torch
@@ -175,7 +176,7 @@ def _discover_fsdp_ignored_params(
             child_ignored_params = _discover_fsdp_ignored_params(
                 sub_module, ignored_path, child_path
             )
-            total_ignored_params = total_ignored_params | child_ignored_params
+            total_ignored_params = {**total_ignored_params, **child_ignored_params}
 
     return total_ignored_params
 
@@ -204,7 +205,7 @@ def _find_all_fsdped_modules(module: torch.nn.Module, path) -> set[str]:
     for name, child in list(module.named_children()):
         child_path = _append_prefix(path, name)
         child_result = _find_all_fsdped_modules(child, child_path)
-        result = result | child_result
+        result = {**result, **child_result}
     if isinstance(module, FSDP2):
         result.add(path)
     return result

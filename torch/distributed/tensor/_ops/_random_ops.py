@@ -1,4 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 import torch
 from torch._ops import OpOverload
 from torch.distributed.tensor._dtensor_spec import TensorMeta
@@ -8,6 +10,7 @@ from torch.distributed.tensor._ops.single_dim_strategy import (
     register_single_dim_strategy,
 )
 from torch.distributed.tensor.placement_types import Placement
+from typing import List, Type, Union
 
 
 aten = torch.ops.aten
@@ -17,7 +20,7 @@ def _random_inplace_single_dim_strategy(
     op: OpOverload,
     args_schema: ArgsType,
     kwargs_schema: KwargsType,
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     """Single-dim strategy for in-place random ops (single tensor input, output follows input).
 
     No Partial inputs: random sampling on partial tensors is undefined.
@@ -26,9 +29,9 @@ def _random_inplace_single_dim_strategy(
     if not isinstance(self_meta, TensorMeta):
         raise AssertionError
     num_outputs = sum(1 for r in op._schema.returns if "Tensor" in str(r.type))
-    placements: list[list[Placement | _ShardingPlaceholder]] = []
+    placements: Union[List[List[Placement, _ShardingPlaceholder]]]= Union[[]]
     for i in range(len(self_meta.shape)):
-        rule: list[Placement | _ShardingPlaceholder] = [_ShardingPlaceholder(i)] * (
+        rule: Union[List[Placement, _ShardingPlaceholder]]= [_ShardingPlaceholder(i)] * (
             num_outputs + 1
         )
         placements.append(rule)
@@ -58,7 +61,7 @@ def multinomial_single_dim_strategy(
     op: OpOverload,
     args_schema: ArgsType,
     kwargs_schema: KwargsType,
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     """Single-dim strategy for multinomial.
 
     multinomial(self, num_samples, ...) -> Tensor
@@ -71,9 +74,9 @@ def multinomial_single_dim_strategy(
     self_meta = args_schema[0]
     if not isinstance(self_meta, TensorMeta):
         raise AssertionError
-    placements: list[list[Placement | _ShardingPlaceholder]] = []
+    placements: Union[List[List[Placement, _ShardingPlaceholder]]]= Union[[]]
     for i in range(len(self_meta.shape) - 1):
-        rule: list[Placement | _ShardingPlaceholder] = [
+        rule: Union[List[Placement, _ShardingPlaceholder]]= [
             _ShardingPlaceholder(i),
             _ShardingPlaceholder(i),
         ]

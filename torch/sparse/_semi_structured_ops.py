@@ -1,3 +1,4 @@
+from typing import overload
 # mypy: allow-untyped-defs
 import contextlib
 

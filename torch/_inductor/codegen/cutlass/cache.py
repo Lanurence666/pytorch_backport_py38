@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import hashlib
 import inspect
@@ -6,7 +8,7 @@ import json
 import logging
 import os
 import time
-from typing import Any
+from typing import Any, List, Optional
 
 import torch._inductor.config as config
 from torch._inductor.codecache import cutlass_key
@@ -63,8 +65,8 @@ def _generate_config_filename(request_key: str) -> str:
 
 
 @clear_on_fresh_cache
-@functools.cache
-def maybe_fetch_ops(device_type: str) -> list[Any] | None:
+@functools.lru_cache(maxsize=None)
+def maybe_fetch_ops(device_type: str) -> Optional[List[Any]]:
     """
     Fetch ops from databases.
     """
@@ -86,7 +88,7 @@ def maybe_fetch_ops(device_type: str) -> list[Any] | None:
     filepath: str = os.path.join(cache_dir(), filename)
 
     # try fetch
-    serialized_ops: list[str] | None = None
+    serialized_ops: Optional[List[str]]= None
     start_time = time.time()
     if os.path.isfile(filepath):
         # locally

@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Set
 import re
 import unittest
 
@@ -30,7 +32,7 @@ class TestHeaderOnlyLinter(unittest.TestCase):
         sample_regex = re.compile("")
         test_globs = ["tools/test/header_only_linter_testdata/*.cpp"]
 
-        expected_matches: set[str] = set()
+        expected_matches: Set[str] = set()
         self.assertEqual(
             find_matched_symbols(sample_regex, test_globs), expected_matches
         )

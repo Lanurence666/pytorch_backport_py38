@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 
 import torch
@@ -14,6 +16,7 @@ from torch.distributions.utils import (
 )
 from torch.nn.functional import binary_cross_entropy_with_logits
 from torch.types import _Number, _size, Number
+from typing import Optional, Tuple, Union
 
 
 __all__ = ["ContinuousBernoulli"]
@@ -54,10 +57,10 @@ class ContinuousBernoulli(ExponentialFamily):
 
     def __init__(
         self,
-        probs: Tensor | Number | None = None,
-        logits: Tensor | Number | None = None,
-        lims: tuple[float, float] = (0.499, 0.501),
-        validate_args: bool | None = None,
+        probs: Optional[Union[Tensor, Number]]= None,
+        logits: Optional[Union[Tensor, Number]]= None,
+        lims: Tuple[float, float] = (0.499, 0.501),
+        validate_args: Optional[bool]= None,
     ) -> None:
         if (probs is None) == (logits is None):
             raise ValueError(
@@ -231,7 +234,7 @@ class ContinuousBernoulli(ExponentialFamily):
         )
 
     @property
-    def _natural_params(self) -> tuple[Tensor]:
+    def _natural_params(self) -> Tuple[Tensor]:
         return (self.logits,)
 
     # pyrefly: ignore [bad-override]

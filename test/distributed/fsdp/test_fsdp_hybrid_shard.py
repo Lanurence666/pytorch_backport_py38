@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import contextlib
 import sys
 from collections import Counter
@@ -321,10 +322,7 @@ class TestFSDPHybridShard(FSDPTestContinuous):
         cntr = Counter()
         patched_allreduce = partial(patched_collective, orig_ar, cntr)
         patched_reduce_scatter = partial(patched_collective, orig_rs, cntr)
-        with (
-            patch_allreduce(patched_allreduce),
-            patch_reduce_scatter(patched_reduce_scatter),
-        ):
+        with patch_allreduce(patched_allreduce), patch_reduce_scatter(patched_reduce_scatter):
             inp = hsdp_model.get_input(device=torch.accelerator.current_device_index())
             out = hsdp_model(inp[0], inp[1])
             loss = hsdp_model.get_loss(inp, out)

@@ -1,6 +1,11 @@
 # mypy: ignore-errors
+from __future__ import annotations
 import random
-from typing import NamedTuple, TypeAlias
+from typing import List, NamedTuple, Tuple, Union
+try:
+    from typing import TypeAlias
+except ImportError:
+    from typing_extensions import TypeAlias
 
 import torch
 
@@ -16,8 +21,8 @@ class FuzzerConfig:
 class TensorSpec(NamedTuple):
     """Specification for a tensor argument."""
 
-    size: tuple[int, ...]
-    stride: tuple[int, ...]
+    size: Tuple[int, ...]
+    stride: Tuple[int, ...]
     dtype: torch.dtype
 
 
@@ -25,12 +30,12 @@ class ScalarSpec(NamedTuple):
     """Specification for a scalar argument."""
 
     dtype: torch.dtype
-    constant: int | float | bool | complex | None = (
+    constant: Union[int, float, bool, complex, None] = (
         None  # If set, use this constant value instead of fuzzing
     )
 
 
-Spec: TypeAlias = TensorSpec | ScalarSpec
+Spec: TypeAlias = Union[TensorSpec, ScalarSpec]
 
 
 def fuzz_torch_tensor_type(template: str = "default") -> torch.dtype:
@@ -52,7 +57,7 @@ def fuzz_torch_tensor_type(template: str = "default") -> torch.dtype:
     return random.choice(tensor_dtypes)
 
 
-def fuzz_tensor_size(max_dims: int = 3, max_size_per_dim: int = 30) -> tuple[int, ...]:
+def fuzz_tensor_size(max_dims: int = 3, max_size_per_dim: int = 30) -> Tuple[int, ...]:
     """
     Fuzzes PyTorch tensor sizes by generating random tensor shapes.
 
@@ -73,7 +78,7 @@ def fuzz_tensor_size(max_dims: int = 3, max_size_per_dim: int = 30) -> tuple[int
         return ()
 
     # Generate random sizes for each dimension
-    sizes: list[int] = []
+    sizes: List[int] = []
     for _ in range(num_dims):
         # Include edge cases:
         # - 5% chance of size 0 (empty tensor in that dimension)
@@ -96,7 +101,7 @@ def fuzz_tensor_size(max_dims: int = 3, max_size_per_dim: int = 30) -> tuple[int
     return tuple(sizes)
 
 
-def fuzz_valid_stride(size: tuple[int, ...]) -> tuple[int, ...]:
+def fuzz_valid_stride(size: Tuple[int, ...]) -> Tuple[int, ...]:
     """
     Fuzzes PyTorch tensor strides by generating valid stride patterns for a given size.
 
@@ -187,7 +192,7 @@ def fuzz_valid_stride(size: tuple[int, ...]) -> tuple[int, ...]:
     return tuple(_compute_contiguous_strides(size))
 
 
-def _compute_contiguous_strides(size: tuple[int, ...]) -> list[int]:
+def _compute_contiguous_strides(size: Tuple[int, ...]) -> List[int]:
     """
     Helper function to compute standard contiguous strides for a given size.
 
@@ -197,7 +202,7 @@ def _compute_contiguous_strides(size: tuple[int, ...]) -> list[int]:
     Returns:
         list[int]: List of contiguous strides
     """
-    strides: list[int] = []
+    strides: List[int] = []
     current_stride: int = 1
 
     # Calculate strides from right to left
@@ -210,7 +215,7 @@ def _compute_contiguous_strides(size: tuple[int, ...]) -> list[int]:
     return strides
 
 
-def _compute_non_contiguous_dense_strides(size: tuple[int, ...]) -> list[int]:
+def _compute_non_contiguous_dense_strides(size: Tuple[int, ...]) -> List[int]:
     """
     Helper function to compute non-contiguous but dense strides (e.g., column-major order).
 
@@ -235,7 +240,7 @@ def _compute_non_contiguous_dense_strides(size: tuple[int, ...]) -> list[int]:
 
     if pattern == "column_major":
         # Column-major order: calculate strides from left to right
-        strides: list[int] = [0] * len(size)
+        strides: List[int] = [0] * len(size)
         current_stride: int = 1
 
         # Calculate strides from left to right (opposite of contiguous)
@@ -302,7 +307,7 @@ def _compute_non_contiguous_dense_strides(size: tuple[int, ...]) -> list[int]:
 
 
 def _compute_storage_size_needed(
-    size: tuple[int, ...], strides: tuple[int, ...]
+    size: Tuple[int, ...], strides: Tuple[int, ...]
 ) -> int:
     """Compute minimum storage size needed for given shape and strides."""
     if not size:
@@ -318,11 +323,11 @@ def _compute_storage_size_needed(
 
 
 def fuzz_tensor(
-    size: tuple[int, ...] | None = None,
-    stride: tuple[int, ...] | None = None,
-    dtype: torch.dtype | None = None,
-    seed: int | None = None,
-) -> tuple[torch.Tensor, int]:
+    size: Union[Tuple[int, Ellipsis], None] = None,
+    stride: Union[Tuple[int, Ellipsis], None] = None,
+    dtype: Union[torch.dtype, None] = None,
+    seed: Union[int, None] = None,
+) -> Tuple[torch.Tensor, int]:
     """
     Create a tensor with fuzzed size, stride, and dtype.
 
@@ -407,10 +412,10 @@ def fuzz_tensor(
 
 
 def fuzz_tensor_simple(
-    size: tuple[int, ...] | None = None,
-    stride: tuple[int, ...] | None = None,
-    dtype: torch.dtype | None = None,
-    seed: int | None = None,
+    size: Union[Tuple[int, Ellipsis], None] = None,
+    stride: Union[Tuple[int, Ellipsis], None] = None,
+    dtype: Union[torch.dtype, None] = None,
+    seed: Union[int, None] = None,
 ) -> torch.Tensor:
     """
     Convenience function that returns just the tensor without the seed.
@@ -429,7 +434,7 @@ def fuzz_tensor_simple(
 
 
 def fuzz_non_contiguous_dense_tensor(
-    size: tuple[int, ...] | None = None, dtype: torch.dtype | None = None
+    size: Union[Tuple[int, Ellipsis], None] = None, dtype: Union[torch.dtype, None] = None
 ) -> torch.Tensor:
     """
     Specifically generates tensors that are non-contiguous but dense and non-overlapping.
@@ -476,7 +481,7 @@ def fuzz_non_contiguous_dense_tensor(
     return tensor
 
 
-def fuzz_scalar(spec, seed: int | None = None) -> float | int | bool | complex:
+def fuzz_scalar(spec, seed: Union[int, None] = None) -> Union[float, int, bool, complex]:
     """
     Create a Python scalar value from a ScalarSpec.
 

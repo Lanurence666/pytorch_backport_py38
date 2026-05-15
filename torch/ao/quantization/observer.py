@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
 # temporarily skip RUF for this file for now, we can re-enable
@@ -14,7 +15,7 @@ import warnings
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 from functools import partial
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Type, cast
 
 import torch
 import torch.nn as nn
@@ -309,7 +310,7 @@ class UniformQuantizationObserverBase(ObserverBase):
         if version is None or version == 1:
             # eps was moved to a buffer in version 2
             eps = torch.tensor([torch.finfo(torch.float32).eps])
-            state_dict[prefix + "eps"] = eps
+            state_Dict[prefix + "eps"] = eps
 
         super()._load_from_state_dict(
             state_dict,
@@ -348,7 +349,7 @@ class UniformQuantizationObserverBase(ObserverBase):
     @torch.jit.export
     def _calculate_qparams(
         self, min_val: torch.Tensor, max_val: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Calculates the quantization parameters, given min and max
         value tensors. Works for both per tensor and per channel cases
 
@@ -772,8 +773,8 @@ class PerChannelMinMaxObserver(UniformQuantizationObserverBase):
         x_dim = x.size()
 
         new_axis_list = [i for i in range(len(x_dim))]  # noqa: C416
-        new_axis_list[self.ch_axis] = 0
-        new_axis_list[0] = self.ch_axis
+        new_axis_List[self.ch_axis] = 0
+        new_axis_List[0] = self.ch_axis
         y = x.permute(new_axis_list)
         # Need to match dtype of min/max because the updates to buffers
         # are done in place and types need to match for comparisons
@@ -800,13 +801,13 @@ class PerChannelMinMaxObserver(UniformQuantizationObserverBase):
 
     def _load_from_state_dict(
         self,
-        state_dict: dict[str, Any],
+        state_dict: Dict[str, Any],
         prefix: str,
-        local_metadata: dict[str, torch.Tensor],
+        local_metadata: Dict[str, torch.Tensor],
         strict: bool,
-        missing_keys: list[str],
-        unexpected_keys: list[str],
-        error_msgs: list[str],
+        missing_keys: List[str],
+        unexpected_keys: List[str],
+        error_msgs: List[str],
     ):
         version = local_metadata.get("version")
         if version is not None and version < 3:
@@ -820,7 +821,7 @@ class PerChannelMinMaxObserver(UniformQuantizationObserverBase):
         for name in local_state:
             key = prefix + name
             if key in state_dict:
-                val = state_dict[key]
+                val = state_Dict[key]
                 # Custom handling to allow loading min_val or max_val
                 # of size N into uninitialized buffers of size 0. The
                 # buffers are resized here, and the values are copied in
@@ -862,13 +863,13 @@ class PerChannelMinMaxObserver(UniformQuantizationObserverBase):
 
     def _load_from_state_dict_script(
         self,
-        state_dict: dict[str, Any],
+        state_dict: Dict[str, Any],
         prefix: str,
-        local_metadata: dict[str, torch.Tensor],
+        local_metadata: Dict[str, torch.Tensor],
         strict: bool,
-        missing_keys: list[str],
-        unexpected_keys: list[str],
-        error_msgs: list[str],
+        missing_keys: List[str],
+        unexpected_keys: List[str],
+        error_msgs: List[str],
     ):
         self._load_from_state_dict(
             state_dict,
@@ -967,8 +968,8 @@ class MovingAveragePerChannelMinMaxObserver(PerChannelMinMaxObserver):
         x_dim = x.size()
 
         new_axis_list = [i for i in range(len(x_dim))]  # noqa: C416
-        new_axis_list[self.ch_axis] = 0
-        new_axis_list[0] = self.ch_axis
+        new_axis_List[self.ch_axis] = 0
+        new_axis_List[0] = self.ch_axis
         y = x.permute(new_axis_list)
         y = torch.flatten(y, start_dim=1)
         if min_val.numel() == 0 or max_val.numel() == 0:
@@ -1127,7 +1128,7 @@ class HistogramObserver(UniformQuantizationObserverBase):
 
         return norm.sum().item()
 
-    def _non_linear_param_search(self) -> tuple[torch.Tensor, torch.Tensor]:
+    def _non_linear_param_search(self) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Non-linear parameter search.
 
         An approximation for L2 error minimization for selecting min/max.
@@ -1391,17 +1392,17 @@ class HistogramObserver(UniformQuantizationObserverBase):
             # to account for the differences between v2 and v3
             min_val_name, max_val_name = prefix + "min_val", prefix + "max_val"
             if min_val_name in state_dict:
-                if state_dict[min_val_name].shape == torch.Size([0]):
-                    state_dict[min_val_name] = torch.tensor(float("inf"))
+                if state_Dict[min_val_name].shape == torch.Size([0]):
+                    state_Dict[min_val_name] = torch.tensor(float("inf"))
             if max_val_name in state_dict:
-                if state_dict[max_val_name].shape == torch.Size([0]):
-                    state_dict[max_val_name] = torch.tensor(float("-inf"))
+                if state_Dict[max_val_name].shape == torch.Size([0]):
+                    state_Dict[max_val_name] = torch.tensor(float("-inf"))
 
         local_state = ["min_val", "max_val"]
         for name in local_state:
             key = prefix + name
             if key in state_dict:
-                val = state_dict[key]
+                val = state_Dict[key]
                 setattr(self, name, val)
             elif strict:
                 missing_keys.append(key)
@@ -1547,7 +1548,7 @@ class RecordingObserver(ObserverBase):
         reduce_range: Reduces the range of the quantized data type by 1 bit
     """
 
-    __annotations__ = {"tensor_val": list[torch.Tensor | None]}
+    __annotations__ = {"tensor_val": List[Optional[torch.Tensor]]}
 
     def __init__(self, dtype=torch.quint8):
         super().__init__(dtype=dtype, is_dynamic=False)
@@ -1707,7 +1708,7 @@ class PerBlock(Granularity):
         block_size (Tuple[int, ...]): The size of each quantization group
     """
 
-    block_size: tuple[int, ...]
+    block_size: Tuple[int, ...]
 
 
 @dataclass(frozen=True)
@@ -1788,8 +1789,8 @@ class PerToken(Granularity):
 
 
 def get_block_size(
-    input_shape: tuple[int, ...], granularity: Granularity
-) -> tuple[int, ...]:
+    input_shape: Tuple[int, ...], granularity: Granularity
+) -> Tuple[int, ...]:
     """Get the block size based on the input shape and granularity type.
 
     Args:
@@ -1838,13 +1839,13 @@ class AffineQuantizedObserverBase(ABC, torch.nn.Module):
         mapping_type: MappingType,
         target_dtype: torch.dtype,
         granularity: Granularity,
-        quant_min: int | None = None,
-        quant_max: int | None = None,
-        eps: float | None = None,
-        scale_dtype: torch.dtype | None = None,
-        zero_point_dtype: torch.dtype | None = None,
+        quant_min: Optional[int]= None,
+        quant_max: Optional[int]= None,
+        eps: Optional[float]= None,
+        scale_dtype: Optional[torch.dtype]= None,
+        zero_point_dtype: Optional[torch.dtype]= None,
         preserve_zero: bool = True,
-        zero_point_domain: ZeroPointDomain | None = ZeroPointDomain.INT,
+        zero_point_domain: Optional[ZeroPointDomain]= ZeroPointDomain.INT,
         # there could be some extra args that's ignored
         **kwargs,
     ):
@@ -1872,7 +1873,7 @@ class AffineQuantizedObserverBase(ABC, torch.nn.Module):
         """
 
     @abstractmethod
-    def calculate_qparams(self) -> tuple[torch.Tensor, torch.Tensor]:
+    def calculate_qparams(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Calculate quantization parameter based on the stats attached to the observer module
         and returns a tuple of scale and zero_point Tensor
         """
@@ -2026,8 +2027,8 @@ def load_observer_state_dict(mod, obs_dict):
     load the stats back into the model. The observer state_dict can be saved
     using torch.ao.quantization.get_observer_state_dict
     """
-    missing_keys: list[str] = []
-    unexpected_keys: list[str] = []
+    missing_keys: List[str] = []
+    unexpected_keys: List[str] = []
     for name, module in mod.named_modules():
         prefix = name + "."
         if _is_activation_post_process(module):

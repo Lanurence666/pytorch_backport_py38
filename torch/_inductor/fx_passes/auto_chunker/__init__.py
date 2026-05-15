@@ -5,7 +5,7 @@ import logging
 import operator
 import os
 from collections.abc import Sequence
-from typing import Optional
+from typing import Optional, Sequence, Set
 
 import torch
 from torch._dynamo.utils import detect_fake_mode

@@ -1,5 +1,9 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+from typing import Optional
+
+
 import torch
 import torch.ao.nn.intrinsic as nni
 from torch.ao.nn.quantized.modules.utils import (
@@ -126,9 +130,9 @@ class Linear(torch.nn.Module):
     def set_weight_bias(
         self,
         w: torch.Tensor,
-        b: torch.Tensor | None,
-        row_block_size: int | None,
-        col_block_size: int | None,
+        b: Optional[torch.Tensor],
+        row_block_size: Optional[int],
+        col_block_size: Optional[int],
     ) -> None:
         if row_block_size is None or col_block_size is None:
             raise AssertionError(

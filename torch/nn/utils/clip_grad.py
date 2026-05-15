@@ -1,11 +1,17 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import types
 import typing
 import warnings
-from collections.abc import Callable
-from typing import cast, TypeAlias, TypeVar
+
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Type, TypeVar, Union, cast
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 from typing_extensions import deprecated, ParamSpec
 
 import torch
@@ -17,14 +23,14 @@ from torch.utils._foreach_utils import (
 )
 
 
-__all__: list[str] = [
+__all__: List[str] = [
     "clip_grad_norm",
     "clip_grad_norm_",
     "clip_grad_value_",
 ]
 
 
-_tensor_or_tensors: TypeAlias = torch.Tensor | typing.Iterable[torch.Tensor]  # noqa: PYI042
+_tensor_or_tensors: TypeAlias = Union[torch.Tensor, typing.Iterable[torch.Tensor]]  # noqa: PYI042
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
@@ -50,7 +56,7 @@ def _get_total_norm(
     tensors: _tensor_or_tensors,
     norm_type: float = 2.0,
     error_if_nonfinite: bool = False,
-    foreach: bool | None = None,
+    foreach: Optional[bool] = None
 ) -> torch.Tensor:
     r"""Compute the norm of an iterable of tensors.
 
@@ -81,13 +87,13 @@ def _get_total_norm(
     if len(tensors) == 0:
         return torch.tensor(0.0)
     first_device = tensors[0].device
-    grouped_tensors: dict[
-        tuple[torch.device, torch.dtype], tuple[list[list[Tensor]], list[int]]
+    grouped_tensors: Dict[
+        Tuple[torch.device, torch.dtype], Tuple[List[List[Tensor]], List[int]]
     ] = _group_tensors_by_device_and_dtype(  # pyrefly: ignore [bad-assignment]
         [tensors]  # type: ignore[list-item]
     )  # type: ignore[assignment]
 
-    norms: list[Tensor] = []
+    norms: List[Tensor] = []
     for (device, _), ([device_tensors], _) in grouped_tensors.items():
         if (foreach is None and _has_foreach_support(device_tensors, device)) or (
             foreach and _device_has_foreach_support(device)
@@ -121,7 +127,7 @@ def _clip_grads_with_norm_(
     parameters: _tensor_or_tensors,
     max_norm: float,
     total_norm: torch.Tensor,
-    foreach: bool | None = None,
+    foreach: Optional[bool] = None
 ) -> None:
     r"""Scale the gradients of an iterable of parameters given a pre-calculated total norm and desired max norm.
 
@@ -157,8 +163,8 @@ def _clip_grads_with_norm_(
     max_norm = float(max_norm)
     if len(grads) == 0:
         return
-    grouped_grads: dict[
-        tuple[torch.device, torch.dtype], tuple[list[list[Tensor]], list[int]]
+    grouped_grads: Dict[
+        Tuple[torch.device, torch.dtype], Tuple[List[List[Tensor]], List[int]]
     ] = _group_tensors_by_device_and_dtype([grads])  # type: ignore[assignment]
 
     clip_coef = max_norm / (total_norm + 1e-6)
@@ -187,7 +193,7 @@ def clip_grad_norm_(
     max_norm: float,
     norm_type: float = 2.0,
     error_if_nonfinite: bool = False,
-    foreach: bool | None = None,
+    foreach: Optional[bool] = None
 ) -> torch.Tensor:
     r"""Clip the gradient norm of an iterable of parameters.
 
@@ -242,7 +248,7 @@ def clip_grad_norm(
     max_norm: float,
     norm_type: float = 2.0,
     error_if_nonfinite: bool = False,
-    foreach: bool | None = None,
+    foreach: Optional[bool] = None
 ) -> torch.Tensor:
     r"""Clip the gradient norm of an iterable of parameters.
 
@@ -257,7 +263,7 @@ def clip_grad_norm(
 def clip_grad_value_(
     parameters: _tensor_or_tensors,
     clip_value: float,
-    foreach: bool | None = None,
+    foreach: Optional[bool] = None
 ) -> None:
     r"""Clip the gradients of an iterable of parameters at specified value.
 
@@ -285,10 +291,10 @@ def clip_grad_value_(
     for (device, _), ([grads], _) in grouped_grads.items():
         if (
             foreach is None
-            and _has_foreach_support(cast(list[Tensor], grads), device=device)
+            and _has_foreach_support(cast(List[Tensor], grads), device=device)
         ) or (foreach and _device_has_foreach_support(device)):
-            torch._foreach_clamp_min_(cast(list[Tensor], grads), -clip_value)
-            torch._foreach_clamp_max_(cast(list[Tensor], grads), clip_value)
+            torch._foreach_clamp_min_(cast(List[Tensor], grads), -clip_value)
+            torch._foreach_clamp_max_(cast(List[Tensor], grads), clip_value)
         elif foreach:
             raise RuntimeError(
                 f"foreach=True was passed, but can't use the foreach API on {device.type} tensors"

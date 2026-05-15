@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import itertools as it
-from typing import Any
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, Union
 from collections.abc import Callable
 
 import torch
@@ -25,9 +27,9 @@ class FuzzedParameter:
     def __init__(
         self,
         name: str,
-        minval: int | float | None = None,
-        maxval: int | float | None = None,
-        distribution: str | dict[Any, float] | None = None,
+        minval: Optional[Union[int, float]] = None,
+        maxval: Optional[Union[int, float]] = None,
+        distribution: Union[str, Dict[Any, float]] | None = None,
         strict: bool = False,
     ) -> None:
         """
@@ -188,17 +190,17 @@ class FuzzedTensor:
     def __init__(
         self,
         name: str,
-        size: tuple[str | int, ...],
-        steps: tuple[str | int, ...] | None = None,
+        size: Tuple[Union[str, int], ...],
+        steps: Union[Tuple[str, int, ...], None] = None,
         probability_contiguous: float = 0.5,
-        min_elements: int | None = None,
-        max_elements: int | None = None,
-        max_allocation_bytes: int | None = None,
-        dim_parameter: str | None = None,
-        roll_parameter: str | None = None,
+        min_elements: Optional[int] = None,
+        max_elements: Optional[int] = None,
+        max_allocation_bytes: Optional[int] = None,
+        dim_parameter: Optional[str] = None,
+        roll_parameter: Optional[str] = None,
         dtype=torch.float32,
         cuda=False,
-        tensor_constructor: Callable | None = None
+        tensor_constructor: Optional[Callable] = None
     ) -> None:
         """
         Args:
@@ -295,7 +297,7 @@ class FuzzedTensor:
             raw_tensor = raw_tensor.permute(tuple(order)).contiguous()
             raw_tensor = raw_tensor.permute(tuple(np.argsort(order)))
 
-        slices = [slice(0, size * step, step) for size, step in zip(size, steps, strict=True)]
+        slices = [slice(0, size * step, step) for size, step in _zip_strict(size, steps)]
         tensor = raw_tensor[tuple(slices)]
 
         properties = {
@@ -326,7 +328,7 @@ class FuzzedTensor:
 
         size = resolve(self._size, dim)
         steps = resolve(self._steps or (), dim)
-        allocation_size = tuple(size_i * step_i for size_i, step_i in zip(size, steps, strict=True))
+        allocation_size = tuple(size_i * step_i for size_i, step_i in _zip_strict(size, steps))
         return size, steps, allocation_size
 
     def satisfies_constraints(self, params) -> bool:
@@ -353,10 +355,10 @@ class FuzzedTensor:
 class Fuzzer:
     def __init__(
         self,
-        parameters: list[FuzzedParameter | list[FuzzedParameter]],
-        tensors: list[FuzzedTensor | list[FuzzedTensor]],
-        constraints: list[Callable] | None = None,
-        seed: int | None = None
+        parameters: List[Union[FuzzedParameter, List[FuzzedParameter]]],
+        tensors: List[Union[FuzzedTensor, List[FuzzedTensor]]],
+        constraints: Optional[List[Callable]] = None,
+        seed: Optional[int] = None
     ) -> None:
         """
         Args:
@@ -422,9 +424,9 @@ class Fuzzer:
         return self._rejections / self._total_generated
 
     def _generate(self, state):
-        strict_params: dict[str, float | int | ParameterAlias] = {}
+        strict_params: Union[Dict[str, Union[float, int], ParameterAlias]] = {}
         for _ in range(1000):
-            candidate_params: dict[str, float | int | ParameterAlias] = {}
+            candidate_params: Union[Dict[str, Union[float, int], ParameterAlias]] = {}
             for p in self._parameters:
                 if p.strict:
                     if p.name in strict_params:

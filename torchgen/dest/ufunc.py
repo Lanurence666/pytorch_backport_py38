@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Dict, List, TYPE_CHECKING, Tuple, Union
 
 import torchgen.api.ufunc as ufunc
 from torchgen.api.translate import translate
@@ -67,7 +67,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class UfunctorSignature:
     g: NativeFunctionsGroup
-    scalar_tensor_idx: int | None
+    scalar_tensor_idx: Union[int, None]
     name: str
 
     def arguments(self) -> UfunctorBindings:
@@ -75,7 +75,7 @@ class UfunctorSignature:
             self.g, scalar_tensor_idx=self.scalar_tensor_idx, scalar_t=scalar_t
         )
 
-    def fields(self) -> list[Binding]:
+    def fields(self) -> List[Binding]:
         # fields are renamed to have a trailing underscore, as is conventional
         return [b.rename(f"{b.name}_") for b in self.arguments().ctor]
 
@@ -105,10 +105,10 @@ class UfuncSignature:
     name: str
     compute_t: CType
 
-    def arguments(self) -> list[Binding]:
+    def arguments(self) -> List[Binding]:
         return ufunc.ufunc_arguments(self.g, compute_t=self.compute_t)
 
-    def call(self, ctx: Sequence[Binding | Expr]) -> str:
+    def call(self, ctx: Sequence[Union[Binding, Expr]]) -> str:
         return f"{self.name}({', '.join(a.expr for a in translate(ctx, self.arguments()))})"
 
 
@@ -139,10 +139,10 @@ def eligible_for_binary_scalar_specialization(g: NativeFunctionsGroup) -> bool:
 
 def compute_ufunc_cuda_functors(
     g: NativeFunctionsGroup,
-) -> tuple[dict[ScalarType, dict[UfuncKey, UfunctorSignature]], str]:
+) -> Tuple[Dict[ScalarType, Dict[UfuncKey, UfunctorSignature]], str]:
     # First, build the functors.
-    ufunctor_sigs: dict[ScalarType, dict[UfuncKey, UfunctorSignature]] = {}
-    ufunctors: list[str] = []
+    ufunctor_sigs: Dict[ScalarType, Dict[UfuncKey, UfunctorSignature]] = {}
+    ufunctors: List[str] = []
     loops = g.out.ufunc_inner_loop
     scalar_tensor_idx_lookup = {
         UfuncKey.CUDAFunctorOnSelf: 1,
@@ -247,7 +247,7 @@ BinaryScalarSpecializationConfigs = [
 def compute_ufunc_cuda_dtype_body(
     g: NativeFunctionsGroup,
     dtype: ScalarType,
-    inner_loops: dict[UfuncKey, UfunctorSignature],
+    inner_loops: Dict[UfuncKey, UfunctorSignature],
     parent_ctx: Sequence[Binding],
 ) -> str:
     body = "using opmath_t = at::opmath_type<scalar_t>;"
@@ -259,7 +259,7 @@ def compute_ufunc_cuda_dtype_body(
         scalar_idx = config.scalar_idx + 1
         # Make a copy and at the same time widen the type (not permissible
         # without copy; we don't want to mutate the input argument anyway)
-        ctx: list[Expr | Binding] = list(parent_ctx)
+        ctx: List[Union[Expr, Binding]] = list(parent_ctx)
         ctx.append(
             Expr(
                 expr=f"iter.scalar_value<opmath_t>({scalar_idx})",
@@ -356,7 +356,7 @@ class StubSignature:
     def type_name(self) -> str:
         return f"{str(self.g.functional.func.name.name)}_fn"
 
-    def arguments(self) -> list[Binding]:
+    def arguments(self) -> List[Binding]:
         return ufunc.stub_arguments(self.g)
 
     def type(self) -> str:
@@ -403,7 +403,7 @@ def compute_ufunc_cpu(g: NativeFunctionsGroup) -> str:
 def compute_ufunc_cpu_dtype_body(
     g: NativeFunctionsGroup,
     dtype: ScalarType,
-    inner_loops: dict[UfuncKey, UfuncSignature],
+    inner_loops: Dict[UfuncKey, UfuncSignature],
     parent_ctx: Sequence[Binding],
 ) -> str:
     if UfuncKey.CPUScalar not in inner_loops:
@@ -474,8 +474,8 @@ def compute_ufunc_cpu_dtype_body(
                 )
             )
 
-    def with_ctx(b: Sequence[Binding]) -> list[Expr | Binding]:
-        r: list[Expr | Binding] = []
+    def with_ctx(b: Sequence[Binding]) -> List[Union[Expr, Binding]]:
+        r: List[Union[Expr, Binding]] = []
         r.extend(ctx)
         r.extend(b)
         return r
@@ -504,7 +504,7 @@ def compute_ufunc_cpu_kernel(g: NativeFunctionsGroup) -> str:
 
     # Reindex the ufunc by dtypes; processing generic/scalaronly as well
     loops = g.out.ufunc_inner_loop
-    ufunc_sigs: dict[ScalarType, dict[UfuncKey, UfuncSignature]] = {}
+    ufunc_sigs: Dict[ScalarType, Dict[UfuncKey, UfuncSignature]] = {}
     for k in [UfuncKey.CPUScalar, UfuncKey.CPUVector]:
         lks = []
         # ORDER MATTERS: this specifies overriding precedence

@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 import torch
 from torchfuzz.operators.base import Operator
 from torchfuzz.tensor_fuzzer import Spec, TensorSpec
@@ -10,7 +12,7 @@ class IndexSelectOperator(Operator):
         super().__init__("index_select")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.index_select"
 
@@ -21,7 +23,7 @@ class IndexSelectOperator(Operator):
         # index_select requires at least one dimension to select from
         return len(output_spec.size) > 0
 
-    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 3) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 3) -> List[Spec]:
         """Generate input specs for index_select operation.
 
         torch.index_select(input, dim, index) returns a tensor with:
@@ -75,7 +77,7 @@ class IndexSelectOperator(Operator):
         return [input_tensor_spec, index_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for index_select.
 

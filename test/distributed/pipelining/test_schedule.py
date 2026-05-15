@@ -1,5 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 # Owner(s): ["oncall: distributed"]
+from __future__ import annotations
 import copy
 import csv
 import logging
@@ -308,7 +309,6 @@ instantiate_parametrized_tests(ScheduleTest)
 
 class TestSchedulePlan(TestCase):
     def setUp(self):
-        super().setUp()
         # Define a list of test cases with varying num_local_stages, num_microbatches, and group_size
         # These should succeed since num_microbatches % group_size == 0
         self.test_cases = [
@@ -613,7 +613,7 @@ class TestScheduleLowering(TestCase):
         expected_comms_sch = self._parse_actions(test_info["comms"])
 
         comms_sch = _add_reduce_grad(compute_sch, 2)
-        for expected, actual in zip(expected_comms_sch, comms_sch, strict=True):
+        for expected, actual in _zip_strict(expected_comms_sch, comms_sch):
             self.assertEqual(
                 expected,
                 actual,

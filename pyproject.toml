@@ -12,7 +12,7 @@ requires = [
     "pyyaml",
     "requests",
     "six",  # dependency chain: NNPACK -> PeachPy -> six
-    "typing-extensions>=4.10.0",
+    "typing-extensions>=4.13.2",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -30,7 +30,7 @@ dev = [
     "pyyaml",
     "requests",
     "six",  # dependency chain: NNPACK -> PeachPy -> six
-    "typing-extensions>=4.10.0",
+    "typing-extensions>=4.13.2",
 
     # This list should be kept in sync with the requirements.txt in
     # PyTorch root until the project fully migrates to pyproject.toml
@@ -45,7 +45,7 @@ dev = [
     "optree>=0.13.0",
     "psutil",
     "sympy>=1.13.3",
-    "typing-extensions>=4.15.0",
+    "typing-extensions>=4.13.2",
     "wheel",
 ]
 
@@ -53,7 +53,7 @@ dev = [
 name = "torch"
 description = "Tensors and Dynamic neural networks in Python with strong GPU acceleration"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.8"
 # TODO: change to `license = "BSD-3-Clause"` and enable PEP 639 after pinning setuptools>=77
 # FIXME: As of 2025.06.20, it is hard to ensure the minimum version of setuptools in our CI environment.
 # TOML-table-based license deprecated in setuptools>=77, and the deprecation warning will be changed
@@ -74,6 +74,8 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Programming Language :: C++",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -136,12 +138,13 @@ docstring-code-format = true
 quote-style = "double"
 
 [tool.ruff.lint]
-# NOTE: Synchronize the ignores with .flake8
+# NOTE: Synchoronize the ignores with .flake8
 external = [
     # Codes from flake8-only plugins that ruff doesn't implement.
     "P201",
     "P204",
     "T484",
+    "TOR901",
     # Codes that are preview-only in ruff, so flake8 is still the enforcer.
     # As ruff promotes these out of preview, move them to flake8's ignore list.
     "B901",
@@ -350,6 +353,7 @@ select = [
 ]
 
 # torch/ folders still needing S101 migration
+"torch/_dynamo/**" = ["S101"]
 "torch/_inductor/**" = ["S101"]
 
 [tool.codespell]

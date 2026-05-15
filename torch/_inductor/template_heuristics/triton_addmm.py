@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, TYPE_CHECKING
 
 from ..kernel.mm_common import addmm_epilogue
 from .base import TemplateConfigHeuristics
@@ -19,7 +19,7 @@ class AddMMConfigMixin(TemplateConfigHeuristics):
         self,
         kernel_inputs: KernelInputs,
         op_name: str,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         kwargs = super().get_extra_kwargs(kernel_inputs, op_name)
         assert op_name in [
             "addmm",

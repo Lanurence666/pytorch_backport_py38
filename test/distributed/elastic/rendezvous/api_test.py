@@ -6,6 +6,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
 from typing import Any, cast, SupportsInt
 from unittest import TestCase
 
@@ -19,7 +20,6 @@ from torch.distributed.elastic.rendezvous import (
 
 class RendezvousParametersTest(TestCase):
     def setUp(self) -> None:
-        super().setUp()
         self._backend = "dummy_backend"
         self._endpoint = "dummy_endpoint"
         self._run_id = "dummy_run_id"
@@ -228,7 +228,6 @@ class _DummyRendezvousHandler(RendezvousHandler):
 
 class RendezvousHandlerRegistryTest(TestCase):
     def setUp(self) -> None:
-        super().setUp()
         self._params = RendezvousParameters(
             backend="dummy_backend",
             endpoint="dummy_endpoint",

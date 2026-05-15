@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import itertools
 from dataclasses import dataclass
 
@@ -14,13 +16,13 @@ from torch.distributed.tensor.placement_types import (
 
 @dataclass
 class EinsumDims:
-    contracting_dims: list[str]
-    batch_dims: list[str]
-    lhs_out_only_dims: list[str]
-    rhs_out_only_dims: list[str]
+    contracting_dims: List[str]
+    batch_dims: List[str]
+    lhs_out_only_dims: List[str]
+    rhs_out_only_dims: List[str]
 
     @classmethod
-    def parse_equation(cls, equation: str) -> tuple[list[str], str]:
+    def parse_equation(cls, equation: str) -> Tuple[List[str], str]:
         # parse einop equation and extract arg specs
         """
         Parse the einsum equation str to input dim chars and output dim char
@@ -38,12 +40,12 @@ class EinsumDims:
         return input_dims, output_dim
 
     @classmethod
-    def parse_dims(cls, input_dims: list[str], output_dim: str) -> "EinsumDims":
+    def parse_dims(cls, input_dims: List[str], output_dim: str) -> "EinsumDims":
         """
         Parse the dims and extract the contracting, batch, and free dimensions
         for the left and right hand sides.
         """
-        dim_char_set: set[str] = set()
+        dim_char_set: Set[str] = set()
         for input_dim in input_dims:
             dim_char_set.update(input_dim)
 
@@ -121,7 +123,7 @@ def gen_einsum_strategies(
 
     # placement list stores placements of [output, input1, input2, ...]
     # first we always have replicate all for inputs and output
-    placement_list: list[Placement] = [Replicate()] * (len(input_dims) + 1)
+    placement_list: List[Placement] = [Replicate()] * (len(input_dims) + 1)
     strategies_over_one_mesh_dim.append(placement_list)
 
     # split batch dim
@@ -158,7 +160,7 @@ def gen_einsum_strategies(
         lhs_free_dim_input = input_dims[0].index(lhs_dim)
         # this means split the lhs input and output
         # i.e. S(0), R -> S(0)
-        lhs_placement_list: list[Placement] = [
+        lhs_placement_list: List[Placement] = [
             Shard(lhs_free_dim_output),
             Shard(lhs_free_dim_input),
             Replicate(),
@@ -169,7 +171,7 @@ def gen_einsum_strategies(
     for rhs_dim in edims.rhs_out_only_dims:
         rhs_free_dim_output = output_dim.index(rhs_dim)
         rhs_free_dim_input = input_dims[1].index(rhs_dim)
-        rhs_placement_list: list[Placement] = [
+        rhs_placement_list: List[Placement] = [
             Shard(rhs_free_dim_output),
             Replicate(),
             Shard(rhs_free_dim_input),
@@ -178,7 +180,7 @@ def gen_einsum_strategies(
 
     # linearity strategy
     if linearity:
-        linearity_placement_list: list[Placement] = [Partial()]
+        linearity_placement_list: List[Placement] = [Partial()]
         for _ in input_dims:
             linearity_placement_list.append(Partial())
         strategies_over_one_mesh_dim.append(linearity_placement_list)

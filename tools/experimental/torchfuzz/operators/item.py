@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 """Item operator implementation."""
 
 from torchfuzz.operators.base import Operator
@@ -11,7 +13,7 @@ class ItemOperator(Operator):
         super().__init__("item")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Item is a tensor method, not a direct torch operation."""
         return None
 
@@ -19,7 +21,7 @@ class ItemOperator(Operator):
         """Item produces scalars from 0-d tensors."""
         return isinstance(output_spec, ScalarSpec)
 
-    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 1) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 1) -> List[Spec]:
         """Decompose scalar into a single-element tensor for item operation."""
         if not isinstance(output_spec, ScalarSpec):
             raise ValueError("ItemOperator can only produce ScalarSpec outputs")
@@ -31,7 +33,7 @@ class ItemOperator(Operator):
         return [tensor_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for item operation."""
         if len(input_names) != 1:

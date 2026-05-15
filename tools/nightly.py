@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Much of the logging code here was forked from https://github.com/ezyang/ghstack
 # Copyright (c) Edward Z. Yang <ezyang@mit.edu>
+from __future__ import annotations
 r"""Checks out the nightly development version of PyTorch and installs pre-built
 binaries into the repo.
 
@@ -46,7 +47,6 @@ Pulling will recreate a fresh virtual environment and reinstall the development
 dependencies as well as the nightly binaries into the repo directory.
 """
 
-from __future__ import annotations
 
 import argparse
 import atexit
@@ -66,11 +66,11 @@ import textwrap
 import time
 import uuid
 from ast import literal_eval
-from collections.abc import Callable
+from typing import Callable, Callable
 from datetime import datetime
 from pathlib import Path
 from platform import system as platform_system
-from typing import Any, cast, NamedTuple, TYPE_CHECKING, TypeVar
+from typing import Any, Dict, List, NamedTuple, Set, TYPE_CHECKING, TypeVar, Union, cast
 
 
 if TYPE_CHECKING:
@@ -104,7 +104,7 @@ PACKAGES_TO_INSTALL = (
 DEFAULT_VENV_DIR = REPO_ROOT / "venv"
 
 
-LOGGER: logging.Logger | None = None
+LOGGER: Union[logging.Logger, None] = None
 VERBOSE: bool = False
 DATETIME_FORMAT = "%Y-%m-%d_%Hh%Mm%Ss"
 SHA1_RE = re.compile(r"(?P<sha1>[0-9a-fA-F]{40})")
@@ -125,7 +125,7 @@ POSIX = LINUX or MACOS
 class PipSource(NamedTuple):
     name: str
     index_url: str
-    supported_platforms: set[str]
+    supported_platforms: Set[str]
     accelerator: str
 
 
@@ -145,9 +145,9 @@ PIP_SOURCES = {name: PipSource(**data) for name, data in NIGHTLY_SOURCE_MATRIX.i
 
 
 class Formatter(logging.Formatter):
-    redactions: dict[str, str]
+    redactions: Dict[str, str]
 
-    def __init__(self, fmt: str | None = None, datefmt: str | None = None) -> None:
+    def __init__(self, fmt: Union[str, None] = None, datefmt: Union[str, None] = None) -> None:
         super().__init__(fmt, datefmt)
         self.redactions = {}
 
@@ -223,10 +223,10 @@ class Venv:
 
     def __init__(
         self,
-        prefix: Path | str,
+        prefix: Union[Path, str],
         pip_source: PipSource,
         *,
-        base_executable: Path | str | None = None,
+        base_executable: Union[Path, str, None] = None,
     ) -> None:
         base_executable = Path(base_executable or sys.executable)
         if not base_executable.is_absolute():
@@ -240,8 +240,8 @@ class Venv:
         self.prefix = Path(prefix).absolute()
         self.pip_source = pip_source
         self.base_executable = base_executable.absolute()
-        self._executable: Path | None = None
-        self._bindir: Path | None = None
+        self._executable: Union[Path, None] = None
+        self._bindir: Union[Path, None] = None
         self._env = {
             "PIP_EXTRA_INDEX_URL": self.pip_source.index_url,
             "UV_INDEX": self.pip_source.index_url,
@@ -280,7 +280,7 @@ class Venv:
             self._executable = executable
         return self._executable
 
-    def site_packages(self, python: Path | str | None = None) -> Path:
+    def site_packages(self, python: Union[Path, str, None] = None) -> Path:
         """Get the site-packages directory for the virtual environment."""
         output = self.python(
             "-c",
@@ -395,7 +395,7 @@ class Venv:
             activate_script = self.activate_script
             st_mode = activate_script.stat().st_mode
             # The activate script may be read-only and we need to add write permissions
-            activate_script.chmod(st_mode | 0o200)
+            activate_script.chmod(Union[st_mode, 128])
             with activate_script.open(mode="a", encoding="utf-8") as f:
                 f.write(
                     "\n"
@@ -450,7 +450,7 @@ class Venv:
     def python(
         self,
         *args: str,
-        python: Path | str | None = None,
+        python: Union[Path, str, None] = None,
         **popen_kwargs: Any,
     ) -> subprocess.CompletedProcess[str]:
         """Run a Python command in the virtual environment."""
@@ -477,7 +477,7 @@ class Venv:
         """Run a Python command in the base environment."""
         return self.python(*args, python=self.base_executable, **popen_kwargs)
 
-    def python_version(self, *, python: Path | str | None = None) -> str:
+    def python_version(self, *, python: Union[Path, str, None] = None) -> str:
         """Get the Python version for the virtual environment.
 
         Return a string like "3.13.7", "3.13.7t", "3.13.7d", "3.13.7td", etc.
@@ -502,7 +502,7 @@ class Venv:
     def uv(
         self,
         *args: str,
-        python: Path | str | None = None,
+        python: Union[Path, str, None] = None,
         **popen_kwargs: Any,
     ) -> subprocess.CompletedProcess[str]:
         """Run a uv command in the virtual environment."""
@@ -586,7 +586,7 @@ class Venv:
         prerelease: bool = False,
         no_deps: bool = False,
         **popen_kwargs: Any,
-    ) -> list[Path]:
+    ) -> List[Path]:
         """Download a package in the virtual environment."""
         tmpdir = tempfile.TemporaryDirectory(prefix="pip-download-")
         atexit.register(tmpdir.cleanup)
@@ -620,8 +620,8 @@ class Venv:
     @timed("Unpacking wheel file")
     def wheel_unpack(
         self,
-        wheel: Path | str,
-        dest: Path | str,
+        wheel: Union[Path, str],
+        dest: Union[Path, str],
         **popen_kwargs: Any,
     ) -> subprocess.CompletedProcess[str]:
         """Unpack a wheel into a directory."""
@@ -632,7 +632,7 @@ class Venv:
         return self.wheel("unpack", f"--dest={dest}", str(wheel), **popen_kwargs)
 
     @contextlib.contextmanager
-    def extracted_wheel(self, wheel: Path | str) -> Generator[Path]:
+    def extracted_wheel(self, wheel: Union[Path, str]) -> Generator[Path]:
         """Download and extract a wheel into a temporary directory."""
         with tempfile.TemporaryDirectory(prefix="wheel-") as tempdir:
             self.wheel_unpack(wheel, tempdir)
@@ -645,7 +645,7 @@ class Venv:
             yield subdirs[0]
 
 
-def git(*args: str) -> list[str]:
+def git(*args: str) -> List[str]:
     return ["git", "-C", str(REPO_ROOT), *args]
 
 
@@ -733,7 +733,7 @@ def logging_manager(*, debug: bool = False) -> Generator[logging.Logger, None, N
         sys.exit(1)
 
 
-def check_branch(subcommand: str, branch: str | None) -> str | None:
+def check_branch(subcommand: str, branch: Union[str, None]) -> Union[str, None]:
     """Checks that the branch name can be checked out."""
     if subcommand != "checkout":
         return None
@@ -802,7 +802,7 @@ def _nightly_version(site_dir: Path) -> str:
 
 
 @timed("Checking out nightly PyTorch")
-def checkout_nightly_version(branch: str | None, site_dir: Path) -> None:
+def checkout_nightly_version(branch: Union[str, None], site_dir: Path) -> None:
     """Gets the nightly version and then checks it out."""
     nightly_version = _nightly_version(site_dir)
     if branch is None:
@@ -822,7 +822,7 @@ def pull_nightly_version(site_dir: Path) -> None:
     subprocess.check_call(cmd)
 
 
-def _get_listing_linux(source_dir: Path) -> list[Path]:
+def _get_listing_linux(source_dir: Path) -> List[Path]:
     return list(
         itertools.chain(
             source_dir.glob("*.so"),
@@ -832,7 +832,7 @@ def _get_listing_linux(source_dir: Path) -> list[Path]:
     )
 
 
-def _get_listing_macos(source_dir: Path) -> list[Path]:
+def _get_listing_macos(source_dir: Path) -> List[Path]:
     # oddly, these are .so files even on Mac
     return list(
         itertools.chain(
@@ -842,7 +842,7 @@ def _get_listing_macos(source_dir: Path) -> list[Path]:
     )
 
 
-def _get_listing_windows(source_dir: Path) -> list[Path]:
+def _get_listing_windows(source_dir: Path) -> List[Path]:
     return list(
         itertools.chain(
             source_dir.glob("*.pyd"),
@@ -852,18 +852,18 @@ def _get_listing_windows(source_dir: Path) -> list[Path]:
     )
 
 
-def _glob_pyis(d: Path) -> set[str]:
+def _glob_pyis(d: Path) -> Set[str]:
     return {p.relative_to(d).as_posix() for p in d.rglob("*.pyi")}
 
 
-def _find_missing_pyi(source_dir: Path, target_dir: Path) -> list[Path]:
+def _find_missing_pyi(source_dir: Path, target_dir: Path) -> List[Path]:
     source_pyis = _glob_pyis(source_dir)
     target_pyis = _glob_pyis(target_dir)
     missing_pyis = sorted(source_dir / p for p in (source_pyis - target_pyis))
     return missing_pyis
 
 
-def _get_listing(source_dir: Path, target_dir: Path) -> list[Path]:
+def _get_listing(source_dir: Path, target_dir: Path) -> List[Path]:
     if LINUX:
         listing = _get_listing_linux(source_dir)
     elif MACOS:
@@ -918,13 +918,13 @@ def _move_single(
         mover(src, trg)
 
 
-def _copy_files(listing: list[Path], source_dir: Path, target_dir: Path) -> None:
+def _copy_files(listing: List[Path], source_dir: Path, target_dir: Path) -> None:
     for src in listing:
         # pyrefly: ignore [bad-argument-type]
         _move_single(src, source_dir, target_dir, shutil.copy2, "Copying")
 
 
-def _link_files(listing: list[Path], source_dir: Path, target_dir: Path) -> None:
+def _link_files(listing: List[Path], source_dir: Path, target_dir: Path) -> None:
     for src in listing:
         _move_single(src, source_dir, target_dir, os.link, "Linking")
 
@@ -961,7 +961,7 @@ def write_pth(venv: Venv) -> None:
 def parse_dependencies(
     venv: Venv,
     wheel_site_dir: Path,
-) -> list[str]:
+) -> List[str]:
     """Parse dependencies from the torch wheel's metadata."""
     dist_info_dirs = list(wheel_site_dir.glob("*.dist-info"))
     if len(dist_info_dirs) != 1:
@@ -1005,7 +1005,7 @@ def install(
     venv: Venv,
     packages: Iterable[str],
     subcommand: str = "checkout",
-    branch: str | None = None,
+    branch: Union[str, None] = None,
     fresh_venv: bool = False,
     assume_yes: bool = False,
 ) -> None:

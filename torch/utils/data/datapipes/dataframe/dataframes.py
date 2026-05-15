@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
-from typing import Any, NoReturn
+from __future__ import annotations
+
+from typing import Any, Dict, List, NoReturn, Optional, Set
 
 from torch.utils.data.datapipes._decorator import functional_datapipe
 from torch.utils.data.datapipes.dataframe.structures import DataChunkDF
@@ -384,7 +386,7 @@ def get_val(capture):
 class CaptureInitial(CaptureVariable):
     def __init__(self, schema_df=None) -> None:
         # pyrefly: ignore [bad-assignment]
-        new_ctx: dict[str, list[Any]] = {
+        new_ctx: Dict[str, List[Any]] = {
             "operations": [],
             "variables": [],
             "schema_df": schema_df,
@@ -451,7 +453,7 @@ class CaptureDataFrameWithDataPipeOps(CaptureDataFrame):
 
 @functional_datapipe("trace_as_dataframe")
 class DataFrameTracer(CaptureDataFrameWithDataPipeOps, IterDataPipe):  # type: ignore[misc]
-    source_datapipe: Any | None = None
+    source_datapipe: Optional[Any]= None
 
     # TODO(VitalyFedyunin): Must implement all special functions of datapipes
 

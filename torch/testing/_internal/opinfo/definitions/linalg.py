@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 import itertools
 import random
 import unittest
@@ -56,6 +58,7 @@ from torch.testing._internal.opinfo.core import (
     SampleInput,
 )
 from torch.testing._internal.opinfo.refs import PythonRefInfo, ReductionPythonRefInfo
+from typing import Iterable, List, Tuple
 
 
 def sample_kwargs_vector_norm(t, **kwargs):
@@ -734,14 +737,14 @@ def sample_inputs_linalg_lstsq(op_info, device, dtype, requires_grad=False, **kw
 
     device = torch.device(device)
 
-    drivers: tuple[str, ...]
+    drivers: Tuple[str, ...]
     if device.type == "cuda":
         drivers = ("gels",)
     else:
         drivers = ("gels", "gelsy", "gelss", "gelsd")
 
     # we generate matrices of shape (..., n + delta, n)
-    deltas: tuple[int, ...]
+    deltas: Tuple[int, ...]
     if device.type == "cpu" or has_cusolver():
         deltas = (-1, 0, +1)
     # only square systems if Cusolver is not available
@@ -1156,7 +1159,7 @@ def sample_inputs_tensorinv(op_info, device, dtype, requires_grad, **kwargs):
         yield SampleInput(inp, ind=len(shape_lhs))
 
 
-op_db: list[OpInfo] = [
+op_db: List[OpInfo] = [
     OpInfo(
         "linalg.cross",
         ref=lambda x, y, dim=-1: np.cross(x, y, axis=dim),
@@ -2741,7 +2744,7 @@ op_db: list[OpInfo] = [
     ),
 ]
 
-python_ref_db: list[OpInfo] = [
+python_ref_db: List[OpInfo] = [
     #
     # torch.linalg
     #

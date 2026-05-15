@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 r"""
 This package adds support for CUDA tensor types.
 
@@ -13,13 +15,14 @@ It is lazily initialized, so you can always import it, and use
 
 import importlib
 import os
-import platform
 import threading
 import traceback
 import warnings
-from collections.abc import Callable
+
 from functools import lru_cache
-from typing import Any, cast, NewType, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, cast
+from typing_extensions import NewType
+
 
 import torch
 import torch._C
@@ -47,8 +50,8 @@ except ImportError:
 _initialized = False
 _tls = threading.local()
 _initialization_lock = threading.Lock()
-_queued_calls: list[
-    tuple[Callable[[], None], list[str]]
+_queued_calls: List[
+    Tuple[Callable[[], None], List[str]]
 ] = []  # don't invoke these until initialization occurs
 _is_in_bad_fork = getattr(torch._C, "_cuda_isInBadFork", lambda: False)
 
@@ -88,10 +91,10 @@ try:
                     paths = ["libamd_smi.so"]
                     if rocm_home := os.getenv("ROCM_HOME", os.getenv("ROCM_PATH")):
                         paths = [os.path.join(rocm_home, "lib/libamd_smi.so")] + paths
-                    self.paths: list[str] = paths
+                    self.paths: List[str] = paths
 
                 def hooked_CDLL(
-                    self, name: str | Path | None, *args: Any, **kwargs: Any
+                    self, name: Optional[Union[str, Path]], *args: Any, **kwargs: Any
                 ) -> ctypes.CDLL:
                     if name and Path(name).name == "libamd_smi.so":
                         for path in self.paths:
@@ -154,7 +157,7 @@ else:
 has_half: bool = True
 has_magma: bool = torch._C._has_magma
 
-default_generators: tuple[torch._C.Generator] = ()  # type: ignore[assignment]
+default_generators: Tuple[torch._C.Generator] = ()  # type: ignore[assignment]
 
 
 def _is_compiled() -> bool:
@@ -242,7 +245,7 @@ def _sleep(cycles):
 def _extract_arch_version(arch_string: str) -> int:
     """Extracts the architecture string from a CUDA version"""
     base = arch_string.split("_", maxsplit=2)[1]
-    base = base.removesuffix("a").removesuffix("f")
+    base = base[:-len("a")] if base.endswith("a") else base[:-1] if base.endswith("f") else base
     return int(base)
 
 
@@ -253,7 +256,7 @@ class _CompatInterval:
     also allows excluding specific versions from the range.
     """
 
-    def __init__(self, start, exclude: set[int] | None = None):
+    def __init__(self, start, exclude: Optional[Set[int]] = None):
         self.major, self.minor = start // 10, start % 10
         self.exclude = set() if exclude is None else exclude
 
@@ -277,7 +280,7 @@ class _CompatSet:
     printing logic and is otherwise equivalent to a plain python set().
     """
 
-    def __init__(self, values: set[int]):
+    def __init__(self, values: Set[int]):
         self.values = values
 
     def __contains__(self, x):
@@ -296,7 +299,7 @@ class _CompatSet:
 # - The keys in dict correspond to known sm versions but the values
 #   are merely rules based on sm compatibility guarantees for NVIDIA
 #   devices while accounting for incompatibility of iGPU and dGPU.
-DEVICE_REQUIREMENT: dict[int, _CompatSet | _CompatInterval] = {
+DEVICE_REQUIREMENT: Union[Dict[int, _CompatSet, _CompatInterval]]= {
     50: _CompatInterval(start=50, exclude={53}),
     52: _CompatInterval(start=52, exclude={53}),
     53: _CompatSet({53}),
@@ -320,28 +323,12 @@ DEVICE_REQUIREMENT: dict[int, _CompatSet | _CompatInterval] = {
 }
 
 
-# TORCH_CUDA_ARCH_LIST for PyTorch releases, keyed by host arch.
-# Kept in sync with .ci/manywheel/build_cuda.sh by the validator in
-# .github/scripts/generate_binary_build_matrix.py.
-PYTORCH_RELEASES_CODE_CC: dict[str, dict[str, set[int]]] = {
-    "12.6": {
-        "x86_64": {50, 60, 70, 75, 80, 86, 90},
-        "aarch64": {80, 90},
-    },
-    "13.0": {
-        "x86_64": {75, 80, 86, 90, 100, 120},
-        "aarch64": {80, 90, 100, 110, 120},
-    },
-    "13.2": {
-        "x86_64": {75, 80, 86, 90, 100, 120},
-        "aarch64": {80, 90, 100, 110, 120},
-    },
+# TORCH_CUDA_ARCH_LIST for PyTorch releases
+PYTORCH_RELEASES_CODE_CC: Dict[str, Set[int]] = {
+    "12.6": {50, 60, 70, 80, 86, 90},
+    "12.8": {70, 80, 86, 90, 100, 120},
+    "13.0": {75, 80, 86, 90, 100, 110, 120},
 }
-
-
-def _host_arch_key() -> str:
-    machine = platform.machine().lower()
-    return "aarch64" if machine == "aarch64" else "x86_64"
 
 
 def _code_compatible_with_device(device_cc: int, code_cc: int):
@@ -355,13 +342,11 @@ def _code_compatible_with_device(device_cc: int, code_cc: int):
     return device_cc in DEVICE_REQUIREMENT[code_cc]
 
 
-def _warn_unsupported_code(device_index: int, device_cc: int, code_ccs: list[int]):
+def _warn_unsupported_code(device_index: int, device_cc: int, code_ccs: List[int]):
     name = get_device_name(device_index)
 
-    arch = _host_arch_key()
-    compatible_releases: list[str] = []
-    for cuda, by_arch in PYTORCH_RELEASES_CODE_CC.items():
-        build_ccs = by_arch.get(arch, set())
+    compatible_releases: List[str] = []
+    for cuda, build_ccs in PYTORCH_RELEASES_CODE_CC.items():
         if any(_code_compatible_with_device(device_cc, cc) for cc in build_ccs):
             compatible_releases.append(cuda)
 
@@ -374,27 +359,10 @@ def _warn_unsupported_code(device_index: int, device_cc: int, code_ccs: list[int
     ]
 
     if len(compatible_releases) > 0:
-        version = torch.__version__
-        base_version = version.split("+")[0]
-        is_nightly = "dev" in base_version
-        index_root = (
-            "https://download.pytorch.org/whl/nightly"
-            if is_nightly
-            else "https://download.pytorch.org/whl"
-        )
+        releases_str = ", ".join(compatible_releases)
         lines.append(
-            f"Your installed torch=={version} does not include kernels for this GPU. "
-            "Reinstall the same version against a CUDA build that does, e.g.:"
-        )
-        for cuda in compatible_releases:
-            cu_tag = "cu" + cuda.replace(".", "")
-            lines.append(
-                f"  For CUDA {cuda} use pip install torch=={base_version} --index-url {index_root}/{cu_tag}"
-            )
-    else:
-        lines.append(
-            f"No published PyTorch CUDA builds for release {torch.__version__} support this GPU. "
-            "Visit https://pytorch.org/get-started/locally/ to find a compatible release."
+            "Please follow the instructions at https://pytorch.org/get-started/locally/ to "
+            + f"install a PyTorch release that supports one of these CUDA versions: {releases_str}"
         )
 
     warnings.warn("\n".join(lines), stacklevel=2)
@@ -700,7 +668,7 @@ def get_device_name(device: Device = None) -> str:
     return get_device_properties(device).name
 
 
-def get_device_capability(device: Device = None) -> tuple[int, int]:
+def get_device_capability(device: Device = None) -> Tuple[int, int]:
     r"""Get the cuda capability of a device.
 
     Args:
@@ -853,7 +821,7 @@ def set_stream(stream: Stream):
     )
 
 
-def _parse_visible_devices() -> list[int] | list[str]:
+def _parse_visible_devices() -> Union[List[int], List[str]]:
     r"""Parse CUDA_VISIBLE_DEVICES environment variable."""
     var = os.getenv("CUDA_VISIBLE_DEVICES")
 
@@ -894,12 +862,12 @@ def _parse_visible_devices() -> list[int] | list[str]:
                 idx += 1
         return int(s[:idx]) if idx > 0 else -1
 
-    def parse_list_with_prefix(lst: str, prefix: str) -> list[str]:
-        rcs: list[str] = []
+    def parse_list_with_prefix(lst: str, prefix: str) -> List[str]:
+        rcs: List[str] = []
         for elem in lst.split(","):
             # Repeated id results in empty set
             if elem in rcs:
-                return cast(list[str], [])
+                return cast(List[str], [])
             # Anything other but prefix is ignored
             if not elem.startswith(prefix):
                 break
@@ -912,12 +880,12 @@ def _parse_visible_devices() -> list[int] | list[str]:
         return parse_list_with_prefix(var, "MIG-")
     # CUDA_VISIBLE_DEVICES uses something like strtoul
     # which makes `1gpu2,2ampere` is equivalent to `1,2`
-    rc: list[int] = []
+    rc: List[int] = []
     for elem in var.split(","):
         x = _strtoul(elem.strip())
         # Repeated ordinal results in empty set
         if x in rc:
-            return cast(list[int], [])
+            return cast(List[int], [])
         # Negative value aborts the sequence
         if x < 0:
             break
@@ -957,7 +925,7 @@ def _raw_device_count_nvml() -> int:
     return dev_count.value
 
 
-def _raw_device_uuid_amdsmi() -> list[str] | None:
+def _raw_device_uuid_amdsmi() -> Optional[List[str]]:
     from ctypes import byref, c_int, c_void_p, CDLL, create_string_buffer
 
     if not _HAS_AMDSMI:
@@ -973,7 +941,7 @@ def _raw_device_uuid_amdsmi() -> list[str] | None:
     except amdsmi.AmdSmiException:
         warnings.warn("Can't get amdsmi device count", stacklevel=2)
         return None
-    uuids: list[str] = []
+    uuids: List[str] = []
     for idx in range(dev_count):
         try:
             handler = amdsmi.amdsmi_get_processor_handles()[idx]
@@ -993,7 +961,7 @@ def _raw_device_uuid_amdsmi() -> list[str] | None:
     return uuids
 
 
-def _raw_device_uuid_nvml() -> list[str] | None:
+def _raw_device_uuid_nvml() -> Optional[List[str]]:
     r"""Return list of device UUID as reported by NVML or None if NVM discovery/initialization failed."""
     from ctypes import byref, c_int, c_void_p, CDLL, create_string_buffer
 
@@ -1007,7 +975,7 @@ def _raw_device_uuid_nvml() -> list[str] | None:
     if rc != 0:
         warnings.warn("Can't get nvml device count", stacklevel=2)
         return None
-    uuids: list[str] = []
+    uuids: List[str] = []
     for idx in range(dev_count.value):
         dev_id = c_void_p()
         rc = nvml_h.nvmlDeviceGetHandleByIndex_v2(idx, byref(dev_id))
@@ -1025,10 +993,10 @@ def _raw_device_uuid_nvml() -> list[str] | None:
     return uuids
 
 
-def _transform_uuid_to_ordinals(candidates: list[str], uuids: list[str]) -> list[int]:
+def _transform_uuid_to_ordinals(candidates: List[str], uuids: List[str]) -> List[int]:
     r"""Given the set of partial uuids and list of known uuids builds a set of ordinals excluding ambiguous partials IDs."""
 
-    def uuid_to_ordinal(candidate: str, uuids: list[str]) -> int:
+    def uuid_to_ordinal(candidate: str, uuids: List[str]) -> int:
         best_match = -1
         for idx, uuid in enumerate(uuids):
             if not uuid.startswith(candidate):
@@ -1039,7 +1007,7 @@ def _transform_uuid_to_ordinals(candidates: list[str], uuids: list[str]) -> list
             best_match = idx
         return best_match
 
-    rc: list[int] = []
+    rc: List[int] = []
     for candidate in candidates:
         if torch.version.hip:
             candidate = candidate.replace(
@@ -1051,7 +1019,7 @@ def _transform_uuid_to_ordinals(candidates: list[str], uuids: list[str]) -> list
             break
         # Duplicates result in empty set
         if idx in rc:
-            return cast(list[int], [])
+            return cast(List[int], [])
         rc.append(idx)
     return rc
 
@@ -1066,7 +1034,7 @@ def _device_count_amdsmi() -> int:
             if uuids is None:
                 return -1
             # Create string version of visible devices to avoid mypy warnings
-            visible_device_str = cast(list[str], visible_devices)
+            visible_device_str = cast(List[str], visible_devices)
             visible_devices = _transform_uuid_to_ordinals(visible_device_str, uuids)
         else:
             raw_cnt = _raw_device_count_amdsmi()
@@ -1102,7 +1070,7 @@ def _device_count_nvml() -> int:
             if uuids is None:
                 return -1
             visible_devices = _transform_uuid_to_ordinals(
-                cast(list[str], visible_devices), uuids
+                cast(List[str], visible_devices), uuids
             )
         else:
             raw_cnt = _raw_device_count_nvml()
@@ -1130,9 +1098,9 @@ def _get_nvml_device_index(device: Device) -> int:
         if uuids is None:
             raise RuntimeError("Can't get device UUIDs")
         visible_devices = _transform_uuid_to_ordinals(
-            cast(list[str], visible_devices), uuids
+            cast(List[str], visible_devices), uuids
         )
-    visible_devices = cast(list[int], visible_devices)
+    visible_devices = cast(List[int], visible_devices)
     if idx < 0 or idx >= len(visible_devices):
         raise RuntimeError(
             f"device {idx} is not visible (CUDA_VISIBLE_DEVICES={visible_devices})"
@@ -1140,7 +1108,7 @@ def _get_nvml_device_index(device: Device) -> int:
     return visible_devices[idx]
 
 
-_cached_device_count: int | None = None
+_cached_device_count: Optional[int]= None
 
 
 def device_count() -> int:
@@ -1172,7 +1140,7 @@ def device_count() -> int:
     return r
 
 
-def get_arch_list() -> list[str]:
+def get_arch_list() -> List[str]:
     r"""Return list CUDA architectures this library was compiled for."""
     if not _is_compiled():
         return []
@@ -1296,7 +1264,7 @@ def current_blas_handle():
     return torch._C._cuda_getCurrentBlasHandle()
 
 
-def set_sync_debug_mode(debug_mode: int | str) -> None:
+def set_sync_debug_mode(debug_mode: Union[int, str]) -> None:
     r"""Set the debug mode for cuda synchronizing operations.
 
     Args:
@@ -1364,7 +1332,7 @@ def _get_amdsmi_handler(device: Device = None):
     return handle
 
 
-_cached_hip_to_amdsmi: dict[int, int] | None = None
+_cached_hip_to_amdsmi: Optional[Dict[int, int]]= None
 
 
 def _get_amdsmi_device_index_from_hip_index(device: int) -> int:
@@ -1411,10 +1379,10 @@ def _get_amdsmi_device_index(device: Device) -> int:
         if uuids is None:
             raise RuntimeError("Can't get device UUIDs")
         visible_devices_str = cast(
-            list[str], visible_devices
+            List[str], visible_devices
         )  # Create str variable for mypy
         visible_devices = _transform_uuid_to_ordinals(visible_devices_str, uuids)
-    idx_map = dict(enumerate(cast(list[int], visible_devices)))
+    idx_map = dict(enumerate(cast(List[int], visible_devices)))
     if idx not in idx_map:
         raise RuntimeError(
             f"device {idx} is not visible (HIP_VISIBLE_DEVICES={visible_devices})"
@@ -1596,7 +1564,7 @@ def clock_rate(device: Device = None) -> int:
         return _get_amdsmi_clock_rate(device)
 
 
-def _get_device(device: int | str | torch.device) -> torch.device:
+def _get_device(device: Union[Union[int, str], torch.device]) -> torch.device:
     r"""Return the torch.device type object from the passed in device.
 
     Args:
@@ -1622,7 +1590,7 @@ def _get_generator(device: torch.device) -> torch._C.Generator:
 
 
 def _set_rng_state_offset(
-    offset: int, device: int | str | torch.device = "cuda"
+    offset: Union[int, device: int, str, torch.device]= "cuda"
 ) -> None:
     r"""Set the random number generator state offset of the specified GPU.
 
@@ -1640,7 +1608,7 @@ def _set_rng_state_offset(
     _lazy_call(cb)
 
 
-def _get_rng_state_offset(device: int | str | torch.device = "cuda") -> int:
+def _get_rng_state_offset(device: Union[Union[int, str], torch.device] = "cuda") -> int:
     r"""Return the random number generator state offset of the specified GPU.
 
     Args:
@@ -1908,9 +1876,9 @@ _lazy_call(_register_triton_kernels)
 def _compile_kernel(
     kernel_source: str,
     kernel_name: str,
-    compute_capability: str | None = None,
-    cuda_include_dirs: list | None = None,
-    nvcc_options: list | None = None,
+    compute_capability: Optional[str]= None,
+    cuda_include_dirs: Optional[list]= None,
+    nvcc_options: Optional[list]= None,
 ):
     """
     Compiles a CUDA kernel using NVRTC and returns a callable function.
@@ -1972,7 +1940,7 @@ def _compile_kernel(
 from . import amp, jiterator, nvtx, profiler, sparse, tunable
 
 
-_POOL_HANDLE = NewType("_POOL_HANDLE", tuple[int, int])
+_POOL_HANDLE = NewType("_POOL_HANDLE", Tuple[int, int])
 
 
 __all__ = [

@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import random
 
 import torch
 from torch._C._distributed_c10d import FakeWork
+from typing import Dict, Set
 
 
-used_ids: set[int] = set()
+used_ids: Set[int] = set()
 
 
 def generate_unique_id() -> int:
@@ -50,6 +53,6 @@ _META_FUNCTIONS = {
     "recv_any_source_": lambda *args: create_fakework(args, return_first_arg=False),
 }
 
-lib_impl = torch.library.Library("c10d", "IMPL")
+lib_impl = torch.library.Library("c10d", "IMPL")  # noqa: TOR901
 for op, meta_func in _META_FUNCTIONS.items():
     lib_impl.impl(op, meta_func, "Meta")

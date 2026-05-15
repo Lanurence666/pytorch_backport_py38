@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import contextlib
 import io
-from collections.abc import Callable
-from typing import Any, TypeVar
+
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union
 from typing_extensions import ParamSpec
 
 import torch
@@ -96,13 +98,13 @@ def allow_in_graph(fn):
     table compares these mechanisms.
 
     +------------------------+-----------------------+--------------------------------+
-    | Mechanism              | Frontend (Dynamo)     | Backend (AOTAutograd+Inductor) |
+    | Union[Mechanism, Frontend] (Dynamo)     | Backend (AOTAutograd+Inductor) |
     +========================+=======================+================================+
-    | no decorator           | trace inside          | trace inside                   |
+    | no Union[decorator, trace] Union[inside, trace] inside                   |
     +------------------------+-----------------------+--------------------------------+
-    | allow_in_graph         | opaque callable       | trace inside                   |
+    | Union[allow_in_graph, opaque] Union[callable, trace] inside                   |
     +------------------------+-----------------------+--------------------------------+
-    | custom op              | opaque callable       | opaque callable                |
+    | custom Union[op, opaque] Union[callable, opaque] callable                |
     +------------------------+-----------------------+--------------------------------+
 
     One common use case for :func:`allow_in_graph()` is as an escape hatch for the compiler
@@ -214,7 +216,7 @@ def substitute_in_graph(
     )
 
 
-def list_backends(exclude_tags=("debug", "experimental")) -> list[str]:
+def list_backends(exclude_tags=("debug", "experimental")) -> List[str]:
     """
     Return valid strings that can be passed to `torch.compile(..., backend="name")`.
 
@@ -260,7 +262,7 @@ def disable(fn=None, recursive=True, *, reason=None):
     return torch._dynamo.disable(fn, recursive, reason=reason)
 
 
-def set_default_backend(backend: str | Callable[..., Any] | None) -> None:
+def set_default_backend(backend: Union[str, Callable[..., Any]] | None) -> None:
     """Set the default backend for ``torch.compile`` when no ``backend`` argument is specified.
 
     Passing ``None`` resets the default back to ``"inductor"``.
@@ -282,7 +284,7 @@ def set_default_backend(backend: str | Callable[..., Any] | None) -> None:
     set_default_backend(backend)
 
 
-def get_default_backend() -> str | Callable[..., Any]:
+def get_default_backend() -> Union[str, Callable[..., Any]]:
     """Return the current default backend for ``torch.compile``.
 
     Returns:
@@ -297,7 +299,7 @@ def set_stance(
     stance: str = "default",
     *,
     skip_guard_eval_unsafe: bool = False,
-    force_backend: str | Callable[..., Any] | None = None,
+    force_backend: Optional[Union[str, Callable[..., Any]]]= None,
 ):
     """
     Set the current stance of the compiler.
@@ -629,7 +631,7 @@ def is_exporting() -> bool:
     return _is_exporting_flag
 
 
-def save_cache_artifacts() -> tuple[bytes, CacheInfo] | None:
+def save_cache_artifacts() -> Optional[Tuple[bytes, CacheInfo]]:
     """
     Serializes all the cache artifacts that were created during the compilation
 
@@ -648,7 +650,7 @@ def save_cache_artifacts() -> tuple[bytes, CacheInfo] | None:
     return CacheArtifactManager.serialize()
 
 
-def load_cache_artifacts(serialized_artifacts: bytes) -> CacheInfo | None:
+def load_cache_artifacts(serialized_artifacts: bytes) -> Optional[CacheInfo]:
     """
     Hot loads cache artifacts that were previously serialized via
     save_cache_artifacts
@@ -797,7 +799,7 @@ def skip_all_guards_unsafe(guard_entries):
 def nested_compile_region(
     fn=None,
     *,
-    options: NestedCompileRegionOptions | None = None,
+    options: Optional[NestedCompileRegionOptions]= None,
     max_reuse_entries: int = 8,
     reuse_hash_fn=None,
 ):
@@ -866,8 +868,8 @@ def nested_compile_region(
 def load_compiled_function(
     file: io.IOBase,
     *,
-    f_globals: dict[str, object] | None = None,
-    external_data: dict[str, Any] | None = None,
+    f_globals: Optional[Dict[str, object]]= None,
+    external_data: Optional[Dict[str, Any]]= None,
 ) -> Callable[..., Any]:
     """
     Load an aot-compiled function from a file.

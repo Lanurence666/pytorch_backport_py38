@@ -1,4 +1,5 @@
 #!/usr/bin/env/python3
+from __future__ import annotations
 
 # Copyright (c) Facebook, Inc. and its affiliates.
 # All rights reserved.
@@ -27,14 +28,14 @@ import logging
 import os
 import socket
 import traceback
-from typing import Optional
+from typing import Dict, Optional, Set
 
 from torch.distributed.elastic.events.handlers import get_logging_handler
 
 from .api import Event, EventMetadataValue, EventSource, NodeState, RdzvEvent
 
 
-_events_loggers: dict[str, logging.Logger] = {}
+_events_loggers: Dict[str, logging.Logger] = {}
 
 
 def _get_or_create_logger(destination: str = "null") -> logging.Logger:
@@ -80,10 +81,10 @@ def construct_and_record_rdzv_event(
     node_state: NodeState,
     name: str = "",
     hostname: str = "",
-    pid: int | None = None,
+    pid: Optional[int]= None,
     master_endpoint: str = "",
-    local_id: int | None = None,
-    rank: int | None = None,
+    local_id: Optional[int]= None,
+    rank: Optional[int]= None,
 ) -> None:
     """
     Initialize rendezvous event object and record its operations.

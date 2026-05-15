@@ -1,21 +1,23 @@
+from __future__ import annotations
+
 from collections import namedtuple
-from collections.abc import Callable
-from typing import Any, TypeVar
+
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 from typing_extensions import NamedTuple
 
 import torch.return_types
 from torch.utils._pytree import PyTree, tree_flatten, TreeSpec
 
 
-FlattenFnSpec = Callable[[PyTree, TreeSpec], list[Any]]
+FlattenFnSpec = Callable[[PyTree, TreeSpec], List[Any]]
 FlattenFnExactMatchSpec = Callable[[PyTree, TreeSpec], bool]
 
 # Keep deprecated alias for backward compatibility
 FlattenFuncSpec = FlattenFnSpec  # deprecated
 FlattenFuncExactMatchSpec = FlattenFnExactMatchSpec  # deprecated
 
-SUPPORTED_NODES: dict[type[Any], FlattenFnSpec] = {}
-SUPPORTED_NODES_EXACT_MATCH: dict[type[Any], FlattenFnExactMatchSpec | None] = {}
+SUPPORTED_NODES: Dict[Type[Any], FlattenFnSpec] = {}
+SUPPORTED_NODES_EXACT_MATCH: Union[Dict[Type[Any], FlattenFnExactMatchSpec, None]]= {}
 
 _T = TypeVar("_T")
 _K = TypeVar("_K")
@@ -23,16 +25,16 @@ _V = TypeVar("_V")
 
 
 def register_pytree_flatten_spec(
-    cls: type[Any],
+    cls: Type[Any],
     flatten_fn_spec: FlattenFnSpec,
-    flatten_fn_exact_match_spec: FlattenFnExactMatchSpec | None = None,
+    flatten_fn_exact_match_spec: Optional[FlattenFnExactMatchSpec] = None
 ) -> None:
     SUPPORTED_NODES[cls] = flatten_fn_spec
     SUPPORTED_NODES_EXACT_MATCH[cls] = flatten_fn_exact_match_spec
 
 
 def _deregister_pytree_flatten_spec(
-    cls: type[Any],
+    cls: Type[Any],
 ) -> None:
     del SUPPORTED_NODES[cls]
     del SUPPORTED_NODES_EXACT_MATCH[cls]
@@ -41,7 +43,7 @@ def _deregister_pytree_flatten_spec(
 def tree_flatten_spec(
     pytree: PyTree,
     spec: TreeSpec,
-) -> list[Any]:
+) -> List[Any]:
     if spec.is_leaf():
         return [pytree]
     # I guess these exist for BC, FC reasons.
@@ -52,7 +54,7 @@ def tree_flatten_spec(
     if spec.type in SUPPORTED_NODES:
         flatten_fn_spec = SUPPORTED_NODES[spec.type]
         child_pytrees = flatten_fn_spec(pytree, spec)
-        result: list[Any] = []
+        result: List[Any] = []
         for child, child_spec in zip(child_pytrees, spec.children()):
             flat = tree_flatten_spec(child, child_spec)
             result += flat
@@ -66,31 +68,31 @@ def tree_flatten_spec(
     return flat_result
 
 
-def _dict_flatten_spec(d: dict[_K, _V], spec: TreeSpec) -> list[_V]:
+def _dict_flatten_spec(d: Dict[_K, _V], spec: TreeSpec) -> List[_V]:
     return [d[k] for k in spec.context]
 
 
-def _list_flatten_spec(d: list[_T], spec: TreeSpec) -> list[_T]:
+def _list_flatten_spec(d: List[_T], spec: TreeSpec) -> List[_T]:
     return [d[i] for i in range(spec.num_children)]
 
 
-def _tuple_flatten_spec(d: tuple[_T, ...], spec: TreeSpec) -> list[_T]:
+def _tuple_flatten_spec(d: Tuple[_T, ...], spec: TreeSpec) -> List[_T]:
     return [d[i] for i in range(spec.num_children)]
 
 
-def _namedtuple_flatten_spec(d: NamedTuple, spec: TreeSpec) -> list[Any]:
+def _namedtuple_flatten_spec(d: NamedTuple, spec: TreeSpec) -> List[Any]:
     return [d[i] for i in range(spec.num_children)]
 
 
-def _dict_flatten_spec_exact_match(d: dict[_K, _V], spec: TreeSpec) -> bool:
+def _dict_flatten_spec_exact_match(d: Dict[_K, _V], spec: TreeSpec) -> bool:
     return len(d) == spec.num_children
 
 
-def _list_flatten_spec_exact_match(d: list[_T], spec: TreeSpec) -> bool:
+def _list_flatten_spec_exact_match(d: List[_T], spec: TreeSpec) -> bool:
     return len(d) == spec.num_children
 
 
-def _tuple_flatten_spec_exact_match(d: tuple[_T, ...], spec: TreeSpec) -> bool:
+def _tuple_flatten_spec_exact_match(d: Tuple[_T, ...], spec: TreeSpec) -> bool:
     return len(d) == spec.num_children
 
 

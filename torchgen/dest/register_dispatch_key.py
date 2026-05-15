@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 import textwrap
 from dataclasses import dataclass
-from typing import Literal, TYPE_CHECKING
+from typing import List, Literal, TYPE_CHECKING, Tuple, Union
 from typing_extensions import assert_never
 
 import torchgen.api.cpp as cpp
@@ -48,7 +48,7 @@ def gen_registration_headers(
     backend_index: BackendIndex,
     per_operator_headers: bool,
     rocm: bool,
-) -> list[str]:
+) -> List[str]:
     if per_operator_headers:
         headers = ["#include <ATen/ops/as_strided_native.h>"]
     else:
@@ -84,7 +84,7 @@ def gen_registration_headers(
 
 def gen_empty_impl_names(
     backend_index: BackendIndex,
-) -> tuple[str | None, str | None]:
+) -> Tuple[Union[str, None], Union[str, None]]:
     empty_impl = None
     empty_strided_impl = None
 
@@ -111,7 +111,7 @@ def gen_empty_impl_names(
     return empty_impl, empty_strided_impl
 
 
-def gen_create_out_helper(backend_index: BackendIndex) -> list[str]:
+def gen_create_out_helper(backend_index: BackendIndex) -> List[str]:
     if backend_index.dispatch_key == DispatchKey.Meta:
         empty_options = "options.device(at::kMeta)"
     else:
@@ -134,7 +134,7 @@ Tensor create_out(IntArrayRef sizes, IntArrayRef strides, const TensorOptions &o
     ]
 
 
-def gen_maybe_create_proxy_helper(backend_index: BackendIndex) -> list[str]:
+def gen_maybe_create_proxy_helper(backend_index: BackendIndex) -> List[str]:
     _, empty_strided_impl = gen_empty_impl_names(backend_index)
     return (
         []
@@ -152,7 +152,7 @@ std::optional<Tensor> maybe_create_proxy(const Tensor &out, IntArrayRef sizes, I
     )
 
 
-def gen_resize_out_helper(backend_index: BackendIndex) -> list[str]:
+def gen_resize_out_helper(backend_index: BackendIndex) -> List[str]:
     if backend_index.dispatch_key == DispatchKey.CompositeExplicitAutogradNonFunctional:
         # The function isn't used by this key (since only functional ops have a kernel for this key),
         # so we need to not include it to avoid a defined-but-not-used error.
@@ -182,7 +182,7 @@ void resize_out(const Tensor &out, IntArrayRef sizes, IntArrayRef strides, const
     ]
 
 
-def gen_check_inplace_helper(backend_index: BackendIndex) -> list[str]:
+def gen_check_inplace_helper(backend_index: BackendIndex) -> List[str]:
     return [
         """
 void check_inplace(const Tensor &self, IntArrayRef sizes, const TensorOptions &options) {
@@ -205,7 +205,7 @@ void check_inplace(const Tensor &self, IntArrayRef sizes, const TensorOptions &o
     ]
 
 
-def gen_registration_helpers(backend_index: BackendIndex) -> list[str]:
+def gen_registration_helpers(backend_index: BackendIndex) -> List[str]:
     return [
         'C10_DIAGNOSTIC_PUSH_AND_IGNORED_IF_DEFINED("-Wunused-function")',
         *gen_create_out_helper(backend_index),
@@ -263,7 +263,7 @@ class RegisterDispatchKey:
     # Finally, this field is currently Optional because it is only used by external backends.
     # It would be nice if we can add the same logic to in-tree kernels too, but that requires updating
     # all of the existing kernel signatures scattered across aten/src/ATen/native.
-    class_method_name: str | None
+    class_method_name: Union[str, None]
 
     # Only set to true in lightweight dispatch. If lightweight dispatch is enabled we are registering
     # operators into JIT op registry, thus we need to avoid generating code to register into the dispatcher.
@@ -271,7 +271,7 @@ class RegisterDispatchKey:
 
     @staticmethod
     def gen_device_check(
-        type: DeviceCheckType, args: list[Argument], method_name: str
+        type: DeviceCheckType, args: List[Argument], method_name: str
     ) -> str:
         if type == DeviceCheckType.NoCheck:
             return "  // No device check\n"
@@ -286,7 +286,7 @@ class RegisterDispatchKey:
         return device_check
 
     @method_with_native_function
-    def __call__(self, f: NativeFunctionsGroup | NativeFunction) -> list[str]:
+    def __call__(self, f: Union[NativeFunctionsGroup, NativeFunction]) -> List[str]:
         if isinstance(f, NativeFunctionsGroup):
             g: NativeFunctionsGroup = f
             # Note: We call gen_structured() if the operator is marked structured, regardless of the backend.
@@ -305,7 +305,7 @@ class RegisterDispatchKey:
 
     def wrapper_kernel_sig(
         self, f: NativeFunction
-    ) -> NativeSignature | DispatcherSignature:
+    ) -> Union[NativeSignature, DispatcherSignature]:
         # The prefix is just to ensure uniqueness. The Dispatcher API doesn't guarantee unique kernel names.
         return DispatcherSignature.from_schema(
             f.func,
@@ -314,8 +314,8 @@ class RegisterDispatchKey:
         )
 
     def gen_out_inplace_wrapper(
-        self, f: NativeFunction, g: NativeFunctionsGroup | None
-    ) -> str | None:
+        self, f: NativeFunction, g: Union[NativeFunctionsGroup, None]
+    ) -> Union[str, None]:
         if g is None:
             return None
         k = f.func.kind()
@@ -367,7 +367,7 @@ class RegisterDispatchKey:
 }}
 """
 
-    def gen_structured(self, g: NativeFunctionsGroup) -> list[str]:
+    def gen_structured(self, g: NativeFunctionsGroup) -> List[str]:
         metadata = self.backend_index.get_kernel(g)
         if self.backend_index.dispatch_key == DispatchKey.Meta:
             if self.backend_index.has_kernel(g.out):
@@ -399,8 +399,8 @@ class RegisterDispatchKey:
         return list(mapMaybe(structured_gen.gen_one, g.functions()))
 
     def gen_unstructured(
-        self, f: NativeFunction, g: NativeFunctionsGroup | None = None
-    ) -> str | None:
+        self, f: NativeFunction, g: Union[NativeFunctionsGroup, None] = None
+    ) -> Union[str, None]:
         with native_function_manager(f):
             inplace_meta = False
             gets_out_inplace_wrapper = False
@@ -760,7 +760,7 @@ resize_out(out, sizes, strides, options);
         return "\n".join(line for line in lines if line)
 
     @method_with_native_function
-    def gen_one(self, f: NativeFunction) -> str | None:
+    def gen_one(self, f: NativeFunction) -> Union[str, None]:
         if f.manual_kernel_registration:
             raise AssertionError(
                 f"Function {f.func.name} has manual_kernel_registration=True"
@@ -837,7 +837,7 @@ return {sig.name()}({", ".join(e.expr for e in translate(cpp_sig.arguments(), si
             sig_body = []
             # We'll use context to keep track of any variables we've brought
             # into scope while generating code
-            context: list[Binding | Expr] = list(sig.arguments())
+            context: List[Union[Binding, Expr]] = list(sig.arguments())
 
             # Initialize the class corresponding to this structured
             # operator; feeding it the output argument(s) if it is known

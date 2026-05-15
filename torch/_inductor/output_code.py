@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This provides an abstract class which parametrizes over an "output code" concept
 for Inductor.  Intuitively, this represents the compiled callable which Inductor
@@ -20,14 +21,17 @@ serialized format:
 
 """
 
-from __future__ import annotations
 
 import contextlib
 import dataclasses
 import logging
 import os
 from functools import partial
-from typing import Any, cast, TYPE_CHECKING, TypeAlias
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union, cast
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 import torch
 from torch._dynamo.utils import counters, get_runtime_metrics_context
@@ -63,7 +67,7 @@ from .runtime.autotune_cache import AutotuneCacheBundler
 
 if TYPE_CHECKING:
     from collections import Counter
-    from collections.abc import Callable, Sequence
+    
 
     from torch._inductor import metrics
     from torch._inductor.graph import GraphLowering
@@ -81,13 +85,13 @@ class OutputCode:
     # TODO: Remove underscores here
 
     # None if the output is not remote cacheable
-    _fx_graph_cache_key: str | None = dataclasses.field(default=None, init=False)
-    _fx_graph_cache_debug_lines: list[str] | None = dataclasses.field(
+    _fx_graph_cache_key: Optional[str] = dataclasses.field(default=None, init=False)
+    _fx_graph_cache_debug_lines: Optional[List[str]] = dataclasses.field(
         default=None, init=False
     )
 
     # How long it took to compile this OutputCode, end to end
-    _time_taken_ns: int | None = dataclasses.field(default=None, init=False)
+    _time_taken_ns: Optional[int] = dataclasses.field(default=None, init=False)
 
     def __call__(self, inputs: Sequence[Any]) -> Any:
         raise NotImplementedError(type(self))
@@ -115,14 +119,14 @@ _StrideExprStr: TypeAlias = str
 # for expanded dimensions (a dimension which used to have size 1 -> ?)
 # we can select one element from that dimension and write to it
 # to achieve writing to all values of that dimension of the input tensor
-def get_expanded_dims(t: torch.Tensor) -> list[int]:
+def get_expanded_dims(t: torch.Tensor) -> List[int]:
     if not isinstance(t, torch.Tensor):
         # pyrefly: ignore [bad-return]
         return None
     return [i for i in range(t.ndim) if t.stride(i) == 0 and t.size(i) != 1]
 
 
-def index_expanded_dims(t: torch.Tensor, expanded_dims: list[int]) -> torch.Tensor:
+def index_expanded_dims(t: torch.Tensor, expanded_dims: List[int]) -> torch.Tensor:
     for expanded_dim in expanded_dims:
         t = torch.ops.aten.slice(t, expanded_dim, 0, 1)
     return t
@@ -152,7 +156,7 @@ def complex_memory_overlap(t: torch.Tensor) -> bool:
 
 def maybe_handle_backward_generation(
     compiled_graph: CompiledFxGraph,
-    boxed_forward_device_index: BoxedDeviceIndex | None,
+    boxed_forward_device_index: Optional[BoxedDeviceIndex],
 ) -> None:
     assert compiled_graph.current_callable is not None
     is_backward = compiled_graph.fx_kwargs["is_backward"]
@@ -171,7 +175,7 @@ def maybe_handle_backward_generation(
         # should already exist from forward
         assert manager is not None
 
-        def compiled_artifact(new_inputs: list[Any]) -> Callable[..., Any]:
+        def compiled_artifact(new_inputs: List[Any]) -> Callable[..., Any]:
             manager.set_to_running_backward()  # type: ignore[union-attr]
             return compiled_graph_callable(new_inputs)
 
@@ -181,7 +185,7 @@ def maybe_handle_backward_generation(
 def prepare_cudagraph_post_compile(
     compiled_graph: CompiledFxGraph,
     example_inputs: Sequence[InputType],
-    boxed_forward_device_index: BoxedDeviceIndex | None,
+    boxed_forward_device_index: Optional[BoxedDeviceIndex],
 ) -> None:
     if not config.triton.cudagraph_trees:
         # Force specialize all inputs so that CUDA graphs will work
@@ -199,8 +203,8 @@ def cudagraph_post_compile(
     example_inputs: Sequence[InputType],
     compiled_graph: CompiledFxGraph,
     cudagraphs: BoxedBool,
-    constants: dict[str, torch.Tensor | type],
-    boxed_forward_device_index: BoxedDeviceIndex | None,
+    constants: Dict[str, Union[torch.Tensor, type]],
+    boxed_forward_device_index: Optional[BoxedDeviceIndex],
 ) -> None:
     """
     Checks for any reasons not to run cudagraphs and then
@@ -293,8 +297,8 @@ def cudagraph_partition_post_compile(
     example_inputs: Sequence[InputType],
     compiled_graph: CompiledFxGraph,
     cudagraphs: BoxedBool,
-    constants: dict[str, torch.Tensor | type],
-    boxed_forward_device_index: BoxedDeviceIndex | None,
+    constants: Dict[str, Union[torch.Tensor, type]],
+    boxed_forward_device_index: Optional[BoxedDeviceIndex],
 ) -> None:
     """
     Cudagraphify each partition functions, which first prepares the necessary
@@ -433,7 +437,7 @@ class CompiledFxGraphConstants:
     the value of constants directly off of the original saved object.
     """
 
-    def unwrap(self, g: CompiledFxGraph) -> dict[str, torch.Tensor | type]:
+    def unwrap(self, g: CompiledFxGraph) -> Dict[str, Union[torch.Tensor, type]]:
         assert g.constants is not None
         return {**g.constants, **g.opaque_value_type_classes}
 
@@ -450,7 +454,7 @@ class CompiledFxGraphConstantsWithGm(CompiledFxGraphConstants):
     def __init__(self, gm: torch.fx.GraphModule) -> None:
         self.gm = gm
 
-    def unwrap(self, g: CompiledFxGraph) -> dict[str, torch.Tensor | type]:
+    def unwrap(self, g: CompiledFxGraph) -> Dict[str, Union[torch.Tensor, type]]:
         frozen_params = {
             name: getattr(self.gm, orig_name)
             for name, orig_name in g.frozen_param_names.items()
@@ -466,26 +470,26 @@ class CompiledFxGraph(OutputCode):
     to support FxGraph caching.
     """
 
-    current_callable: Callable[..., Any] | None
-    recursively_apply_fns: Callable[..., Any] | None
-    compiled_fn_runner: Any | None
+    current_callable: Optional[Callable[..., Any]]
+    recursively_apply_fns: Optional[Callable[..., Any]]
+    compiled_fn_runner: Optional[Any]
     cache_key: str
     source_code: str = dataclasses.field(repr=False)  # Do not display source_code
     runnable_graph_str: str = dataclasses.field(repr=False)  # Do not display graph
     inductor_post_grad_graph_str: str = dataclasses.field(
         repr=False
     )  # Do not display graph
-    cache_linemap: list[tuple[int, str]] | None
+    cache_linemap: List[Tuple[int, str]] | None
     device_types: OrderedSet[str]
     device_idxs: OrderedSet[int]
     mutated_inputs: OrderedSet[str]
     mutated_input_idxs: OrderedSet[int]
-    constants: dict[str, torch.Tensor] | None
-    frozen_param_names: dict[str, str]
-    torchbind_constants: dict[str, torch._C.ScriptObject | FakeScriptObject]
-    opaque_value_type_classes: dict[str, type]
-    output_strides: list[tuple[_StrideExprStr, ...] | None] | None
-    disabled_cudagraphs_reason: str | None
+    constants: Optional[Dict[str, torch.Tensor]]
+    frozen_param_names: Dict[str, str]
+    torchbind_constants: Dict[str, Union[torch._C.ScriptObject, FakeScriptObject]]
+    opaque_value_type_classes: Dict[str, type]
+    output_strides: Optional[List[Tuple[_StrideExprStr, ...]]] | None
+    disabled_cudagraphs_reason: Optional[str]
     metrics_deltas: metrics.CachedMetricsDeltas
     counter_deltas: Counter[str]
     # This is a string representation of an expression we serialize
@@ -493,50 +497,50 @@ class CompiledFxGraph(OutputCode):
     # context in order to verify the validity of serving a cached
     # fx graph. The expression must be generated by:
     # ShapeEnv.produce_guards_expression()
-    guards_expr: str | None
-    extern_libs_key: str | None
-    inductor_provenance_mapping_str: str | None
-    inductor_provenance_stack_traces_str: str | None
+    guards_expr: Optional[str]
+    extern_libs_key: Optional[str]
+    inductor_provenance_mapping_str: Optional[str]
+    inductor_provenance_stack_traces_str: Optional[str]
 
-    cudagraph_info: CudagraphCachedInfo | None
-    partition_maps: list[GraphPartitionMap] | None
-    compile_region_name: str | None
+    cudagraph_info: Optional[CudagraphCachedInfo]
+    partition_maps: Optional[List[GraphPartitionMap]]
+    compile_region_name: Optional[str]
     fx_kwargs: _CompileFxKwargs
     inputs_to_check: Sequence[int]
 
-    _boxed_call: bool | None = None
-    _triton_bundle: TritonBundle | None = None
+    _boxed_call: Optional[bool] = None
+    _triton_bundle: Optional[TritonBundle] = None
     _wrap_compiled_regions: bool = False
     _defers_input_alignment: bool = False
-    _compile_context: CompileContext | None = dataclasses.field(
+    _compile_context: Optional[CompileContext] = dataclasses.field(
         default=None, init=False, repr=False, compare=False
     )
     # Metadata-stripped copy of the FX graph for fake tensor propagation.
     # Running this graph under FakeTensorMode re-derives output shapes
     # (including aliasing) from the input shapes.
-    _original_gm: torch.fx.GraphModule | None = None
-    _serialized_original_gm: bytes | None = None
+    _original_gm: Optional[torch.fx.GraphModule] = None
+    _serialized_original_gm: Optional[bytes] = None
 
     def __init__(
         self,
-        current_callable: Callable[..., Any] | None,
+        current_callable: Optional[Callable[..., Any]],
         graph: GraphLowering,
         gm: torch.fx.GraphModule,
-        output_strides: list[tuple[_StrideExprStr, ...] | None],
-        disabled_cudagraphs_reason: str | None,
+        output_strides: Optional[List[Tuple[_StrideExprStr, ...]]],
+        disabled_cudagraphs_reason: Optional[str],
         metrics_deltas: metrics.CachedMetricsDeltas,
         counter_deltas: Counter[str],
         cudagraphs: BoxedBool,
         example_inputs: Sequence[InputType],
         static_input_idxs: Sequence[int],
-        compile_region_name: str | None,
+        compile_region_name: Optional[str],
         fx_kwargs: _CompileFxKwargs,
         inputs_to_check: Sequence[int],
         runnable_graph_str: str,
         inductor_post_grad_graph_str: str,
-        compiled_fn_runner: Any | None = None,
-        inductor_provenance_mapping_str: str | None = None,
-        inductor_provenance_stack_traces_str: str | None = None,
+        compiled_fn_runner: Optional[Any] = None,
+        inductor_provenance_mapping_str: Optional[str] = None,
+        inductor_provenance_stack_traces_str: Optional[str] = None,
     ) -> None:
         self.current_callable = current_callable
         self.compiled_fn_runner = compiled_fn_runner
@@ -984,10 +988,10 @@ class CompiledAOTI(OutputCode):
     Class holding an AOTInductor compiled so.
     """
 
-    filename: str | list[str | Weights] | torch.fx.GraphModule
+    filename: Union[str, List[Union[str, Weights]]] | torch.fx.GraphModule
     device_type: str
-    current_callable: Callable[..., Any] | None = None
-    _cached_files: dict[str, bytes] = dataclasses.field(default_factory=dict)
+    current_callable: Optional[Callable[..., Any]] = None
+    _cached_files: Dict[str, bytes] = dataclasses.field(default_factory=dict)
 
     def __post_init__(self):
         if not config.aot_inductor.link_libtorch:
@@ -1062,7 +1066,7 @@ class CompiledAOTI(OutputCode):
     def prepare_for_serialization(self) -> None:
         self.current_callable = None
         self._cached_files = {}
-        filenames: list[str] = []
+        filenames: List[str] = []
         if isinstance(self.filename, list):
             filenames = self.filename  # type: ignore[assignment]
         elif isinstance(self.filename, str):
@@ -1126,10 +1130,10 @@ class RegionalOutputCode(OutputCode):
     """
 
     # The serialized graph module as bytes (using GraphPickler)
-    _serialized_graph_module: bytes | None = None
+    _serialized_graph_module: Optional[bytes] = None
 
     # The actual graph module (cleared during serialization)
-    _graph_module: torch.nn.Module | None = None
+    _graph_module: Optional[torch.nn.Module] = None
 
     # Optional filter for ops during serialization
     _ops_filter: Callable[[str], bool] | None = None
@@ -1160,7 +1164,7 @@ class RegionalOutputCode(OutputCode):
         self._ops_filter = ops_filter
         self._node_metadata_key_filter = node_metadata_key_filter
 
-    def __call__(self, inputs: list[Any]) -> Any:
+    def __call__(self, inputs: List[Any]) -> Any:
         """
         Execute the regional compiled graph.
 
@@ -1187,7 +1191,7 @@ class RegionalOutputCode(OutputCode):
 
     def _unwrap_graph_module(
         self,
-    ) -> tuple[list[tuple[Callable, dict[str, Any]]], torch.fx.GraphModule]:
+    ) -> Tuple[List[Tuple[Callable, Dict[str, Any]]], torch.fx.GraphModule]:
         module = self._graph_module
         serialized_wrappers = []
         if isinstance(module, torch._dynamo.OptimizedModule):

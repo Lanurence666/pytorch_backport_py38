@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 from collections import abc, defaultdict
-from collections.abc import Iterable
-from typing import Any, overload
+
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, overload
 
 import torch
 import torch.distributed as dist
@@ -13,7 +15,7 @@ from torch.distributed.distributed_c10d import ProcessGroup
 logger = logging.getLogger(__name__)
 
 
-def _refresh_per_optimizer_state() -> dict[str, Any]:
+def _refresh_per_optimizer_state() -> Dict[str, Any]:
     return {"stage": OptState.READY, "found_inf_per_device": {}}
 
 
@@ -40,7 +42,7 @@ class _GeneralMultiDeviceReplicator(_MultiDeviceReplicator):
                 f"Expected supported device, got {master_tensor.device}"
             )
         self.master = master_tensor
-        self._per_device_tensors: dict[torch.device, torch.Tensor] = {}
+        self._per_device_tensors: Dict[torch.device, torch.Tensor] = {}
 
 
 class ShardedGradScaler(GradScaler):
@@ -100,7 +102,7 @@ class ShardedGradScaler(GradScaler):
         growth_factor: float = 2.0,
         growth_interval: int = 2000,
         enabled: bool = True,
-        process_group: ProcessGroup | None = dist.group.WORLD,
+        process_group: Optional[ProcessGroup]= dist.group.WORLD,
     ) -> None:
         super().__init__(
             device,
@@ -118,17 +120,17 @@ class ShardedGradScaler(GradScaler):
     def scale(self, outputs: torch.Tensor) -> torch.Tensor: ...
 
     @overload
-    def scale(self, outputs: list[torch.Tensor]) -> list[torch.Tensor]: ...
+    def scale(self, outputs: List[torch.Tensor]) -> List[torch.Tensor]: ...
 
     @overload
-    def scale(self, outputs: tuple[torch.Tensor, ...]) -> tuple[torch.Tensor, ...]: ...
+    def scale(self, outputs: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]: ...
 
     @overload
     def scale(self, outputs: Iterable[torch.Tensor]) -> Iterable[torch.Tensor]: ...
 
     def scale(
-        self, outputs: torch.Tensor | Iterable[torch.Tensor]
-    ) -> torch.Tensor | Iterable[torch.Tensor]:
+        self, outputs: Union[torch.Tensor, Iterable[torch.Tensor]]
+    ) -> Union[torch.Tensor, Iterable[torch.Tensor]]:
         if not self._enabled:
             return outputs
 
@@ -147,9 +149,9 @@ class ShardedGradScaler(GradScaler):
             # format (fp16, bf16) and so the scaled loss should be of the same dtype.
             return scaled_output.type(outputs.dtype)
 
-        stash: list[_GeneralMultiDeviceReplicator] = []
+        stash: List[_GeneralMultiDeviceReplicator] = []
 
-        def apply_scale(val: torch.Tensor | Iterable[torch.Tensor]):
+        def apply_scale(val: Union[torch.Tensor, Iterable[torch.Tensor]]):
             if isinstance(val, torch.Tensor):
                 if not _is_supported_device(val):
                     raise AssertionError(f"Expected supported device, got {val.device}")
@@ -181,7 +183,7 @@ class ShardedGradScaler(GradScaler):
         inv_scale: torch.Tensor,
         found_inf: torch.Tensor,
         allow_fp16: bool = True,
-    ) -> dict[torch.device, torch.Tensor]:
+    ) -> Dict[torch.device, torch.Tensor]:
         per_device_inv_scale = _GeneralMultiDeviceReplicator(inv_scale)
         per_device_found_inf = _GeneralMultiDeviceReplicator(found_inf)
 
@@ -306,7 +308,7 @@ class ShardedGradScaler(GradScaler):
             else:
                 self._growth_tracker = successful
 
-    def update(self, new_scale: float | torch.Tensor | None = None) -> None:
+    def update(self, new_scale: Optional[Union[float, torch.Tensor]] = None) -> None:
         """
         Updates the scale factor.
         If any optimizer steps were skipped the scale is multiplied by ``backoff_factor``

@@ -5,7 +5,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
-from importlib.metadata import entry_points
+try:
+    from importlib.metadata import entry_points
+except ImportError:
+    from importlib_metadata import entry_points
 
 from .api import (
     rendezvous_handler_registry as handler_registry,

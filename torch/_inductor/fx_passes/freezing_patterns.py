@@ -1,4 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+from typing import Optional
+
+
 import functools
 
 import torch
@@ -89,7 +93,7 @@ def freezing_passes(gm: torch.fx.GraphModule, aot_example_inputs):
 
 
 @init_once_fakemode
-def lazy_init(input_device: torch.device | None = None):
+def lazy_init(input_device: Optional[torch.device] = None):
     if torch._C._has_mkldnn and config.cpp.weight_prepack:
         from .mkldnn_fusion import _mkldnn_weight_pack_init
 
@@ -121,7 +125,7 @@ def register_binary_folding_pattern(pattern, extra_check=_return_true):
     )
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def addmm_patterns_init():
     """
     addmm related patterns.

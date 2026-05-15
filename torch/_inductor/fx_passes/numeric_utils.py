@@ -12,6 +12,7 @@ import torch.optim as optim
 from torch.utils._ordered_set import OrderedSet
 
 from .. import config
+from typing import Set
 
 
 logger: logging.Logger = logging.getLogger(__name__)

@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import functools
 import logging
 import operator
 import sys
-from collections.abc import Callable
-from typing import Any, Optional, TYPE_CHECKING
+
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, overload
 
 
 # Import sympy and ShapeEnv during TYPE_CHECKING since importing sympy is slow
@@ -31,7 +33,7 @@ log = logging.getLogger(__name__)
 graph_code_log = torch._logging.getArtifactLogger(__name__, "graph_code_verbose")
 
 
-def _get_example_value(node: fx.Node) -> str | None:
+def _get_example_value(node: fx.Node) -> Optional[str]:
     """
     Get the example value key for a node, since dynamo uses "example_value"
     while non-strict export uses "val.
@@ -124,7 +126,7 @@ def insert_deferred_runtime_asserts(
     )
 
     # We are going to mutate the dict
-    expr_to_proxy: dict[sympy.Expr, fx.Proxy] = {}
+    expr_to_proxy: Dict[sympy.Expr, fx.Proxy] = {}
     placeholders = set()
     first_non_placeholder = None
     for node in graph.nodes:
@@ -167,9 +169,9 @@ def insert_deferred_runtime_asserts(
     # time to regress significantly.
     def _node_metadata_hook(
         node: torch.fx.Node,
-        stack_trace: str | None = None,
-        nn_module_stack: dict[str, Any] | None = None,
-        custom: dict[str, Any] | None = None,
+        stack_trace: Optional[str]= None,
+        nn_module_stack: Optional[Dict[str, Any]]= None,
+        custom: Optional[Dict[str, Any]]= None,
         skip_val: bool = False,
     ) -> None:
         if not skip_val:
@@ -202,13 +204,13 @@ def insert_deferred_runtime_asserts(
             node.meta["custom"] = custom
 
     # Track asserts/checks we've added
-    added_asserts: set[sympy.Expr] = set()
-    constrained_unbacked_symbols: set[sympy.Symbol] = set()
+    added_asserts: Set[sympy.Expr] = set()
+    constrained_unbacked_symbols: Set[sympy.Symbol] = set()
 
     Analysis = PythonReferenceAnalysis if export else OptimizedPythonReferenceAnalysis
 
     def _sympy_interp(
-        expr_to_proxy: dict[sympy.Expr, fx.Proxy], expr: sympy.Expr
+        expr_to_proxy: Dict[sympy.Expr, fx.Proxy], expr: sympy.Expr
     ) -> fx.Proxy:
         # sympy_interp() with hash consing
         from sympy import Integer, Number, Symbol
@@ -242,7 +244,7 @@ def insert_deferred_runtime_asserts(
             isinstance(rhs, sympy.Symbol) and isinstance(lhs, sympy.Number)
         )
 
-    def add_runtime_asserts(ras: list[RuntimeAssert]) -> None:
+    def add_runtime_asserts(ras: List[RuntimeAssert]) -> None:
         for ra in ras:
             if (
                 # redundant
@@ -484,7 +486,7 @@ def insert_deferred_runtime_asserts(
 
                     # TODO: some CSE when generating these nodes can probably
                     # help reduce graph size and improve compile time
-                    def go(node: fx.Node, keypath: tuple[object, ...]) -> fx.Node:
+                    def go(node: fx.Node, keypath: Tuple[object, ...]) -> fx.Node:
                         if keypath == ():
                             return node
                         if (
@@ -629,7 +631,7 @@ def insert_deferred_runtime_asserts(
                     # assert and also explicitly refine the range
                     # (refinement should not be necessary once runtime
                     # asserts cause refinement, but that's NYI)
-                    def convert(s: Any) -> int | None:
+                    def convert(s: Any) -> Optional[int]:
                         if s in (int_oo, -int_oo):
                             return None
                         try:

@@ -1,14 +1,16 @@
+from __future__ import annotations
+
 import atexit
 import concurrent
 import dataclasses
 import logging
 import threading
-from collections.abc import Callable
+
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
 from multiprocessing.context import BaseContext
 from time import time
-from typing import Any, TypeVar
+from typing import Any, Callable, Dict, List, Mapping, Optional, Type, TypeVar
 from typing_extensions import ParamSpec
 
 # _thread_safe_fork is needed because the subprocesses in the pool can read
@@ -27,8 +29,8 @@ log = logging.getLogger(__name__)
 @dataclass
 class _QueueStats:
     # Mapping from id(future) -> start time
-    pending: dict[int, float] = dataclasses.field(default_factory=dict)
-    timing: list[float] = dataclasses.field(default_factory=list)
+    pending: Dict[int, float] = dataclasses.field(default_factory=dict)
+    timing: List[float] = dataclasses.field(default_factory=list)
     enqueue_count: int = 0
     dequeue_count: int = 0
     max_queue_depth: int = 0
@@ -44,9 +46,9 @@ _queue_stats_lock = threading.Lock()
 class TrackedProcessPoolExecutor(ProcessPoolExecutor):
     def __init__(
         self,
-        max_workers: int | None = None,
-        mp_context: BaseContext | None = None,
-        initializer: Callable[[], object] | None = None,
+        max_workers: Optional[int]= None,
+        mp_context: Optional[BaseContext]= None,
+        initializer: Optional[Callable[[], object]]= None,
     ) -> None:
         with _queue_stats_lock:
             _queue_stats.pool_count += 1

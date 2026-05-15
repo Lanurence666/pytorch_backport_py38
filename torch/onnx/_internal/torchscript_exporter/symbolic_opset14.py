@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 # mypy: disable-error-code=arg-type
 """This file exports ONNX ops for opset 14.
@@ -16,7 +17,6 @@ Updated operators:
 
 # EDITING THIS FILE? READ THIS FIRST!
 # see Note [Edit Symbolic Files] in README.md
-from __future__ import annotations
 
 import functools
 
@@ -29,6 +29,7 @@ from torch.onnx._internal.torchscript_exporter import (
     symbolic_helper,
 )
 from torch.onnx._internal.torchscript_exporter._globals import GLOBALS
+from typing import Optional, Type, overload
 
 
 __all__ = [
@@ -144,10 +145,10 @@ def scaled_dot_product_attention(
     query: torch._C.Value,
     key: torch._C.Value,
     value: torch._C.Value,
-    attn_mask: torch._C.Value | None = None,
+    attn_mask: Optional[torch._C.Value]= None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
-    scale: torch._C.Value | None = None,
+    scale: Optional[torch._C.Value]= None,
     enable_gqa: bool = False,
 ):
     if is_causal and not symbolic_helper._is_none(attn_mask):

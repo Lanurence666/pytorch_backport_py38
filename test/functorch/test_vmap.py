@@ -4002,7 +4002,7 @@ class TestVmapBatchedGradient(Namespace.TestVmapBase):
 
             fail_with_randomness = randomness == "error"
             if backend != SDPBackend.MATH:
-                fail_with_randomness |= randomness == "same"
+                fail_with_randomness.update(randomness) == "same"
             context = (
                 self.assertRaises(RuntimeError)
                 # We currently don't support randomness == "same", and "error" should always error with randomness

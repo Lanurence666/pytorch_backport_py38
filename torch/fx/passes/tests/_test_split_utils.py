@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import unittest
-from typing import Any
+from typing import Any, Dict, Set
 from unittest.mock import patch, PropertyMock
 
 import torch
@@ -41,12 +43,12 @@ class TestMoveNonTensorNodesOnBoundary(unittest.TestCase):
         else:
             node.meta = {"type": int}  # Non-tensor type
 
-        # Mock users dict (Node.users is dict[Node, None])
-        users: dict[torch.fx.Node, None] = {}
+        # Mock users dict (Node.users is Dict[Node, None])
+        users: Dict[torch.fx.Node, None] = {}
         node.users = users
 
-        # Initialize the _input_nodes dict (Node._input_nodes is dict[Node, None])
-        input_nodes: dict[torch.fx.Node, None] = {}
+        # Initialize the _input_nodes dict (Node._input_nodes is Dict[Node, None])
+        input_nodes: Dict[torch.fx.Node, None] = {}
         node._input_nodes = input_nodes
 
         return node
@@ -75,14 +77,7 @@ class TestMoveNonTensorNodesOnBoundary(unittest.TestCase):
             mock_is_tensor.side_effect = lambda node: node.name != "node1"
 
             # Mock all_input_nodes property for all nodes
-            with (
-                patch.object(
-                    type(node2), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node2_inputs,
-                patch.object(
-                    type(node3), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node3_inputs,
-            ):
+            with patch.object( type(node2), "all_input_nodes", new_callable=PropertyMock ) as mock_node2_inputs, patch.object( type(node3), "all_input_nodes", new_callable=PropertyMock ) as mock_node3_inputs:
                 mock_node2_inputs.return_value = list(node2._input_nodes.keys())
                 mock_node3_inputs.return_value = list(node3._input_nodes.keys())
 
@@ -182,14 +177,7 @@ class TestMoveNonTensorNodesOnBoundary(unittest.TestCase):
         ) as mock_is_tensor:
             mock_is_tensor.side_effect = lambda node: node.name != "node1"
 
-            with (
-                patch.object(
-                    type(node2), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node2_inputs,
-                patch.object(
-                    type(node3), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node3_inputs,
-            ):
+            with patch.object( type(node2), "all_input_nodes", new_callable=PropertyMock ) as mock_node2_inputs, patch.object( type(node3), "all_input_nodes", new_callable=PropertyMock ) as mock_node3_inputs:
                 mock_node2_inputs.return_value = list(node2._input_nodes.keys())
                 mock_node3_inputs.return_value = list(node3._input_nodes.keys())
 
@@ -228,20 +216,7 @@ class TestMoveNonTensorNodesOnBoundary(unittest.TestCase):
         ) as mock_is_tensor:
             mock_is_tensor.side_effect = lambda node: node.name == "node4"
 
-            with (
-                patch.object(
-                    type(node1), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node1_inputs,
-                patch.object(
-                    type(node2), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node2_inputs,
-                patch.object(
-                    type(node3), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node3_inputs,
-                patch.object(
-                    type(node4), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node4_inputs,
-            ):
+            with patch.object( type(node1), "all_input_nodes", new_callable=PropertyMock ) as mock_node1_inputs, patch.object( type(node2), "all_input_nodes", new_callable=PropertyMock ) as mock_node2_inputs, patch.object( type(node3), "all_input_nodes", new_callable=PropertyMock ) as mock_node3_inputs, patch.object( type(node4), "all_input_nodes", new_callable=PropertyMock ) as mock_node4_inputs:
                 mock_node1_inputs.return_value = list(node1._input_nodes.keys())
                 mock_node2_inputs.return_value = list(node2._input_nodes.keys())
                 mock_node3_inputs.return_value = list(node3._input_nodes.keys())
@@ -289,17 +264,7 @@ class TestMoveNonTensorNodesOnBoundary(unittest.TestCase):
         ) as mock_is_tensor:
             mock_is_tensor.side_effect = lambda node: node.name == "child"
 
-            with (
-                patch.object(
-                    type(parent), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_parent_inputs,
-                patch.object(
-                    type(node1), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node1_inputs,
-                patch.object(
-                    type(child), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_child_inputs,
-            ):
+            with patch.object( type(parent), "all_input_nodes", new_callable=PropertyMock ) as mock_parent_inputs, patch.object( type(node1), "all_input_nodes", new_callable=PropertyMock ) as mock_node1_inputs, patch.object( type(child), "all_input_nodes", new_callable=PropertyMock ) as mock_child_inputs:
                 mock_parent_inputs.return_value = list(parent._input_nodes.keys())
                 mock_node1_inputs.return_value = list(node1._input_nodes.keys())
                 mock_child_inputs.return_value = list(child._input_nodes.keys())
@@ -421,20 +386,7 @@ class TestMoveNonTensorNodesOnBoundary(unittest.TestCase):
             # Only node_a is non-tensor; node_b, node_c, node_d are all tensor
             mock_is_tensor.side_effect = lambda node: node.name != "node_a"
 
-            with (
-                patch.object(
-                    type(node_a), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node_a_inputs,
-                patch.object(
-                    type(node_b), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node_b_inputs,
-                patch.object(
-                    type(node_c), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node_c_inputs,
-                patch.object(
-                    type(node_d), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node_d_inputs,
-            ):
+            with patch.object( type(node_a), "all_input_nodes", new_callable=PropertyMock ) as mock_node_a_inputs, patch.object( type(node_b), "all_input_nodes", new_callable=PropertyMock ) as mock_node_b_inputs, patch.object( type(node_c), "all_input_nodes", new_callable=PropertyMock ) as mock_node_c_inputs, patch.object( type(node_d), "all_input_nodes", new_callable=PropertyMock ) as mock_node_d_inputs:
                 mock_node_a_inputs.return_value = list(node_a._input_nodes.keys())
                 mock_node_b_inputs.return_value = list(node_b._input_nodes.keys())
                 mock_node_c_inputs.return_value = list(node_c._input_nodes.keys())
@@ -481,14 +433,7 @@ class TestMoveNonTensorNodesOnBoundary(unittest.TestCase):
             # node_a is non-tensor; node_b is tensor
             mock_is_tensor.side_effect = lambda node: node.name == "node_b"
 
-            with (
-                patch.object(
-                    type(node_a), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node_a_inputs,
-                patch.object(
-                    type(node_b), "all_input_nodes", new_callable=PropertyMock
-                ) as mock_node_b_inputs,
-            ):
+            with patch.object( type(node_a), "all_input_nodes", new_callable=PropertyMock ) as mock_node_a_inputs, patch.object( type(node_b), "all_input_nodes", new_callable=PropertyMock ) as mock_node_b_inputs:
                 mock_node_a_inputs.return_value = list(node_a._input_nodes.keys())
                 mock_node_b_inputs.return_value = list(node_b._input_nodes.keys())
 

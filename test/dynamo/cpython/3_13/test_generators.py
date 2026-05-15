@@ -7,6 +7,7 @@
 # Test copied from
 # https://raw.githubusercontent.com/python/cpython/refs/tags/v3.13.5/Lib/test/test_generators.py
 
+from __future__ import annotations
 import sys
 import torch
 import torch._dynamo.test_case
@@ -35,7 +36,7 @@ class RedirectImportFinder(importlib.abc.MetaPathFinder):
         if fullname in redirect_imports:
             try:
                 # Attempt to import the standalone module
-                name = fullname.removeprefix("test.")
+                name = (fullname[len("test."):] if fullname.startswith("test.") else fullname)
                 r = importlib.import_module(name)
                 # Redirect the module in sys.modules
                 sys.modules[fullname] = r

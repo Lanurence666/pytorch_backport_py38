@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Dict, List
 import token
 from collections.abc import Sequence
 from tokenize import TokenInfo
@@ -12,10 +14,10 @@ BRACKETS = {"{": "}", "(": ")", "[": "]"}
 BRACKETS_INV = {j: i for i, j in BRACKETS.items()}
 
 
-def bracket_pairs(tokens: Sequence[TokenInfo]) -> dict[int, int]:
+def bracket_pairs(tokens: Sequence[TokenInfo]) -> Dict[int, int]:
     """Returns a dictionary mapping opening to closing brackets"""
-    braces: dict[int, int] = {}
-    stack: list[int] = []
+    braces: Dict[int, int] = {}
+    stack: List[int] = []
     in_fstring = False
 
     for i, t in enumerate(tokens):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, TYPE_CHECKING, Tuple, Type, TypeVar
 from typing_extensions import TypeVarTuple, Unpack
 
 
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 from .dispatcher import Dispatcher, MethodDispatcher
 
 
-global_namespace: dict[str, Dispatcher] = {}
+global_namespace: Dict[str, Dispatcher] = {}
 
 __all__ = ["dispatch", "ismethod"]
 
@@ -62,7 +62,7 @@ def dispatch(
     """
     namespace = kwargs.get("namespace", global_namespace)
 
-    types_tuple: tuple[type, ...] = tuple(types)  # type: ignore[arg-type]
+    types_tuple: Tuple[type, ...] = tuple(types)  # type: ignore[arg-type]
 
     def _df(func: Callable[..., _T]) -> Callable[..., _T]:
         name = func.__name__

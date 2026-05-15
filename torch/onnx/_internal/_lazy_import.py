@@ -1,6 +1,6 @@
+from __future__ import annotations
 """Utility to lazily import modules."""
 
-from __future__ import annotations
 
 import importlib
 from typing import Any, TYPE_CHECKING

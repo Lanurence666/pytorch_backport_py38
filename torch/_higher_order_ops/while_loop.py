@@ -1,4 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+from typing import Union
+
+
 import contextlib
 import functools
 from collections.abc import Callable
@@ -40,8 +44,8 @@ class WhileLoopOp(HigherOrderOperator):
         self,
         cond_fn: Callable,
         body_fn: Callable,
-        carried_inputs: tuple[torch.Tensor | int | float | bool],
-        additional_inputs: tuple[torch.Tensor | torch.SymInt | int, ...],
+        carried_inputs: Union[Tuple[Union[torch.Tensor, int], Union[float, bool]]],
+        additional_inputs: Union[Tuple[Union[torch.Tensor, torch.SymInt], int], ...],
         /,
         *,
         mutated_arg_indices: str = "",
@@ -301,7 +305,7 @@ def while_loop_dense(
                 for val in carried_vals
             )
 
-    outputs: list[list[torch.Tensor]] = [[] for _ in carried_vals]
+    outputs: List[List[torch.Tensor]] = [[] for _ in carried_vals]
 
     while should_loop:
         out = body_fn(*carried_vals, *additional_inputs)
@@ -320,7 +324,7 @@ def while_loop_dense(
         should_loop = cond_fn(*carried_vals, *additional_inputs)
 
     if stack_output:
-        outs: list[torch.Tensor] = []
+        outs: List[torch.Tensor] = []
         for out in outputs:
             outs.append(torch.stack(out, dim=0))
         return tuple(outs)
@@ -685,8 +689,8 @@ class WhileLoopStackOutputOp(HigherOrderOperator):
         self,
         cond_fn: Callable,
         body_fn: Callable,
-        carried_inputs: tuple[torch.Tensor | int | float | bool],
-        additional_inputs: tuple[torch.Tensor | torch.SymInt | int, ...],
+        carried_inputs: Union[Tuple[Union[torch.Tensor, int], Union[float, bool]]],
+        additional_inputs: Union[Tuple[Union[torch.Tensor, torch.SymInt], int], ...],
         /,
     ):
         if not isinstance(carried_inputs, (tuple, list)):

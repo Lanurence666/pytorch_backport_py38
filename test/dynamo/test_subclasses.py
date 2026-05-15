@@ -1,4 +1,5 @@
 # Owner(s): ["module: dynamo"]
+from __future__ import annotations
 import functools
 import itertools
 import unittest

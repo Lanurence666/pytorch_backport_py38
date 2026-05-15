@@ -7,6 +7,7 @@
 # Test copied from
 # https://raw.githubusercontent.com/python/cpython/refs/tags/v3.13.12/Lib/test/test_enum.py
 
+from __future__ import annotations
 import torch
 import torch._dynamo.test_case
 from torch._dynamo.test_case import CPythonTestCase
@@ -29,7 +30,13 @@ import builtins as bltns
 from collections import OrderedDict
 from datetime import date
 from functools import partial
-from enum import Enum, EnumMeta, IntEnum, StrEnum, EnumType, Flag, IntFlag, unique, auto
+from enum import Enum, EnumMeta, IntEnum, EnumType, Flag, IntFlag, unique, auto
+try:
+    from enum import StrEnum
+except ImportError:
+    class StrEnum(str, enum.Enum):
+        def _generate_next_value_(name, start, count, last_values):
+            return name.lower()
 from enum import STRICT, CONFORM, EJECT, KEEP, _simple_enum, _test_simple_enum
 from enum import verify, UNIQUE, CONTINUOUS, NAMED_FLAGS, ReprEnum
 from enum import member, nonmember, _iter_bits_lsb, EnumDict
@@ -483,9 +490,9 @@ class _EnumTests:
                 [m.first for m in TE],
                 ['first is first!', 'second is first!', 'third is first!']
                 )
-        for member, name in zip(TE, self.names, strict=True):
+        for member, name in _zip_strict(TE, self.names):
             self.assertIs(TE[name], member)
-        for member, value in zip(TE, self.values, strict=True):
+        for member, value in _zip_strict(TE, self.values):
             self.assertIs(TE(value), member)
         if issubclass(TE, StrEnum):
             self.assertTrue(TE.dupe is TE('third') is TE['dupe'])
@@ -777,7 +784,7 @@ class _EnumTests:
             self.assertEqual(repr(TE.dupe), "<MainEnum.third: 'third'>")
         else:
             self.assertEqual(repr(TE.dupe), "<MainEnum.third: %r>" % (self.values[2], ), TE._value_repr_)
-        for name, value, member in zip(self.names, self.values, TE, strict=True):
+        for name, value, member in _zip_strict(self.names, self.values, TE):
             self.assertEqual(repr(member), "<MainEnum.%s: %r>" % (member.name, member.value))
 
     def test_repr_override(self):
@@ -825,7 +832,7 @@ class _PlainOutputTests:
             self.assertEqual(str(self.dupe2), "MainEnum.first|third")
         else:
             self.assertEqual(str(TE.dupe), "MainEnum.third")
-        for name, value, member in zip(self.names, self.values, TE, strict=True):
+        for name, value, member in _zip_strict(self.names, self.values, TE):
             self.assertEqual(str(member), "MainEnum.%s" % (member.name, ))
 
     def test_format(self):
@@ -835,7 +842,7 @@ class _PlainOutputTests:
             self.assertEqual(format(self.dupe2), "MainEnum.first|third")
         else:
             self.assertEqual(format(TE.dupe), "MainEnum.third")
-        for name, value, member in zip(self.names, self.values, TE, strict=True):
+        for name, value, member in _zip_strict(self.names, self.values, TE):
             self.assertEqual(format(member), "MainEnum.%s" % (member.name, ))
 
     def test_overridden_format(self):
@@ -863,7 +870,7 @@ class _MixedOutputTests:
             self.assertEqual(str(self.dupe2), "MainEnum.first|third")
         else:
             self.assertEqual(str(TE.dupe), "MainEnum.third")
-        for name, value, member in zip(self.names, self.values, TE, strict=True):
+        for name, value, member in _zip_strict(self.names, self.values, TE):
             self.assertEqual(str(member), "MainEnum.%s" % (member.name, ))
 
     def test_format(self):
@@ -873,7 +880,7 @@ class _MixedOutputTests:
             self.assertEqual(format(self.dupe2), "MainEnum.first|third")
         else:
             self.assertEqual(format(TE.dupe), "MainEnum.third")
-        for name, value, member in zip(self.names, self.values, TE, strict=True):
+        for name, value, member in _zip_strict(self.names, self.values, TE):
             self.assertEqual(format(member), "MainEnum.%s" % (member.name, ))
 
     def test_overridden_format(self):
@@ -901,7 +908,7 @@ class _MinimalOutputTests:
             self.assertEqual(str(self.dupe2), "5")
         else:
             self.assertEqual(str(TE.dupe), str(self.values[2]))
-        for name, value, member in zip(self.names, self.values, TE, strict=True):
+        for name, value, member in _zip_strict(self.names, self.values, TE):
             self.assertEqual(str(member), str(value))
 
     def test_format(self):
@@ -911,7 +918,7 @@ class _MinimalOutputTests:
             self.assertEqual(format(self.dupe2), "5")
         else:
             self.assertEqual(format(TE.dupe), format(self.values[2]))
-        for name, value, member in zip(self.names, self.values, TE, strict=True):
+        for name, value, member in _zip_strict(self.names, self.values, TE):
             self.assertEqual(format(member), format(value))
 
     def test_overridden_format(self):
@@ -5498,7 +5505,7 @@ class TestEnumDict(__TestCase):
 
         # Only MutableMapping interface is overridden for now.
         # If this stops passing, update the documentation.
-        enumdict |= {'a': 'other value'}
+        enumdict.update({'a': 'other value'})
         self.assertEqual(enumdict['a'], 'other value')
 
 

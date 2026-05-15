@@ -1,9 +1,12 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch._vmap_internals import _vmap
 
 from . import forward_ad as fwAD
+from typing import List, Set, Tuple, Type
 
 
 __all__ = ["vjp", "jvp", "jacobian", "hessian", "hvp", "vhp"]
@@ -187,8 +190,8 @@ def _autograd_grad(
             f"but got {len(outputs)} and {len(grad_outputs)}"
         )
 
-    new_outputs: tuple[torch.Tensor, ...] = ()
-    new_grad_outputs: tuple[torch.Tensor, ...] = ()
+    new_outputs: Tuple[torch.Tensor, ...] = ()
+    new_grad_outputs: Tuple[torch.Tensor, ...] = ()
     for out, grad_out in zip(outputs, grad_outputs):
         if out is not None and out.requires_grad:
             new_outputs += (out,)
@@ -218,7 +221,7 @@ def _fill_in_zeros(grads, refs, strict, create_graph, stage):
     if stage not in ["back", "back_trick", "double_back", "double_back_trick"]:
         raise RuntimeError(f"Invalid stage argument '{stage}' to _fill_in_zeros")
 
-    res: tuple[torch.Tensor, ...] = ()
+    res: Tuple[torch.Tensor, ...] = ()
     for i, grads_i in enumerate(grads):
         if grads_i is None:
             if strict:
@@ -477,8 +480,8 @@ def jvp(func, inputs, v=None, create_graph=False, strict=False):
 
 
 def _construct_standard_basis_for(
-    tensors: tuple[torch.Tensor, ...], tensor_numels: tuple[int, ...]
-) -> tuple[torch.Tensor, ...]:
+    tensors: Tuple[torch.Tensor, ...], tensor_numels: Tuple[int, ...]
+) -> Tuple[torch.Tensor, ...]:
     # This function:
     # - constructs a N=sum(tensor_numels) standard basis. i.e. an NxN identity matrix.
     # - Splits the identity matrix into chunks with each chunk size determined by `tensor_numels`.
@@ -803,11 +806,11 @@ def jacobian(
                 jacobian_output_input, (is_outputs_tuple, is_inputs_tuple)
             )
 
-        jacobian: tuple[torch.Tensor, ...] = ()
+        jacobian: Tuple[torch.Tensor, ...] = ()
 
         for i, out in enumerate(outputs):
             # mypy complains that expression and variable have different types due to the empty list
-            jac_i: tuple[list[torch.Tensor]] = tuple([] for _ in range(len(inputs)))  # type: ignore[assignment]
+            jac_i: Tuple[List[torch.Tensor]] = tuple([] for _ in range(len(inputs)))  # type: ignore[assignment]
             for j in range(out.nelement()):
                 vj = _autograd_grad(
                     (out.reshape(-1)[j],),

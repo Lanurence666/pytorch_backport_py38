@@ -1,9 +1,11 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math as pymath
 import warnings
-from collections.abc import Callable
-from typing import Any, TypeVar
+
+from typing import Any, Callable, List, Type, TypeVar, Union
 
 from .triton_compat import (
     _log2,
@@ -78,7 +80,7 @@ def get_backend_options():
     return options.__dict__
 
 
-def get_constexprs(kernel: JITFunction) -> list[int]:
+def get_constexprs(kernel: JITFunction) -> List[int]:
     return [p.num for p in kernel.params if p.is_constexpr]
 
 
@@ -325,7 +327,7 @@ def randint64(seed, offset, low, high):
 
 @triton.jit
 def _any_combine(a, b):
-    return a | b
+    return Union[a, b]
 
 
 @triton.jit
@@ -645,7 +647,7 @@ def _compare_and_swap_with_index(
         cond = left < right
         if is_floating(left):
             if not stable:
-                cond = cond | right_isnan
+                cond = Union[cond, right_isnan]
             else:
                 cond = cond | (right_isnan & (~left_isnan))
 
@@ -653,7 +655,7 @@ def _compare_and_swap_with_index(
         cond = left > right
         if is_floating(left):
             if not stable:
-                cond = cond | left_isnan
+                cond = Union[cond, left_isnan]
             else:
                 cond = cond | (left_isnan & (~right_isnan))
 

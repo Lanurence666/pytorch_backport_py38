@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
-from typing import Any
+from typing import Any, Dict, Set, Union
 
 import torch
 from torch.fx import GraphModule
@@ -18,9 +20,9 @@ __all__ = [
 class FusedGraphModule(GraphModule):
     def __init__(
         self,
-        root: torch.nn.Module | dict[str, Any],
+        root: Union[torch.nn.Module, Dict[str, Any]],
         graph: Graph,
-        preserved_attr_names: set[str],
+        preserved_attr_names: Set[str],
     ):
         self.preserved_attr_names = preserved_attr_names
         preserved_attrs = {
@@ -48,9 +50,9 @@ class FusedGraphModule(GraphModule):
 class ObservedGraphModule(GraphModule):
     def __init__(
         self,
-        root: torch.nn.Module | dict[str, Any],
+        root: Union[torch.nn.Module, Dict[str, Any]],
         graph: Graph,
-        preserved_attr_names: set[str],
+        preserved_attr_names: Set[str],
     ):
         self.preserved_attr_names = {
             "_activation_post_process_map",
@@ -91,7 +93,7 @@ def _is_observed_module(module: Any) -> bool:
 
 
 def _get_observed_graph_module_attr(
-    model: torch.nn.Module | GraphModule, attr_name: str
+    model: Union[torch.nn.Module, GraphModule], attr_name: str
 ) -> Any:
     if hasattr(model, "meta") and "_observed_graph_module_attrs" in model.meta:  # type: ignore[operator, index]
         return getattr(model.meta["_observed_graph_module_attrs"], attr_name)  # type: ignore[index]
@@ -101,9 +103,9 @@ def _get_observed_graph_module_attr(
 class ObservedStandaloneGraphModule(ObservedGraphModule):
     def __init__(
         self,
-        root: torch.nn.Module | dict[str, Any],
+        root: Union[torch.nn.Module, Dict[str, Any]],
         graph: Graph,
-        preserved_attr_names: set[str],
+        preserved_attr_names: Set[str],
     ):
         preserved_attr_names = preserved_attr_names.union(
             {
@@ -148,9 +150,9 @@ class QuantizedGraphModule(GraphModule):
 
     def __init__(
         self,
-        root: torch.nn.Module | dict[str, Any],
+        root: Union[torch.nn.Module, Dict[str, Any]],
         graph: Graph,
-        preserved_attr_names: set[str],
+        preserved_attr_names: Set[str],
     ):
         self.preserved_attr_names = preserved_attr_names
         preserved_attrs = {

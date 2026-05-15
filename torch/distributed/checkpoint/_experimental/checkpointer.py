@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import abc
 import logging
 from concurrent.futures import Future
-from typing import Any, TypeVar
+from typing import Any, Dict, Optional, Tuple, Type, TypeVar
 
 from .checkpoint_process import CheckpointProcess
 from .checkpoint_reader import CheckpointReader
@@ -37,8 +39,8 @@ class Checkpointer(abc.ABC):
         self,
         path: str,
         state_dict: STATE_DICT,
-        **kwargs: dict[str, Any],
-    ) -> tuple[Future, Future] | None:
+        **kwargs: Dict[str, Any],
+    ) -> Optional[Tuple[Future, Future]]:
         """
         Save a state dictionary to storage.
 
@@ -57,11 +59,11 @@ class Checkpointer(abc.ABC):
     def load(
         self,
         path: str,
-        state_dict: STATE_DICT | None = None,
+        state_dict: Optional[STATE_DICT]= None,
         *,
         default_map_location: Any = None,
         strict: bool = False,
-        **kwargs: dict[str, Any],
+        **kwargs: Dict[str, Any],
     ) -> STATE_DICT:
         """
         Load a state dictionary from storage.
@@ -125,8 +127,8 @@ class SyncCheckpointer(Checkpointer):
         self,
         path: str,
         state_dict: STATE_DICT,
-        **kwargs: dict[str, Any],
-    ) -> tuple[Future, Future] | None:
+        **kwargs: Dict[str, Any],
+    ) -> Optional[Tuple[Future, Future]]:
         """
         Save a state dictionary to storage synchronously.
 
@@ -148,11 +150,11 @@ class SyncCheckpointer(Checkpointer):
     def load(
         self,
         path: str,
-        state_dict: STATE_DICT | None = None,
+        state_dict: Optional[STATE_DICT]= None,
         *,
         default_map_location: Any = None,
         strict: bool = False,
-        **kwargs: dict[str, Any],
+        **kwargs: Dict[str, Any],
     ) -> STATE_DICT:
         """
         Load a state dictionary from storage.
@@ -237,14 +239,14 @@ class AsyncCheckpointer(Checkpointer):
         self._reader = reader
         self._checkpoint_stager = checkpoint_stager
         self._checkpoint_process = checkpoint_process
-        self._write_future: Future[Any] | None = None
+        self._write_future: Optional[Future[Any]] = None
 
     def save(
         self,
         path: str,
         state_dict: STATE_DICT,
         **kwargs: Any,
-    ) -> tuple[Future, Future] | None:
+    ) -> Optional[Tuple[Future, Future]]:
         """
         Save a state dictionary to storage asynchronously.
 
@@ -291,7 +293,7 @@ class AsyncCheckpointer(Checkpointer):
     def load(
         self,
         path: str,
-        state_dict: STATE_DICT | None = None,
+        state_dict: Optional[STATE_DICT]= None,
         *,
         default_map_location: Any = None,
         strict: bool = False,

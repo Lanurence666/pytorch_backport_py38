@@ -1,4 +1,6 @@
+from __future__ import annotations
 # mypy: ignore-errors
+from typing import Dict, List, Set, Union
 """FuzzTemplate subclasses provided by the CUDA device plugin.
 
 These templates are returned by ``torchfuzz.cuda.register_codegen()`` and
@@ -240,7 +242,7 @@ class DTensorFuzzTemplate(FuzzTemplate):
     def epilogue_codegen(self):
         return ["torch.distributed.destroy_process_group()"]
 
-    def return_codegen(self, final_var_name: str) -> list[str]:
+    def return_codegen(self, final_var_name: str) -> List[str]:
         """DTensor return: avoid .real (incompatible with sharding); use .abs() for complex."""
         return [
             "    # Ensure gradient computation by multiplying with sentinel",
@@ -390,15 +392,15 @@ class StreamFuzzTemplate(DefaultFuzzTemplate):
         return code_lines
 
     def wrap_body(
-        self, generated_code_lines: list[str], graph: OperationGraph
-    ) -> list[str]:
+        self, generated_code_lines: List[str], graph: OperationGraph
+    ) -> List[str]:
         return self.wrap_body_with_streams(generated_code_lines, graph)
 
     @staticmethod
     def wrap_body_with_streams(
-        generated_code_lines: list[str],
+        generated_code_lines: List[str],
         graph: OperationGraph,
-    ) -> list[str]:
+    ) -> List[str]:
         """Wrap generated function body lines with CUDA stream contexts.
 
         Assigns each non-leaf operation to one of 2-3 random streams, wraps each
@@ -432,16 +434,16 @@ class StreamFuzzTemplate(DefaultFuzzTemplate):
         event_counter = 0
 
         # Assign each non-leaf node to a random stream
-        node_stream: dict[str, str] = {}
+        node_stream: Dict[str, str] = {}
         for nid in non_leaf_ids:
             node_stream[nid] = random.choice(stream_names)
 
         # Build a mapping from node_id -> the original code lines for that node.
         # Each node produces lines prefixed with "    " (4-space indent for the
         # function body).  We identify nodes by their ``var_{node_id} =`` pattern.
-        node_lines: dict[str, list[str]] = {}
-        current_node: str | None = None
-        current_buf: list[str] = []
+        node_lines: Dict[str, List[str]] = {}
+        current_node: Union[str, None] = None
+        current_buf: List[str] = []
 
         for line in generated_code_lines:
             stripped = line.strip()
@@ -466,7 +468,7 @@ class StreamFuzzTemplate(DefaultFuzzTemplate):
             node_lines[current_node] = current_buf
 
         # Rebuild the body with stream contexts and synchronization
-        new_lines: list[str] = []
+        new_lines: List[str] = []
 
         # Stream variable declarations at the top of the function body
         for sname in stream_names:
@@ -483,7 +485,7 @@ class StreamFuzzTemplate(DefaultFuzzTemplate):
             node = graph.nodes[nid]
 
             # Insert synchronization for cross-stream dependencies
-            waited: set[str] = set()
+            waited: Set[str] = set()
             for dep_id in node.input_nodes:
                 if dep_id in node_stream and node_stream[dep_id] != stream:
                     dep_stream = node_stream[dep_id]

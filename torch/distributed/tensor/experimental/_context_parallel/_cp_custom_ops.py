@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Tuple
 
 import torch
 import torch.distributed._functional_collectives as funcol
@@ -8,7 +10,7 @@ import torch.distributed.distributed_c10d as c10d
 @torch.library.custom_op("cplib::flex_cp_allgather", mutates_args=())
 def flex_cp_allgather(
     k: torch.Tensor, v: torch.Tensor, seq_dim: int, pg_name: c10d.GroupName
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     k = k.contiguous()
     v = v.contiguous()
     k = funcol.all_gather_tensor(k, seq_dim, pg_name)
@@ -23,7 +25,7 @@ def flex_cp_allgather(
 @flex_cp_allgather.register_fake
 def _(
     k: torch.Tensor, v: torch.Tensor, seq_dim: int, pg_name: c10d.GroupName
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     shape_k = list(k.shape)
     shape_v = list(v.shape)
     shape_k[seq_dim] *= c10d._get_group_size_by_name(pg_name)
@@ -39,7 +41,7 @@ def flex_cp_allgather_backward(
     grad_full_v: torch.Tensor,
     seq_dim: int,
     pg_name: c10d.GroupName,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     grad_k = funcol.reduce_scatter_tensor(grad_full_k, "sum", seq_dim, pg_name)
     if isinstance(grad_k, funcol.AsyncCollectiveTensor):
         grad_k = grad_k.wait()
@@ -56,7 +58,7 @@ def _(
     grad_full_v: torch.Tensor,
     seq_dim: int,
     pg_name: c10d.GroupName,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     shape_k = list(grad_full_k.shape)
     shape_v = list(grad_full_v.shape)
     shape_k[seq_dim] //= c10d._get_group_size_by_name(pg_name)
@@ -72,7 +74,7 @@ def _(
 
 def _flex_cp_allgather_backward(
     ctx: Any, grad_full_k: torch.Tensor, grad_full_v: torch.Tensor
-) -> tuple[torch.Tensor, torch.Tensor, None, None]:
+) -> Tuple[torch.Tensor, torch.Tensor, None, None]:
     grad_k, grad_v = flex_cp_allgather_backward(
         grad_full_k, grad_full_v, ctx.seq_dim, ctx.pg_name
     )

@@ -2,6 +2,7 @@
 # ruff: noqa: F841
 
 
+from __future__ import annotations
 import copy
 import itertools
 import operator

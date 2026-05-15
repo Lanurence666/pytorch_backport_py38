@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import dataclasses
-from collections.abc import Collection, Mapping
+
 from enum import auto, Enum
-from typing import TYPE_CHECKING
+from typing import Collection, Dict, List, Mapping, Optional, Set, TYPE_CHECKING, Type, Union
 
 from torch._library.fake_class_registry import FakeScriptObject
 from torch._library.opaque_object import get_opaque_type_name, is_opaque_type
@@ -58,24 +60,24 @@ class SymBoolArgument:
 class CustomObjArgument:
     name: str
     class_fqn: str
-    fake_val: FakeScriptObject | None = None
+    fake_val: Optional[FakeScriptObject]= None
 
 
 @dataclasses.dataclass
 class ConstantArgument:
     name: str
-    value: int | float | bool | str | None
+    value: Optional[Union[int, float, bool, str]]
 
 
-ArgumentSpec = (
-    TensorArgument
-    | SymIntArgument
-    | SymFloatArgument
-    | SymBoolArgument
-    | ConstantArgument
-    | CustomObjArgument
-    | TokenArgument
-)
+ArgumentSpec = Union[
+    TensorArgument,
+    SymIntArgument,
+    SymFloatArgument,
+    SymBoolArgument,
+    ConstantArgument,
+    CustomObjArgument,
+    TokenArgument,
+]
 
 
 class InputKind(Enum):
@@ -91,8 +93,8 @@ class InputKind(Enum):
 class InputSpec:
     kind: InputKind
     arg: ArgumentSpec
-    target: str | None
-    persistent: bool | None = None
+    target: Optional[str]
+    persistent: Optional[bool]= None
 
     def __post_init__(self):
         if self.kind == InputKind.BUFFER:
@@ -133,7 +135,7 @@ class OutputKind(Enum):
 class OutputSpec:
     kind: OutputKind
     arg: ArgumentSpec
-    target: str | None
+    target: Optional[str]
 
     def __post_init__(self):
         if not isinstance(
@@ -157,8 +159,8 @@ class OutputSpec:
 
 @dataclasses.dataclass
 class ExportBackwardSignature:
-    gradients_to_parameters: dict[str, str]
-    gradients_to_user_inputs: dict[str, str]
+    gradients_to_parameters: Dict[str, str]
+    gradients_to_user_inputs: Dict[str, str]
     loss_output: str
 
 
@@ -271,8 +273,8 @@ class ExportGraphSignature:
 
     """
 
-    input_specs: list[InputSpec]
-    output_specs: list[OutputSpec]
+    input_specs: List[InputSpec]
+    output_specs: List[OutputSpec]
 
     # A list of parameters uniquely identified by mangled fully qualified name
     @property
@@ -325,8 +327,8 @@ class ExportGraphSignature:
 
     # Graph node names of pytree-flattened inputs of original program
     @property
-    def user_inputs(self) -> Collection[int | float | bool | str | None]:
-        user_inputs: list[int | float | bool | str | None] = []
+    def user_inputs(self) -> Union[Collection[int, float, bool, str, None]]:
+        user_inputs: Union[List[int, float, bool, str, None]]= []
         for s in self.input_specs:
             if s.kind != InputKind.USER_INPUT:
                 continue
@@ -351,8 +353,8 @@ class ExportGraphSignature:
     # Graph node names of pytree-flattened outputs of original program
     # For joint-graph purposes, will include the loss output.
     @property
-    def user_outputs(self) -> Collection[int | float | bool | str | None]:
-        user_outputs: list[int | float | bool | str | None] = []
+    def user_outputs(self) -> Union[Collection[int, float, bool, str, None]]:
+        user_outputs: Union[List[int, float, bool, str, None]]= []
         for s in self.output_specs:
             if s.kind not in [
                 OutputKind.USER_OUTPUT,
@@ -451,10 +453,10 @@ class ExportGraphSignature:
         )
 
     @property
-    def backward_signature(self) -> ExportBackwardSignature | None:
+    def backward_signature(self) -> Optional[ExportBackwardSignature]:
         loss_output = None
-        gradients_to_parameters: dict[str, str] = {}
-        gradients_to_user_inputs: dict[str, str] = {}
+        gradients_to_parameters: Dict[str, str] = {}
+        gradients_to_user_inputs: Dict[str, str] = {}
         for spec in self.output_specs:
             if spec.kind == OutputKind.LOSS_OUTPUT:
                 if loss_output is not None:
@@ -498,7 +500,7 @@ class ExportGraphSignature:
     # name in output. The shape of output after aot_autograd will be like:
     # (updated_inputs, user_outputs, dep_token).
     @property
-    def assertion_dep_token(self) -> Mapping[int, str] | None:
+    def assertion_dep_token(self) -> Optional[Mapping[int, str]]:
         return None
 
     @property
@@ -635,7 +637,7 @@ def _make_argument_spec(node, token_names) -> ArgumentSpec:
 def _convert_to_export_graph_signature(
     graph_signature: "GraphSignature",
     gm: "torch.fx.GraphModule",
-    non_persistent_buffers: set[str],
+    non_persistent_buffers: Set[str],
 ) -> "ExportGraphSignature":
     from torch.utils import _pytree as pytree
 

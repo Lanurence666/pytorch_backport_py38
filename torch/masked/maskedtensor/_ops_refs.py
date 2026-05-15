@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
 
-from collections.abc import Callable
+from __future__ import annotations
+
+
 from functools import partial
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, TYPE_CHECKING, Type
 
 import torch
 
@@ -239,7 +241,7 @@ def _function_to_sparse_csr(func, *args, **kwargs):
     return _MaskedToSparseCsr.apply(args[0])
 
 
-_MASKEDTENSOR_DISPATCH_TABLE: dict["OpOverload", Callable[..., Any]] = {}
+_MASKEDTENSOR_DISPATCH_TABLE: Dict["OpOverload", Callable[..., Any]] = {}
 
 
 def register_dispatch_func(aten_ops):

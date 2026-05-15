@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Wrapper script to run the isolated hook version of lintrunner.
 
@@ -14,7 +15,6 @@ Usage:
 This module also provides shared functionality for lintrunner hash management.
 """
 
-from __future__ import annotations
 
 import hashlib
 import os

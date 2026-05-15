@@ -1,4 +1,5 @@
 # Owner(s): ["module: inductor"]
+from __future__ import annotations
 import re
 import unittest
 from functools import partial
@@ -375,10 +376,7 @@ class TestLookupTable(BaseLookupTableTest):
 
         lookup_table_data = {self.create_lookup_key("mm", kernel_inputs): [config]}
 
-        with (
-            patch.object(inductor_config.lookup_table, "table", lookup_table_data),
-            patch.object(inductor_config.lookup_table, "check_src_hash", True),
-        ):
+        with patch.object(inductor_config.lookup_table, "table", lookup_table_data), patch.object(inductor_config.lookup_table, "check_src_hash", True):
             test_choices = LookupTableChoices()
             result = test_choices.lookup_template_configs(
                 kernel_inputs, "mm", ["triton"], template_hash_map
@@ -407,14 +405,7 @@ class TestLookupTable(BaseLookupTableTest):
 
         lookup_table_data = {self.create_lookup_key("mm", kernel_inputs): [config]}
 
-        with (
-            patch.object(inductor_config.lookup_table, "table", lookup_table_data),
-            patch.object(
-                inductor_config.lookup_table,
-                "check_src_hash",
-                False,
-            ),
-        ):
+        with patch.object(inductor_config.lookup_table, "table", lookup_table_data), patch.object( inductor_config.lookup_table, "check_src_hash", False, ):
             test_choices = LookupTableChoices()
             result = test_choices.lookup_template_configs(
                 kernel_inputs, "mm", ["triton"], template_hash_map
@@ -446,10 +437,7 @@ class TestLookupTable(BaseLookupTableTest):
 
         lookup_table_data = {self.create_lookup_key("mm", kernel_inputs): config_list}
 
-        with (
-            patch.object(inductor_config.lookup_table, "table", lookup_table_data),
-            patch.object(inductor_config.lookup_table, "check_src_hash", True),
-        ):
+        with patch.object(inductor_config.lookup_table, "table", lookup_table_data), patch.object(inductor_config.lookup_table, "check_src_hash", True):
             test_choices = LookupTableChoices()
             result = test_choices.lookup_template_configs(
                 kernel_inputs, "mm", ["triton"], template_hash_map
@@ -497,10 +485,7 @@ class TestLookupTable(BaseLookupTableTest):
 
         lookup_table_data = {self.create_lookup_key("mm", kernel_inputs): [config]}
 
-        with (
-            patch.object(inductor_config.lookup_table, "table", lookup_table_data),
-            patch.object(inductor_config.lookup_table, "check_src_hash", False),
-        ):
+        with patch.object(inductor_config.lookup_table, "table", lookup_table_data), patch.object(inductor_config.lookup_table, "check_src_hash", False):
             test_choices = LookupTableChoices()
             result = test_choices.lookup_template_configs(
                 kernel_inputs, "mm", ["triton"], template_hash_map
@@ -715,7 +700,6 @@ class BaseE2ELookupTableTest(BaseLookupTableTest):
     """Base class for E2E lookup table tests"""
 
     def setUp(self):
-        super().setUp()
         torch._dynamo.reset()
         clear_preprocessing_fns()
         self.device = torch.device("cuda")

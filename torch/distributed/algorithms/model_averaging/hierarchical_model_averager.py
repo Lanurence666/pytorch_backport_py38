@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 # Copyright 2022 Cruise LLC
+from __future__ import annotations
+
 import logging
 import warnings
 from collections import OrderedDict
@@ -9,6 +11,7 @@ import torch
 import torch.distributed as dist
 import torch.distributed.algorithms.model_averaging.averagers as averagers
 import torch.distributed.algorithms.model_averaging.utils as utils
+from typing import Dict, Iterable, Union
 
 
 logger = logging.getLogger(__name__)
@@ -159,7 +162,7 @@ class HierarchicalModelAverager(averagers.ModelAverager):
 
     def average_parameters(
         self,
-        params: Iterable[torch.nn.Parameter] | Iterable[dict[str, torch.nn.Parameter]],
+        params: Union[Iterable[torch.nn.Parameter], Iterable[Dict[str, torch.nn.Parameter]],]
     ):
         """
         Averages parameters or parameter groups of an optimizer.

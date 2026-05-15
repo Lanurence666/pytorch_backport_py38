@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import torch
 
@@ -102,13 +102,13 @@ class DTypeWithConstraints:
       the quantization parameters don't match, then the QConfig will be ignored.
     """
 
-    dtype: torch.dtype | None = None
-    quant_min_lower_bound: int | float | None = None
-    quant_max_upper_bound: int | float | None = None
-    scale_min_lower_bound: int | float | None = None
-    scale_max_upper_bound: int | float | None = None
-    scale_exact_match: float | None = None
-    zero_point_exact_match: int | None = None
+    dtype: Optional[torch.dtype]= None
+    quant_min_lower_bound: Optional[Union[int, float]]= None
+    quant_max_upper_bound: Optional[Union[int, float]]= None
+    scale_min_lower_bound: Optional[Union[int, float]]= None
+    scale_max_upper_bound: Optional[Union[int, float]]= None
+    scale_exact_match: Optional[float]= None
+    zero_point_exact_match: Optional[int]= None
 
 
 @dataclass
@@ -185,16 +185,16 @@ scale_min_lower_bound=None, scale_max_upper_bound=None)
     input_dtype_with_constraints: DTypeWithConstraints
     output_dtype_with_constraints: DTypeWithConstraints
     weight_dtype_with_constraints: DTypeWithConstraints
-    bias_dtype: torch.dtype | None
-    is_dynamic: bool | None
+    bias_dtype: Optional[torch.dtype]
+    is_dynamic: Optional[bool]
 
     def __init__(
         self,
-        input_dtype: torch.dtype | DTypeWithConstraints | None = None,
-        output_dtype: torch.dtype | DTypeWithConstraints | None = None,
-        weight_dtype: torch.dtype | DTypeWithConstraints | None = None,
-        bias_dtype: torch.dtype | None = None,
-        is_dynamic: bool | None = None,
+        input_dtype: Optional[Union[torch.dtype, DTypeWithConstraints]]= None,
+        output_dtype: Optional[Union[torch.dtype, DTypeWithConstraints]]= None,
+        weight_dtype: Optional[Union[torch.dtype, DTypeWithConstraints]]= None,
+        bias_dtype: Optional[torch.dtype]= None,
+        is_dynamic: Optional[bool]= None,
     ):
         if isinstance(input_dtype, DTypeWithConstraints):
             self.input_dtype_with_constraints = input_dtype
@@ -219,19 +219,19 @@ scale_min_lower_bound=None, scale_max_upper_bound=None)
         self.is_dynamic = is_dynamic
 
     @property
-    def input_dtype(self) -> torch.dtype | None:
+    def input_dtype(self) -> Optional[torch.dtype]:
         return self.input_dtype_with_constraints.dtype
 
     @property
-    def output_dtype(self) -> torch.dtype | None:
+    def output_dtype(self) -> Optional[torch.dtype]:
         return self.output_dtype_with_constraints.dtype
 
     @property
-    def weight_dtype(self) -> torch.dtype | None:
+    def weight_dtype(self) -> Optional[torch.dtype]:
         return self.weight_dtype_with_constraints.dtype
 
     @classmethod
-    def from_dict(cls, dtype_config_dict: dict[str, Any]) -> DTypeConfig:
+    def from_dict(cls, dtype_config_dict: Dict[str, Any]) -> DTypeConfig:
         """
         Create a ``DTypeConfig`` from a dictionary with the following items (all optional):
             "input_dtype": torch.dtype or ``DTypeWithConstraints``
@@ -265,12 +265,12 @@ scale_min_lower_bound=None, scale_max_upper_bound=None)
         is_dynamic = dtype_config_dict.get(IS_DYNAMIC_DICT_KEY)
         return cls(input_dtype, output_dtype, weight_dtype, bias_dtype, is_dynamic)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         """
         Convert this ``DTypeConfig`` to a dictionary with the items described in
         :func:`~torch.ao.quantization.backend_config.DTypeConfig.from_dict`.
         """
-        dtype_config_dict: dict[str, Any] = {}
+        dtype_config_dict: Dict[str, Any] = {}
         if self.input_dtype is not None:
             dtype_config_dict[INPUT_DTYPE_DICT_KEY] = self.input_dtype_with_constraints
         if self.output_dtype is not None:
@@ -361,7 +361,7 @@ class BackendConfig:
         # Note: the key in this map uses the complex reversed tuple format.
         # This is intended only for internal use; users who wish to access
         # the original patterns should go through `self.configs` instead.
-        self._pattern_complex_format_to_config: dict[Pattern, BackendPatternConfig] = {}
+        self._pattern_complex_format_to_config: Dict[Pattern, BackendPatternConfig] = {}
 
     def __repr__(self):
         return f"BackendConfig({self.__dict__})"
@@ -386,7 +386,7 @@ class BackendConfig:
         return self
 
     def set_backend_pattern_configs(
-        self, configs: list[BackendPatternConfig]
+        self, configs: List[BackendPatternConfig]
     ) -> BackendConfig:
         """
         Set the configs for patterns that can be run on the target backend.
@@ -397,14 +397,14 @@ class BackendConfig:
         return self
 
     @property
-    def configs(self) -> list[BackendPatternConfig]:
+    def configs(self) -> List[BackendPatternConfig]:
         """
         Return a copy of the list of configs set in this `BackendConfig`.
         """
         return list(self._pattern_complex_format_to_config.values())
 
     @classmethod
-    def from_dict(cls, backend_config_dict: dict[str, Any]) -> BackendConfig:
+    def from_dict(cls, backend_config_dict: Dict[str, Any]) -> BackendConfig:
         """
         Create a ``BackendConfig`` from a dictionary with the following items:
 
@@ -425,7 +425,7 @@ class BackendConfig:
                 )
         return conf
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         """
         Convert this ``BackendConfig`` to a dictionary with the items described in
         :func:`~torch.ao.quantization.backend_config.BackendConfig.from_dict`.
@@ -442,22 +442,22 @@ class BackendPatternConfig:
     For a detailed example usage, see :class:`~torch.ao.quantization.backend_config.BackendConfig`.
     """
 
-    def __init__(self, pattern: Pattern | None = None):
-        self.pattern: Pattern | None = pattern
+    def __init__(self, pattern: Optional[Pattern] = None):
+        self.pattern: Optional[Pattern] = pattern
         self.observation_type = ObservationType.OUTPUT_USE_DIFFERENT_OBSERVER_AS_INPUT
-        self.dtype_configs: list[DTypeConfig] = []
-        self.root_module: type[torch.nn.Module] | None = None
-        self.qat_module: type[torch.nn.Module] | None = None
-        self.reference_quantized_module: type[torch.nn.Module] | None = None
-        self.fused_module: type[torch.nn.Module] | None = None
-        self.fuser_method: Callable | None = None
+        self.dtype_configs: List[DTypeConfig] = []
+        self.root_module: Optional[Type[torch.nn.Module]] = None
+        self.qat_module: Optional[Type[torch.nn.Module]] = None
+        self.reference_quantized_module: Optional[Type[torch.nn.Module]] = None
+        self.fused_module: Optional[Type[torch.nn.Module]] = None
+        self.fuser_method: Optional[Callable] = None
 
         # Temporary/internal configs
-        self._root_node_getter: Callable | None = None
-        self._extra_inputs_getter: Callable | None = None
-        self._num_tensor_args_to_observation_type: dict[int, ObservationType] = {}
-        self._input_type_to_index: dict[str, int] = {}
-        self._pattern_complex_format: Pattern | None = None
+        self._root_node_getter: Optional[Callable] = None
+        self._extra_inputs_getter: Optional[Callable] = None
+        self._num_tensor_args_to_observation_type: Dict[int, ObservationType] = {}
+        self._input_type_to_index: Dict[str, int] = {}
+        self._pattern_complex_format: Optional[Pattern] = None
 
     def __repr__(self):
         dict_nonempty = {
@@ -520,7 +520,7 @@ class BackendPatternConfig:
         return self
 
     def set_dtype_configs(
-        self, dtype_configs: list[DTypeConfig]
+        self, dtype_configs: List[DTypeConfig]
     ) -> BackendPatternConfig:
         """
         Set the supported data types passed as arguments to quantize ops in the
@@ -530,7 +530,7 @@ class BackendPatternConfig:
         return self
 
     def set_root_module(
-        self, root_module: type[torch.nn.Module]
+        self, root_module: Type[torch.nn.Module]
     ) -> BackendPatternConfig:
         """
         Set the module that represents the root for this pattern.
@@ -547,7 +547,7 @@ class BackendPatternConfig:
         self.root_module = root_module
         return self
 
-    def set_qat_module(self, qat_module: type[torch.nn.Module]) -> BackendPatternConfig:
+    def set_qat_module(self, qat_module: Type[torch.nn.Module]) -> BackendPatternConfig:
         """
         Set the module that represents the QAT implementation for this pattern.
         """
@@ -555,7 +555,7 @@ class BackendPatternConfig:
         return self
 
     def set_reference_quantized_module(
-        self, reference_quantized_module: type[torch.nn.Module]
+        self, reference_quantized_module: Type[torch.nn.Module]
     ) -> BackendPatternConfig:
         """
         Set the module that represents the reference quantized implementation for
@@ -567,7 +567,7 @@ class BackendPatternConfig:
         return self
 
     def set_fused_module(
-        self, fused_module: type[torch.nn.Module]
+        self, fused_module: Type[torch.nn.Module]
     ) -> BackendPatternConfig:
         """
         Set the module that represents the fused implementation for this pattern.
@@ -604,13 +604,13 @@ class BackendPatternConfig:
         return self
 
     def _set_num_tensor_args_to_observation_type(
-        self, num_tensor_args_to_observation_type: dict[int, ObservationType]
+        self, num_tensor_args_to_observation_type: Dict[int, ObservationType]
     ) -> BackendPatternConfig:
         self._num_tensor_args_to_observation_type = num_tensor_args_to_observation_type
         return self
 
     def _set_input_type_to_index(
-        self, input_type_to_index: dict[str, int]
+        self, input_type_to_index: Dict[str, int]
     ) -> BackendPatternConfig:
         self._input_type_to_index = input_type_to_index
         return self
@@ -631,7 +631,7 @@ class BackendPatternConfig:
 
     @classmethod
     def from_dict(
-        cls, backend_pattern_config_dict: dict[str, Any]
+        cls, backend_pattern_config_dict: Dict[str, Any]
     ) -> BackendPatternConfig:
         """
         Create a ``BackendPatternConfig`` from a dictionary with the following items:
@@ -705,12 +705,12 @@ class BackendPatternConfig:
             )
         return conf
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         """
         Convert this ``BackendPatternConfig`` to a dictionary with the items described in
         :func:`~torch.ao.quantization.backend_config.BackendPatternConfig.from_dict`.
         """
-        backend_pattern_config_dict: dict[str, Any] = {
+        backend_pattern_config_dict: Dict[str, Any] = {
             OBSERVATION_TYPE_DICT_KEY: self.observation_type,
             DTYPE_CONFIGS_DICT_KEY: [c.to_dict() for c in self.dtype_configs],
         }

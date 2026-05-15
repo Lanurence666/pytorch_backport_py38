@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import Dict, Mapping, Optional, Sequence, Set, TYPE_CHECKING, Union
 
 from torch.onnx._internal._lazy_import import onnx_ir as ir
 from torch.onnx._internal.exporter import _constants
@@ -65,7 +65,7 @@ def _all_values(model: ir.Model):
             yield from node.outputs
 
 
-def _replace_names(shape_expr: str, rename_mapping: dict[str, str]) -> str:
+def _replace_names(shape_expr: str, rename_mapping: Dict[str, str]) -> str:
     """Replace all known names in a shape expression with new names."""
     for old_name, new_name in rename_mapping.items():
         shape_expr = re.sub(
@@ -75,12 +75,12 @@ def _replace_names(shape_expr: str, rename_mapping: dict[str, str]) -> str:
 
 
 def rename_axis(
-    model: ir.Model, rename_mapping: dict[str | ir.SymbolicDim, str]
+    model: Union[ir.Model, rename_mapping: Dict[str, ir.SymbolicDim, str]]
 ) -> None:
     """Rename dynamic axes in a model according to the specified dynamic_axes names."""
 
     # Create a mapping from string to string for easier replacement
-    string_mapping: dict[str, str] = {}
+    string_mapping: Dict[str, str] = {}
     for key, value in tuple(rename_mapping.items()):
         if isinstance(key, ir.SymbolicDim):
             if isinstance(key.value, str):
@@ -131,7 +131,7 @@ def rename_axis(
 
 
 def _maybe_set_opset_version(
-    opset_imports: dict[str, int], domain: str, version: int | None
+    opset_imports: Optional[Dict[str, int], domain: str, version: int]
 ) -> None:
     """Set the opset version for the domain."""
     if domain in opset_imports and opset_imports[domain] != 1:

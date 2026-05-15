@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, Tuple
 
 import torch
 from torch import Tensor
@@ -23,7 +25,7 @@ class APoTFakeQuantize(FakeQuantizeBase):
 
     def calculate_qparams(  # type: ignore[override]
         self, signed: bool = False
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         return self.activation_post_process.calculate_qparams(signed=signed)
 
     def forward(self, X: torch.Tensor) -> Tensor:  # type: ignore[override]

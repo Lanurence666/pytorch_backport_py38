@@ -1,5 +1,6 @@
 # Owner(s): ["module: dynamo"]
 
+from __future__ import annotations
 import contextlib
 import copy
 import functools
@@ -987,17 +988,7 @@ from user code:
         old_cacheable = torch.ops.higher_order.cond._cacheable
         torch.ops.higher_order.cond._cacheable = True
         try:
-            with (
-                functorch_config.patch(
-                    enable_autograd_cache=True,
-                    force_non_lazy_backward_lowering=True,
-                    strict_autograd_cache=True,
-                ),
-                inductor_config.patch(
-                    fx_graph_cache=True,
-                    fx_graph_remote_cache=False,
-                ),
-            ):
+            with functorch_config.patch( enable_autograd_cache=True, force_non_lazy_backward_lowering=True, strict_autograd_cache=True, ), inductor_config.patch( fx_graph_cache=True, fx_graph_remote_cache=False, ):
                 compiled = torch.compile(model, backend="inductor", dynamic=True)
 
                 # Test both branches of the cond predicate (x.shape[0] < 32).
@@ -1600,10 +1591,7 @@ from user code:
             fake_mode = gm.meta["fake_mode"]
 
             # Pre-create a temp file path and remove delete=False since we control cleanup
-            with (
-                tempfile.NamedTemporaryFile(suffix=".pt") as f,
-                torch._functorch.config.patch(force_autograd_cache=True),
-            ):
+            with tempfile.NamedTemporaryFile(suffix=".pt") as f, torch._functorch.config.patch(force_autograd_cache=True):
                 serialization_path = f.name
 
                 with contextlib.ExitStack() as stack:

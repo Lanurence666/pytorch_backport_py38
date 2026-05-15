@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from collections.abc import Sequence
 
 import torch.fx as fx
+from typing import List, Sequence, Set
 
 
 __all__ = ["set_trace"]
@@ -19,7 +22,7 @@ def set_trace(gm: fx.GraphModule) -> fx.GraphModule:
         the `gm` with breakpoint inserted.
     """
 
-    def insert_pdb(body: Sequence[str]) -> list[str]:
+    def insert_pdb(body: Sequence[str]) -> List[str]:
         return ["import pdb; pdb.set_trace()\n", *body]
 
     with gm.graph.on_generate_code(

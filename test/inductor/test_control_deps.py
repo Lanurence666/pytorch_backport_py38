@@ -1,5 +1,6 @@
 # Owner(s): ["module: inductor"]
 
+from __future__ import annotations
 import torch
 from torch._inductor import config
 from torch._inductor.test_case import run_tests, TestCase as InductorTestCase

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import types
 
 import torch
@@ -7,6 +9,7 @@ from torch.export.pt2_archive._package import AOTI_FILES, package_pt2
 from torch.types import FileLike
 
 from ._lowered_aoti_module import LoweredBackendModule
+from typing import Tuple, Type
 
 
 def get_new_ep_with_flat_inputs_outputs(ep: ExportedProgram) -> ExportedProgram:
@@ -43,7 +46,7 @@ def get_new_ep_with_flat_inputs_outputs(ep: ExportedProgram) -> ExportedProgram:
 
 def lower_exported_program(
     exported_program: ExportedProgram, model_name: str, backend_id: str
-) -> tuple[ExportedProgram, AOTI_FILES]:
+) -> Tuple[ExportedProgram, AOTI_FILES]:
     """
     Lower an exported program to AOTInductor and return a delegate ExportedProgram
     with the `executorch_call_delegate` HOP

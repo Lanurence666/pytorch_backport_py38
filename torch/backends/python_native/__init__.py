@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 User-facing API for controlling DSL operation overrides.
 
@@ -36,6 +38,7 @@ import types
 from contextlib import contextmanager
 
 from torch.backends import ContextProp, flags_frozen, PropModule
+from typing import List
 
 
 @contextmanager
@@ -190,27 +193,27 @@ class PythonNativeModule(PropModule):
         super().__init__(original_module, original_module.__name__)
 
     @property
-    def available_dsls(self) -> list[str]:
+    def available_dsls(self) -> List[str]:
         """Get list of available DSLs."""
         registry = _get_dsl_registry()
         result = registry.list_available_dsls()
         return list(result) if not isinstance(result, list) else result
 
     @property
-    def all_dsls(self) -> list[str]:
+    def all_dsls(self) -> List[str]:
         """Get list of all registered DSLs."""
         registry = _get_dsl_registry()
         result = registry.list_all_dsls()
         return list(result) if not isinstance(result, list) else result
 
-    def get_dsl_operations(self, dsl_name: str) -> list[str]:
+    def get_dsl_operations(self, dsl_name: str) -> List[str]:
         """Get list of operations registered by a specific DSL.
 
         Args:
             dsl_name (str): Name of the DSL to query (e.g., 'triton', 'cutedsl').
 
         Returns:
-            list[str]: Sorted list of operation names registered by the DSL.
+            List[str]: Sorted list of operation names registered by the DSL.
 
         Example::
 

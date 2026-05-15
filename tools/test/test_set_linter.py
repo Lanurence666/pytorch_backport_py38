@@ -1,6 +1,7 @@
 # mypy: ignore-errors
 from __future__ import annotations
 
+from typing import Dict, Tuple
 import sys
 from pathlib import Path
 from token import NAME
@@ -45,7 +46,7 @@ class TestSetLinter(LinterTestCase):
                 self.assertEqual(r.name, "Suggested fixes for set_linter")
 
     def test_bracket_pairs(self) -> None:
-        TESTS: tuple[tuple[str, dict[int, int]], ...] = (
+        TESTS: Tuple[Tuple[str, Dict[int, int]], ...] = (
             ("", {}),
             ("{}", {0: 1}),
             ("{1}", {0: 2}),
@@ -68,7 +69,7 @@ class TestSetLinter(LinterTestCase):
             self.assertEqual(actual, expected)
 
     def test_match_braced_sets(self) -> None:
-        TESTS: tuple[tuple[str, int], ...] = (
+        TESTS: Tuple[Tuple[str, int], ...] = (
             ("{cast(int, inst.offset): inst for inst in instructions}", 0),
             ("", 0),
             ("{}", 0),

@@ -1,5 +1,6 @@
 # Owner(s): ["module: inductor"]
 # This test requires libaoti_custom_ops.so to be built, which happens when BUILD_TEST = 1
+from __future__ import annotations
 import logging
 import os
 import sys
@@ -20,6 +21,7 @@ from torch.testing._internal.common_utils import (
     IS_MACOS,
     IS_SANDCASTLE,
     IS_WINDOWS,
+    skipIfXpu,
 )
 from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU_AND_TRITON
 from torch.testing._internal.logging_utils import LoggingTestCase, make_logging_test
@@ -121,7 +123,7 @@ def _(x, dtype):
 
 # Custom ops to test MemoryFormat and Layout argument serialization
 # Using lower-level torch.library API since custom_op decorator doesn't support these types
-_memory_format_test_lib = torch.library.Library("aoti_custom_ops", "FRAGMENT")  # noqa: SCOPED_LIBRARY
+_memory_format_test_lib = torch.library.Library("aoti_custom_ops", "FRAGMENT")  # noqa: TOR901
 _memory_format_test_lib.define(
     "fn_with_memory_format_arg(Tensor x, MemoryFormat memory_format) -> Tensor"
 )
@@ -147,7 +149,7 @@ def fn_with_memory_format_arg_abstract(x, memory_format):
     return x.contiguous(memory_format=memory_format)
 
 
-_layout_test_lib = torch.library.Library("aoti_custom_ops", "FRAGMENT")  # noqa: SCOPED_LIBRARY
+_layout_test_lib = torch.library.Library("aoti_custom_ops", "FRAGMENT")  # noqa: TOR901
 _layout_test_lib.define("fn_with_layout_arg(Tensor x, Layout layout) -> Tensor")
 
 
@@ -504,6 +506,7 @@ class AOTInductorTestsTemplate:
         args = (torch.randn(4, 4, device=self.device),)
         self.check_model(m, args)
 
+    @skipIfXpu(msg="compile error - torch-xpu-ops: 2609")
     @unittest.skipIf(IS_FBCODE, "unable to find library -laoti_custom_ops")
     def test_custom_op_square(self) -> None:
         class Model(torch.nn.Module):
@@ -512,34 +515,7 @@ class AOTInductorTestsTemplate:
 
         m = Model().to(device=self.device)
         args = (torch.randn(2, 3, device=self.device),)
-        with (
-            config.patch(
-                "aot_inductor.custom_ops_to_c_shims",
-                {
-                    torch.ops.aoti_custom_ops.fn_square.default: [
-                        """
-                AOTITorchError
-                aoti_torch_cpu_fn_square(
-                    AtenTensorHandle input,
-                    AtenTensorHandle* ret)""",
-                        """
-                AOTITorchError
-                aoti_torch_cuda_fn_square(
-                    AtenTensorHandle input,
-                    AtenTensorHandle* ret)""",
-                        """
-                AOTITorchError
-                aoti_torch_xpu_fn_square(
-                    AtenTensorHandle input,
-                    AtenTensorHandle* ret)""",
-                    ],
-                },
-            ),
-            config.patch(
-                "aot_inductor.custom_op_libs",
-                ["aoti_custom_ops"],
-            ),
-        ):
+        with config.patch( "aot_inductor.custom_ops_to_c_shims", { torch.ops.aoti_custom_ops.fn_square.default: [ """ AOTITorchError aoti_torch_cpu_fn_square( AtenTensorHandle input, AtenTensorHandle* ret)""", """ AOTITorchError aoti_torch_cuda_fn_square( AtenTensorHandle input, AtenTensorHandle* ret)""", ], }, ), config.patch( "aot_inductor.custom_op_libs", ["aoti_custom_ops"], ):
             self.check_model(m, args)
 
 

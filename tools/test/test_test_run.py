@@ -1,3 +1,4 @@
+from typing import Union
 import sys
 import unittest
 from pathlib import Path
@@ -18,8 +19,8 @@ class TestTestRun(unittest.TestCase):
         run1 = TestRun("foo")
         run2 = TestRun("foo::bar")
 
-        self.assertEqual(run1 | run2, run1)
-        self.assertEqual(run2 | run1, run1)
+        self.assertEqual(Union[run1, run2], run1)
+        self.assertEqual(Union[run2, run1], run1)
 
     def test_union_with_inclusions(self) -> None:
         run1 = TestRun("foo::bar")
@@ -27,8 +28,8 @@ class TestTestRun(unittest.TestCase):
 
         expected = TestRun("foo", included=["bar", "baz"])
 
-        self.assertEqual(run1 | run2, expected)
-        self.assertEqual(run2 | run1, expected)
+        self.assertEqual(Union[run1, run2], expected)
+        self.assertEqual(Union[run2, run1], expected)
 
     def test_union_with_non_overlapping_exclusions(self) -> None:
         run1 = TestRun("foo", excluded=["bar"])
@@ -36,8 +37,8 @@ class TestTestRun(unittest.TestCase):
 
         expected = TestRun("foo")
 
-        self.assertEqual(run1 | run2, expected)
-        self.assertEqual(run2 | run1, expected)
+        self.assertEqual(Union[run1, run2], expected)
+        self.assertEqual(Union[run2, run1], expected)
 
     def test_union_with_overlapping_exclusions(self) -> None:
         run1 = TestRun("foo", excluded=["bar", "car"])
@@ -45,8 +46,8 @@ class TestTestRun(unittest.TestCase):
 
         expected = TestRun("foo", excluded=["bar"])
 
-        self.assertEqual(run1 | run2, expected)
-        self.assertEqual(run2 | run1, expected)
+        self.assertEqual(Union[run1, run2], expected)
+        self.assertEqual(Union[run2, run1], expected)
 
     def test_union_with_mixed_inclusion_exclusions(self) -> None:
         run1 = TestRun("foo", excluded=["baz", "car"])
@@ -54,22 +55,22 @@ class TestTestRun(unittest.TestCase):
 
         expected = TestRun("foo", excluded=["car"])
 
-        self.assertEqual(run1 | run2, expected)
-        self.assertEqual(run2 | run1, expected)
+        self.assertEqual(Union[run1, run2], expected)
+        self.assertEqual(Union[run2, run1], expected)
 
     def test_union_with_mixed_files_fails(self) -> None:
         run1 = TestRun("foo")
         run2 = TestRun("bar")
 
         with self.assertRaises(AssertionError):
-            run1 | run2
+            Union[run1, run2]
 
     def test_union_with_empty_file_yields_orig_file(self) -> None:
         run1 = TestRun("foo")
         run2 = TestRun.empty()
 
-        self.assertEqual(run1 | run2, run1)
-        self.assertEqual(run2 | run1, run1)
+        self.assertEqual(Union[run1, run2], run1)
+        self.assertEqual(Union[run2, run1], run1)
 
     def test_subtracting_full_run_fails(self) -> None:
         run1 = TestRun("foo::bar")

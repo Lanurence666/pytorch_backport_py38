@@ -1,6 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import contextlib
 import itertools
 import math
@@ -893,15 +894,7 @@ class TestViewOps(DTensorContinuousTestBase):
                         RuntimeError,
                         "is not evenly divisible by mesh dimension",
                     )
-                with (
-                    self.subTest(
-                        dims=tensor_dims,
-                        shard=shard_dim,
-                        mesh_dim=shard_mesh_dim,
-                        flat=(flatten_start, flatten_end),
-                    ),
-                    ctx,
-                ):
+                with self.subTest( dims=tensor_dims, shard=shard_dim, mesh_dim=shard_mesh_dim, flat=(flatten_start, flatten_end), ), ctx:
                     self._test_dtensor_flatten_single_shard(
                         tensor_dims,
                         flatten_start,
@@ -950,14 +943,7 @@ class TestViewOps(DTensorContinuousTestBase):
                                 RuntimeError,
                                 "is not evenly divisible by mesh dimension",
                             )
-                        with (
-                            self.subTest(
-                                dims=tensor_dims,
-                                shard0=shard_dim0,
-                                shard1=shard_dim1,
-                            ),
-                            ctx,
-                        ):
+                        with self.subTest( dims=tensor_dims, shard0=shard_dim0, shard1=shard_dim1, ), ctx:
                             self._test_dtensor_flatten_2d_ss(
                                 tensor_dims,
                                 flatten_start,
@@ -1393,14 +1379,7 @@ class TestViewOps(DTensorContinuousTestBase):
                                     RuntimeError,
                                     "is not evenly divisible by mesh dimension",
                                 )
-                            with (
-                                self.subTest(
-                                    dims=tensor_dims_unflatten,
-                                    shard=shard_dim,
-                                    flat=(flatten_start, flatten_end),
-                                ),
-                                ctx,
-                            ):
+                            with self.subTest( dims=tensor_dims_unflatten, shard=shard_dim, flat=(flatten_start, flatten_end), ), ctx:
                                 self._test_dtensor_unflatten_1d_shard(
                                     tensor_dims_unflatten,
                                     local_tensor_dims_unflatten,

@@ -1,4 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+from typing import Union
+
+
 import functools
 from collections import deque
 
@@ -26,6 +30,7 @@ from ..pattern_matcher import (
 )
 from ..select_algorithm import (
     autotune_select_algorithm,
+    ExternKernelChoice,
     SymbolicGridFn,
     TritonTemplate,
     TritonTemplateCaller,
@@ -219,8 +224,8 @@ def load_ratio_left(
     M, N, O, P are matrix sizes
     m, n, o, p are block sizes
     |       | baseline (lower bound)        | b2bgemm
-    | load  | M * N + N * O + M * O + O * P | M / m * P / p * O / o * (o * p + N / n * (m * n + n * o))
-    | store | M * O + M * P                 | M * P
+    | Union[load, M] * N + N * O + M * O + O * Union[P, M] / m * P / p * O / o * (o * p + N / n * (m * n + n * o))
+    | Union[store, M] * O + M * Union[P, M] * P
     b2bgemm is always better on stores, but for loads we need to find out beneficial cases using this function
     """
     base = M * N + N * O + M * O + O * P
@@ -241,8 +246,8 @@ def load_ratio_right(
     M, N, O, P are matrix sizes
     m, n, o, p are block sizes
     |       | baseline (lower bound)        | b2bgemm
-    | load  | N * O + O * P + M * N + N * P | M / m * P / p * N / n * (m * n + O / o * (n * o + o * p))
-    | store | N * P + M * P                 | M * P
+    | Union[load, N] * O + O * P + M * N + N * Union[P, M] / m * P / p * N / n * (m * n + O / o * (n * o + o * p))
+    | Union[store, N] * P + M * Union[P, M] * P
     b2bgemm is always better on stores, but for loads we need to find out beneficial cases using this function
     """
     base = N * O + O * P + M * N + N * P
@@ -429,48 +434,30 @@ def is_b2b_gemm_good_on(
     )  # even if average_ratio is close to 1, the number of stores is always better
 
 
-def _make_unoptimized_b2b_gemm_choice(
+def unoptimized_b2b_gemm(
     is_left_assoc: bool,
     subgraph: Subgraph,
-    input_nodes: list[TensorBox],
-    layout: FixedLayout,
-):  # -> SubgraphChoiceCaller (local import)
-    from ..codegen.subgraph import SubgraphChoiceCaller
+    A: torch.Tensor,
+    B: torch.Tensor,
+    C: torch.Tensor,
+    *,
+    out: torch.Tensor,
+) -> torch.Tensor:
+    """
+    The unoptimized version is used as a fallback when the b2b_gemm kernel is not beneficial.
+    """
+    if is_left_assoc:
+        torch.mm(subgraph.graph_module(torch.mm(A, B)), C, out=out)
+    else:
+        torch.mm(A, subgraph.graph_module(torch.mm(B, C)), out=out)
+    return out
 
-    tag = "left" if is_left_assoc else "right"
-    epilogue = subgraph.graph_module
 
-    def make_fx_graph(*args: torch.Tensor) -> torch.fx.GraphModule:
-        from torch.fx.experimental.proxy_tensor import make_fx
-
-        from ..decomposition import select_decomp_table
-
-        A, B, C = args
-
-        def computation(A, B, C):
-            if is_left_assoc:
-                return torch.mm(epilogue(torch.mm(A, B)), C)
-            else:
-                return torch.mm(A, epilogue(torch.mm(B, C)))
-
-        return make_fx(
-            computation,
-            decomposition_table=select_decomp_table(),
-            tracing_mode="symbolic",
-        )(A, B, C)
-
-    return SubgraphChoiceCaller(
-        name=f"unoptimized_b2b_gemm_{tag}",
-        # pyrefly: ignore [bad-argument-type]
-        input_nodes=input_nodes,
-        layout=layout,
-        description=f"unoptimized b2b_gemm ({tag}-associative)",
-        make_fx_graph=make_fx_graph,
-    )
+unoptimized_choice = ExternKernelChoice(unoptimized_b2b_gemm)
 
 
 def build_subgraph_buffer(
-    args: list[TensorBox],
+    args: List[TensorBox],
     subgraph: Subgraph,
 ):
     """
@@ -562,7 +549,7 @@ def tuned_b2b_gemm(
         placeholders,  # type: ignore[arg-type, list-item]
         subgraph,
     )
-    choices: list[TritonTemplateCaller] = []
+    choices: List[TritonTemplateCaller] = []
     for config in b2b_gemm_configs:
         if is_left_assoc:
             b2b_gemm_left_template.maybe_append_choice(
@@ -582,7 +569,9 @@ def tuned_b2b_gemm(
             )
     # add the unoptimized choice to mitigate performance degradation
     choices.append(
-        _make_unoptimized_b2b_gemm_choice(is_left_assoc, subgraph, [A, B, C], layout)
+        unoptimized_choice.bind(
+            (A, B, C), layout, is_left_assoc=is_left_assoc, subgraph=subgraph
+        )
     )
     # autotune
     node, _ = autotune_select_algorithm("b2b_gemm", choices, [A, B, C], layout)
@@ -596,7 +585,7 @@ def tuned_b2b_gemm(
     pass_dict=B2B_GEMM_PASS,
 )
 def b2b_gemm_handler(match: Match, mat1: torch.fx.Node, mat2: torch.fx.Node) -> None:
-    # match.args: list[torch.fx.Node]
+    # match.args: List[torch.fx.Node]
 
     def is_pointwise_node(node: torch.fx.Node) -> bool:
         return (
@@ -637,7 +626,7 @@ def b2b_gemm_handler(match: Match, mat1: torch.fx.Node, mat2: torch.fx.Node) -> 
     def all_reach_via_pointwise_with_no_other_inputs(
         src: torch.fx.Node,
         dst: torch.fx.Node,
-    ) -> tuple[bool, OrderedSet[torch.fx.Node]]:
+    ) -> Tuple[bool, OrderedSet[torch.fx.Node]]:
         """
         check whether every user path from src reaches dst via pointwise nodes,
         with no other input nodes for the intermediates and dst;
@@ -646,7 +635,7 @@ def b2b_gemm_handler(match: Match, mat1: torch.fx.Node, mat2: torch.fx.Node) -> 
         (2) the subgraph node set including src and dst (which only makes sense when the Boolean value is True)
         """
         visited = OrderedSet[torch.fx.Node]()
-        input_counter: dict[torch.fx.Node, int] = {}
+        input_counter: Dict[torch.fx.Node, int] = {}
 
         all_reachable = True
         queue = deque([src])
@@ -695,11 +684,11 @@ def b2b_gemm_handler(match: Match, mat1: torch.fx.Node, mat2: torch.fx.Node) -> 
         raise AssertionError("graph.owning_module must not be None")
 
     # construct the new (sub)graph
-    subgraph_node_list: list[
+    subgraph_node_list: List[
         torch.fx.Node
     ] = []  # ordered list of nodes used for node removal later
     new_graph: torch.fx.Graph = torch.fx.Graph()
-    node_remapping: dict[torch.fx.Node, torch.fx.Node] = {}
+    node_remapping: Dict[torch.fx.Node, torch.fx.Node] = {}
     new_input_anchor: torch.fx.Node  # inner_mm, to be changed to an input node
     new_output_anchor: torch.fx.Node  # f_node, to be used to construct an output node
     new_input_node: torch.fx.Node

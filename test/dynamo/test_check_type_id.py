@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: dynamo"]
 """
 Test for TYPE_MATCH guard and ___check_type_id function.

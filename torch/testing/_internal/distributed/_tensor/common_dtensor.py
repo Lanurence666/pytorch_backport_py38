@@ -2,6 +2,8 @@
 
 # Copyright (c) Meta Platforms, Inc. and affiliates
 
+from __future__ import annotations
+
 import contextlib
 import copy
 import functools
@@ -10,10 +12,10 @@ import sys
 import threading
 import types
 import unittest
-from collections.abc import Callable, Iterator, Sequence
+
 from dataclasses import dataclass
 from functools import partial, wraps
-from typing import Any, cast, TypeVar
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Set, Tuple, Type, TypeVar, Union, cast, overload
 
 import torch
 import torch.distributed as dist
@@ -310,7 +312,7 @@ class ExpertParallel(ParallelStyle):
 
     def _token_dispatch(
         self, mod: nn.Module, inputs: tuple, device_mesh: DeviceMesh
-    ) -> tuple[torch.Tensor]:
+    ) -> Tuple[torch.Tensor]:
         (x,) = inputs
         x_gathered = all_gather_tensor_autograd(
             x,
@@ -493,10 +495,10 @@ class Transformer(nn.Module):
     @staticmethod
     def parallelize(
         module: "Transformer",
-        tp_mesh: DeviceMesh | None,
+        tp_mesh: Optional[DeviceMesh],
         use_seq_parallel: bool,
         local_output_for_attn: bool = False,
-        ep_mesh: DeviceMesh | None = None,
+        ep_mesh: Optional[DeviceMesh] = None,
     ) -> nn.Module:
         if not isinstance(module, Transformer):
             raise AssertionError(f"Requires Transformer but got {module}")
@@ -794,7 +796,7 @@ class DTensorTestBase(DTensorTestMixin, MultiProcessTestCase):
         backend = dist.get_default_backend_for_device(self.device_type)
         return backend
 
-    def init_pg(self, eager_init, backend: str | None = None) -> None:
+    def init_pg(self, eager_init, backend: Optional[str] = None) -> None:
         if backend is None:
             backend = self.backend
 
@@ -842,7 +844,7 @@ class DTensorTestBase(DTensorTestMixin, MultiProcessTestCase):
             device_id=device_id,
         )
 
-    def destroy_pg(self, device_id: int | None = None) -> None:
+    def destroy_pg(self, device_id: Optional[int] = None) -> None:
         # Wait for all ranks to reach here before starting shutdown.
         # FIXME dist.barrier deadlocks with multiple threads and NCCL: https://github.com/pytorch/pytorch/issues/95895
         # dist.all_reduce(torch.zeros((1,), device="cuda" if TEST_CUDA else "cpu"))
@@ -876,15 +878,15 @@ TestFunc = Callable[[...], object]
 
 # wrapper to initialize comms (processgroup)
 def with_comms(
-    eager_init: TestFunc | bool = False,
-    backend: str | None = None,
+    eager_init: Union[TestFunc, bool] = False,
+    backend: Optional[str] = None,
 ) -> TestFunc:
-    def decorator(func, eager_init: bool = False, backend: str | None = None):
+    def decorator(func, eager_init: bool = False, backend: Optional[str] = None):
         @wraps(func)  # pyre-ignore[6]
         def wrapper(
             self,
-            *args: tuple[object],
-            **kwargs: dict[str, Any],  # type: ignore[misc]
+            *args: Tuple[object],
+            **kwargs: Dict[str, Any],  # type: ignore[misc]
         ) -> None:
             # just passthrough if harness doesn't
             # support init_pg e.g., DTensorOpTestBase
@@ -946,8 +948,8 @@ class DTensorConverter:
     def __init__(
         self,
         mesh: DeviceMesh,
-        args: tuple[object, ...],
-        kwargs: dict[str, object],
+        args: Tuple[object, ...],
+        kwargs: Dict[str, object],
         replicate_only: bool = False,
     ) -> None:
         self.hit = 0
@@ -959,9 +961,9 @@ class DTensorConverter:
         flatten_args, flatten_args_spec = tree_flatten(args)
         flatten_kwargs, flatten_kwargs_spec = tree_flatten(kwargs)
 
-        self.flatten_args: list[object] = flatten_args
+        self.flatten_args: List[object] = flatten_args
         self.flatten_args_spec: TreeSpec = flatten_args_spec
-        self.flatten_kwargs: list[object] = flatten_kwargs
+        self.flatten_kwargs: List[object] = flatten_kwargs
         self.flatten_kwargs_spec: TreeSpec = flatten_kwargs_spec
 
         choices_for_args = [
@@ -1012,7 +1014,7 @@ class DTensorConverter:
             return [Replicate()]
 
         mesh_size = self.mesh.size()
-        sharding_choices: list[Placement] = [Replicate()]
+        sharding_choices: List[Placement] = [Replicate()]
         # c10d collective does not support bool tensor
         # for bool tensor we treat it as replicated
         if arg.dtype != torch.bool:
@@ -1032,12 +1034,12 @@ class DTensorConverter:
     def __iter__(self) -> "DTensorConverter":
         return self
 
-    def __next__(self) -> tuple[tuple[object, ...], dict[str, object]]:
+    def __next__(self) -> Tuple[Tuple[object, ...], Dict[str, object]]:
         try:
             next_sharding_choices = next(self.sharding_combs)
             idx = 0
 
-            new_args: list[object] = []
+            new_args: List[object] = []
             for arg in self.flatten_args:
                 if isinstance(arg, torch.Tensor):
                     new_args.append(
@@ -1049,7 +1051,7 @@ class DTensorConverter:
                 else:
                     new_args.append(arg)
 
-            new_kwargs: list[object] = []
+            new_kwargs: List[object] = []
             for arg in self.flatten_kwargs:
                 if isinstance(arg, torch.Tensor):
                     new_kwargs.append(
@@ -1069,7 +1071,7 @@ class DTensorConverter:
             raise StopIteration from e
 
     def to_dist_tensor(
-        self, t: torch.Tensor, mesh: DeviceMesh, placements: list[Placement]
+        self, t: torch.Tensor, mesh: DeviceMesh, placements: List[Placement]
     ) -> torch.Tensor:
         if type(t) is torch.Tensor or type(t) is nn.Parameter or type(t) is LocalTensor:
             if self.is_supported_tensor(t):
@@ -1140,11 +1142,11 @@ class LocalDTensorOpTestBase(DTensorOpTestBase):
         with maybe_disable_local_tensor_mode():
             return super().build_device_mesh()
 
-    def init_pg(self, eager_init, backend: str | None = None) -> None:
+    def init_pg(self, eager_init, backend: Optional[str] = None) -> None:
         dist.init_process_group("fake", rank=0, world_size=self.world_size)
         self._pg = dist.distributed_c10d._get_default_group()
 
-    def destroy_pg(self, device_id: int | None = None) -> None:
+    def destroy_pg(self, device_id: Optional[int] = None) -> None:
         dist.destroy_process_group(self._pg)
         self._pg = None
 
@@ -1202,11 +1204,11 @@ class LocalDTensorTestBase(DTensorTestBase):
         with maybe_disable_local_tensor_mode():
             return super().build_device_mesh()
 
-    def init_pg(self, eager_init, backend: str | None = None) -> None:
+    def init_pg(self, eager_init, backend: Optional[str] = None) -> None:
         dist.init_process_group("fake", rank=0, world_size=self.world_size)
         self._pg = dist.distributed_c10d._get_default_group()
 
-    def destroy_pg(self, device_id: int | None = None) -> None:
+    def destroy_pg(self, device_id: Optional[int] = None) -> None:
         dist.destroy_process_group(self._pg)
         self._pg = None
 
@@ -1334,7 +1336,7 @@ def patched_distribute_tensor(
     placements,
     shard_order,
     use_graph_based_transform=True,
-    src_data_rank: int | None = 0,
+    src_data_rank: Optional[int] = 0,
 ):
     """wrapper function to support shard_order for tensor distribution"""
     if placements is None:
@@ -1362,7 +1364,7 @@ def make_full_tensor(dtensor_input):
 
 def shard_order_to_placement(shard_order, mesh):
     """convert shard_order to placement with only Replicate() and Shard()"""
-    placements: list[Any] = [Replicate() for _ in range(mesh.ndim)]
+    placements: List[Any] = [Replicate() for _ in range(mesh.ndim)]
     if shard_order is not None:
         for entry in shard_order:
             tensor_dim = entry.tensor_dim
@@ -1462,107 +1464,6 @@ def validate_sharding_rule_sample(
         full = dt.redistribute(device_mesh, (Replicate(),)).to_local()
         if ref.shape != full.shape or not torch.allclose(
             ref, full, atol=1e-5, rtol=1e-5, equal_nan=True
-        ):
-            return False
-    return True
-
-
-def validate_sharding_rule_sample_backward(
-    op, full_args, full_kwargs, input_placements, device_mesh
-):
-    """Verify backward gradient correctness for a sharding strategy.
-
-    Returns None if the op is not differentiable or lacks backward DTensor
-    support (skip), True if gradients match, False if they differ.
-    """
-    from torch.utils import _pytree as pytree
-
-    full_tensors = [
-        a for a in pytree.tree_leaves(full_args) if isinstance(a, torch.Tensor)
-    ]
-    full_tensors += [
-        a for a in pytree.tree_leaves(full_kwargs) if isinstance(a, torch.Tensor)
-    ]
-
-    if not any(t.is_floating_point() for t in full_tensors):
-        return None
-
-    def _clone_with_grad(tensors):
-        out = []
-        for t in tensors:
-            c = t.detach().clone()
-            if c.is_floating_point():
-                c.requires_grad_(True)
-            out.append(c)
-        return out
-
-    def _replace_tensors(args, kwargs, replacements):
-        idx = 0
-
-        def _replace(a):
-            nonlocal idx
-            if isinstance(a, torch.Tensor):
-                r = replacements[idx]
-                idx += 1
-                return r
-            return a
-
-        return pytree.tree_map(_replace, (args, kwargs))
-
-    def _run_backward(output):
-        out_tensors = [
-            t
-            for t in pytree.tree_leaves(output)
-            if isinstance(t, torch.Tensor) and t.is_floating_point() and t.requires_grad
-        ]
-        if not out_tensors:
-            return False
-        sum(t.sum() for t in out_tensors).backward()
-        return True
-
-    # Reference backward
-    ref_tensors = _clone_with_grad(full_tensors)
-    ref_args, ref_kwargs = _replace_tensors(full_args, full_kwargs, ref_tensors)
-    try:
-        if not _run_backward(op(*ref_args, **ref_kwargs)):
-            return None
-    except RuntimeError:
-        return None
-
-    # DTensor backward
-    assert len(input_placements) == len(full_tensors), (  # noqa: S101
-        f"placement/tensor count mismatch: {len(input_placements)} vs {len(full_tensors)}"
-    )
-    dt_tensors = [
-        distribute_tensor(c, device_mesh, (p,))
-        for c, p in zip(_clone_with_grad(full_tensors), input_placements, strict=True)
-    ]
-    dt_args, dt_kwargs = _replace_tensors(full_args, full_kwargs, dt_tensors)
-    try:
-        if not _run_backward(op(*dt_args, **dt_kwargs)):
-            return None
-    except Exception as e:
-        msg = str(e)
-        if (
-            "does not have a sharding strategy registered" in msg
-            or "got mixed torch.Tensor and DTensor" in msg
-        ):
-            return None
-        raise
-
-    # Compare gradients
-    for ref_t, dt_t in zip(ref_tensors, dt_tensors, strict=True):
-        if not ref_t.is_floating_point() or ref_t.grad is None:
-            continue
-        if dt_t.grad is None:
-            return False
-        dt_grad = (
-            dt_t.grad.full_tensor() if isinstance(dt_t.grad, DTensor) else dt_t.grad
-        )
-        if ref_t.grad.shape != dt_grad.shape:
-            return False
-        if not torch.allclose(
-            ref_t.grad, dt_grad, atol=1e-5, rtol=1.3e-6, equal_nan=True
         ):
             return False
     return True

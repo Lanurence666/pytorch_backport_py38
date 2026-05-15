@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import warnings
 import weakref
 from collections.abc import Callable
@@ -10,6 +12,7 @@ from torch.nn.modules.module import (
     register_module_forward_pre_hook,
 )
 from torch.utils._pytree import tree_flatten
+from typing import Callable, Dict, List, Optional, Set
 
 
 __all__ = ["ModTracker"]
@@ -49,7 +52,7 @@ class ModTracker:
 
     """
 
-    parents: set[str]
+    parents: Set[str]
     """
     A Set containing the fqn for each module currently running their forward
     """
@@ -60,7 +63,7 @@ class ModTracker:
         self._known_modules: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
         self._seen_modules: weakref.WeakSet = weakref.WeakSet()
         self._has_callback = False
-        self._post_bw_callbacks_to_enqueue: list[Callable] = []
+        self._post_bw_callbacks_to_enqueue: List[Callable] = []
         self._user_pre_fw_hook = None
         self._user_post_fw_hook = None
         self._user_pre_bw_hook = None
@@ -97,10 +100,10 @@ class ModTracker:
 
     def register_user_hooks(
         self,
-        pre_fw_hook: Callable | None = None,
-        post_fw_hook: Callable | None = None,
-        pre_bw_hook: Callable | None = None,
-        post_bw_hook: Callable | None = None,
+        pre_fw_hook: Optional[Callable]= None,
+        post_fw_hook: Optional[Callable]= None,
+        pre_bw_hook: Optional[Callable]= None,
+        post_bw_hook: Optional[Callable]= None,
     ):
         """
         Registers user-specified hooks to be called before/after the forward/backward pass for each

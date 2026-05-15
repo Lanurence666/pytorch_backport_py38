@@ -1,3 +1,4 @@
+from __future__ import annotations
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
@@ -12,13 +13,12 @@ calls run_tests to ensure that the test will be run in OSS CI.
 Takes ~2 minuters to run without the multiprocessing, probably overkill.
 """
 
-from __future__ import annotations
 
 import argparse
 import json
 import multiprocessing as mp
 from enum import Enum
-from typing import NamedTuple
+from typing import List, NamedTuple, Union
 
 import libcst as cst
 import libcst.matchers as m
@@ -55,8 +55,8 @@ class HasMainVisiter(cst.CSTVisitor):
             [m.ComparisonTarget(m.Equal(), name)],
         )
         for child in node.children:
-            if m.matches(child, m.If(test=if_main1 | if_main2)):
-                if m.findall(child, raise_block | run_test_call | run_rank_call):
+            if m.matches(child, m.If(test=Union[if_main1, if_main2])):
+                if m.findall(child, Union[raise_block, run_test_call, run_rank_call]):
                     self.found = True
                     break
 
@@ -71,18 +71,18 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
-def check_file(filename: str) -> list[LintMessage]:
+def check_file(filename: str) -> List[LintMessage]:
     lint_messages = []
 
     with open(filename) as f:

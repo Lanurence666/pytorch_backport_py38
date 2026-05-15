@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import overload, TYPE_CHECKING
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple, overload
 
 import torch
 import torch.nn as nn
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from torch.distributed.tensor import DeviceMesh
 
 
-cls_to_replicate_cls: dict[type, type] = {}
+cls_to_replicate_cls: Dict[type, type] = {}
 
 logger = logging.getLogger("torch.distributed._composable.replicate_with_fsdp")
 
@@ -46,13 +46,13 @@ class _ReplicateStateContext(FSDPStateContext["_ReplicateState"]):
     State shared across Replicate states.
 
     This is a typed subclass of FSDPStateContext parameterized with _ReplicateState,
-    providing correct type annotations (e.g., all_states: list[_ReplicateState]).
+    providing correct type annotations (e.g., all_states: List[_ReplicateState]).
     It also allows call sites to differentiate between Replicate and FSDP contexts
     via isinstance checks if needed.
     """
 
 
-def _get_module_replicate_state(module: nn.Module) -> _ReplicateState | None:
+def _get_module_replicate_state(module: nn.Module) -> Optional[_ReplicateState]:
     state = _get_module_state(module)
     if isinstance(state, _ReplicateState):
         return state
@@ -66,12 +66,12 @@ class _ReplicateState(FSDPState):
         super().__init__()
         self._state_ctx = _ReplicateStateContext()
 
-    def _get_state_for_module(self, module: nn.Module) -> FSDPState | None:
+    def _get_state_for_module(self, module: nn.Module) -> Optional[FSDPState]:
         return _get_module_replicate_state(module)
 
     def init(
         self,
-        modules: tuple[nn.Module, ...],
+        modules: Tuple[nn.Module, ...],
         device: torch.device,
         mp_policy: MixedPrecisionPolicy,
         auto_reshard_after_forward: bool = False,
@@ -84,36 +84,36 @@ class _ReplicateState(FSDPState):
 def replicate(
     module: nn.Module,
     *,
-    mesh: DeviceMesh | None = ...,
+    mesh: Optional[DeviceMesh]= ...,
     mp_policy: MixedPrecisionPolicy = ...,
     offload_policy: OffloadPolicy = ...,
-    ignored_params: set[nn.Parameter] | None = ...,
-    dp_mesh_dims: DataParallelMeshDims | None = ...,
+    ignored_params: Optional[Set[nn.Parameter]]= ...,
+    dp_mesh_dims: Optional[DataParallelMeshDims]= ...,
 ) -> ReplicateModule: ...
 
 
 @overload
 # pyrefly: ignore [inconsistent-overload]
 def replicate(
-    module: list[nn.Module],
+    module: List[nn.Module],
     *,
-    mesh: DeviceMesh | None = ...,
+    mesh: Optional[DeviceMesh]= ...,
     mp_policy: MixedPrecisionPolicy = ...,
     offload_policy: OffloadPolicy = ...,
-    ignored_params: set[nn.Parameter] | None = ...,
-    dp_mesh_dims: DataParallelMeshDims | None = ...,
-) -> list[ReplicateModule]: ...
+    ignored_params: Optional[Set[nn.Parameter]]= ...,
+    dp_mesh_dims: Optional[DataParallelMeshDims]= ...,
+) -> List[ReplicateModule]: ...
 
 
 @contract(state_cls=_ReplicateState)  # type: ignore[misc]
 def replicate(
     module: nn.Module,
     *,
-    mesh: DeviceMesh | None = None,
+    mesh: Optional[DeviceMesh]= None,
     mp_policy: MixedPrecisionPolicy = MixedPrecisionPolicy(),
     offload_policy: OffloadPolicy = OffloadPolicy(),
-    ignored_params: set[nn.Parameter] | None = None,
-    dp_mesh_dims: DataParallelMeshDims | None = None,
+    ignored_params: Optional[Set[nn.Parameter]]= None,
+    dp_mesh_dims: Optional[DataParallelMeshDims]= None,
 ):
     r"""Replicates a module
 

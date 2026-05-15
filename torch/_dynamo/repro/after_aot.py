@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Utilities for reproducing and debugging issues in PyTorch's Dynamo AOT compilation.
 
@@ -17,7 +18,6 @@ This is primarily used by PyTorch developers and researchers to debug issues in
 the Dynamo AOT compilation pipeline, particularly for the Inductor backend.
 """
 
-from __future__ import annotations
 
 import argparse
 import ast
@@ -34,7 +34,7 @@ import typing
 import uuid
 from importlib import import_module
 from tempfile import TemporaryFile
-from typing import Any, IO, TYPE_CHECKING
+from typing import Any, Callable, Dict, IO, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union, cast
 from typing_extensions import Unpack
 
 import sympy
@@ -101,7 +101,7 @@ from .. import config
 
 def _find_repeat_interleave_constraints(
     gm: torch.fx.GraphModule,
-) -> list[tuple[str, str]]:
+) -> List[Tuple[str, str]]:
     """
     Find repeat_interleave operations with output_size constraints.
 
@@ -133,7 +133,7 @@ def _find_repeat_interleave_constraints(
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    
 
     from torch._inductor.compile_fx import _CompileFxCallable, _CompileFxKwargs
     from torch._inductor.output_code import OutputCode
@@ -148,7 +148,7 @@ inductor_config = import_module("torch._inductor.config")
 
 def _extract_distributed_info(
     gm: torch.fx.GraphModule,
-) -> dict[str, dict[str, int]]:
+) -> Dict[str, Dict[str, int]]:
     """
     Extract process group information from distributed ops in the graph.
 
@@ -158,7 +158,7 @@ def _extract_distributed_info(
     from torch.distributed import GroupName
     from torch.fx.operator_schemas import normalize_function
 
-    group_info: dict[str, dict[str, int]] = {}
+    group_info: Dict[str, Dict[str, int]] = {}
 
     for node in gm.graph.nodes:
         if node.op != "call_function":
@@ -200,7 +200,7 @@ def _extract_distributed_info(
 
 
 def setup_fake_process_groups(
-    group_info: dict[str, dict[str, int]],
+    group_info: Dict[str, Dict[str, int]],
 ) -> None:
     """
     Set up fake process groups for repro execution.
@@ -249,7 +249,7 @@ def generate_standalone_repro(
     gm: torch.fx.GraphModule,
     args: Sequence[Any],
     *,
-    save_path: str | None = None,
+    save_path: Optional[str]= None,
 ) -> str:
     """
     Generate a self-contained repro script from an FX graph.
@@ -289,7 +289,7 @@ def wrap_compiler_debug(
     def debug_wrapper(
         gm: torch.fx.GraphModule,
         example_inputs: Sequence[InputType],
-        compile_region_name: str | None = None,
+        compile_region_name: Optional[str]= None,
         **kwargs: Unpack[_CompileFxKwargs],
     ) -> OutputCode:
         from torch._subclasses import FakeTensorMode
@@ -306,10 +306,7 @@ def wrap_compiler_debug(
 
         # TODO: why do we need to deepcopy the original graph?
         orig_graph = copy.deepcopy(gm.graph)
-        if config.repro_after not in ("dynamo", "aot", None):
-            raise AssertionError(
-                f"repro_after must be 'dynamo', 'aot', or None, got {config.repro_after!r}"
-            )
+        assert config.repro_after in ("dynamo", "aot", None)
 
         try:
             # Call the compiler_fn - which is either aot_autograd or inductor
@@ -342,11 +339,9 @@ def wrap_compiler_debug(
             # This is a bit obscure: if we recursively try to accuracy minify
             # the SAME function, this would trigger.  But most of the time
             # we should never hit this branch
-            if _kwargs:
-                raise AssertionError(f"Unexpected kwargs: {_kwargs}")
+            assert not _kwargs
             if config.repro_after != "aot":
-                if isinstance(inner_compiled_fn, str):
-                    raise AssertionError("inner_compiled_fn should not be a string")
+                assert not isinstance(inner_compiled_fn, str)
                 return inner_compiled_fn(real_inputs)
             with config.patch(repro_after=None):
                 return inner_debug_fn(real_inputs)
@@ -518,7 +513,7 @@ def generate_compiler_repro_string(
     args: Sequence[Any],
     *,
     stable_output: bool = False,
-    save_dir: str | None = None,
+    save_dir: Optional[str]= None,
     stable_hash: bool = False,
     has_distributed_ops: bool = False,
 ) -> str:
@@ -597,8 +592,8 @@ if "__compile_source__" in globals():
 
     def write_kernel_dependencies(
         kernel: Any,
-        written_constexpr_vars: set[str],
-        written_nested_kernels: set[str],
+        written_constexpr_vars: Set[str],
+        written_nested_kernels: Set[str],
     ) -> str:
         """Write out global tl.constexpr vars and nested kernel dependencies."""
         result = ""
@@ -610,8 +605,8 @@ if "__compile_source__" in globals():
         src = jit_fn.src
         full_src = src if src.strip().startswith("def ") else "def " + src
 
-        referenced_names: set[str] = set()
-        called_names: set[str] = set()
+        referenced_names: Set[str] = set()
+        called_names: Set[str] = set()
         for node in ast.walk(ast.parse(full_src)):
             if isinstance(node, ast.Name):
                 referenced_names.add(node.id)
@@ -649,8 +644,8 @@ if "__compile_source__" in globals():
 
         return result
 
-    written_nested_kernels: set[str] = set()
-    written_constexpr_vars: set[str] = set()
+    written_nested_kernels: Set[str] = set()
+    written_constexpr_vars: Set[str] = set()
 
     model_str += f"{kernel_side_table_prefix}.reset_table()\n"
 
@@ -787,11 +782,11 @@ def save_graph_repro(
     compiler_name: str,
     *,
     stable_output: bool = False,
-    save_dir: str | None = None,
+    save_dir: Optional[str]= None,
     command: str = "run",
-    accuracy: str | bool | None = None,
-    tracing_mode: str | None = None,
-    check_str: str | None = None,
+    accuracy: Optional[Union[str, bool]]= None,
+    tracing_mode: Optional[str]= None,
+    check_str: Optional[str]= None,
     stable_hash: bool = False,
 ) -> None:
     if any(
@@ -858,7 +853,7 @@ def dump_compiler_graph_state(
     args: Sequence[Any],
     compiler_name: str,
     *,
-    accuracy: str | bool | None = None,
+    accuracy: Optional[Union[str, bool]]= None,
 ) -> None:
     subdir = os.path.join(minifier_dir(), "checkpoints")
     if not os.path.exists(subdir):
@@ -903,11 +898,11 @@ def isolate_fails(
     fx_g: torch.fx.GraphModule,
     args: Sequence[Any],
     compiler_name: str,
-    env: dict[str, Any] | None = None,
-    save_dir: str | None = None,
-    accuracy: bool | str | None = None,
-    tracing_mode: str | None = None,
-    check_str: str | None = None,
+    env: Optional[Dict[str, Any]]= None,
+    save_dir: Optional[str]= None,
+    accuracy: Optional[Union[bool, str]]= None,
+    tracing_mode: Optional[str]= None,
+    check_str: Optional[str]= None,
 ) -> bool:
     if env is None:
         env = {}
@@ -935,17 +930,7 @@ def isolate_fails(
         cmd = BuckTargetWriter(file_name).write(print_msg=False)
     else:
         cmd = [sys.executable, file_name]
-    with (
-        TemporaryFile() as stdout,
-        TemporaryFile() as stderr,
-        subprocess.Popen(
-            cmd,
-            cwd=subdir,
-            stdout=stdout,
-            stderr=stderr,
-            env=new_env,
-        ) as p,
-    ):
+    with TemporaryFile() as stdout, TemporaryFile() as stderr, subprocess.Popen( cmd, cwd=subdir, stdout=stdout, stderr=stderr, env=new_env, ) as p:
         p.wait()
 
         stdout.seek(0)
@@ -968,7 +953,7 @@ def isolate_fails(
 
 
 def inductor_fails(
-    fx_g: torch.fx.GraphModule, args: Sequence[Any], check_str: str | None = None
+    fx_g: Optional[torch.fx.GraphModule, args: Sequence[Any], check_str: str]= None
 ) -> bool:
     has_cuda = False
     for arg in args:
@@ -985,12 +970,8 @@ def inductor_fails(
 
     try:
         result = fx_g(*args)
-        if not isinstance(result, (tuple, list)):
-            raise AssertionError(
-                f"Expected result to be a tuple or list, got {type(result)}"
-            )
-        if any(isinstance(x, (tuple, list)) for x in result):
-            raise AssertionError("Result should not contain nested tuples or lists")
+        assert isinstance(result, (tuple, list))
+        assert not any(isinstance(x, (tuple, list)) for x in result)
     except Exception:
         return False
 
@@ -999,8 +980,7 @@ def inductor_fails(
     try:
         compile_args = _get_compile_args(fx_g, args)
         compile_mod = compile_fx_inner(fx_g, compile_args)
-        if isinstance(compile_mod, str):
-            raise AssertionError("compile_fx_inner should not return a string")
+        assert not isinstance(compile_mod, str)
         compile_mod(args)
         sync()
     except Exception as e:
@@ -1014,7 +994,7 @@ def inductor_fails(
 def inductor_accuracy_fails(
     fx_g: torch.fx.GraphModule,
     args: Sequence[Any],
-    check_str: str | None = None,
+    check_str: Optional[str]= None,
     *,
     require_fp64: bool = False,
     ignore_non_fp: bool = False,
@@ -1022,7 +1002,7 @@ def inductor_accuracy_fails(
     from torch._inductor.compile_fx import compile_fx_inner
 
     def _compile_with_symbolic_args(
-        gm: torch.fx.GraphModule, inputs: list[Any]
+        gm: torch.fx.GraphModule, inputs: List[Any]
     ) -> torch.fx.GraphModule:
         return compile_fx_inner(gm, _get_compile_args(gm, inputs))  # type: ignore[return-value]
 
@@ -1043,101 +1023,11 @@ backend_aot_accuracy_fails = functools.partial(backend_accuracy_fails, only_fwd=
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 
-def _build_symbolic_wrapper(
-    mod: nn.Module,
-    args: list[Any],
-    symint_exprs: dict[int, str],
-) -> tuple[nn.Module, list[Any]] | None:
-    """Build a wrapper module that preserves symbolic relationships.
-
-    Returns (wrapper_module, wrapper_args) where wrapper_args has carrier
-    tensors in place of free-symbol symints, and the wrapper's forward()
-    extracts SymInts from carrier.size(0), computes derived expressions,
-    and delegates to the inner module.
-
-    Returns None if the expressions don't contain free/derived structure
-    (nothing to do).
-    """
-    import re
-
-    free_sym_re = re.compile(r"^s\d+$")
-    free_positions: dict[int, str] = {}
-    derived_positions: dict[int, str] = {}
-
-    for idx, expr_str in symint_exprs.items():
-        if free_sym_re.fullmatch(expr_str):
-            free_positions[idx] = expr_str
-        else:
-            derived_positions[idx] = expr_str
-
-    if not free_positions:
-        return None
-
-    # Order: carrier tensors first, then all non-symint args in original order
-    free_order = sorted(free_positions.keys())
-    free_sym_names = [free_positions[i] for i in free_order]
-
-    # Precompile derived expressions
-    derived_compiled = {
-        idx: compile(expr_str, f"<derived arg {idx}>", "eval")
-        for idx, expr_str in derived_positions.items()
-    }
-
-    n_args = len(args)
-
-    class _SymIntWrapper(nn.Module):
-        def __init__(self, inner: nn.Module) -> None:
-            super().__init__()
-            self.inner = inner
-
-        def forward(self, *flat_args: Any) -> Any:
-            carriers = flat_args[: len(free_order)]
-            other = flat_args[len(free_order) :]
-
-            syms: dict[str, Any] = {}
-            for i, sym_name in enumerate(free_sym_names):
-                syms[sym_name] = carriers[i].size(0)
-
-            for idx, code in sorted(derived_compiled.items()):
-                derived_positions[idx]  # keep reference
-                syms[f"_derived_{idx}"] = eval(code, {"__builtins__": {}}, syms)
-
-            other_iter = iter(other)
-            rebuilt = []
-            for i in range(n_args):
-                if i in free_positions:
-                    rebuilt.append(syms[free_positions[i]])
-                elif i in derived_positions:
-                    rebuilt.append(syms[f"_derived_{i}"])
-                else:
-                    rebuilt.append(next(other_iter))
-
-            return self.inner(*rebuilt)
-
-    # Build wrapper args: carriers + non-symint args
-    wrapper_args: list[Any] = []
-    for i in free_order:
-        hint = int(args[i]) if not isinstance(args[i], int) else args[i]
-        device = "cpu"
-        for a in args:
-            if isinstance(a, torch.Tensor) and a.is_cuda:
-                device = a.device
-                break
-        wrapper_args.append(torch.empty(hint, dtype=torch.int8, device=device))
-
-    for i, arg in enumerate(args):
-        if i not in free_positions and i not in derived_positions:
-            wrapper_args.append(arg)
-
-    return _SymIntWrapper(mod), wrapper_args
-
-
 def repro_common(
     options: Any, mod: nn.Module, load_args: Any
-) -> tuple[torch.fx.GraphModule, list[Any]]:
+) -> Tuple[torch.fx.GraphModule, List[Any]]:
     # Invariant for graphs we generate with the repro script
-    if any(mod.named_parameters()):
-        raise AssertionError("Repro graph should not have any parameters")
+    assert not any(mod.named_parameters())
     for n, b in mod.named_buffers():
         if b.numel() > MAX_CONSTANT_NUMEL_INLINE:
             log.warning(
@@ -1171,11 +1061,6 @@ def repro_common(
 
     # Turn mod into a GraphModule the slow way
     # TODO: speed this up
-    # NOTE: symint_exprs (from reader.symint(val, expr=...)) are preserved
-    # in the repro script for documentation. A future improvement could use
-    # _build_symbolic_wrapper to reconstruct algebraic relationships between
-    # free and derived symints, but the arg reordering is fragile across
-    # different graph structures so we skip it for now.
     mod = make_fx(mod, tracing_mode=options.tracing_mode)(*args)
 
     # pyrefly: ignore [bad-assignment]
@@ -1211,7 +1096,7 @@ def _get_compile_args(mod: torch.fx.GraphModule, args: Sequence[Any]) -> Sequenc
     return [n.meta.get("val", a) for n, a in zip(placeholders, args)]
 
 
-ACCURACY_FAILS: dict[str, Callable[[torch.fx.GraphModule, Any], bool]] = {
+ACCURACY_FAILS: Dict[str, Callable[[torch.fx.GraphModule, Any], bool]] = {
     "": inductor_fails,
     # This might look inverted but it's not.  strict_accuracy means "we will
     # minify any time we see anything that diverges", whereas accuracy is more
@@ -1304,17 +1189,12 @@ def repro_analyze(options: Any, mod: nn.Module, load_args: Any) -> None:
     reader = torch.utils._content_store.ContentStoreReader(options.save_dir)
 
     new_args = clone_inputs(args)
-    with (
-        intermediate_hook(save_hook),
-        tqdm(desc="Saving inductor intermediates", total=total) as pbar,
-    ):
-        if isinstance(compiled, str):
-            raise AssertionError("compile_fx_inner should not return a string")
+    with intermediate_hook(save_hook), tqdm(desc="Saving inductor intermediates", total=total) as pbar:
+        assert not isinstance(compiled, str)
         compiled(new_args)  # type: ignore[arg-type]
-        if new_args:
-            raise AssertionError("new_args should be empty after compiled() call")
+        assert not new_args
 
-    def compare_tuples(tuple1: tuple[Any], tuple2: tuple[Any]) -> str | None:
+    def compare_tuples(tuple1: Tuple[Any], tuple2: Tuple[Any]) -> Optional[str]:
         diff_indices = [i for i in range(len(tuple1)) if tuple1[i] != tuple2[i]]
         diff_values = [(tuple1[i], tuple2[i]) for i in diff_indices]
 
@@ -1333,13 +1213,9 @@ def repro_analyze(options: Any, mod: nn.Module, load_args: Any) -> None:
 
     if not options.skip_check_deterministic:
         new_args = clone_inputs(args)
-        with (
-            intermediate_hook(check_hook),
-            tqdm(desc="Checking inductor determinism", total=total) as pbar,
-        ):
+        with intermediate_hook(check_hook), tqdm(desc="Checking inductor determinism", total=total) as pbar:
             compiled(new_args)  # type: ignore[arg-type]
-            if new_args:
-                raise AssertionError("new_args should be empty after compiled() call")
+            assert not new_args
 
     class WriterInterp(fx.Interpreter):
         def __init__(self, mod: torch.nn.Module, subdir: str) -> None:
@@ -1360,8 +1236,7 @@ def repro_analyze(options: Any, mod: nn.Module, load_args: Any) -> None:
         new_mod, new_args = cast_to_fp64(copy.deepcopy(mod), clone_inputs(args))  # type: ignore[arg-type]
         with tqdm(desc="Saving float64 intermediates", total=total) as pbar:
             WriterInterp(new_mod, "float64").boxed_run(new_args)
-        if new_args:
-            raise AssertionError("new_args should be empty after boxed_run() call")
+        assert not new_args
 
     class ExactReaderInterp(fx.Interpreter):
         def run_node(self, n: torch.fx.Node) -> Any:
@@ -1382,8 +1257,7 @@ def repro_analyze(options: Any, mod: nn.Module, load_args: Any) -> None:
         new_mod, new_args = cast_to_fp64(copy.deepcopy(mod), clone_inputs(args))  # type: ignore[arg-type]
         with tqdm(desc="Checking float64 determinism", total=total) as pbar:
             ExactReaderInterp(new_mod).boxed_run(new_args)
-            if new_args:
-                raise AssertionError("new_args should be empty after boxed_run() call")
+            assert not new_args
 
     # Now that we've saved everything, interp through the eager graph
     # and do comparisons
@@ -1409,20 +1283,18 @@ def repro_analyze(options: Any, mod: nn.Module, load_args: Any) -> None:
                     equal_nan=True,
                     log_error=log_error,
                 ):
-                    if not logged:
-                        raise AssertionError("Divergence detected but not logged")
+                    assert logged
                 pbar.update(1)
             return r
 
     with tqdm(desc="Checking divergence", total=total) as pbar:
         ReaderInterp(mod).boxed_run(args)
-    if args:
-        raise AssertionError("args should be empty after boxed_run() call")
+    assert not args
 
 
 def repro_get_args(
     options: Any, mod: nn.Module, load_args: Any
-) -> tuple[torch.fx.GraphModule, list[Any]]:
+) -> Tuple[torch.fx.GraphModule, List[Any]]:
     mod, args = repro_common(options, mod, load_args)
     return mod, args
 
@@ -1436,8 +1308,7 @@ def repro_run(options: Any, mod: nn.Module, load_args: Any) -> None:
 
     compile_args = _get_compile_args(mod, args)
     compiled = compile_fx_inner(mod, compile_args)
-    if isinstance(compiled, str):
-        raise AssertionError("compile_fx_inner should not return a string")
+    assert not isinstance(compiled, str)
 
     if options.accuracy != "":
         # We don't really respect --accuracy vs --strict-accuracy here, it
@@ -1470,11 +1341,11 @@ def run_repro(
     load_args: Any,
     *,
     command: str = "run",
-    accuracy: bool | str = "",
-    save_dir: str | None = None,
-    tracing_mode: str | None = None,
-    patch_code: str | None = None,
-    check_str: str | None = None,
+    accuracy: Union[bool, str]= "",
+    save_dir: Optional[str]= None,
+    tracing_mode: Optional[str]= None,
+    patch_code: Optional[str]= None,
+    check_str: Optional[str]= None,
     **kwargs: Any,
 ) -> Any:
     for k in kwargs:

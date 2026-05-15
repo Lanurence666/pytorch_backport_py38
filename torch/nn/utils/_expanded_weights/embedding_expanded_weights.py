@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, List, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -16,7 +18,7 @@ class EmbeddingPerSampleGrad(torch.autograd.Function):
     @staticmethod
     # pyrefly: ignore [bad-override]
     def forward(
-        ctx: Any, kwarg_names: list[str], _: Any, *expanded_args_and_kwargs: Any
+        ctx: Any, kwarg_names: List[str], _: Any, *expanded_args_and_kwargs: Any
     ) -> torch.Tensor:
         expanded_args, expanded_kwargs = standard_kwargs(
             kwarg_names, expanded_args_and_kwargs
@@ -38,7 +40,7 @@ class EmbeddingPerSampleGrad(torch.autograd.Function):
     # pyrefly: ignore [bad-override]
     def backward(
         ctx: Any, grad_output: torch.Tensor
-    ) -> tuple[torch.Tensor | None, ...]:
+    ) -> Union[Tuple[torch.Tensor, None, ...]]:
         input, weight = ctx.input, ctx.weight
         padding_idx, scale_grad_by_freq, sparse = (
             ctx.padding_idx,
@@ -61,7 +63,7 @@ class EmbeddingPerSampleGrad(torch.autograd.Function):
                 1, index, grad_output.reshape(batch_size, -1, embedding_dim)
             )
 
-        results: list[torch.Tensor | None] = []
+        results: Union[List[torch.Tensor, None]]= []
         results.append(None)  # for kwarg names
         results.append(None)  # for op reference
 

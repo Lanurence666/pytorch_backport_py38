@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 
 """Generates a matrix for docker releases through github actions
 

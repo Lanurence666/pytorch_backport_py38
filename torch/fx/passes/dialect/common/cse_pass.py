@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Dict, Optional, Set, Tuple
 
 import torch
 from torch.fx import Graph, GraphModule, Node
@@ -43,14 +45,14 @@ inplace_ops = {
 
 
 @torch.fx._compatibility.compatibility(is_backward_compatible=False)
-def get_CSE_banned_ops() -> set[torch._ops.OpOverloadPacket]:
+def get_CSE_banned_ops() -> Set[torch._ops.OpOverloadPacket]:
     return rand_ops.union(inplace_ops)
 
 
 @torch.fx._compatibility.compatibility(is_backward_compatible=False)
 class CSEPass(PassBase):
     def __init__(
-        self, banned_ops: set[torch._ops.OpOverloadPacket] | None = None
+        self, banned_ops: Optional[Set[torch._ops.OpOverloadPacket]] = None
     ) -> None:
         """
         This version of CSE Pass aims to be dialect agnostic, and it's implemented purely based on the connectivity between fx.Node.
@@ -92,14 +94,14 @@ class CSEPass(PassBase):
 
         modified = False
         new_graph = Graph()
-        env: dict[
+        env: Dict[
             Node, Node
         ] = {}  # map from node in the old graph to node in the new graph
-        hash_env: dict[
-            tuple[Target, int], Node
+        hash_env: Dict[
+            Tuple[Target, int], Node
         ] = {}  # map from hash to a node in the new graph
-        token_map: dict[
-            tuple[Target, int], dict[str, Any]
+        token_map: Dict[
+            Tuple[Target, int], Dict[str, Any]
         ] = {}  # map from hash to token
         for n in graph_module.graph.nodes:
             # The placeholder, output, and get_attr nodes are copied to the new graph without change
@@ -115,7 +117,7 @@ class CSEPass(PassBase):
             else:  # n.op == 'call_function', should never see n.op == 'call_module' or 'call_method'
                 # substitute args and kwargs members to their mapping in env if exists
                 # specs can be used to reconstruct nested list/dictionaries
-                def substitute(arg_list: Any) -> tuple[tuple[Any, ...], Any]:
+                def substitute(arg_list: Any) -> Tuple[Tuple[Any, ...], Any]:
                     arg_list, spec = tree_flatten(arg_list)
                     for i in range(len(arg_list)):
                         v = arg_list[i]

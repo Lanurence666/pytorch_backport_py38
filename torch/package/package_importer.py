@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import builtins
 import importlib
 import importlib.machinery
@@ -8,9 +10,9 @@ import linecache
 import os
 import sys
 import types
-from collections.abc import Callable, Iterable
+
 from contextlib import contextmanager
-from typing import Any, cast, TYPE_CHECKING
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, TYPE_CHECKING, Type, Union, cast
 from weakref import WeakValueDictionary
 
 import torch
@@ -55,7 +57,7 @@ IMPLICIT_IMPORT_ALLOWLIST: Iterable[str] = [
 # The primary motivation is to enable Numpy upgrade that many modules
 # depend on. The latest release of Numpy removed `numpy.str` and
 # `numpy.bool` breaking unpickling for many modules.
-EXTERN_IMPORT_COMPAT_NAME_MAPPING: dict[str, dict[str, Any]] = {
+EXTERN_IMPORT_COMPAT_NAME_MAPPING: Dict[str, Dict[str, Any]] = {
     "numpy": {
         "str": str,
         "bool": bool,
@@ -81,11 +83,11 @@ class PackageImporter(Importer):
     local to this importer.
     """
 
-    modules: dict[str, types.ModuleType]
+    modules: Dict[str, types.ModuleType]
 
     def __init__(
         self,
-        file_or_buffer: FileLike | torch._C.PyTorchFileReader,
+        file_or_buffer: Union[FileLike, torch._C.PyTorchFileReader],
         module_allowed: Callable[[str], bool] = lambda module_name: True,
     ):
         """Open ``file_or_buffer`` for importing. This checks that the imported package only requires modules
@@ -329,11 +331,11 @@ class PackageImporter(Importer):
         """Returns a file structure representation of package's zipfile.
 
         Args:
-            include (list[str] | str): An optional string e.g. ``"my_package.my_subpackage"``, or optional list of strings
+            include (Union[List[str], str]): An optional string e.g. ``"my_package.my_subpackage"``, or optional list of strings
                 for the names of the files to be included in the zipfile representation. This can also be
                 a glob-style pattern, as described in :meth:`PackageExporter.mock`
 
-            exclude (list[str] | str): An optional pattern that excludes files whose name match the pattern.
+            exclude (Union[List[str], str]): An optional pattern that excludes files whose name match the pattern.
 
         Returns:
             :class:`Directory`
@@ -349,7 +351,7 @@ class PackageImporter(Importer):
         file later on.
 
         Returns:
-            :class:`str | None` a python version e.g. 3.8.9 or None if no version was stored with this package
+            :class:`Optional[str]` a python version e.g. 3.8.9 or None if no version was stored with this package
         """
         python_version_path = ".data/python_version"
         return (
@@ -366,7 +368,7 @@ class PackageImporter(Importer):
         )
 
     def _make_module(
-        self, name: str, filename: str | None, is_package: bool, parent: str
+        self, name: str, filename: Optional[str], is_package: bool, parent: str
     ):
         mangled_filename = self._mangler.mangle(filename) if filename else None
         spec = importlib.machinery.ModuleSpec(
@@ -655,7 +657,7 @@ class PackageImporter(Importer):
         else:
             return f"{name.replace('.', '/')}"
 
-    def _get_or_create_package(self, atoms: list[str]) -> "_PackageNode | _ExternNode":
+    def _get_or_create_package(self, atoms: List[str]) -> "Union[_PackageNode, _ExternNode]":
         cur = self.root
         for i, atom in enumerate(atoms):
             node = cur.children.get(atom, None)
@@ -714,9 +716,9 @@ class _PathNode:
 
 
 class _PackageNode(_PathNode):
-    def __init__(self, source_file: str | None):
+    def __init__(self, source_file: Optional[str]):
         self.source_file = source_file
-        self.children: dict[str, _PathNode] = {}
+        self.children: Dict[str, _PathNode] = {}
 
 
 class _ModuleNode(_PathNode):

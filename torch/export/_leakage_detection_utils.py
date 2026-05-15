@@ -5,6 +5,7 @@ import weakref
 from typing_extensions import TypeIs
 
 from torch.fx.experimental.symbolic_shapes import TrackedFake
+from typing import Any, Set, Type
 
 
 """

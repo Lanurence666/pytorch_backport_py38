@@ -1,10 +1,12 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 import contextlib
 import warnings
-from collections.abc import Sequence
+
 from logging import getLogger
-from typing import Optional
+from typing import Generator, List, Optional, Sequence, Set, Tuple, Type, Union
 
 import torch
 from torch.distributed._local_tensor import maybe_run_for_local_tensor
@@ -174,7 +176,7 @@ class _RNGStateTracker:
         self._use_distribute_region = value
 
     def _distribute_region(
-        self, spec: DTensorSpec, generator: torch.Generator | None = None
+        self, spec: DTensorSpec, generator: Optional[torch.Generator] = None
     ):
         pass
 
@@ -241,7 +243,7 @@ class OffsetBasedRNGTracker(_RNGStateTracker):
 
     @contextlib.contextmanager
     def _distribute_region(
-        self, spec: DTensorSpec, generator: torch.Generator | None = None
+        self, spec: DTensorSpec, generator: Optional[torch.Generator] = None
     ):
         from torch.distributed._local_tensor import maybe_enable_local_tracker
 
@@ -360,7 +362,7 @@ class OffsetBasedRNGTracker(_RNGStateTracker):
         _, end_offset_incr = self._compute_rng_offsets(spec)
         state.offset = old_offset + end_offset_incr
 
-    def _compute_rng_offsets(self, spec: DTensorSpec) -> tuple[int, int]:
+    def _compute_rng_offsets(self, spec: DTensorSpec) -> Tuple[int, int]:
         """Compute the RNG offset increments for a distributed random op.
 
         These values are derived from mesh topology, placements, and tensor shape,
@@ -395,10 +397,10 @@ class OffsetBasedRNGTracker(_RNGStateTracker):
         return _calc_shard_linear_idx(shard_coord, shard_size)
 
 
-def _calc_first_shard_size(spec: DTensorSpec) -> list[int]:
+def _calc_first_shard_size(spec: DTensorSpec) -> List[int]:
     local_size_on_rank_0 = list(spec.shape)
     for idx, placement in enumerate(spec.placements):
-        if isinstance(placement, Shard | _StridedShard):
+        if isinstance(placement, (Shard , _StridedShard)):
             mesh_dim_size = spec.mesh.size(idx)
             shard_dim = placement.dim
             local_size_on_rank_0[shard_dim], _ = placement._local_shard_size_and_offset(
@@ -411,13 +413,13 @@ def _calc_first_shard_size(spec: DTensorSpec) -> list[int]:
 
 def _calc_shard_info(
     mesh_coordinate: Sequence[IntLikeType], spec: DTensorSpec
-) -> tuple[list[IntLikeType], list[IntLikeType]]:
+) -> Tuple[List[IntLikeType], List[IntLikeType]]:
     mesh = spec.mesh
     # note: dim_map does not allow double sharding which is the FSDP(fully_shard)+TP
     # case. Replace the custom logic with dim_map once we support it.
-    dim_map: list[int | list[int]] = [-1] * spec.ndim
+    dim_map: Union[List[int, List[int]]]= [-1] * spec.ndim
     for i, placement in enumerate(spec.placements):
-        if isinstance(placement, Shard | _StridedShard):
+        if isinstance(placement, (Shard , _StridedShard)):
             shard_dim = placement.dim
             if dim_map[shard_dim] == -1:
                 dim_map[shard_dim] = [i]
@@ -433,7 +435,7 @@ def _calc_shard_info(
     # holds the j-th, then its shard coordinate will be (idx=j, range=n) on dim i
     mesh_size = mesh.shape
     shard_idx_by_dim = []
-    total_num_shards_by_dim: list[
+    total_num_shards_by_dim: List[
         IntLikeType
     ] = []  # total number of shards on each tensor dim
     for mesh_dim in dim_map:

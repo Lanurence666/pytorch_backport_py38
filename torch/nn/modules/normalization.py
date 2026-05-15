@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import numbers
 
 import torch
@@ -8,6 +10,7 @@ from torch.nn.parameter import Parameter
 
 from ._functions import CrossMapLRN2d as _cross_map_lrn2d
 from .module import Module
+from typing import List, Optional, Tuple, Union
 
 
 __all__ = ["LocalResponseNorm", "CrossMapLRN2d", "LayerNorm", "GroupNorm", "RMSNorm"]
@@ -99,7 +102,7 @@ class CrossMapLRN2d(Module):
         return "{size}, alpha={alpha}, beta={beta}, k={k}".format(**self.__dict__)
 
 
-_shape_t = int | list[int] | Size
+_shape_t = Union[int, List[int], Size]
 
 
 class LayerNorm(Module):
@@ -181,7 +184,7 @@ class LayerNorm(Module):
     """
 
     __constants__ = ["normalized_shape", "eps", "elementwise_affine"]
-    normalized_shape: tuple[int, ...]
+    normalized_shape: Tuple[int, ...]
     eps: float
     elementwise_affine: bool
 
@@ -385,14 +388,14 @@ class RMSNorm(Module):
     """
 
     __constants__ = ["normalized_shape", "eps", "elementwise_affine"]
-    normalized_shape: tuple[int, ...]
-    eps: float | None
+    normalized_shape: Tuple[int, ...]
+    eps: Optional[float]
     elementwise_affine: bool
 
     def __init__(
         self,
         normalized_shape: _shape_t,
-        eps: float | None = None,
+        eps: Optional[float]= None,
         elementwise_affine: bool = True,
         device=None,
         dtype=None,

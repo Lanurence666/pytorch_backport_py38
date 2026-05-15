@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import _operator
 import itertools
 from collections import defaultdict
 from enum import Enum
-from typing import Any
+from typing import Any, Dict, Optional, Set, Type, overload
 
 import torch
 from torch._subclasses.fake_tensor import FakeTensor, FakeTensorMode
@@ -22,7 +24,7 @@ class _ViewType(Enum):
     MultiOutputView = 2
 
 
-def _is_view_op(tgt: object) -> bool | None:
+def _is_view_op(tgt: object) -> Optional[bool]:
     if tgt is not None and isinstance(tgt, torch._ops.OpOverload):
         schema = tgt._schema
         if len(schema.arguments) > 0:
@@ -160,7 +162,7 @@ def _schemas_match(
 # - mutating ops (e.g. _fused_moving_avg_obs_fq_helper)
 # - out= ops (e.g. angle -> angle.out)
 # TODO: we should also figure this info out using torchgen.
-def _maybe_get_inplace_op(op: object) -> torch._ops.OpOverload | None:
+def _maybe_get_inplace_op(op: object) -> Optional[torch._ops.OpOverload]:
     # __module__ seems broken; it returns torch._ops.aten which doesn't exist
     if not isinstance(op, torch._ops.OpOverload):
         return None
@@ -202,7 +204,7 @@ def _maybe_get_inplace_op(op: object) -> torch._ops.OpOverload | None:
     return inplace_op
 
 
-_VIEW_INVERSE_MAP: dict[torch._ops.OpOverload, torch._ops.OpOverload] = {
+_VIEW_INVERSE_MAP: Dict[torch._ops.OpOverload, torch._ops.OpOverload] = {
     torch.ops.aten.diagonal_scatter.default: torch.ops.aten.diagonal.default,
     torch.ops.aten.select_scatter.default: torch.ops.aten.select.int,
     torch.ops.aten.slice_scatter.default: torch.ops.aten.slice.Tensor,
@@ -213,8 +215,8 @@ _VIEW_INVERSE_MAP: dict[torch._ops.OpOverload, torch._ops.OpOverload] = {
 # This function, given a set of set of (aliased) tensor nodes,
 # Returns any nodes in the graph that *use* any of the aliases, that occur *after* op_index
 # in the node ordering.
-def _get_all_later_node_usages(tensor_aliases: set[Node], op_index: int) -> set[Node]:
-    def _add_if_tensor(x: object, set_: set[StorageWeakRef]) -> None:
+def _get_all_later_node_usages(tensor_aliases: Set[Node], op_index: int) -> Set[Node]:
+    def _add_if_tensor(x: object, set_: Set[StorageWeakRef]) -> None:
         if isinstance(x, FakeTensor):
             set_.add(StorageWeakRef(x._typed_storage()))
 
@@ -247,8 +249,8 @@ def _get_all_later_node_usages(tensor_aliases: set[Node], op_index: int) -> set[
 # (2) The output of running {view}(alias, args...) gives you the same size/stride/offset metadata
 #     as "alias"
 def _get_view_inverse_node_usages(
-    later_node_usages: set[Node], self_aliases: set[Node]
-) -> set[Node]:
+    later_node_usages: Set[Node], self_aliases: Set[Node]
+) -> Set[Node]:
     def matching_view_metadata(a: FakeTensor, b: FakeTensor) -> bool:
         return (
             a.size() == b.size()
@@ -559,7 +561,7 @@ def reinplace(gm: torch.fx.GraphModule, *sample_args: Any) -> torch.fx.GraphModu
     }
 
     # We also need to know for a given node, what are all of its aliasing nodes.
-    storage_to_nodes: dict[StorageWeakRef, set[Node]] = defaultdict(set)
+    storage_to_nodes: Dict[StorageWeakRef, Set[Node]] = defaultdict(set)
     for n in gm.graph.nodes:
         if "fake_result" in n.meta:
             # Tree-mapping because some ops can return lists of tensors.

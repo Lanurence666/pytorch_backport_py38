@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 import warnings
 
@@ -9,6 +11,7 @@ from torch.distributions.exp_family import ExponentialFamily
 from torch.distributions.multivariate_normal import _precision_to_scale_tril
 from torch.distributions.utils import lazy_property
 from torch.types import _Number, _size, Number
+from typing import Optional, Tuple, Union
 
 
 __all__ = ["Wishart"]
@@ -79,11 +82,11 @@ class Wishart(ExponentialFamily):
 
     def __init__(
         self,
-        df: Tensor | Number,
-        covariance_matrix: Tensor | None = None,
-        precision_matrix: Tensor | None = None,
-        scale_tril: Tensor | None = None,
-        validate_args: bool | None = None,
+        df: Union[Tensor, Number],
+        covariance_matrix: Optional[Tensor] = None,
+        precision_matrix: Optional[Tensor] = None,
+        scale_tril: Optional[Tensor] = None,
+        validate_args: Optional[bool] = None,
     ) -> None:
         if (
             (covariance_matrix is not None)
@@ -338,7 +341,7 @@ class Wishart(ExponentialFamily):
         )
 
     @property
-    def _natural_params(self) -> tuple[Tensor, Tensor]:
+    def _natural_params(self) -> Tuple[Tensor, Tensor]:
         nu = self.df  # has shape (batch_shape)
         p = self._event_shape[-1]  # has singleton shape
         return -self.precision_matrix / 2, (nu - p - 1) / 2

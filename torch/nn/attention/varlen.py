@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Variable-length attention implementation using Flash Attention.
 
@@ -7,7 +8,9 @@ that calls into the optimized Flash Attention kernels.
 
 import logging
 from functools import lru_cache
-from typing import Any, NamedTuple
+from typing import Any, List, Optional, Set, Tuple, Union
+from typing_extensions import NamedTuple
+
 
 import torch
 
@@ -17,7 +20,7 @@ log = logging.getLogger(__name__)
 __all__ = ["varlen_attn", "varlen_attn_out", "AuxRequest"]
 
 
-def _normalize_window_size(window_size: list[int] | None) -> list[int]:
+def _normalize_window_size(window_size: Optional[List[int]]) -> List[int]:
     if window_size is None:
         window_size = [-1, -1]
 
@@ -48,17 +51,17 @@ def _varlen_attn(
     key: torch.Tensor,
     value: torch.Tensor,
     cu_seq_q: torch.Tensor,
-    cu_seq_k: torch.Tensor | None,
+    cu_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     is_causal: bool = False,
-    scale: float | None = None,
-    window_size: list[int] | None = None,
+    scale: Optional[float] = None,
+    window_size: Optional[List[int]] = None,
     enable_gqa: bool = False,
-    seqused_k: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
-    num_splits: int | None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    seqused_k: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
+    num_splits: Optional[int] = None,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Private custom op for variable-length attention.
 
@@ -138,17 +141,17 @@ def _varlen_attn_fake(
     key: torch.Tensor,
     value: torch.Tensor,
     cu_seq_q: torch.Tensor,
-    cu_seq_k: torch.Tensor | None,
+    cu_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     is_causal: bool = False,
-    scale: float | None = None,
-    window_size: list[int] | None = None,
+    scale: Optional[float] = None,
+    window_size: Optional[List[int]] = None,
     enable_gqa: bool = False,
-    seqused_k: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
-    num_splits: int | None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    seqused_k: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
+    num_splits: Optional[int] = None,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Fake implementation for meta tensor computation and tracing.
 
@@ -187,18 +190,18 @@ def varlen_attn(
     key: torch.Tensor,
     value: torch.Tensor,
     cu_seq_q: torch.Tensor,
-    cu_seq_k: torch.Tensor | None,
+    cu_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     *,
-    return_aux: AuxRequest | None = None,
-    scale: float | None = None,
-    window_size: tuple[int, int] = (-1, -1),
+    return_aux: Optional[AuxRequest] = None,
+    scale: Optional[float] = None,
+    window_size: Tuple[int, int] = (-1, -1),
     enable_gqa: bool = False,
-    seqused_k: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
-    num_splits: int | None = None,
-) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+    seqused_k: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
+    num_splits: Optional[int] = None,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Compute variable-length attention using Flash Attention.
 
     This function is similar to scaled_dot_product_attention but optimized for
@@ -216,7 +219,7 @@ def varlen_attn(
         max_k (int): Maximum key/value sequence length in the batch.
         return_aux (Optional[AuxRequest]): If not None and ``return_aux.lse`` is True, also returns the logsumexp tensor.
         scale (float, optional): Scaling factor for attention scores
-        window_size (tuple[int, int], optional): Window size for sliding window attention as (left, right).
+        window_size (Tuple[int, int], optional): Window size for sliding window attention as (left, right).
             Use (-1, -1) for full attention (default), (-1, 0) for causal attention,
             or (W, 0) for causal attention with sliding window of size W.
         enable_gqa (bool): If set to True, enables Grouped Query Attention (GQA)
@@ -342,16 +345,16 @@ def _varlen_attn_out(
     key: torch.Tensor,
     value: torch.Tensor,
     cu_seq_q: torch.Tensor,
-    cu_seq_k: torch.Tensor | None,
+    cu_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     is_causal: bool = False,
-    scale: float | None = None,
-    window_size: list[int] | None = None,
+    scale: Optional[float] = None,
+    window_size: Optional[List[int]] = None,
     enable_gqa: bool = False,
-    seqused_k: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
-    num_splits: int | None = None,
+    seqused_k: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
+    num_splits: Optional[int] = None,
 ) -> torch.Tensor:
     """
     Private custom op for variable-length attention with pre-allocated output.
@@ -396,16 +399,16 @@ def _varlen_attn_out_fake(
     key: torch.Tensor,
     value: torch.Tensor,
     cu_seq_q: torch.Tensor,
-    cu_seq_k: torch.Tensor | None,
+    cu_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     is_causal: bool = False,
-    scale: float | None = None,
-    window_size: list[int] | None = None,
+    scale: Optional[float] = None,
+    window_size: Optional[List[int]] = None,
     enable_gqa: bool = False,
-    seqused_k: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
-    num_splits: int | None = None,
+    seqused_k: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
+    num_splits: Optional[int] = None,
 ) -> torch.Tensor:
     """
     Fake implementation for meta tensor computation and tracing.
@@ -433,18 +436,18 @@ def varlen_attn_out(
     key: torch.Tensor,
     value: torch.Tensor,
     cu_seq_q: torch.Tensor,
-    cu_seq_k: torch.Tensor | None,
+    cu_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     *,
-    return_aux: AuxRequest | None = None,
-    scale: float | None = None,
-    window_size: tuple[int, int] = (-1, -1),
+    return_aux: Optional[AuxRequest] = None,
+    scale: Optional[float] = None,
+    window_size: Tuple[int, int] = (-1, -1),
     enable_gqa: bool = False,
-    seqused_k: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
-    num_splits: int | None = None,
-) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+    seqused_k: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
+    num_splits: Optional[int] = None,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Compute variable-length attention using Flash Attention with a pre-allocated output tensor.
 
     Same as :func:`varlen_attn` but writes the attention output into the provided ``out`` tensor
@@ -488,7 +491,7 @@ def varlen_attn_out(
     return out
 
 
-def _setup_context(ctx: Any, inputs: tuple[Any, ...], output: Any) -> None:
+def _setup_context(ctx: Any, inputs: Tuple[Any, ...], output: Any) -> None:
     (
         query,
         key,
@@ -535,9 +538,9 @@ def _varlen_attn_backward(
     max_k: int,
     is_causal: bool,
     rng_state: torch.Tensor,
-    scale: float | None = None,
-    window_size: list[int] | None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    scale: Optional[float] = None,
+    window_size: Optional[List[int]] = None,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     window_size = _normalize_window_size(window_size)
 
     unused = torch.empty(0, device=query.device)
@@ -604,9 +607,9 @@ def _varlen_attn_backward_fake(
     max_k: int,
     is_causal: bool,
     rng_state: torch.Tensor,
-    scale: float | None = None,
-    window_size: list[int] | None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    scale: Optional[float] = None,
+    window_size: Optional[List[int]] = None,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Fake implementation for meta tensor computation and tracing.
     """
@@ -621,7 +624,7 @@ def _varlen_attn_backward_fake(
 
 def _backward(
     ctx: Any, grad_out: torch.Tensor, grad_lse: torch.Tensor, grad_rng: torch.Tensor
-) -> tuple[torch.Tensor | None, ...]:
+) -> Tuple[Optional[torch.Tensor], ...]:
     query, key, value, cu_seq_q, cu_seq_k, out, lse, rng_state = ctx.saved_tensors
 
     max_q = ctx.max_q

@@ -1,8 +1,11 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 from torch.ao.pruning.sparsifier.utils import fqn_to_module, module_to_fqn
+from typing import Dict, List, Optional, Type
 
 
 SUPPORTED_MODULES = {nn.Embedding, nn.EmbeddingBag}
@@ -27,7 +30,7 @@ def post_training_sparse_quantize(
     model,
     data_sparsifier_class,
     sparsify_first=True,
-    select_embeddings: list[nn.Module] | None = None,
+    select_embeddings: List[nn.Optional[Module]] = None
     **sparse_config,
 ):
     """Takes in a model and applies sparsification and quantization to only embeddings & embeddingbags.
@@ -108,7 +111,7 @@ def post_training_sparse_quantize(
         torch.ao.quantization.convert(model, inplace=True)
 
         # retrieve scale & zero_points
-        quantize_params: dict[str, dict] = {
+        quantize_params: Dict[str, dict] = {
             "scales": {},
             "zero_points": {},
             "dequant_weights": {},

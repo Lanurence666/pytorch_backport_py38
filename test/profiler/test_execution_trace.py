@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: profiler"]
 
+from __future__ import annotations
 import json
 import os
 import sys
@@ -96,11 +97,7 @@ class TestExecutionTrace(TestCase):
         import gzip
 
         nodes = []
-        with (
-            gzip.open(output_file_name)
-            if output_file_name.endswith(".gz")
-            else open(output_file_name)
-        ) as f:
+        with gzip.open(output_file_name) if output_file_name.endswith(".gz") else open(output_file_name) as f:
             et_graph = json.load(f)
             if "nodes" not in et_graph:
                 raise AssertionError(f"Expected 'nodes' in execution trace: {et_graph}")
@@ -147,22 +144,7 @@ class TestExecutionTrace(TestCase):
         use_device = device != "cpu"
         # Create a temp file to save execution trace and kineto data.
 
-        with (
-            tempfile.NamedTemporaryFile("w+t", suffix=".et.json", delete=False) as fp,
-            tempfile.NamedTemporaryFile(
-                mode="w+t", suffix=".kineto.json", delete=False
-            ) as kt,
-            profile(
-                activities=supported_activities(),
-                schedule=torch.profiler.schedule(
-                    skip_first=3, wait=1, warmup=1, active=2, repeat=1
-                ),
-                on_trace_ready=trace_handler,
-                execution_trace_observer=(
-                    ExecutionTraceObserver().register_callback(fp.name)
-                ),
-            ) as p,
-        ):
+        with tempfile.NamedTemporaryFile("w+t", suffix=".et.json", delete=False) as fp, tempfile.NamedTemporaryFile( mode="w+t", suffix=".kineto.json", delete=False ) as kt, profile( activities=supported_activities(), schedule=torch.profiler.schedule( skip_first=3, wait=1, warmup=1, active=2, repeat=1 ), on_trace_ready=trace_handler, execution_trace_observer=( ExecutionTraceObserver().register_callback(fp.name) ), ) as p:
             trace_name = fp.name
             kt_name = kt.name
             for idx in range(10):
@@ -235,18 +217,7 @@ class TestExecutionTrace(TestCase):
         use_device = device != "cpu"
         # Create a temp file to save kineto data.
 
-        with (
-            tempfile.NamedTemporaryFile(
-                mode="w+t", suffix=".kineto.json", delete=False
-            ) as kt,
-            profile(
-                activities=supported_activities(),
-                schedule=torch.profiler.schedule(
-                    skip_first=3, wait=1, warmup=1, active=2, repeat=1
-                ),
-                on_trace_ready=trace_handler,
-            ) as p,
-        ):
+        with tempfile.NamedTemporaryFile( mode="w+t", suffix=".kineto.json", delete=False ) as kt, profile( activities=supported_activities(), schedule=torch.profiler.schedule( skip_first=3, wait=1, warmup=1, active=2, repeat=1 ), on_trace_ready=trace_handler, ) as p:
             kt_name = kt.name
             for idx in range(10):
                 with record_function(f"## LOOP {idx} ##"):
@@ -753,19 +724,7 @@ class TestExecutionTrace(TestCase):
     def test_execution_trace_record_integral_tensor_range(self, device):
         t1 = torch.tensor([[1, 2], [3, 4]], device=device)
         t2 = torch.tensor([[0, 0], [1, 0]], device=device)
-        with (
-            tempfile.NamedTemporaryFile("w+t", suffix=".et.json", delete=False) as fp,
-            profile(
-                activities=supported_activities(),
-                schedule=torch.profiler.schedule(
-                    skip_first=0, wait=0, warmup=0, active=1, repeat=1
-                ),
-                record_shapes=True,
-                execution_trace_observer=(
-                    ExecutionTraceObserver().register_callback(fp.name)
-                ),
-            ) as p,
-        ):
+        with tempfile.NamedTemporaryFile("w+t", suffix=".et.json", delete=False) as fp, profile( activities=supported_activities(), schedule=torch.profiler.schedule( skip_first=0, wait=0, warmup=0, active=1, repeat=1 ), record_shapes=True, execution_trace_observer=( ExecutionTraceObserver().register_callback(fp.name) ), ) as p:
             filename = fp.name
             torch.gather(t1, 1, t2)
             p.step()

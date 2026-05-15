@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import math
 import operator
-from typing import *  # noqa: F403
+from typing import *  # noqa: F403, Any, Callable, Dict, List, Optional, Type, overload
 
 import torch
 import torch.nn.functional as F
@@ -12,7 +14,7 @@ from torch.nested._internal.sdpa import jagged_scaled_dot_product_attention
 from .nested_tensor import NestedTensor
 
 
-__all__: list[Any] = []
+__all__: List[Any] = []
 
 JAGGED_OPS_TABLE: Dict[Any, Any] = {}
 
@@ -244,7 +246,7 @@ def register_func(tables, aten_ops, schema_str):
 register_jagged_func = functools.partial(register_func, JAGGED_OPS_TABLE)
 
 
-def lookup_jagged(func, *args, **kwargs) -> Callable | None:
+def lookup_jagged(func, *args, **kwargs) -> Optional[Callable]:
     dispatch_func = JAGGED_OPS_TABLE.get(func, None)
     if dispatch_func is not None:
         return dispatch_func
@@ -1137,7 +1139,7 @@ def unbind_int(func, *args, **kwargs):
     lengths = inp.lengths()
     ragged_idx = inp._ragged_idx
 
-    def _torch_check(_lengths: list[int], _offsets: list[int] | None = None) -> None:
+    def _torch_check(_lengths: List[int], _offsets: Optional[List[int]] = None) -> None:
         # This torch._check are needed for torch.compile
         # symbolic shapes processing.
         # offsets and lengths are symbolic variables during compilation,

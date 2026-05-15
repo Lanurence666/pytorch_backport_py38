@@ -1,5 +1,6 @@
 # Owner(s): ["module: onnx"]
 
+from __future__ import annotations
 import os
 import unittest
 from collections import OrderedDict

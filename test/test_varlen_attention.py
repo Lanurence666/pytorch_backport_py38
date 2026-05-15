@@ -1,4 +1,5 @@
 # Owner(s): ["module: sdpa"]
+from __future__ import annotations
 import unittest
 from collections import namedtuple
 from contextlib import contextmanager, nullcontext
@@ -25,7 +26,6 @@ from torch.testing._internal.common_utils import (
     decorateIf,
     parametrize,
     run_tests,
-    setSdpaBackendsToDefaultFinally,
     TEST_WITH_ROCM,
 )
 from torch.utils._python_dispatch import TorchDispatchMode
@@ -293,7 +293,6 @@ class TestVarlenAttention(NNTestCase):
     @unittest.skipIf(
         not PLATFORM_SUPPORTS_FLASH_ATTENTION, "Flash Attention not supported"
     )
-    @setSdpaBackendsToDefaultFinally
     @parametrize("dtype", [torch.bfloat16, torch.float16])
     @parametrize(
         "sdpa_backend",
@@ -372,7 +371,6 @@ class TestVarlenAttention(NNTestCase):
     @unittest.skipIf(
         not PLATFORM_SUPPORTS_FLASH_ATTENTION, "Flash Attention not supported"
     )
-    @setSdpaBackendsToDefaultFinally
     @parametrize(
         "sdpa_backend",
         ["aotriton", "ck"] if PLATFORM_SUPPORTS_CK_SDPA else ["aotriton"],
@@ -454,7 +452,6 @@ class TestVarlenAttention(NNTestCase):
     @unittest.skipIf(
         not PLATFORM_SUPPORTS_FLASH_ATTENTION, "Flash Attention not supported"
     )
-    @setSdpaBackendsToDefaultFinally
     @parametrize(
         "sdpa_backend",
         ["aotriton", "ck"] if PLATFORM_SUPPORTS_CK_SDPA else ["aotriton"],
@@ -525,7 +522,6 @@ class TestVarlenAttention(NNTestCase):
     @unittest.skipIf(
         not PLATFORM_SUPPORTS_FLASH_ATTENTION, "Flash Attention not supported"
     )
-    @setSdpaBackendsToDefaultFinally
     @parametrize(
         "sdpa_backend",
         ["aotriton", "ck"] if PLATFORM_SUPPORTS_CK_SDPA else ["aotriton"],
@@ -841,7 +837,6 @@ class TestVarlenAttention(NNTestCase):
         lambda params: params["backend"] != "fa2"
         and any(kv_len < 128 for kv_len in params["actual_kv_lens"]),
     )
-    @setSdpaBackendsToDefaultFinally
     @parametrize(
         "sdpa_backend",
         ["aotriton", "ck"] if PLATFORM_SUPPORTS_CK_SDPA else ["aotriton"],

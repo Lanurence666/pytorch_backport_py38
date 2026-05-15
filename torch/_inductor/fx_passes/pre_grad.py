@@ -1,4 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+from typing import Optional
+
+
 import copy
 import functools
 import itertools
@@ -170,7 +174,7 @@ def use_matmul_fuse_lce_replace_first_LCE(graph):
 
 
 @init_once_fakemode
-def lazy_init(input_device: torch.device | None = None):
+def lazy_init(input_device: Optional[torch.device] = None):
     from . import (  # noqa: F401  # noqa: F401
         apply_gumbel_max_trick,
         efficient_conv_bn_eval,
@@ -198,8 +202,8 @@ def _get_pass_name_func(p):
 def _run_pre_dispatch_passes(
     gm: torch.fx.GraphModule,
     example_inputs: Sequence[object] = (),
-    add_passes: str | None = None,
-    remove_passes: str | None = None,
+    add_passes: Optional[str]= None,
+    remove_passes: Optional[str]= None,
 ) -> None:
     # order matters
     default_pass_list = [
@@ -286,8 +290,8 @@ def _run_pre_dispatch_passes(
 def pre_grad_passes(
     gm: torch.fx.GraphModule,
     example_inputs: Sequence[object] = (),
-    add_passes: str | None = None,
-    remove_passes: str | None = None,
+    add_passes: Optional[str]= None,
+    remove_passes: Optional[str]= None,
 ) -> torch.fx.GraphModule:
     """
     Apply passes on the input FX graph using Torch IR.
@@ -496,7 +500,7 @@ def fuse_conv_bn(gm: torch.fx.GraphModule, inplace=False) -> torch.fx.GraphModul
         def is_fusion_enabled(self):
             return self.fusion_enabled
 
-    conv_bn_to_fuse: dict[int, ConvBNFusion] = {}
+    conv_bn_to_fuse: Dict[int, ConvBNFusion] = {}
     for pattern in modules_patterns:
         conv_bn_to_fuse.clear()
         for node in gm.graph.nodes:
@@ -783,7 +787,7 @@ def linear_permute_fusion(module: torch.fx.GraphModule) -> torch.fx.GraphModule:
 # ---->
 # Y2 = (W * X^T + bias.unsqueeze(-1))^T
 def linear_transpose(
-    input: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor | None
+    input: Optional[torch.Tensor, weight: torch.Tensor, bias: torch.Tensor]
 ) -> torch.Tensor:
     if bias is None:
         return torch.matmul(weight, input.transpose(-1, -2))
@@ -880,7 +884,7 @@ def permute_matmul_fusion(module: torch.fx.GraphModule) -> torch.fx.GraphModule:
 # ---->
 # Y2 = X1.transpose(-1, -2) * W1^T + bias1
 def transpose_linear(
-    input: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor | None
+    input: Optional[torch.Tensor, weight: torch.Tensor, bias: torch.Tensor]
 ) -> torch.Tensor:
     if bias is None:
         return torch.matmul(input.transpose(-1, -2), weight.t())

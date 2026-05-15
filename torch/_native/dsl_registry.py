@@ -1,8 +1,12 @@
 # Owner(s): ["module: dsl-native-ops"]
 
+from __future__ import annotations
+
 import functools
 import logging
-from typing import Protocol
+from typing import Dict, Optional, Tuple, Type, cast
+from typing_extensions import Protocol
+
 
 from torch._vendor.packaging.version import Version
 
@@ -16,7 +20,7 @@ class DSLModuleProtocol(Protocol):
     """Complete interface for DSL utility modules"""
 
     def runtime_available(self) -> bool: ...
-    def runtime_version(self) -> Version | None: ...
+    def runtime_version(self) -> Optional[Version]: ...
 
     def deregister_op_overrides(self) -> None: ...
 
@@ -25,7 +29,7 @@ class DSLModuleProtocol(Protocol):
         lib_symbol: str,
         op_symbol: str,
         dispatch_key: str,
-        cond: _OpCondFn | None,
+        cond: Optional[_OpCondFn],
         impl: _OpImplFn,
         *,
         allow_multiple_override: bool = False,
@@ -37,7 +41,7 @@ class DSLRegistry:
     """Registry for DSL modules - calls their existing API functions dynamically"""
 
     def __init__(self):
-        self._dsl_modules: dict[str, DSLModuleProtocol] = {}
+        self._dsl_modules: Dict[str, DSLModuleProtocol] = {}
 
     def _validate_dsl_name(self, name: str) -> None:
         """Validate DSL name at runtime"""
@@ -97,7 +101,7 @@ class DSLRegistry:
 
         log.info("Successfully registered DSL: %s", name)
 
-    @functools.cache  # noqa: B019
+    @functools.lru_cache(maxsize=None)  # noqa: B019
     def is_dsl_available(self, dsl_name: str) -> bool:
         """Check if DSL is available by calling its runtime_available()"""
         dsl_module = self._dsl_modules.get(dsl_name)
@@ -112,8 +116,8 @@ class DSLRegistry:
             log.exception("Error checking availability for DSL %s", dsl_name)
             return False
 
-    @functools.cache  # noqa: B019
-    def get_dsl_version(self, dsl_name: str) -> Version | None:
+    @functools.lru_cache(maxsize=None)  # noqa: B019
+    def get_dsl_version(self, dsl_name: str) -> Optional[Version]:
         """Get DSL version by calling its runtime_version()"""
         dsl_module = self._dsl_modules.get(dsl_name)
         if dsl_module is None:
@@ -124,8 +128,8 @@ class DSLRegistry:
             log.debug("Error getting version for DSL %s", dsl_name, exc_info=True)
             return None
 
-    @functools.cache  # noqa: B019
-    def list_available_dsls(self) -> tuple[str, ...]:
+    @functools.lru_cache(maxsize=None)  # noqa: B019
+    def list_available_dsls(self) -> Tuple[str, ...]:
         """Get names of currently available DSLs"""
         available = []
         for name in self._dsl_modules:
@@ -133,12 +137,12 @@ class DSLRegistry:
                 available.append(name)
         return tuple(available)
 
-    @functools.cache  # noqa: B019
-    def list_all_dsls(self) -> tuple[str, ...]:
+    @functools.lru_cache(maxsize=None)  # noqa: B019
+    def list_all_dsls(self) -> Tuple[str, ...]:
         """Get all registered DSL names (available or not)"""
         return tuple(self._dsl_modules.keys())
 
-    def get_dsl_module(self, name: str) -> DSLModuleProtocol | None:
+    def get_dsl_module(self, name: str) -> Optional[DSLModuleProtocol]:
         """Get a registered DSL module by name.
 
         Args:

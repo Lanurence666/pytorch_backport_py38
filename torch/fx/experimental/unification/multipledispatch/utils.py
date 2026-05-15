@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import TYPE_CHECKING, TypeVar
+from typing import Callable, Dict, Iterable, List, Mapping, Sequence, TYPE_CHECKING, Tuple, Type, TypeVar, Union
 
 
 if TYPE_CHECKING:
@@ -14,7 +14,7 @@ __all__ = ["raises", "expand_tuples", "reverse_dict", "groupby", "typename"]
 
 
 def raises(
-    err: type[BaseException],
+    err: Type[BaseException],
     lamda: Callable[[], object],  # codespell:ignore lamda
 ) -> bool:
     try:
@@ -24,7 +24,7 @@ def raises(
         return True
 
 
-def expand_tuples(L: Sequence[type | tuple[type, ...]]) -> list[tuple[type, ...]]:
+def expand_tuples(L: Sequence[Union[type, Tuple[type, ...]]]) -> List[Tuple[type, ...]]:
     """
     >>> expand_tuples([1, (2, 3)])
     [(1, 2), (1, 3)]
@@ -43,7 +43,7 @@ def expand_tuples(L: Sequence[type | tuple[type, ...]]) -> list[tuple[type, ...]
 
 # Taken from theano/theano/gof/sched.py
 # Avoids licensing issues because this was written by Matthew Rocklin
-def _toposort(edges: Mapping[_T, Iterable[_T]]) -> list[_T]:
+def _toposort(edges: Mapping[_T, Iterable[_T]]) -> List[_T]:
     """Topological sort algorithm by Kahn [1] - O(nodes + vertices)
     inputs:
         edges - a dict of the form {a: {b, c}} where b and c depend on a
@@ -77,7 +77,7 @@ def _toposort(edges: Mapping[_T, Iterable[_T]]) -> list[_T]:
 
 def reverse_dict(
     d: Mapping[_T, Iterable[_T]],
-) -> OrderedDict[_T, tuple[_T, ...]]:
+) -> OrderedDict[_T, Tuple[_T, ...]]:
     """Reverses direction of dependence dict.
 
     >>> d = {"a": (1, 2), "b": (2, 3), "c": ()}
@@ -102,7 +102,7 @@ def reverse_dict(
 # Avoids licensing issues because this version was authored by Matthew Rocklin
 def groupby(
     func: Callable[[_T], object], seq: Iterable[_T]
-) -> OrderedDict[object, list[_T]]:
+) -> OrderedDict[object, List[_T]]:
     """Group a collection by a key function
     >>> names = ["Alice", "Bob", "Charlie", "Dan", "Edith", "Frank"]
     >>> groupby(len, names)  # doctest: +SKIP
@@ -123,7 +123,7 @@ def groupby(
     return d
 
 
-def typename(type: type | tuple[type, ...]) -> str:
+def typename(type: Union[type, Tuple[type, ...]]) -> str:
     """Get the name of `type`.
     Parameters
     ----------

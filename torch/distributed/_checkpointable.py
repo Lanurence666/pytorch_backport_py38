@@ -1,7 +1,10 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 from typing_extensions import Protocol, runtime_checkable
 
 import torch
+from typing import List
 
 
 @runtime_checkable
@@ -12,7 +15,7 @@ class _Checkpointable(Protocol):  # noqa: PYI046
     This is to allow arbitrary objects/tensor subclasses to hook into DCP seamlessly through implementing the interface.
     """
 
-    def __create_write_items__(self, fqn: str, object: object) -> list[object]:
+    def __create_write_items__(self, fqn: str, object: object) -> List[object]:
         """
         Return a list of WriteItems based on object's contents.
         """
@@ -20,7 +23,7 @@ class _Checkpointable(Protocol):  # noqa: PYI046
             "_Checkpointable._create_write_items is not implemented"
         )
 
-    def __create_chunk_list__(self) -> list[object]:
+    def __create_chunk_list__(self) -> List[object]:
         """
         Return a list of `ChunkStorageMetadata` based on object's contents.
         """

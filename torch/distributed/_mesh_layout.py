@@ -1,12 +1,13 @@
+from __future__ import annotations
 """
 Definition of CuTe inspired Layouts for DeviceMesh internal bookkeeping and functions to manipulate them
 """
 
 import math
-from collections.abc import Iterator, Sequence
+
 from dataclasses import dataclass
 from itertools import product
-from typing import NoReturn, overload
+from typing import Iterator, List, NoReturn, Optional, Sequence, Set, Tuple, Type, Union, overload
 
 import torch
 from torch.distributed._pycute import (
@@ -55,10 +56,10 @@ class _FlatLayout:
 
     """
 
-    shape: tuple[int, ...]
-    stride: tuple[int, ...]
+    shape: Tuple[int, ...]
+    stride: Tuple[int, ...]
 
-    def __init__(self, shape: IntTuple, stride: IntTuple | None = None) -> None:
+    def __init__(self, shape: IntTuple, stride: Optional[IntTuple] = None) -> None:
         if not is_tuple(shape) and not is_int(shape):
             raise TypeError(f"shape must be a tuple or int, got {type(shape)}")
         stride = stride if stride is not None else suffix_product(shape)
@@ -154,7 +155,7 @@ class _FlatLayout:
         result = complement(self.to_pycute(), world_size)
         return _FlatLayout(result.shape, result.stride)
 
-    def all_ranks_from_zero(self) -> list[int]:
+    def all_ranks_from_zero(self) -> List[int]:
         """
         This function computes the all ranks specified by the layout staring from zero.
 
@@ -193,7 +194,7 @@ class _FlatLayout:
             for coord in product(*(range(s) for s in self.shape))
         ]
 
-    def global_ranks(self, world_size: int) -> list[list[int]]:
+    def global_ranks(self, world_size: int) -> List[List[int]]:
         """
         Build global ranks specified by the layout via two-level ranks composition.
 
@@ -262,7 +263,7 @@ class _FlatLayout:
         )
 
     @property
-    def sizes_and_strides(self) -> Iterator[tuple[int, int]]:
+    def sizes_and_strides(self) -> Iterator[Tuple[int, int]]:
         """Iterate over (size, stride) pairs for each dimension."""
         return zip(self.shape, self.stride)
 
@@ -282,14 +283,14 @@ class _MeshLayout(Sequence[_FlatLayout]):
 
     """
 
-    axes: tuple[_FlatLayout, ...]
+    axes: Tuple[_FlatLayout, ...]
 
     def __init__(self, axes: Sequence[_FlatLayout]) -> None:
         object.__setattr__(self, "axes", tuple(axes))
 
     @classmethod
     def from_sizes_strides(
-        cls, sizes: tuple[int, ...], strides: tuple[int, ...] | None = None
+        cls, sizes: Tuple[int, ...], strides: Optional[Tuple[int, ...]] = None
     ) -> "_MeshLayout":
         if strides is None:
             strides = flatten(suffix_product(sizes))
@@ -309,7 +310,7 @@ class _MeshLayout(Sequence[_FlatLayout]):
     @overload
     def __getitem__(self, i: slice) -> "_MeshLayout": ...
 
-    def __getitem__(self, i: int | slice) -> "_FlatLayout | _MeshLayout":
+    def __getitem__(self, i: Union[int, slice]) -> Union["_FlatLayout, _MeshLayout"]:
         if isinstance(i, slice):
             return _MeshLayout(self.axes[i])
         return self.axes[i]
@@ -323,7 +324,7 @@ class _MeshLayout(Sequence[_FlatLayout]):
         return make_layout(*(axis.to_pycute() for axis in self.axes))
 
     @property
-    def top_level_sizes(self) -> tuple[int, ...]:
+    def top_level_sizes(self) -> Tuple[int, ...]:
         return tuple(axis.numel() for axis in self.axes)
 
     def numel(self) -> int:

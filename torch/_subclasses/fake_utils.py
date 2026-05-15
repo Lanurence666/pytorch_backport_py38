@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import functools
 import warnings
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, List, Mapping, Optional, Sequence, TYPE_CHECKING, Union
 
 import torch
 import torch.utils._pytree as pytree
@@ -17,7 +17,7 @@ from torch.utils._python_dispatch import TorchDispatchMode
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    
 
     from torch._ops import OpOverload
     from torch.utils._pytree import PyTree
@@ -114,8 +114,8 @@ def is_sdpa_error(func: OpOverload, idx: int, e: Exception) -> bool:
 
 
 def try_convert_fake_to_real(
-    ten_list: list[FakeTensor | Any],
-) -> list[FakeTensor | torch.Tensor | Any]:
+    ten_list: Union[List[FakeTensor, Any],]
+) -> Union[List[FakeTensor, torch.Tensor, Any]]:
     """
     Attempt to convert fake tensors to a corresponding real tensor with the correct underlying storage by looking up
     the FakeTensorMode meta to real storage mapping. On failure to find the storage mapping, the FakeTensor will
@@ -150,7 +150,7 @@ def try_convert_fake_to_real(
 
         unhinted = False
 
-        def map_symint(s: torch.SymInt | int) -> int:
+        def map_symint(s: Union[torch.SymInt, int]) -> int:
             nonlocal unhinted
             if not isinstance(s, torch.SymInt):
                 return s
@@ -217,7 +217,7 @@ def _check_fake_real_tensors(
 class CrossRefFakeMode(TorchDispatchMode):
     def __init__(
         self,
-        ignore_op_fn: Callable[[OpOverload], bool] | None = None,
+        ignore_op_fn: Optional[Callable[[OpOverload], bool]]= None,
         *,
         check_strides: bool = True,
         check_aliasing: bool = True,
@@ -236,7 +236,7 @@ class CrossRefFakeMode(TorchDispatchMode):
         func: OpOverload,
         types: Sequence[type],
         args: Sequence[object] = (),
-        kwargs: Mapping[str, object] | None = None,
+        kwargs: Optional[Mapping[str, object]]= None,
     ) -> object:
         kwargs = kwargs or {}
 

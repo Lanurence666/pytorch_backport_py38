@@ -4,12 +4,12 @@
 import collections
 import functools
 from collections import OrderedDict
-from collections.abc import Callable
-from typing import TypeVar
+
+from typing import Callable, Dict, Type, TypeVar
 from typing_extensions import ParamSpec
 
 
-simple_call_counter: OrderedDict[str, int] = collections.OrderedDict()
+simple_call_counter: "OrderedDict[str, int]" = collections.OrderedDict()
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")

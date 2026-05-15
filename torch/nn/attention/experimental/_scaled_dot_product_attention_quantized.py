@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Optional
+
 # mypy: allow-untyped-defs
 """
 This operator implements FP8 scaled dot product attention using Flash Attention 3.
@@ -26,7 +29,7 @@ class DescaleType(IntEnum):
 
 
 def _validate_descale(
-    descale: Tensor | None,
+    descale: Optional[Tensor],
     name: str,
     query: Tensor,
     key: Tensor,
@@ -91,10 +94,10 @@ def _scaled_dot_product_attention_quantized(
     key: Tensor,
     value: Tensor,
     is_causal: bool = False,
-    scale: float | None = None,
-    q_descale: Tensor | None = None,
-    k_descale: Tensor | None = None,
-    v_descale: Tensor | None = None,
+    scale: Optional[float] = None,
+    q_descale: Optional[Tensor] = None,
+    k_descale: Optional[Tensor] = None,
+    v_descale: Optional[Tensor] = None,
     q_descale_type: DescaleType = DescaleType.PER_HEAD,
     k_descale_type: DescaleType = DescaleType.PER_HEAD,
     v_descale_type: DescaleType = DescaleType.PER_HEAD,

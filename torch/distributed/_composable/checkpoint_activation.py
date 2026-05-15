@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
-from collections.abc import Generator
+from __future__ import annotations
+
+
 from contextlib import AbstractContextManager, contextmanager, nullcontext
-from typing import Any
+from typing import Any, Dict, Generator, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -14,7 +16,7 @@ from .contract import _State, contract
 
 
 @contextmanager
-def _no_hook(module: nn.Module, user_ctx: AbstractContextManager | None = None):
+def _no_hook(module: nn.Module, user_ctx: Optional[AbstractContextManager] = None):
     r"""
     Disable hooks installed by checkpoint to avoid unintentional recursion
     during backward recomputation.
@@ -31,7 +33,7 @@ def _no_hook(module: nn.Module, user_ctx: AbstractContextManager | None = None):
 
 class _CheckpointState(_State):
     enable_hook: bool = False
-    _ac_generator: Generator[None, None, None] | None
+    _ac_generator: Optional[Generator[None, None, None]]
 
 
 @contract(_CheckpointState)
@@ -87,7 +89,7 @@ def checkpoint(module: nn.Module, **kwargs) -> nn.Module:
         )
 
     def forward_pre_hook(
-        module: nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any]
+        module: nn.Module, args: Tuple[Any, ...], kwargs: Dict[str, Any]
     ) -> None:
         if checkpoint.state(module).enable_hook:
 
@@ -111,7 +113,7 @@ def checkpoint(module: nn.Module, **kwargs) -> nn.Module:
             checkpoint.state(module)._ac_generator = gen
             next(gen)
 
-    def forward_hook(module: nn.Module, inputs: tuple[Any, ...], output: Any) -> Any:
+    def forward_hook(module: nn.Module, inputs: Tuple[Any, ...], output: Any) -> Any:
         if checkpoint.state(module).enable_hook:
             try:
                 gen = checkpoint.state(module)._ac_generator

@@ -1,6 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import itertools
 import unittest
 
@@ -1219,17 +1220,7 @@ class DistTensorOpsTest(DTensorContinuousTestBase):
         op = torch.ops.aten._to_copy.default
         schema_info = RuntimeSchemaInfo(static_kwargkey=["dtype"])
 
-        with (
-            patch.dict(
-                propagator.op_single_dim_strategy_funcs,
-                {op: _SingleDimStrategyInfo(func=to_copy_single_dim_strategy)},
-            ),
-            patch.dict(
-                propagator.op_to_schema_info_for_single_dim_strategy, {op: schema_info}
-            ),
-            patch.dict(propagator.op_strategy_funcs, clear=True),
-            patch.dict(propagator.op_to_schema_info, clear=True),
-        ):
+        with patch.dict( propagator.op_single_dim_strategy_funcs, {op: _SingleDimStrategyInfo(func=to_copy_single_dim_strategy)}, ), patch.dict( propagator.op_to_schema_info_for_single_dim_strategy, {op: schema_info} ), patch.dict(propagator.op_strategy_funcs, clear=True), patch.dict(propagator.op_to_schema_info, clear=True):
             call_count[0] = 0
             sharded_dtensor.to(torch.int32)
             sharded_dtensor.to(torch.float64)

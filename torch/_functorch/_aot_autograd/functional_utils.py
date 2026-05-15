@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This file contains utilities related to functionalization in AOTAutograd:
 1. converting to/from functional tensors
@@ -6,10 +7,13 @@ This file contains utilities related to functionalization in AOTAutograd:
 4. checking if a graph is functional i.e. whether it contains any mutation ops
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, TypeGuard
+from typing import Any, Optional, Tuple, Type, Union
+try:
+    from typing import TypeGuard
+except ImportError:
+    from typing_extensions import TypeGuard
 
 import torch
 from torch import Tensor
@@ -50,15 +54,17 @@ def sync_functional_tensor(t: torch.Tensor) -> None:
     if is_traceable_wrapper_subclass(t):
         attrs, _ctx = t.__tensor_flatten__()  # type: ignore[attr-defined]
         for attr in attrs:
-            match getattr(t, attr):
-                case Tensor() as inner:
-                    sync_functional_tensor(inner)
-                case OpaqueBase():
-                    pass
-                case unexpected:
-                    raise AssertionError(
-                        f"expected Tensor or OpaqueBase, got {type(unexpected)}"
-                    )
+            # TODO: Python 3.8 compat - match/case block needs manual conversion
+            # match getattr(t, attr):
+            # case Tensor() as inner:
+            # sync_functional_tensor(inner)
+            # case OpaqueBase():
+            # pass
+            # case unexpected:
+            # raise AssertionError(
+            # f"expected Tensor or OpaqueBase, got {type(unexpected)}"
+            # )
+            pass  # placeholder for removed match/case
     else:
         torch._sync(t)
 
@@ -85,30 +91,32 @@ def from_fun(t: object) -> object:
     return torch._from_functional_tensor(t.elem)
 
 
-def is_fun(t: object) -> TypeGuard[FunctionalTensor | Tensor]:
+def is_fun(t: object) -> Union[TypeGuard[FunctionalTensor, Tensor]]:
     if isinstance(t, Tensor) and is_traceable_wrapper_subclass(t):
         # See Note [Functionalization always runs last]
         # This means that if we want to "functionalize" a subclass, we need to ensure that the functional wrapper
         # goes at the bottom.
         # recurse here, so we can support nested wrapper subclasses
         t_attrs, _ = t.__tensor_flatten__()  # type: ignore[attr-defined]
-        got_fun: bool | None = None
+        got_fun: Optional[bool]= None
         for attr in t_attrs:
-            match getattr(t, attr):
-                case Tensor() as v:
-                    fun = is_fun(v)
-                    if got_fun is None:
-                        got_fun = fun
-                    elif got_fun != fun:
-                        raise AssertionError(
-                            "mixed functional/non-functional inner tensors"
-                        )
-                case OpaqueBase():
-                    pass
-                case unexpected:
-                    raise AssertionError(
-                        f"expected Tensor or OpaqueBase, got {type(unexpected)}"
-                    )
+            # TODO: Python 3.8 compat - match/case block needs manual conversion
+            # match getattr(t, attr):
+            # case Tensor() as v:
+            # fun = is_fun(v)
+            # if got_fun is None:
+            # got_fun = fun
+            # elif got_fun != fun:
+            # raise AssertionError(
+            # "mixed functional/non-functional inner tensors"
+            # )
+            # case OpaqueBase():
+            # pass
+            # case unexpected:
+            # raise AssertionError(
+            # f"expected Tensor or OpaqueBase, got {type(unexpected)}"
+            # )
+            pass  # placeholder for removed match/case
         return got_fun or False
 
     return isinstance(t, FunctionalTensor)
@@ -123,16 +131,18 @@ def has_data_mutation(t: object) -> bool:
         attrs, _ = t.__tensor_flatten__()
         # A tensor subclass was updated if any of its inner elements were updated
         for attr in attrs:
-            match getattr(t, attr):
-                case Tensor() as v:
-                    if has_data_mutation(v):
-                        return True
-                case OpaqueBase():
-                    pass
-                case unexpected:
-                    raise AssertionError(
-                        f"expected Tensor or OpaqueBase, got {type(unexpected)}"
-                    )
+            # TODO: Python 3.8 compat - match/case block needs manual conversion
+            # match getattr(t, attr):
+            # case Tensor() as v:
+            # if has_data_mutation(v):
+            # return True
+            # case OpaqueBase():
+            # pass
+            # case unexpected:
+            # raise AssertionError(
+            # f"expected Tensor or OpaqueBase, got {type(unexpected)}"
+            # )
+            pass  # placeholder for removed match/case
         return False
     else:
         if isinstance(t, torch.Tensor):
@@ -147,16 +157,18 @@ def are_all_mutations_hidden_from_autograd(t: object) -> bool:
         attrs, _ = t.__tensor_flatten__()
         # If all inner elements are mutations hidden from autograd, then it is a mutation hidden from autograd.
         for attr in attrs:
-            match getattr(t, attr):
-                case Tensor() as v:
-                    if not are_all_mutations_hidden_from_autograd(v):
-                        return False
-                case OpaqueBase():
-                    pass
-                case unexpected:
-                    raise AssertionError(
-                        f"expected Tensor or OpaqueBase, got {type(unexpected)}"
-                    )
+            # TODO: Python 3.8 compat - match/case block needs manual conversion
+            # match getattr(t, attr):
+            # case Tensor() as v:
+            # if not are_all_mutations_hidden_from_autograd(v):
+            # return False
+            # case OpaqueBase():
+            # pass
+            # case unexpected:
+            # raise AssertionError(
+            # f"expected Tensor or OpaqueBase, got {type(unexpected)}"
+            # )
+            pass  # placeholder for removed match/case
         return True
     elif isinstance(t, torch.Tensor):
         if not isinstance(t, FunctionalTensor):
@@ -170,16 +182,18 @@ def are_all_mutations_under_no_grad_or_inference_mode(t: torch.Tensor) -> bool:
     if is_traceable_wrapper_subclass(t):
         attrs, _ = t.__tensor_flatten__()
         for attr in attrs:
-            match getattr(t, attr):
-                case Tensor() as v:
-                    if not are_all_mutations_under_no_grad_or_inference_mode(v):
-                        return False
-                case OpaqueBase():
-                    pass
-                case unexpected:
-                    raise AssertionError(
-                        f"expected Tensor or OpaqueBase, got {type(unexpected)}"
-                    )
+            # TODO: Python 3.8 compat - match/case block needs manual conversion
+            # match getattr(t, attr):
+            # case Tensor() as v:
+            # if not are_all_mutations_under_no_grad_or_inference_mode(v):
+            # return False
+            # case OpaqueBase():
+            # pass
+            # case unexpected:
+            # raise AssertionError(
+            # f"expected Tensor or OpaqueBase, got {type(unexpected)}"
+            # )
+            pass  # placeholder for removed match/case
         return True
     else:
         if not isinstance(t, FunctionalTensor):
@@ -193,18 +207,20 @@ def was_inductor_storage_resized(t: object) -> bool:
     if is_traceable_wrapper_subclass(t):
         attrs, _ = t.__tensor_flatten__()
         for attr in attrs:
-            match getattr(t, attr):
-                case Tensor() as v:
-                    if was_inductor_storage_resized(v):
-                        raise RuntimeError(
-                            f"storage resizing is not supported on tensor subclass: {type(t)}"
-                        )
-                case OpaqueBase():
-                    pass
-                case unexpected:
-                    raise AssertionError(
-                        f"expected Tensor or OpaqueBase, got {type(unexpected)}"
-                    )
+            # TODO: Python 3.8 compat - match/case block needs manual conversion
+            # match getattr(t, attr):
+            # case Tensor() as v:
+            # if was_inductor_storage_resized(v):
+            # raise RuntimeError(
+            # f"storage resizing is not supported on tensor subclass: {type(t)}"
+            # )
+            # case OpaqueBase():
+            # pass
+            # case unexpected:
+            # raise AssertionError(
+            # f"expected Tensor or OpaqueBase, got {type(unexpected)}"
+            # )
+            pass  # placeholder for removed match/case
         return False
     elif not isinstance(t, torch.Tensor):
         return False
@@ -229,22 +245,24 @@ def has_metadata_mutation(
         attrs, _ = f_arg.__tensor_flatten__()
         # A tensor subclass was updated if any of its inner elements were updated
         for attr in attrs:
-            match getattr(f_arg, attr):
-                case Tensor():
-                    f_inner_t = getattr(f_arg, attr)
-                    inner_t = getattr(arg, attr)
-                    if has_metadata_mutation(
-                        f_inner_t,
-                        inner_t,
-                        check_only_storage_mutation=check_only_storage_mutation,
-                    ):
-                        return True
-                case OpaqueBase():
-                    pass
-                case unexpected:
-                    raise AssertionError(
-                        f"expected Tensor or OpaqueBase, got {type(unexpected)}"
-                    )
+            # TODO: Python 3.8 compat - match/case block needs manual conversion
+            # match getattr(f_arg, attr):
+            # case Tensor():
+            # f_inner_t = getattr(f_arg, attr)
+            # inner_t = getattr(arg, attr)
+            # if has_metadata_mutation(
+            # f_inner_t,
+            # inner_t,
+            # check_only_storage_mutation=check_only_storage_mutation,
+            # ):
+            # return True
+            # case OpaqueBase():
+            # pass
+            # case unexpected:
+            # raise AssertionError(
+            # f"expected Tensor or OpaqueBase, got {type(unexpected)}"
+            # )
+            pass  # placeholder for removed match/case
         return False
     else:
         if not isinstance(f_arg, torch.Tensor):
@@ -306,7 +324,7 @@ def gen_alias_from_base(
     aliased_base_tensor: Tensor,
     target_meta_tensor: Tensor,
     target_requires_grad: bool,
-    target_view_meta_sequence: ViewMetaSequence | None = None,
+    target_view_meta_sequence: Optional[ViewMetaSequence]= None,
     *,
     replay_views: bool,
 ) -> Tensor:
@@ -415,12 +433,12 @@ class MetadataKey:
     This should be equal whenever has_same_metadata would return True
     """
 
-    size: tuple[SymIntEqByExpr, ...]
+    size: Tuple[SymIntEqByExpr, ...]
     layout: torch.layout
     is_sparse: bool
     # these are empty when is_sparse
-    stride: tuple[SymIntEqByExpr, ...] | None
-    storage_offset: SymIntEqByExpr | None
+    stride: Optional[Tuple[SymIntEqByExpr, ...]]
+    storage_offset: Optional[SymIntEqByExpr]
     is_conj: bool
     is_neg: bool
 
@@ -505,16 +523,18 @@ def was_tensor_updated(arg: torch.Tensor, new_arg: torch.Tensor) -> bool:
             raise AssertionError(f"attrs mismatch: {attrs} != {new_attrs}")
         # A tensor subclass was updated if any of its inner elements were updated
         for attr in attrs:
-            match getattr(arg, attr):
-                case Tensor() as v:
-                    if was_tensor_updated(v, getattr(new_arg, attr)):
-                        return True
-                case OpaqueBase():
-                    pass
-                case unexpected:
-                    raise AssertionError(
-                        f"expected Tensor or OpaqueBase, got {type(unexpected)}"
-                    )
+            # TODO: Python 3.8 compat - match/case block needs manual conversion
+            # match getattr(arg, attr):
+            # case Tensor() as v:
+            # if was_tensor_updated(v, getattr(new_arg, attr)):
+            # return True
+            # case OpaqueBase():
+            # pass
+            # case unexpected:
+            # raise AssertionError(
+            # f"expected Tensor or OpaqueBase, got {type(unexpected)}"
+            # )
+            pass  # placeholder for removed match/case
         return False
     else:
         return arg is not new_arg
@@ -539,16 +559,18 @@ def was_tensor_metadata_updated(arg: Any, new_arg: Any) -> bool:
             raise AssertionError(f"attrs mismatch: {attrs} != {new_attrs}")
         # A tensor subclass was updated if any of its inner elements were updated
         for attr in attrs:
-            match getattr(arg, attr):
-                case Tensor() as v:
-                    if was_tensor_metadata_updated(v, getattr(new_arg, attr)):
-                        return True
-                case OpaqueBase():
-                    pass
-                case unexpected:
-                    raise AssertionError(
-                        f"expected Tensor or OpaqueBase, got {type(unexpected)}"
-                    )
+            # TODO: Python 3.8 compat - match/case block needs manual conversion
+            # match getattr(arg, attr):
+            # case Tensor() as v:
+            # if was_tensor_metadata_updated(v, getattr(new_arg, attr)):
+            # return True
+            # case OpaqueBase():
+            # pass
+            # case unexpected:
+            # raise AssertionError(
+            # f"expected Tensor or OpaqueBase, got {type(unexpected)}"
+            # )
+            pass  # placeholder for removed match/case
         return False
     else:
         return arg is not new_arg and StorageWeakRef(
@@ -557,7 +579,7 @@ def was_tensor_metadata_updated(arg: Any, new_arg: Any) -> bool:
 
 
 # Returns the number of detected copy_
-def _is_functional_graph(fx_g: torch.fx.Graph) -> tuple[str | None, int]:
+def _is_functional_graph(fx_g: torch.fx.Graph) -> Union[Tuple[str, None, int]]:
     allowed_mutation_ops = [
         torch.ops.aten.copy_.default,
         torch.ops.aten.set_.source_Tensor,

@@ -1,6 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import itertools
-from typing import Any, Protocol
+from typing import Any, Dict, Optional, Type
+from typing_extensions import Protocol
+
 
 import torch
 from torch.nn.parameter import is_lazy
@@ -167,7 +171,7 @@ class LazyModuleMixin:
 
     # modules inheriting from this will change their __class__ to the specified
     # one after they are fully initialized
-    cls_to_become: type[Any] | None = None
+    cls_to_become: Optional[Type[Any]]= None
 
     def __init__(self: _LazyProtocol, *args, **kwargs):
         # Mypy doesn't like this super call in a mixin

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import functools
 import logging
 import math
@@ -135,7 +136,7 @@ def contains_tensor_types(type):
     )
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def non_compute_operator(op):
     schema = op._schema
 

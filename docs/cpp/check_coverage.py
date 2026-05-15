@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """C++ API documentation coverage checker.
 
 Auto-discovers public C++ APIs from Doxygen XML output and checks which ones

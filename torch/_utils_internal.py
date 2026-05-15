@@ -1,12 +1,14 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import logging
 import os
 import sys
 import tempfile
 import typing_extensions
-from collections.abc import Callable
-from typing import Any, TypeVar
+
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 from typing_extensions import ParamSpec
 
 import torch
@@ -117,7 +119,7 @@ def compile_time_strobelight_meta(
 #
 # Killswitch is at
 # https://www.internalfb.com/intern/justknobs/?name=pytorch%2Fsignpost#event
-def signpost_event(category: str, name: str, parameters: dict[str, Any]):
+def signpost_event(category: str, name: str, parameters: Dict[str, Any]):
     log.info("%s %s: %r", category, name, parameters)
 
 
@@ -220,7 +222,7 @@ def is_fb_unit_test() -> bool:
     return False
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def max_clock_rate():
     """
     unit: MHz
@@ -254,7 +256,7 @@ def max_clock_rate():
             return 1100
 
 
-def get_mast_job_name_version() -> tuple[str, int] | None:
+def get_mast_job_name_version() -> Optional[Tuple[str, int]]:
     return None
 
 
@@ -273,14 +275,14 @@ USE_RTLD_GLOBAL_WITH_LIBTORCH = False
 REQUIRES_SET_PYTHON_MODULE = False
 
 
-def maybe_upload_prof_stats_to_manifold(profile_path: str) -> str | None:
+def maybe_upload_prof_stats_to_manifold(profile_path: str) -> Optional[str]:
     print("Uploading profile stats (fb-only otherwise no-op)")
     return None
 
 
 def log_chromium_event_internal(
-    event: dict[str, Any],
-    stack: list[str],
+    event: Dict[str, Any],
+    stack: List[str],
     logger_uuid: str,
     start_time_ns: int,
 ):
@@ -288,7 +290,7 @@ def log_chromium_event_internal(
 
 
 def record_chromium_event_internal(
-    event: dict[str, Any],
+    event: Dict[str, Any],
 ):
     return None
 
@@ -366,11 +368,11 @@ def get_default_numa_options():
     return None
 
 
-def log_triton_builds(fail: str | None):
+def log_triton_builds(fail: Optional[str]):
     pass
 
 
-def find_compile_subproc_binary() -> str | None:
+def find_compile_subproc_binary() -> Optional[str]:
     """
     Allows overriding the binary used for subprocesses
     """

@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List
 """Concrete Check subclasses provided by the CUDA device plugin."""
 
 from torchfuzz.checks import Check
@@ -6,7 +8,7 @@ from torchfuzz.checks import Check
 class EagerVsFullGraphDynamicCompileCheck(Check):
     """Standard check that runs eager then fullgraph+dynamic compilation."""
 
-    def codegen(self, args_tuple: str) -> list[str]:
+    def codegen(self, args_tuple: str) -> List[str]:
         return [
             f"args = {args_tuple}",
             "result_original = fuzzed_program(*args)",
@@ -20,7 +22,7 @@ class EagerVsFullGraphDynamicCompileCheck(Check):
 class EagerVsFullGraphDynamicCompileWithBackwardCheck(Check):
     """Check that runs eager then fullgraph+dynamic compilation with backward pass."""
 
-    def codegen(self, args_tuple: str) -> list[str]:
+    def codegen(self, args_tuple: str) -> List[str]:
         return [
             f"args = {args_tuple}",
             "result_original = fuzzed_program(*args)",
@@ -36,7 +38,7 @@ class EagerVsFullGraphDynamicCompileWithBackwardCheck(Check):
 class EagerVsFullGraphDynamicCompileWithNumericsCheck(Check):
     """Check that runs eager and compiled, compares forward numerics."""
 
-    def codegen(self, args_tuple: str) -> list[str]:
+    def codegen(self, args_tuple: str) -> List[str]:
         return [
             f"args = {args_tuple}",
             "out_eager = fuzzed_program(*args)",

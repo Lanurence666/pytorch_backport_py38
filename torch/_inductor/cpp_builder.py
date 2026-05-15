@@ -1,6 +1,8 @@
 # This CPP builder is designed to support both Windows and Linux OS.
 # The design document please check this RFC: https://github.com/pytorch/pytorch/issues/124245
 
+from __future__ import annotations
+
 import copy
 import ctypes
 import errno
@@ -19,11 +21,11 @@ import sysconfig
 import tempfile
 import textwrap
 import warnings
-from collections.abc import Sequence
+
 from ctypes import cdll, wintypes
 from ctypes.util import find_library
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Optional, Sequence, Set, Tuple, Union
 
 import torch
 from torch._dynamo.utils import dynamo_timed
@@ -70,9 +72,7 @@ _IS_WINDOWS = sys.platform == "win32"
 
 MINGW_GXX = "x86_64-w64-mingw32-g++"
 
-SUBPROCESS_DECODE_ARGS = (
-    (locale.getpreferredencoding(), "replace") if _IS_WINDOWS else ()
-)
+SUBPROCESS_DECODE_ARGS = (locale.getpreferredencoding(),) if _IS_WINDOWS else ()
 
 log = logging.getLogger(__name__)
 
@@ -133,7 +133,7 @@ def install_gcc_via_conda() -> str:
     return cxx_path
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def check_compiler_exist_windows(compiler: str) -> None:
     """
     Check if compiler is ready, in case end user not activate MSVC environment.
@@ -224,14 +224,14 @@ class WinPeFileVersionInfo:
         return lang_id
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def check_msvc_cl_language_id(compiler: str) -> None:
     """
     Torch.compile() is only work on MSVC with English language pack well.
     Check MSVC's language pack: https://github.com/pytorch/pytorch/issues/157673#issuecomment-3051682766
     """
 
-    def get_msvc_cl_path() -> tuple[bool, str]:
+    def get_msvc_cl_path() -> Tuple[bool, str]:
         """
         Finds the path to cl.exe using vswhere.exe.
         """
@@ -336,7 +336,7 @@ def check_msvc_cl_language_id(compiler: str) -> None:
         )
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def check_mingw_win32_flavor(compiler: str) -> str:
     """
     Check if MinGW `compiler` exists and return it's flavor (win32 or posix).
@@ -350,7 +350,7 @@ def check_mingw_win32_flavor(compiler: str) -> str:
     except Exception as e:
         raise RuntimeError(f"Failed to run {compiler} -v") from e
 
-    flavor: str | None = None
+    flavor: Optional[str] = None
     for line in out.splitlines():
         if "Thread model" in line:
             flavor = line.split(":", 1)[-1].strip().lower()
@@ -395,7 +395,7 @@ def get_cpp_compiler() -> str:
     return compiler
 
 
-def get_ld_and_objcopy(use_relative_path: bool) -> tuple[str, str]:
+def get_ld_and_objcopy(use_relative_path: bool) -> Tuple[str, str]:
     if _IS_WINDOWS:
         raise RuntimeError("Windows is not supported yet.")
     else:
@@ -440,7 +440,7 @@ def convert_cubin_to_obj(
 
 
 def batch_convert_cubins_to_obj(
-    cubins: list[tuple[str, str]],
+    cubins: List[Tuple[str, str]],
     output_dir: str,
     cpp_compiler: str = "gcc",
 ) -> str:
@@ -489,13 +489,13 @@ def batch_convert_cubins_to_obj(
     return obj_path
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _is_apple_clang(cpp_compiler: str) -> bool:
     version_string = subprocess.check_output([cpp_compiler, "--version"]).decode("utf8")
     return "Apple" in version_string.splitlines()[0]
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _is_clang(cpp_compiler: str) -> bool:
     # Mac OS apple clang maybe named as gcc, need check compiler info.
     if sys.platform == "darwin":
@@ -510,7 +510,7 @@ def _is_clang(cpp_compiler: str) -> bool:
     return bool(re.search(r"(clang|clang\+\+)", cpp_compiler))
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _is_gcc(cpp_compiler: str) -> bool:
     # Since "clang++" ends with "g++", the regex match below would validate on it.
     if _is_clang(cpp_compiler):
@@ -518,7 +518,7 @@ def _is_gcc(cpp_compiler: str) -> bool:
     return bool(re.search(r"(gcc|g\+\+|gnu-c\+\+)", cpp_compiler))
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _is_msvc_cl(cpp_compiler: str) -> bool:
     if not _IS_WINDOWS:
         return False
@@ -537,7 +537,7 @@ def _is_msvc_cl(cpp_compiler: str) -> bool:
     return False
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _is_intel_compiler(cpp_compiler: str) -> bool:
     def _check_minimal_version(compiler_version: TorchVersion) -> None:
         """
@@ -582,32 +582,32 @@ def _is_intel_compiler(cpp_compiler: str) -> bool:
     return False
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def is_gcc() -> bool:
     return _is_gcc(get_cpp_compiler())
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def is_clang() -> bool:
     return _is_clang(get_cpp_compiler())
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def is_intel_compiler() -> bool:
     return _is_intel_compiler(get_cpp_compiler())
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def is_apple_clang() -> bool:
     return _is_apple_clang(get_cpp_compiler())
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def is_msvc_cl() -> bool:
     return _is_msvc_cl(get_cpp_compiler())
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def get_compiler_version_info(compiler: str) -> str:
     env = os.environ.copy()
     env["LC_ALL"] = "C"  # Don't localize output
@@ -629,12 +629,12 @@ def get_compiler_version_info(compiler: str) -> str:
 
 
 # =============================== cpp builder ===============================
-def _append_list(dest_list: list[str], src_list: list[str]) -> None:
+def _append_list(dest_list: List[str], src_list: List[str]) -> None:
     dest_list.extend(copy.deepcopy(item) for item in src_list)
 
 
-def _remove_duplication_in_list(orig_list: list[str]) -> list[str]:
-    new_list: list[str] = []
+def _remove_duplication_in_list(orig_list: List[str]) -> List[str]:
+    new_list: List[str] = []
     for item in orig_list:
         if item not in new_list:
             new_list.append(item)
@@ -706,13 +706,13 @@ class BuildOptionsBase:
     def __init__(
         self,
         compiler: str = "",
-        definitions: list[str] | None = None,
-        include_dirs: list[str] | None = None,
-        cflags: list[str] | None = None,
-        ldflags: list[str] | None = None,
-        libraries_dirs: list[str] | None = None,
-        libraries: list[str] | None = None,
-        passthrough_args: list[str] | None = None,
+        definitions: Optional[List[str]] = None,
+        include_dirs: Optional[List[str]] = None,
+        cflags: Optional[List[str]] = None,
+        ldflags: Optional[List[str]] = None,
+        libraries_dirs: Optional[List[str]] = None,
+        libraries: Optional[List[str]] = None,
+        passthrough_args: Optional[List[str]] = None,
         aot_mode: bool = False,
         use_relative_path: bool = False,
         compile_only: bool = False,
@@ -720,18 +720,18 @@ class BuildOptionsBase:
         preprocessing: bool = False,
     ) -> None:
         self._compiler = compiler
-        self._definitions: list[str] = definitions or []
-        self._include_dirs: list[str] = include_dirs or []
-        self._cflags: list[str] = cflags or []
-        self._ldflags: list[str] = ldflags or []
-        self._libraries_dirs: list[str] = libraries_dirs or []
-        self._libraries: list[str] = libraries or []
+        self._definitions: List[str] = definitions or []
+        self._include_dirs: List[str] = include_dirs or []
+        self._cflags: List[str] = cflags or []
+        self._ldflags: List[str] = ldflags or []
+        self._libraries_dirs: List[str] = libraries_dirs or []
+        self._libraries: List[str] = libraries or []
         # Some args are hard to abstract to OS compatible, passthrough directly.
-        self._passthrough_args: list[str] = passthrough_args or []
+        self._passthrough_args: List[str] = passthrough_args or []
 
         # Optionally, the path to a precompiled header which should be included on the
         # build command line.
-        self.precompiled_header: str | None = None
+        self.precompiled_header: Optional[str] = None
 
         self._aot_mode: bool = aot_mode
         self._use_relative_path: bool = use_relative_path
@@ -761,25 +761,25 @@ class BuildOptionsBase:
     def get_compiler(self) -> str:
         return self._compiler
 
-    def get_definitions(self) -> list[str]:
+    def get_definitions(self) -> List[str]:
         return self._definitions
 
-    def get_include_dirs(self) -> list[str]:
+    def get_include_dirs(self) -> List[str]:
         return self._include_dirs
 
-    def get_cflags(self) -> list[str]:
+    def get_cflags(self) -> List[str]:
         return self._cflags
 
-    def get_ldflags(self) -> list[str]:
+    def get_ldflags(self) -> List[str]:
         return self._ldflags
 
-    def get_libraries_dirs(self) -> list[str]:
+    def get_libraries_dirs(self) -> List[str]:
         return self._libraries_dirs
 
-    def get_libraries(self) -> list[str]:
+    def get_libraries(self) -> List[str]:
         return self._libraries
 
-    def get_passthrough_args(self) -> list[str]:
+    def get_passthrough_args(self) -> List[str]:
         return self._passthrough_args
 
     def get_aot_mode(self) -> bool:
@@ -816,14 +816,14 @@ class BuildOptionsBase:
             json.dump(attrs, f)
 
 
-def _get_warning_all_cflag(warning_all: bool = True) -> list[str]:
+def _get_warning_all_cflag(warning_all: bool = True) -> List[str]:
     if not _IS_WINDOWS:
         return ["Wall"] if warning_all else []
     else:
         return []
 
 
-def _get_cpp_std_cflag(std_num: str = "c++20") -> list[str]:
+def _get_cpp_std_cflag(std_num: str = "c++20") -> List[str]:
     if _IS_WINDOWS:
         """
         On Windows, only c++20 can support `std::enable_if_t`.
@@ -838,7 +838,7 @@ def _get_cpp_std_cflag(std_num: str = "c++20") -> list[str]:
         return [f"std={std_num}"]
 
 
-def _get_os_related_cpp_cflags(cpp_compiler: str) -> list[str]:
+def _get_os_related_cpp_cflags(cpp_compiler: str) -> List[str]:
     if _IS_WINDOWS:
         cflags = [
             "wd4819",
@@ -874,8 +874,8 @@ def _get_os_related_cpp_cflags(cpp_compiler: str) -> list[str]:
     return cflags
 
 
-def _get_os_related_cpp_definitions(cpp_compiler: str) -> list[str]:
-    os_definitions: list[str] = []
+def _get_os_related_cpp_definitions(cpp_compiler: str) -> List[str]:
+    os_definitions: List[str] = []
     if _IS_WINDOWS:
         # On Windows, we need disable min/max macro to avoid C2589 error, as PyTorch CMake:
         # https://github.com/pytorch/pytorch/blob/9a41570199155eee92ebd28452a556075e34e1b4/CMakeLists.txt#L1118-L1119
@@ -883,7 +883,7 @@ def _get_os_related_cpp_definitions(cpp_compiler: str) -> list[str]:
     return os_definitions
 
 
-def _get_ffast_math_flags() -> list[str]:
+def _get_ffast_math_flags() -> List[str]:
     if _IS_WINDOWS:
         flags = []
     else:
@@ -912,14 +912,14 @@ def _get_ffast_math_flags() -> list[str]:
     return flags
 
 
-def _get_inductor_debug_symbol_cflags() -> tuple[list[str], list[str]]:
+def _get_inductor_debug_symbol_cflags() -> Tuple[List[str], List[str]]:
     """
     When we turn on generate debug symbol.
     On Windows, it should create a [module_name].pdb file. It helps debug by WinDBG.
     On Linux, it should create some debug sections in binary file.
     """
-    cflags: list[str] = []
-    ldflags: list[str] = []
+    cflags: List[str] = []
+    ldflags: List[str] = []
 
     if _IS_WINDOWS:
         cflags = ["ZI", "_DEBUG"]
@@ -932,9 +932,9 @@ def _get_inductor_debug_symbol_cflags() -> tuple[list[str], list[str]]:
 
 def _get_optimization_cflags(
     cpp_compiler: str, min_optimize: bool = False
-) -> tuple[list[str], list[str]]:
-    cflags: list[str] = []
-    ldflags: list[str] = []
+) -> Tuple[List[str], List[str]]:
+    cflags: List[str] = []
+    ldflags: List[str] = []
 
     should_use_optimized_flags = not (
         config.aot_inductor.debug_compile
@@ -998,7 +998,7 @@ def _get_optimization_cflags(
     return cflags, ldflags
 
 
-def _get_shared_cflags(do_link: bool) -> list[str]:
+def _get_shared_cflags(do_link: bool) -> List[str]:
     if _IS_WINDOWS:
         """
         MSVC `/MD` using python `ucrtbase.dll` lib as runtime.
@@ -1022,14 +1022,14 @@ def get_cpp_options(
     warning_all: bool = True,
     extra_flags: Sequence[str] = (),
     min_optimize: bool = False,
-) -> tuple[list[str], list[str], list[str], list[str], list[str], list[str], list[str]]:
-    definitions: list[str] = []
-    include_dirs: list[str] = []
-    cflags: list[str] = []
-    ldflags: list[str] = []
-    libraries_dirs: list[str] = []
-    libraries: list[str] = []
-    passthrough_args: list[str] = []
+) -> Tuple[List[str], List[str], List[str], List[str], List[str], List[str], List[str]]:
+    definitions: List[str] = []
+    include_dirs: List[str] = []
+    cflags: List[str] = []
+    ldflags: List[str] = []
+    libraries_dirs: List[str] = []
+    libraries: List[str] = []
+    passthrough_args: List[str] = []
 
     opt_cflags, opt_ldflags = _get_optimization_cflags(cpp_compiler, min_optimize)
 
@@ -1121,18 +1121,18 @@ class CppOptions(BuildOptionsBase):
         self._finalize_options()
 
 
-def _get_torch_cpp_wrapper_definition() -> list[str]:
+def _get_torch_cpp_wrapper_definition() -> List[str]:
     defs = ["TORCH_INDUCTOR_CPP_WRAPPER", "STANDALONE_TORCH_HEADER"]
     if config.cpp_cache_precompile_headers:
         defs.append("TORCH_INDUCTOR_PRECOMPILE_HEADERS")
     return defs
 
 
-def _use_custom_generated_macros() -> list[str]:
+def _use_custom_generated_macros() -> List[str]:
     return [" C10_USING_CUSTOM_GENERATED_MACROS"]
 
 
-def _use_fb_internal_macros() -> list[str]:
+def _use_fb_internal_macros() -> List[str]:
     if not _IS_WINDOWS:
         if config.is_fbcode():
             fb_internal_macros = [
@@ -1156,11 +1156,11 @@ def _setup_standard_sys_libs(
     cpp_compiler: str,
     aot_mode: bool,
     use_relative_path: bool,
-) -> tuple[list[str], list[str], list[str], list[str]]:
-    cflags: list[str] = []
-    include_dirs: list[str] = []
-    passthrough_args: list[str] = []
-    ldflags: list[str] = []
+) -> Tuple[List[str], List[str], List[str], List[str]]:
+    cflags: List[str] = []
+    include_dirs: List[str] = []
+    passthrough_args: List[str] = []
+    ldflags: List[str] = []
     if _IS_WINDOWS:
         return cflags, include_dirs, passthrough_args, ldflags
 
@@ -1195,9 +1195,9 @@ def _setup_standard_sys_libs(
     return cflags, include_dirs, passthrough_args, ldflags
 
 
-def _get_build_args_of_chosen_isa(vec_isa: VecISA) -> tuple[list[str], list[str]]:
-    macros: list[str] = []
-    build_flags: list[str] = []
+def _get_build_args_of_chosen_isa(vec_isa: VecISA) -> Tuple[List[str], List[str]]:
+    macros: List[str] = []
+    build_flags: List[str] = []
     if vec_isa != invalid_vec_isa:
         # Add Windows support later.
         macros.extend(copy.deepcopy(x) for x in vec_isa.build_macro())
@@ -1217,7 +1217,7 @@ def _get_build_args_of_chosen_isa(vec_isa: VecISA) -> tuple[list[str], list[str]
 
 def _get_torch_related_args(
     include_pytorch: bool, aot_mode: bool
-) -> tuple[list[str], list[str], list[str]]:
+) -> Tuple[List[str], List[str], List[str]]:
     from torch.utils.cpp_extension import include_paths, TORCH_LIB_PATH
 
     libraries = []
@@ -1258,7 +1258,7 @@ def _get_torch_related_args(
     return include_dirs, libraries_dirs, libraries
 
 
-def _get_python_include_dirs() -> list[str]:
+def _get_python_include_dirs() -> List[str]:
     include_dir = Path(sysconfig.get_path("include"))
     # On Darwin Python executable from a framework can return
     # non-existing /Library/Python/... include path, in which case
@@ -1271,7 +1271,7 @@ def _get_python_include_dirs() -> list[str]:
     return [str(include_dir)]
 
 
-def _get_python_related_args() -> tuple[list[str], list[str]]:
+def _get_python_related_args() -> Tuple[List[str], List[str]]:
     python_include_dirs = _get_python_include_dirs()
     python_include_path = sysconfig.get_path(
         "include", scheme="nt" if _IS_WINDOWS else "posix_prefix"
@@ -1296,7 +1296,7 @@ def _get_python_related_args() -> tuple[list[str], list[str]]:
     return python_include_dirs, python_lib_path
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def is_conda_llvm_openmp_installed() -> bool:
     try:
         command = "conda list llvm-openmp --json"
@@ -1306,8 +1306,8 @@ def is_conda_llvm_openmp_installed() -> bool:
         return False
 
 
-@functools.cache
-def homebrew_libomp() -> tuple[bool, str]:
+@functools.lru_cache(maxsize=None)
+def homebrew_libomp() -> Tuple[bool, str]:
     try:
         # check if `brew` is installed
         if shutil.which("brew") is None:
@@ -1327,7 +1327,7 @@ def homebrew_libomp() -> tuple[bool, str]:
         return False, ""
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def perload_clang_libomp_win(cpp_compiler: str, omp_name: str) -> None:
     try:
         output = subprocess.check_output([cpp_compiler, "-print-file-name=bin"]).decode(
@@ -1341,7 +1341,7 @@ def perload_clang_libomp_win(cpp_compiler: str, omp_name: str) -> None:
         pass
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def perload_icx_libomp_win(cpp_compiler: str) -> None:
     def _load_icx_built_in_lib_by_name(cpp_compiler: str, lib_name: str) -> bool:
         try:
@@ -1374,13 +1374,13 @@ def perload_icx_libomp_win(cpp_compiler: str) -> None:
 
 def _get_openmp_args(
     cpp_compiler: str,
-) -> tuple[list[str], list[str], list[str], list[str], list[str], list[str]]:
-    cflags: list[str] = []
-    ldflags: list[str] = []
-    include_dir_paths: list[str] = []
-    lib_dir_paths: list[str] = []
-    libs: list[str] = []
-    passthrough_args: list[str] = []
+) -> Tuple[List[str], List[str], List[str], List[str], List[str], List[str]]:
+    cflags: List[str] = []
+    ldflags: List[str] = []
+    include_dir_paths: List[str] = []
+    lib_dir_paths: List[str] = []
+    libs: List[str] = []
+    passthrough_args: List[str] = []
 
     if config.aot_inductor.cross_target_platform == "windows":
         return cflags, ldflags, include_dir_paths, lib_dir_paths, libs, passthrough_args
@@ -1481,12 +1481,12 @@ def _get_openmp_args(
     return cflags, ldflags, include_dir_paths, lib_dir_paths, libs, passthrough_args
 
 
-def _get_libstdcxx_args() -> tuple[list[str], list[str]]:
+def _get_libstdcxx_args() -> Tuple[List[str], List[str]]:
     """
     For fbcode cpu case, we should link stdc++ instead assuming the binary where dlopen is executed is built with dynamic stdc++.
     """
-    lib_dir_paths: list[str] = []
-    libs: list[str] = []
+    lib_dir_paths: List[str] = []
+    libs: List[str] = []
     if config.is_fbcode():
         lib_dir_paths = [sysconfig.get_config_var("LIBDIR")]
         libs.append("stdc++")
@@ -1496,7 +1496,7 @@ def _get_libstdcxx_args() -> tuple[list[str], list[str]]:
 
 def get_mmap_self_macro(
     use_mmap_weights: bool, use_mmap_weights_external: bool
-) -> list[str]:
+) -> List[str]:
     macros = []
 
     if use_mmap_weights and use_mmap_weights_external:
@@ -1510,7 +1510,7 @@ def get_mmap_self_macro(
     return macros
 
 
-def get_caching_allocator_macro() -> list[str]:
+def get_caching_allocator_macro() -> List[str]:
     from torch._inductor import config
 
     macros = []
@@ -1527,7 +1527,7 @@ def get_cpp_torch_options(
     use_relative_path: bool,
     use_mmap_weights: bool,
     use_mmap_weights_external: bool,
-) -> tuple[list[str], list[str], list[str], list[str], list[str], list[str], list[str]]:
+) -> Tuple[List[str], List[str], List[str], List[str], List[str], List[str], List[str]]:
     """
     This function is used to get the build args of torch related build options.
     1. Torch include_directories, libraries, libraries_directories.
@@ -1537,13 +1537,13 @@ def get_cpp_torch_options(
     5. MISC
     6. Return the build args
     """
-    definitions: list[str] = []
-    include_dirs: list[str] = []
-    cflags: list[str] = []
-    ldflags: list[str] = []
-    libraries_dirs: list[str] = []
-    libraries: list[str] = []
-    passthrough_args: list[str] = []
+    definitions: List[str] = []
+    include_dirs: List[str] = []
+    cflags: List[str] = []
+    ldflags: List[str] = []
+    libraries_dirs: List[str] = []
+    libraries: List[str] = []
+    passthrough_args: List[str] = []
 
     torch_cpp_wrapper_definitions = _get_torch_cpp_wrapper_definition()
     use_custom_generated_macros_definitions = _use_custom_generated_macros()
@@ -1693,7 +1693,7 @@ def _set_gpu_runtime_env() -> None:
 
 
 @functools.lru_cache(8)
-def _find_libcudart_static(path: str) -> Path | None:
+def _find_libcudart_static(path: str) -> Optional[Path]:
     lib_dirs = list(Path(path).rglob("libcudart_static.a"))
     if lib_dirs:
         return lib_dirs[0].resolve().parent
@@ -1744,7 +1744,7 @@ void __GSHandlerCheck(void) {}
 """
 
 
-def _create_msvc_gs_stubs_lib(output_dir: str) -> str | None:
+def _create_msvc_gs_stubs_lib(output_dir: str) -> Optional[str]:
     """
     Create a static library with MSVC GS security symbol stubs for MinGW.
 
@@ -1791,7 +1791,7 @@ def _create_msvc_gs_stubs_lib(output_dir: str) -> str | None:
                 os.remove(f)
 
 
-def _ensure_mingw_cudart_import_lib(libraries_dirs: list[str]) -> list[str]:
+def _ensure_mingw_cudart_import_lib(libraries_dirs: List[str]) -> List[str]:
     """
     Auto-generate a MinGW-compatible import library (libcudart.a)
     from the CUDA runtime DLL. This avoids linking against the hybrid cudart.lib
@@ -1879,13 +1879,13 @@ def _ensure_mingw_cudart_import_lib(libraries_dirs: list[str]) -> list[str]:
         return []
 
 
-def _transform_cuda_paths(lpaths: list[str]) -> None:
+def _transform_cuda_paths(lpaths: List[str]) -> None:
     # This handles two cases:
     # 1. Cases where libs are in (e.g.) lib/cuda-12 and lib/cuda-12/stubs
     # 2. Linux machines may have CUDA installed under either lib64/ or lib/
     for i, path in enumerate(lpaths):
         if "CUDA_HOME" in os.environ and path.startswith(os.environ["CUDA_HOME"]):
-            lib_dir: Path | None = _find_libcudart_static(path)
+            lib_dir: Optional[Path] = _find_libcudart_static(path)
             if lib_dir is None:
                 continue
             lpaths[i] = str(lib_dir)
@@ -1900,7 +1900,7 @@ def _transform_cuda_paths(lpaths: list[str]) -> None:
             lpaths.append(str(stub_dir))
 
 
-def _transform_rocm_paths(lpaths: list[str]) -> None:
+def _transform_rocm_paths(lpaths: List[str]) -> None:
     # Internal path needs special care, using the SDK lib path directly.
     if config.is_fbcode():
         sdk_lib = build_paths.sdk_lib
@@ -1912,7 +1912,7 @@ def get_cpp_torch_device_options(
     device_type: str,
     aot_mode: bool = False,
     compile_only: bool = False,
-) -> tuple[list[str], list[str], list[str], list[str], list[str], list[str], list[str]]:
+) -> Tuple[List[str], List[str], List[str], List[str], List[str], List[str], List[str]]:
     """
     This function is used to get the build args of device related build options.
     1. Device include_directories, libraries, libraries_directories.
@@ -1920,13 +1920,13 @@ def get_cpp_torch_device_options(
     3. MISC
     4. Return the build args
     """
-    definitions: list[str] = []
-    include_dirs: list[str] = []
-    cflags: list[str] = []
-    ldflags: list[str] = []
-    libraries_dirs: list[str] = []
-    libraries: list[str] = []
-    passthrough_args: list[str] = []
+    definitions: List[str] = []
+    include_dirs: List[str] = []
+    cflags: List[str] = []
+    ldflags: List[str] = []
+    libraries_dirs: List[str] = []
+    libraries: List[str] = []
+    passthrough_args: List[str] = []
     if (
         config.is_fbcode()
         and "CUDA_HOME" not in os.environ
@@ -2061,13 +2061,13 @@ class CppTorchDeviceOptions(CppTorchOptions):
             compiler=compiler,
         )
 
-        device_definitions: list[str] = []
-        device_include_dirs: list[str] = []
-        device_cflags: list[str] = []
-        device_ldflags: list[str] = []
-        device_libraries_dirs: list[str] = []
-        device_libraries: list[str] = []
-        device_passthrough_args: list[str] = []
+        device_definitions: List[str] = []
+        device_include_dirs: List[str] = []
+        device_cflags: List[str] = []
+        device_ldflags: List[str] = []
+        device_libraries_dirs: List[str] = []
+        device_libraries: List[str] = []
+        device_passthrough_args: List[str] = []
 
         (
             device_definitions,
@@ -2105,7 +2105,7 @@ class CppTorchDeviceOptions(CppTorchOptions):
 
 def get_name_and_dir_from_output_file_path(
     file_path: str,
-) -> tuple[str, str]:
+) -> Tuple[str, str]:
     """
     This function help prepare parameters to new cpp_builder.
     Example:
@@ -2145,25 +2145,25 @@ class CppBuilder:
     """
 
     @staticmethod
-    def __get_python_module_flags() -> tuple[str, str]:
+    def __get_python_module_flags() -> Tuple[str, str]:
         extension = ".pyd" if _IS_WINDOWS else ".so"
         output_flags = "/Fe" if _IS_WINDOWS else "-o"
         return extension, output_flags
 
     @staticmethod
-    def __get_object_flags() -> tuple[str, str]:
+    def __get_object_flags() -> Tuple[str, str]:
         extension = ".obj" if _IS_WINDOWS else ".o"
         output_flags = "/c /Fo" if _IS_WINDOWS else "-c -o"  # codespell:ignore
         return extension, output_flags
 
     @staticmethod
-    def __get_precompiled_header_flags() -> tuple[str, str]:
+    def __get_precompiled_header_flags() -> Tuple[str, str]:
         extension = ".pch" if _IS_WINDOWS or not is_gcc() else ".gch"
         output_flags = "/Fp" if _IS_WINDOWS else "-o"
         return extension, output_flags
 
     @staticmethod
-    def __get_preprocessor_output_flags() -> tuple[str, str]:
+    def __get_preprocessor_output_flags() -> Tuple[str, str]:
         extension = ".i"
         output_flags = "/EP /P" if _IS_WINDOWS else "-E -P -o"
         return extension, output_flags
@@ -2171,7 +2171,7 @@ class CppBuilder:
     def __init__(
         self,
         name: str,
-        sources: str | list[str],
+        sources: Union[str, List[str]],
         BuildOption: BuildOptionsBase,
         output_dir: str = "",
     ) -> None:
@@ -2647,7 +2647,7 @@ class CppBuilder:
         with open(cmake_path, "a") as f:
             f.write(f"target_sources({self._target_name} PRIVATE {src_path})\n")
 
-    def save_kernel_asm_to_cmake(self, cmake_path: str, asm_files: list[str]) -> None:
+    def save_kernel_asm_to_cmake(self, cmake_path: str, asm_files: List[str]) -> None:
         # TODO: make this work beyond CUDA
         with open(cmake_path, "a") as f:
             for asm_file in asm_files:

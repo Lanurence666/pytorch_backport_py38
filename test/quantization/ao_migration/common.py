@@ -1,3 +1,4 @@
+from __future__ import annotations
 import importlib
 
 from torch.testing._internal.common_utils import TestCase

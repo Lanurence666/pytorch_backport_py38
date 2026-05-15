@@ -1,7 +1,11 @@
 # mypy: allow-untyped-defs
 import logging
-from collections.abc import Sequence
-from typing import cast, TypeGuard
+
+from typing import Sequence, Type, cast
+try:
+    from typing import TypeGuard
+except ImportError:
+    from typing_extensions import TypeGuard
 
 from ... import config
 from ...codecache import code_hash, get_path

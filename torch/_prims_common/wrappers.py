@@ -1,12 +1,13 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import inspect
 import types
 import warnings
-from collections.abc import Callable, Sequence
+
 from functools import wraps
-from types import GenericAlias
-from typing import NamedTuple, overload, TypeVar
-from typing_extensions import ParamSpec
+from typing import Callable, Optional, Sequence, Tuple, Type, TypeVar, Union, cast, overload
+from typing_extensions import NamedTuple, ParamSpec
 
 import torch
 import torch._prims_common as utils
@@ -117,7 +118,7 @@ class elementwise_type_promotion_wrapper:
         self,
         *,
         type_promotion_kind: ELEMENTWISE_TYPE_PROMOTION_KIND,
-        type_promoting_args: Sequence[str] | None = None,
+        type_promoting_args: Optional[Sequence[str]]= None,
     ):
         self.type_promoting_arg_names = type_promoting_args
         self.type_promotion_kind = type_promotion_kind
@@ -189,7 +190,7 @@ def _resize_output_check(out: TensorLikeType, shape: ShapeType):
 def _maybe_resize_out(
     out: TensorLikeType,
     shape: ShapeType,
-    memory_format: torch.memory_format | None = None,
+    memory_format: torch.Optional[memory_format] = None
 ):
     if _resize_output_check(out, shape):
         return out.resize_(shape, memory_format=memory_format)
@@ -263,18 +264,14 @@ def out_wrapper(
         out_type = (
             TensorLikeType
             if is_tensor
-            else GenericAlias(
-                tuple, tuple(TensorLikeType for _ in range(len(out_names)))
-            )
+            else Tuple[TensorLikeType, ...]
         )
         # For backward compatibility - should be able to remove once PEP585
         # conversion is complete.
         bc_out_type = (
             TensorLikeType
             if is_tensor
-            else types.GenericAlias(
-                tuple, tuple(TensorLikeType for _ in range(len(out_names)))
-            )
+            else Tuple[TensorLikeType, ...]
         )
         return_type = (
             TensorLikeType
@@ -484,7 +481,7 @@ def backwards_not_supported(prim):
 # TODO: this wrapper is currently untested
 def elementwise_unary_scalar_wrapper(
     fn: Callable[_P, _T],
-) -> Callable[_P, _T | NumberType]:
+) -> Union[Callable[_P, _T, NumberType]]:
     """
     Allows unary operators that accept tensors to work with Python numbers.
     """

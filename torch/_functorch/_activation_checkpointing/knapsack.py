@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import torch
+from typing import List, Tuple
 
 
 def greedy_knapsack(
-    memory: list[float], runtimes: list[float], max_memory: float
-) -> tuple[float, list[int], list[int]]:
+    memory: List[float], runtimes: List[float], max_memory: float
+) -> Tuple[float, List[int], List[int]]:
     n = len(runtimes)
     items = list(range(n))
 
@@ -26,8 +29,8 @@ def greedy_knapsack(
 
 
 def ilp_knapsack(
-    memory: list[float], runtimes: list[float], max_memory: float
-) -> tuple[float, list[int], list[int]]:
+    memory: List[float], runtimes: List[float], max_memory: float
+) -> Tuple[float, List[int], List[int]]:
     import numpy as np
 
     try:
@@ -62,8 +65,8 @@ def ilp_knapsack(
 
 
 def dp_knapsack(
-    memory: list[float], runtime: list[float], max_memory: float
-) -> tuple[float, list[int], list[int]]:
+    memory: List[float], runtime: List[float], max_memory: float
+) -> Tuple[float, List[int], List[int]]:
     # Scaling factor to convert floating point weights to integers
     S = 10000
 
@@ -122,8 +125,8 @@ def dp_knapsack(
 
 
 def dp_knapsack_sliding_hirschberg(
-    memory: list[float], runtime: list[float], max_memory: float
-) -> tuple[float, list[int], list[int]]:
+    memory: List[float], runtime: List[float], max_memory: float
+) -> Tuple[float, List[int], List[int]]:
     # Scaling factor to convert floating point weights to integers
     S = 10000
 
@@ -147,12 +150,12 @@ def dp_knapsack_sliding_hirschberg(
     left_profile = torch.empty(dp_profile_size, dtype=torch.float32, device="cpu")
     right_profile = torch.empty(dp_profile_size, dtype=torch.float32, device="cpu")
 
-    saved_items: list[int] = []
-    recomputable_items: list[int] = []
+    saved_items: List[int] = []
+    recomputable_items: List[int] = []
 
     # Explicit stack to optimize memory and avoid recursion
     # Stack stores segments as (start index, end index, capacity for segment)
-    stack: list[tuple[int, int, int]] = [(0, q_memory_length, q_max_memory)]
+    stack: List[Tuple[int, int, int]] = [(0, q_memory_length, q_max_memory)]
 
     # LIFO
     while stack:

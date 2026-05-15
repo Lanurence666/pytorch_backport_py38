@@ -1,10 +1,13 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn.common_types import _ratio_2_t, _ratio_any_t, _size_2_t, _size_any_t
 
 from .module import Module
+from typing import Optional, Tuple
 
 
 __all__ = ["Upsample", "UpsamplingNearest2d", "UpsamplingBilinear2d"]
@@ -142,19 +145,19 @@ class Upsample(Module):
         "recompute_scale_factor",
     ]
     name: str
-    size: _size_any_t | None
-    scale_factor: _ratio_any_t | None
+    size: Optional[_size_any_t]
+    scale_factor: Optional[_ratio_any_t]
     mode: str
-    align_corners: bool | None
-    recompute_scale_factor: bool | None
+    align_corners: Optional[bool]
+    recompute_scale_factor: Optional[bool]
 
     def __init__(
         self,
-        size: _size_any_t | None = None,
-        scale_factor: _ratio_any_t | None = None,
+        size: Optional[_size_any_t]= None,
+        scale_factor: Optional[_ratio_any_t]= None,
         mode: str = "nearest",
-        align_corners: bool | None = None,
-        recompute_scale_factor: bool | None = None,
+        align_corners: Optional[bool]= None,
+        recompute_scale_factor: Optional[bool]= None,
     ) -> None:
         super().__init__()
         self.name = type(self).__name__
@@ -241,8 +244,8 @@ class UpsamplingNearest2d(Upsample):
 
     def __init__(
         self,
-        size: _size_2_t | None = None,
-        scale_factor: _ratio_2_t | None = None,
+        size: Optional[_size_2_t]= None,
+        scale_factor: Optional[_ratio_2_t]= None,
     ) -> None:
         super().__init__(size, scale_factor, mode="nearest")
 
@@ -292,7 +295,7 @@ class UpsamplingBilinear2d(Upsample):
 
     def __init__(
         self,
-        size: _size_2_t | None = None,
-        scale_factor: _ratio_2_t | None = None,
+        size: Optional[_size_2_t]= None,
+        scale_factor: Optional[_ratio_2_t]= None,
     ) -> None:
         super().__init__(size, scale_factor, mode="bilinear", align_corners=True)

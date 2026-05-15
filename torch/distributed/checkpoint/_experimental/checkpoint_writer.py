@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Checkpoint writer functionality for machine learning models.
 
@@ -12,7 +13,7 @@ import os
 from concurrent.futures import Future
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
 import torch
 
@@ -34,13 +35,13 @@ class WriterHook(abc.ABC):
     """
 
     @abc.abstractmethod
-    def pre_commit(self, path: str, **kwargs: dict[str, Any]) -> None:
+    def pre_commit(self, path: str, **kwargs: Dict[str, Any]) -> None:
         """
         Performs actions before committing the checkpoint.
         """
 
     @abc.abstractmethod
-    def post_commit(self, path: str, **kwargs: dict[str, Any]) -> None:
+    def post_commit(self, path: str, **kwargs: Dict[str, Any]) -> None:
         """
         Performs actions after committing the checkpoint.
         """
@@ -72,8 +73,8 @@ class CheckpointWriter:
         self,
         config: CheckpointWriterConfig,
         rank_info: RankInfo,
-        barrier: Barrier | None = None,
-        commit_hook: WriterHook | None = None,
+        barrier: Optional[Barrier]= None,
+        commit_hook: Optional[WriterHook]= None,
     ):
         """
         Initialize a CheckpointWriter.
@@ -96,8 +97,8 @@ class CheckpointWriter:
         self,
         path: str,
         state_dict: STATE_DICT,
-        **kwargs: dict[str, Any],
-    ) -> Future[None] | None:
+        **kwargs: Dict[str, Any],
+    ) -> Optional[Future[None]]:
         """
         Writes the state_dict to storage.
 

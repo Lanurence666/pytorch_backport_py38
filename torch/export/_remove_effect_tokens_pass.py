@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import operator
 
 import torch
@@ -202,8 +204,8 @@ def _remove_effect_tokens(ep: ExportedProgram) -> ExportedProgram:
             module.recompile()
 
     num_tokens: int = 0
-    input_token_names: list[str] = []
-    new_input_specs: list[InputSpec] = []
+    input_token_names: List[str] = []
+    new_input_specs: List[InputSpec] = []
     for inp in ep.graph_signature.input_specs:
         if inp.kind == InputKind.TOKEN:
             num_tokens += 1
@@ -216,8 +218,8 @@ def _remove_effect_tokens(ep: ExportedProgram) -> ExportedProgram:
             new_input_specs.append(inp)
 
     num_out_tokens: int = 0
-    new_output_specs: list[OutputSpec] = []
-    output_token_names: list[OutputSpec] = []
+    new_output_specs: List[OutputSpec] = []
+    output_token_names: List[OutputSpec] = []
     for out in ep.graph_signature.output_specs:
         if out.kind == OutputKind.TOKEN:
             num_out_tokens += 1

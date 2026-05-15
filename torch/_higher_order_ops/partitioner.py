@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, List, Tuple, Union
 
 import torch
 from torch._higher_order_ops.utils import create_bw_fn, materialize_as_graph
@@ -11,7 +13,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-def _find_hop_subgraph_outputs(gm: torch.fx.GraphModule) -> tuple[torch.fx.Node]:
+def _find_hop_subgraph_outputs(gm: torch.fx.GraphModule) -> Tuple[torch.fx.Node]:
     output_node_args = gm.graph.find_nodes(op="output")[0].args
     if not isinstance(output_node_args, tuple):
         raise AssertionError(
@@ -83,8 +85,8 @@ class HopPartitionedGraph:
         bw_grads = bw_phs[-self.n_fw_outputs :]
 
         def _match_size_or_expr(
-            val1: torch.SymInt | torch.Tensor,
-            val2: torch.SymInt | torch.Tensor,
+            val1: Union[torch.SymInt, torch.Tensor],
+            val2: Union[torch.SymInt, torch.Tensor],
         ) -> bool:
             if type(val1) is not type(val2):
                 return False
@@ -151,7 +153,7 @@ class HopPartitionedGraph:
             fw_intermediates_name_to_node = {n.name: n for n in fw_intermediates_nodes}
 
             # First n_intermediates placeholders
-            bw_names: list[str] = [
+            bw_names: List[str] = [
                 ph.name
                 for ph in list(self.bw_gm.graph.find_nodes(op="placeholder"))[
                     : self.n_intermediates
@@ -311,7 +313,7 @@ class HopJointGraph:
 
 def create_hop_joint_graph(
     fw_fn: Callable,
-    fw_args: tuple[torch.Tensor | torch.SymInt, ...],
+    fw_args: Tuple[Union[torch.Tensor, torch.SymInt], ...],
     functionalize: bool,
 ) -> HopJointGraph:
     fw_gm = materialize_as_graph(fw_fn, fw_args, force_enable_grad=True)
@@ -356,7 +358,7 @@ class HopGraphMinCutPartitioner:
     @staticmethod
     def create_partitioned_graph(
         fw_fn: Callable,
-        fw_args: tuple[torch.Tensor | torch.SymInt, ...],
+        fw_args: Tuple[Union[torch.Tensor, torch.SymInt], ...],
         *,
         always_recompute_complex_exprs: bool = False,
     ) -> HopPartitionedGraph:

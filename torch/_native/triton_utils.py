@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import functools
 import logging
 import sys
-from typing import cast
+from typing import Optional, Tuple, cast
 
 from torch._vendor.packaging.version import Version
 
@@ -29,8 +31,8 @@ _TRITON_REQUIRED_VERSION_MAJOR = 3
 _TRITON_MINIMUM_VERSION_MINOR = 6
 
 
-@functools.cache
-def _check_runtime_available() -> tuple[bool, Version | None]:
+@functools.lru_cache(maxsize=None)
+def _check_runtime_available() -> Tuple[bool, Optional[Version]]:
     """
     Check if triton is available
 
@@ -59,12 +61,12 @@ def runtime_available() -> bool:
     return available
 
 
-def runtime_version() -> None | Version:
+def runtime_version() -> Optional[Version]:
     _, version = _check_runtime_available()
     return version
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _version_is_sufficient() -> bool:
     _, version = _check_runtime_available()
 
@@ -99,7 +101,7 @@ def register_op_override(
     lib_symbol: str,
     op_symbol: str,
     dispatch_key: str,
-    cond: _OpCondFn | None,
+    cond: Optional[_OpCondFn],
     impl: _OpImplFn,
     *,
     allow_multiple_override: bool = False,

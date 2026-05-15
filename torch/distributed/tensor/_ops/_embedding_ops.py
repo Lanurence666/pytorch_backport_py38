@@ -1,4 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 import torch
 from torch._ops import OpOverload
 from torch.distributed.tensor._dtensor_spec import TensorMeta
@@ -23,7 +25,7 @@ def embedding_strategy(
     op: OpOverload,
     args_schema: ArgsType,
     kwargs_schema: KwargsType,
-) -> list[list[Placement]]:
+) -> List[List[Placement]]:
     """Single-dim strategy for embedding: rowwise, colwise, and batch-dim sharding.
 
     Placement order: [output, weight, indices]
@@ -42,7 +44,7 @@ def embedding_strategy(
     indices_shape = indices_meta.shape
     output_emb_dim = len(indices_shape)
 
-    strategies: list[list[Placement]] = []
+    strategies: List[List[Placement]] = []
 
     # colwise: output shard on last dim, weight shard on dim 1, indices replicate
     strategies.append([Shard(output_emb_dim), Shard(1), Replicate()])
@@ -67,7 +69,7 @@ def embedding_dense_backward_strategy(
     op: OpOverload,
     args_schema: ArgsType,
     kwargs_schema: KwargsType,
-) -> list[list[Placement]]:
+) -> List[List[Placement]]:
     """Single-dim strategy for embedding backward.
 
     Placement order: [output(weight_grad), grad_out, indices]
@@ -82,7 +84,7 @@ def embedding_dense_backward_strategy(
     grad_out_ndim = len(grad_out_meta.shape)
     indices_shape = indices_meta.shape
 
-    strategies: list[list[Placement]] = []
+    strategies: List[List[Placement]] = []
 
     # colwise backward: weight grad shard on dim 1, grad_out shard on last dim, indices replicate
     strategies.append([Shard(1), Shard(grad_out_ndim - 1), Replicate()])

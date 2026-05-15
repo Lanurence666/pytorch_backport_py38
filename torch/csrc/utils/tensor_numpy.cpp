@@ -1,6 +1,7 @@
 #include <fmt/format.h>
 #include <torch/csrc/THP.h>
 #include <torch/csrc/utils/tensor_numpy.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 #define WITH_NUMPY_IMPORT_ARRAY
 #include <c10/util/irange.h>
 #include <torch/csrc/utils/numpy_stub.h>

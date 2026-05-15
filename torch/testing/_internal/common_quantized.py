@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 r"""Importing this file includes common utility methods for checking quantized
 tensors and modules.
 """
@@ -8,6 +10,7 @@ import torch
 from torch import Tensor
 from contextlib import contextmanager
 from torch.testing._internal.common_utils import TEST_WITH_TSAN, IS_PPC, IS_MACOS, IS_WINDOWS, IS_ARM64
+from typing import Tuple, Union, cast
 
 supported_qengines = list(torch.backends.quantized.supported_engines)
 # Note: We currently do not run QNNPACK tests on WINDOWS and MACOS as it is flaky. Issue #29326
@@ -359,7 +362,7 @@ def _f32_to_floatx_unpacked(x: Tensor, ebits: int, mbits: int) -> Tensor:
     # doesn't have an uint32 dtype, we mask out these bits to get just the
     # f4 sign bit
     sign_lp = sign_lp & sign_mask
-    x = x | sign_lp
+    x = Union[x, sign_lp]
 
     return x.to(torch.uint8)
 
@@ -413,7 +416,7 @@ def _floatx_unpacked_to_f32(x: Tensor, ebits: int, mbits: int) -> Tensor:
     # shift the mantissa to bits 10:32 of the result
     mantissa_lp_int32 = (x_pos & mantissa_mask).to(torch.int32)
     mantissa_f32 = mantissa_lp_int32 << (MBITS_F32 - mbits)
-    result = exp_biased_f32 | mantissa_f32
+    result = Union[exp_biased_f32, mantissa_f32]
 
     #
     # 4. Add the zero and denormal casts to the already casted normal path
@@ -445,7 +448,7 @@ def _floatx_unpacked_to_f32(x: Tensor, ebits: int, mbits: int) -> Tensor:
 
                 # we can update this in-place since the values won't overlap
                 # torch.compile() may complain unsupported operand type(s) for |: 'SymInt' and 'int'
-                # thus we use + instead of | here
+                # thus we use + instead Union[of, here]
                 mantissa_lp_int32[mantissa_lp_int32 == mantissa_cmp] = (
                     exp_biased_f32 + mantissa_f32
                 )
@@ -454,7 +457,7 @@ def _floatx_unpacked_to_f32(x: Tensor, ebits: int, mbits: int) -> Tensor:
 
     # add sign back
     sign_f32 = sign_lp.to(torch.int32) << (MBITS_F32 - mbits + EBITS_F32 - ebits)
-    result = result | sign_f32
+    result = Union[result, sign_f32]
 
     return result.view(torch.float)
 
@@ -611,7 +614,7 @@ def to_mxfp(
         data_hp: torch.Tensor,
         max_abs: torch.Tensor,
         max_pos: float,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         E8M0_EXPONENT_BIAS = 127
         descale = max_abs / max_pos
         exponent = torch.where(

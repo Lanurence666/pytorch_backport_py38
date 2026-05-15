@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import itertools
 from collections import namedtuple
 from collections.abc import Sequence
@@ -11,6 +13,9 @@ from torch import Tensor
 from .container import ModuleList, Sequential
 from .linear import Linear
 from .module import Module
+from typing import List, Sequence, Set, Tuple
+from typing_extensions import NamedTuple
+
 
 
 __all__ = ["AdaptiveLogSoftmaxWithLoss"]
@@ -111,7 +116,7 @@ class AdaptiveLogSoftmaxWithLoss(Module):
 
     in_features: int
     n_classes: int
-    cutoffs: list[int]
+    cutoffs: List[int]
     div_value: float
     head_bias: bool
     head: Linear
@@ -196,14 +201,16 @@ class AdaptiveLogSoftmaxWithLoss(Module):
                 )
             if input_.dim() != 2:
                 raise RuntimeError(
-                    f"1D target tensor expects 2D input tensors, "
-                    f"but found inputs with size {input_.size()}"
+                    "1D target tensor expects 2D input tensors, "
+                    "but found inputs with size",
+                    input_.size(),
                 )
         elif targ_dim == 0:
             if input_.dim() != 1:
                 raise RuntimeError(
-                    f"0D target tensor expects 1D input tensors, "
-                    f"but found inputs with size {input_.size()}"
+                    "0D target tensor expects 1D input tensors, "
+                    "but found inputs with size",
+                    input_.size(),
                 )
         else:
             raise RuntimeError(

@@ -1,12 +1,14 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Defines utilities for interacting with scaled_dot_product_attention"""
 
 import math
 
 import torch
+from typing import List, Optional
 
 
-__all__: list[str] = []
+__all__: List[str] = []
 
 
 def _input_requires_grad(*tensors: torch.Tensor) -> bool:
@@ -21,7 +23,7 @@ def _postprocess_flash_output(inpt_tensor: torch.Tensor, og_size: int) -> torch.
     return inpt_tensor
 
 
-def _calculate_scale(head_dim_size: int, scale: float | None) -> float:
+def _calculate_scale(head_dim_size: int, scale: Optional[float]) -> float:
     """
     For FlashAttention we pad the head dimension to be a multiple of 8 so we need to scale the output
     by the original head size and not the padded.
@@ -35,7 +37,7 @@ def _validate_sdpa_input(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    attn_mask: torch.Tensor | None = None,
+    attn_mask: Optional[torch.Tensor]= None,
     dropout_p=0.0,
     is_causal=False,
     scale=None,

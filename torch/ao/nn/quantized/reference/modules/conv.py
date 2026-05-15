@@ -1,5 +1,9 @@
 # mypy: allow-untyped-defs
-from typing import Any, Literal
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing_extensions import Literal
+
 
 import torch
 import torch.nn as nn
@@ -26,7 +30,7 @@ class _ConvNd(torch.nn.modules.conv._ConvNd, ReferenceQuantizedModule):
     this is useful when user want to use this module in other backends like Glow.
     """
 
-    __annotations__ = {"bias": torch.Tensor | None}
+    __annotations__ = {"bias": Union[torch.Tensor, None]}
     _IS_REFERENCE = True
 
     @staticmethod
@@ -65,7 +69,7 @@ class Conv1d(_ConvNd, nn.Conv1d):
         padding_mode: Literal["zeros", "reflect", "replicate", "circular"] = "zeros",
         device=None,
         dtype=None,
-        weight_qparams: dict[str, Any] | None = None,
+        weight_qparams: Optional[Dict[str, Any]]= None,
     ):
         nn.Conv1d.__init__(
             self,
@@ -129,7 +133,7 @@ class Conv2d(_ConvNd, nn.Conv2d):
         padding_mode="zeros",
         device=None,
         dtype=None,
-        weight_qparams: dict[str, Any] | None = None,
+        weight_qparams: Optional[Dict[str, Any]]= None,
     ):
         nn.Conv2d.__init__(
             self,
@@ -194,7 +198,7 @@ class Conv3d(_ConvNd, nn.Conv3d):
         padding_mode="zeros",
         device=None,
         dtype=None,
-        weight_qparams: dict[str, Any] | None = None,
+        weight_qparams: Optional[Dict[str, Any]]= None,
     ):
         nn.Conv3d.__init__(
             self,
@@ -290,7 +294,7 @@ class ConvTranspose1d(_ConvTransposeNd, nn.ConvTranspose1d):
         padding_mode: Literal["zeros", "reflect", "replicate", "circular"] = "zeros",
         device=None,
         dtype=None,
-        weight_qparams: dict[str, Any] | None = None,
+        weight_qparams: Optional[Dict[str, Any]]= None,
     ):
         nn.ConvTranspose1d.__init__(
             self,
@@ -310,7 +314,7 @@ class ConvTranspose1d(_ConvTransposeNd, nn.ConvTranspose1d):
         self._init_weight_qparams(weight_qparams, device)
 
     def forward(
-        self, x: torch.Tensor, output_size: list[int] | None = None
+        self, x: torch.Tensor, output_size: Optional[List[int]] = None
     ) -> torch.Tensor:
         """
         we have:
@@ -373,7 +377,7 @@ class ConvTranspose2d(_ConvTransposeNd, nn.ConvTranspose2d):
         padding_mode="zeros",
         device=None,
         dtype=None,
-        weight_qparams: dict[str, Any] | None = None,
+        weight_qparams: Optional[Dict[str, Any]]= None,
     ):
         nn.ConvTranspose2d.__init__(
             self,
@@ -394,7 +398,7 @@ class ConvTranspose2d(_ConvTransposeNd, nn.ConvTranspose2d):
         self._init_weight_qparams(weight_qparams, device)
 
     def forward(
-        self, x: torch.Tensor, output_size: list[int] | None = None
+        self, x: torch.Tensor, output_size: Optional[List[int]] = None
     ) -> torch.Tensor:
         """
         we have:
@@ -458,7 +462,7 @@ class ConvTranspose3d(_ConvTransposeNd, nn.ConvTranspose3d):
         padding_mode="zeros",
         device=None,
         dtype=None,
-        weight_qparams: dict[str, Any] | None = None,
+        weight_qparams: Optional[Dict[str, Any]]= None,
     ):
         nn.ConvTranspose3d.__init__(
             self,
@@ -479,7 +483,7 @@ class ConvTranspose3d(_ConvTransposeNd, nn.ConvTranspose3d):
         self._init_weight_qparams(weight_qparams, device)
 
     def forward(
-        self, x: torch.Tensor, output_size: list[int] | None = None
+        self, x: torch.Tensor, output_size: Optional[List[int]] = None
     ) -> torch.Tensor:
         """
         we have:

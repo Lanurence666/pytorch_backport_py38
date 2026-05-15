@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 """Nonzero operator implementation."""
 
 import torch
@@ -12,7 +14,7 @@ class NonzeroOperator(Operator):
         super().__init__("nonzero")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.nonzero"
 
@@ -29,7 +31,7 @@ class NonzeroOperator(Operator):
             and len(output_spec.size) == 2
         )
 
-    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 1) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 1) -> List[Spec]:
         """Generate input spec for nonzero operation.
 
         The actual values will be synthesized in codegen to achieve the target size.
@@ -48,7 +50,7 @@ class NonzeroOperator(Operator):
         return [input_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for nonzero using synthesized input to match target size.
 

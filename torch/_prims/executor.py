@@ -1,5 +1,7 @@
-from collections.abc import Callable
-from typing import Any, TypeVar
+from __future__ import annotations
+
+
+from typing import Any, Callable, Optional, Tuple, Type, TypeVar
 from typing_extensions import ParamSpec, TypeVarTuple, Unpack
 
 from torch._prims.context import TorchRefsMode
@@ -16,7 +18,7 @@ def execute(
     gm: GraphModule,
     *args: Unpack[Ts],
     executor: str = "aten",
-    executor_parameters: dict | None = None,
+    executor_parameters: Optional[dict] = None
 ) -> Any:
     """
     Prototype ATen executor.

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import os
-from collections.abc import Callable
-from functools import cache, partial
-from typing import TypeVar
+
+from functools import lru_cache, partial
+from typing import Callable, Optional, Set, Type, TypeVar, Union
 
 import torch
 from torch._environment import is_fbcode
@@ -23,8 +25,8 @@ def _is_force_disable_caches() -> bool:
     return inductor_config.force_disable_caches
 
 
-@cache
-def _env_var_val(env_var: str, default: T) -> str | T:
+@lru_cache(maxsize=None)
+def _env_var_val(env_var: str, default: T) -> Union[str, T]:
     """Get the value of an environment variable or return the default.
 
     Args:
@@ -37,7 +39,7 @@ def _env_var_val(env_var: str, default: T) -> str | T:
     return os.environ.get(env_var, default)
 
 
-@cache
+@lru_cache(maxsize=None)
 def _env_var_config(env_var: str, default: bool) -> bool:
     env_val = _env_var_val(env_var, None)
     if env_val is not None:
@@ -45,12 +47,12 @@ def _env_var_config(env_var: str, default: bool) -> bool:
     return default
 
 
-@cache
+@lru_cache(maxsize=None)
 def _versioned_config(
     jk_name: str,
     this_version: int,
     oss_default: bool,
-    env_var_override: str | None = None,
+    env_var_override: Optional[str]= None,
 ) -> bool:
     """
     A versioned configuration utility that determines boolean settings based on:
@@ -159,8 +161,8 @@ IS_DUMP_MEMOIZER_CACHE_ENABLED: Callable[[], bool] = partial(
 #
 # Set via environment variable: TORCHINDUCTOR_CACHE_DUMP_FILE_PATH=/path/to/dump.json
 _CACHE_DUMP_FILE_PATH_ENV_VAR: str = "TORCHINDUCTOR_CACHE_DUMP_FILE_PATH"
-_CACHE_DUMP_FILE_PATH_DEFAULT: str | None = None
-CACHE_DUMP_FILE_PATH: Callable[[], str | None] = partial(
+_CACHE_DUMP_FILE_PATH_DEFAULT: Optional[str]= None
+CACHE_DUMP_FILE_PATH: Union[Callable[[], str, None]]= partial(
     _env_var_val,
     _CACHE_DUMP_FILE_PATH_ENV_VAR,
     _CACHE_DUMP_FILE_PATH_DEFAULT,

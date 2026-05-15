@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import contextlib
 import errno
 import hashlib
@@ -12,7 +14,7 @@ import uuid
 import warnings
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Set
 from typing_extensions import deprecated
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -92,7 +94,7 @@ DEFAULT_CACHE_DIR = "~/.cache"
 VAR_DEPENDENCY = "dependencies"
 MODULE_HUBCONF = "hubconf.py"
 READ_DATA_CHUNK = 128 * 1024
-_hub_dir: str | None = None
+_hub_dir: Optional[str]= None
 
 
 @contextlib.contextmanager
@@ -707,7 +709,7 @@ def _load_local(hubconf_dir, model, *args, **kwargs):
 def download_url_to_file(
     url: str,
     dst: str,
-    hash_prefix: str | None = None,
+    hash_prefix: Optional[str]= None,
     progress: bool = True,
 ) -> None:
     r"""Download object at the given URL to a local path.
@@ -809,7 +811,7 @@ def _legacy_zip_load(
     model_dir: str,
     map_location: MAP_LOCATION,
     weights_only: bool,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     # Note: extractall() defaults to overwrite file if exists. No need to clean up beforehand.
     #       We deliberately don't handle tarfile here since our legacy serialization format was in tar.
     #       E.g. resnet18-5c106cde.pth which is widely used.
@@ -828,13 +830,13 @@ def _legacy_zip_load(
 
 def load_state_dict_from_url(
     url: str,
-    model_dir: str | None = None,
+    model_dir: Optional[str]= None,
     map_location: MAP_LOCATION = None,
     progress: bool = True,
     check_hash: bool = False,
-    file_name: str | None = None,
+    file_name: Optional[str]= None,
     weights_only: bool = False,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     r"""Loads the Torch serialized object at the given URL.
 
     If downloaded file is a zip file, it will be automatically

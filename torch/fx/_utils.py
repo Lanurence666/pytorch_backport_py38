@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 import sys
-from typing import Any
+from typing import Any, Dict, Optional, cast
 
 import torch
 from torch._logging import LazyString
 
 
 def lazy_format_graph_code(
-    name: str, gm: torch.fx.GraphModule, maybe_id: int | None = None, **kwargs: Any
+    name: Optional[str, gm: torch.fx.GraphModule, maybe_id: int]= None, **kwargs: Any
 ) -> LazyString:  # pyrefly: ignore[implicit-any]
     """
     Returns a LazyString that formats the graph code.
@@ -44,7 +46,7 @@ def _format_graph_code(name: str, filename: str, graph_str: str) -> str:
     return f"TRACED GRAPH\n {name} {filename} {graph_str}\n"
 
 
-def first_call_function_nn_module_stack(graph: torch.fx.Graph) -> dict[str, Any] | None:
+def first_call_function_nn_module_stack(graph: torch.fx.Graph) -> Optional[Dict[str, Any]]:
     """
     Returns the nn_module_stack of the first call_function node.
     """

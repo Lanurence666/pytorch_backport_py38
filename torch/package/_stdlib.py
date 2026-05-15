@@ -1,3 +1,4 @@
+from typing import List
 # mypy: allow-untyped-defs
 """List of Python standard library modules.
 

@@ -1,4 +1,5 @@
 # Owner(s): ["module: inductor"]
+from __future__ import annotations
 import contextlib
 import itertools
 import logging
@@ -467,15 +468,7 @@ class AOTInductorTestsTemplate:
                 return torch.matmul(x, w)
 
         example_inputs = (torch.randn(4, 4, device=self.device),)
-        with (
-            torch.no_grad(),
-            config.patch(
-                {
-                    "always_keep_tensor_constants": True,
-                    "aot_inductor.use_runtime_constant_folding": True,
-                }
-            ),
-        ):
+        with torch.no_grad(), config.patch( { "always_keep_tensor_constants": True, "aot_inductor.use_runtime_constant_folding": True, } ):
             model = Model(self.device)
             so_path = AOTIRunnerUtil.legacy_compile(
                 model=model,
@@ -565,15 +558,7 @@ class AOTInductorTestsTemplate:
                 return self.post(out + self.late_bias)
 
         example_inputs = (torch.randn(2, 2, device=self.device),)
-        with (
-            torch.no_grad(),
-            config.patch(
-                {
-                    "always_keep_tensor_constants": True,
-                    "aot_inductor.use_runtime_constant_folding": True,
-                }
-            ),
-        ):
+        with torch.no_grad(), config.patch( { "always_keep_tensor_constants": True, "aot_inductor.use_runtime_constant_folding": True, } ):
             model = Model(self.device)
             so_path, _ = run_and_get_cpp_code(
                 AOTIRunnerUtil.legacy_compile, model, example_inputs
@@ -638,10 +623,7 @@ class AOTInductorTestsTemplate:
                 return torch.matmul(x, w)
 
         example_inputs = (torch.randn(4, 4, device=self.device),)
-        with (
-            torch.no_grad(),
-            config.patch({"always_keep_tensor_constants": True}),
-        ):
+        with torch.no_grad(), config.patch({"always_keep_tensor_constants": True}):
             model = Model(self.device)
             so_path = AOTIRunnerUtil.legacy_compile(
                 model=model,
@@ -3317,10 +3299,7 @@ class AOTInductorTestsTemplate:
             N=15, K=16, bias=True, example_input=example_inputs[0]
         )
         model = torch.export.export(model, example_inputs, strict=True).module()
-        with (
-            config.patch({"freezing": True, "aot_inductor.force_mmap_weights": True}),
-            torch.no_grad(),
-        ):
+        with config.patch({"freezing": True, "aot_inductor.force_mmap_weights": True}), torch.no_grad():
             self.check_model(model, example_inputs)
 
     def test_fallback_mem_leak_fix(self):
@@ -5003,26 +4982,6 @@ class AOTInductorTestsTemplate:
         result2 = aoti_module(sample)
         self.assertTrue(torch.allclose(result2, sample * 2))
 
-    @unittest.skipIf(IS_FBCODE, "Not yet runnable in fbcode")
-    @patch.dict(os.environ, {"AOTI_RUNTIME_CHECK_INPUTS": "1"})
-    def test_runtime_check_error_message_preserved(self):
-        # Exception thrown from CONVERT_EXCEPTION_TO_ERROR_CODE at the outer
-        # AOTI C ABI boundary (i.e. not from an aoti_torch_* shim) must reach
-        # Python via AOTInductorGetLastError, not be flattened to the generic
-        # "run_func_(...) API call failed" message.
-        class M(torch.nn.Module):
-            def forward(self, x):
-                return x + 1
-
-        m = M()
-        good = torch.randn(4, dtype=torch.float32, device=self.device)
-        bad_dtype = good.to(torch.float16)
-        so_path = AOTIRunnerUtil.compile(m, (good,))
-        aoti_module = torch._inductor.aoti_load_package(so_path)
-        aoti_module(good)
-        with self.assertRaisesRegex(RuntimeError, "unmatched dtype"):
-            aoti_module(bad_dtype)
-
     def test_fqn(self):
         class NestedChild(torch.nn.Module):
             def __init__(self) -> None:
@@ -5353,7 +5312,7 @@ class AOTInductorTestsTemplate:
 
             self.assertTrue(same(optimized(*example_inputs), m(*example_inputs)))
 
-            with self.assertRaisesRegex(Exception, "Expected .* but received"):
+            with self.assertRaisesRegex(Exception, "run_func_(.*) API call failed "):
                 optimized(torch.randn(100), torch.tensor(2))
 
     @patch.dict(os.environ, {"TORCHINDUCTOR_SCALAR_ASSERTS_FULL": "1"})
@@ -5380,7 +5339,7 @@ class AOTInductorTestsTemplate:
         )
         optimized = torch._inductor.aoti_load_package(package_path)
         self.assertEqual(model(*input1), optimized(*input1))
-        with self.assertRaisesRegex(Exception, "Expected .* but received"):
+        with self.assertRaisesRegex(Exception, "run_func_(.*) API call failed "):
             optimized(*input2)
 
     @skipIfWindows(msg="TODO: (xuhancn) confirm, Crash: access violation")
@@ -6108,16 +6067,7 @@ class AOTInductorTestsTemplate:
             torch.randn(4, 4, device=self.device),
         )
 
-        with (
-            config.patch({"cpp.enable_kernel_profile": True}),
-            torch.profiler.profile(
-                record_shapes=True,
-                activities=[
-                    torch.profiler.ProfilerActivity.CPU,
-                    getattr(torch.profiler.ProfilerActivity, GPU_TYPE.upper()),
-                ],
-            ) as prof,
-        ):
+        with config.patch({"cpp.enable_kernel_profile": True}), torch.profiler.profile( record_shapes=True, activities=[ torch.profiler.ProfilerActivity.CPU, getattr(torch.profiler.ProfilerActivity, GPU_TYPE.upper()), ], ) as prof:
             self.check_model(Model(), example_inputs)
         with common_utils.TemporaryFileName(mode="w+") as fname:
             prof.export_chrome_trace(fname)
@@ -6650,72 +6600,6 @@ class AOTInductorTestsTemplate:
         example_inputs = (torch.randn(2, 128, 4096, device=self.device),)
         self.check_model(Model(), example_inputs, dynamic_shapes={"x": {0: bs}})
 
-    @skipIfRocm
-    def test_issue_179900(self):
-        if self.device != "cuda":
-            raise unittest.SkipTest("requires CUDA")
-
-        class Repro(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.refined_pattern_len = 3
-
-            def forward(self, seq_hidden, seq_lens, target_hidden):
-                batch_size, seq_len, hidden_dim = seq_hidden.shape
-                seq_lens = seq_lens.reshape(-1).clamp(min=0, max=seq_len)
-                start_pos = seq_len - seq_lens
-
-                hist_len = self.refined_pattern_len - 1
-                hist_offsets = (
-                    torch.arange(hist_len, device=seq_hidden.device) - hist_len
-                )
-                hist_idx = (seq_len + hist_offsets.view(1, -1)).expand(batch_size, -1)
-
-                hist_mask = (hist_idx >= start_pos.view(batch_size, 1)) & (
-                    hist_idx < seq_len
-                )
-                gather_idx = hist_idx.clamp(min=0, max=seq_len - 1)
-                hist_tokens = seq_hidden.gather(
-                    1, gather_idx.unsqueeze(-1).expand(-1, -1, hidden_dim)
-                )
-                hist_tokens = hist_tokens * hist_mask.unsqueeze(-1).to(
-                    hist_tokens.dtype
-                )
-
-                target_pattern = torch.cat(
-                    [hist_tokens, target_hidden.unsqueeze(1)], dim=1
-                )
-                target_mask = torch.cat(
-                    [
-                        hist_mask,
-                        torch.ones(
-                            batch_size,
-                            1,
-                            device=seq_hidden.device,
-                            dtype=torch.bool,
-                        ),
-                    ],
-                    dim=1,
-                )
-                out = target_pattern * target_mask.unsqueeze(-1).to(
-                    target_pattern.dtype
-                )
-                return out.sum(dim=(1, 2))
-
-        torch.manual_seed(20260415)
-        seq_hidden = torch.randn((8, 50, 64), device=self.device)
-        seq_lens = torch.randint(low=0, high=51, size=(8,), device=self.device)
-        target_hidden = torch.randn((8, 64), device=self.device)
-        example_inputs = (seq_hidden, seq_lens, target_hidden)
-
-        batch = Dim("batch", max=4096)
-        dynamic_shapes = {
-            "seq_hidden": {0: batch},
-            "seq_lens": {0: batch},
-            "target_hidden": {0: batch},
-        }
-        self.check_model(Repro(), example_inputs, dynamic_shapes=dynamic_shapes)
-
     @requires_gpu
     def test_d2h_copy(self):
         # device to copy host should always have the same stride
@@ -6767,29 +6651,13 @@ class AOTInductorTestsTemplate:
         model = Model(N, K, self.device)
         a = torch.randn(M, K, device=self.device)
         example_inputs = (a,)
-        with (
-            torch.no_grad(),
-            config.patch(
-                {
-                    "always_keep_tensor_constants": True,
-                    "aot_inductor.package_constants_in_so": True,
-                }
-            ),
-        ):
+        with torch.no_grad(), config.patch( { "always_keep_tensor_constants": True, "aot_inductor.package_constants_in_so": True, } ):
             so_path = AOTIRunnerUtil.legacy_compile(
                 model=model,
                 example_inputs=example_inputs,
             )
 
-        with (
-            torch.no_grad(),
-            config.patch(
-                {
-                    "always_keep_tensor_constants": True,
-                    "aot_inductor.package_constants_in_so": False,
-                }
-            ),
-        ):
+        with torch.no_grad(), config.patch( { "always_keep_tensor_constants": True, "aot_inductor.package_constants_in_so": False, } ):
             so_path_weightless = AOTIRunnerUtil.legacy_compile(
                 model=model,
                 example_inputs=example_inputs,
@@ -6895,17 +6763,7 @@ class AOTInductorTestsTemplate:
         a = torch.randn(M, K, device=self.device)
         example_inputs = (a,)
 
-        with (
-            torch.no_grad(),
-            config.patch(
-                {
-                    "always_keep_tensor_constants": True,
-                    "aot_inductor.package_constants_in_so": False,
-                    "aot_inductor.package_constants_on_disk_format": "pickle_weights",
-                    "aot_inductor.package": True,
-                }
-            ),
-        ):
+        with torch.no_grad(), config.patch( { "always_keep_tensor_constants": True, "aot_inductor.package_constants_in_so": False, "aot_inductor.package_constants_on_disk_format": "pickle_weights", "aot_inductor.package": True, } ):
             aoti_files = AOTIRunnerUtil.legacy_compile(
                 model=model,
                 example_inputs=example_inputs,
@@ -7349,54 +7207,6 @@ class AOTInductorTestsTemplate:
         with self.assertRaises(AssertionError):
             torch.testing.assert_close(new_expected, new_output, atol=1e-3, rtol=1e-3)
 
-    def test_load_constants_allow_h2d_copy(self):
-        # End-to-end check that AOTICompiledModel.load_constants(allow_h2d_copy=True)
-        # accepts a CPU state_dict for a non-CPU model, the way a typical user
-        # would after torch.load(..., map_location="cpu").
-        if self.device != GPU_TYPE or self.device == "mps":
-            raise unittest.SkipTest("requires GPU")
-
-        class Model(torch.nn.Module):
-            def __init__(self, n, k, device):
-                super().__init__()
-                self.weight = torch.nn.Parameter(torch.randn(n, k, device=device))
-
-            def forward(self, a):
-                return torch.nn.functional.linear(a, self.weight)
-
-        M, N, K = 8, 6, 16
-        model = Model(N, K, self.device)
-        a = torch.randn(M, K, device=self.device)
-        example_inputs = (a,)
-
-        package_path = AOTIRunnerUtil.compile(model, example_inputs)
-        compiled = torch._inductor.aoti_load_package(package_path)
-
-        (weight_fqn,) = compiled.get_constant_fqns()
-        cpu_state_dict = {weight_fqn: torch.randn(N, K, device="cpu")}
-        compiled.load_constants(
-            cpu_state_dict, check_full_update=True, allow_h2d_copy=True
-        )
-
-        test_inputs = torch.randn(M, K, device=self.device)
-        expected = torch.nn.functional.linear(
-            test_inputs, cpu_state_dict[weight_fqn].to(self.device)
-        )
-        self.assertEqual(expected, compiled(test_inputs))
-
-        # Without allow_h2d_copy, the same call must error out.
-        with self.assertRaises(RuntimeError):
-            compiled.load_constants(cpu_state_dict, check_full_update=True)
-
-        # allow_h2d_copy + user_managed must be rejected up-front.
-        with self.assertRaises(RuntimeError):
-            compiled.load_constants(
-                cpu_state_dict,
-                check_full_update=True,
-                user_managed=True,
-                allow_h2d_copy=True,
-            )
-
     def test_cond_share_predicate(self):
         class Model(torch.nn.Module):
             def forward(self, predicate, x):
@@ -7830,16 +7640,7 @@ class AOTInductorTestsTemplate:
         y = torch.randn(1024, 2048, device=self.device)
         m = torch.tensor([4096], dtype=torch.int32, device=self.device)
 
-        with (
-            torch.no_grad(),
-            config.patch(
-                {
-                    "triton.autotune_with_sample_inputs": True,
-                    "aot_inductor.allow_stack_allocation": self.allow_stack_allocation,
-                    "aot_inductor.use_minimal_arrayref_interface": self.use_minimal_arrayref_interface,
-                }
-            ),
-        ):
+        with torch.no_grad(), config.patch( { "triton.autotune_with_sample_inputs": True, "aot_inductor.allow_stack_allocation": self.allow_stack_allocation, "aot_inductor.use_minimal_arrayref_interface": self.use_minimal_arrayref_interface, } ):
             torch._export.aot_compile(Model(), (x, y, m))
 
     def test_triton_autotuning(self):
@@ -8865,10 +8666,7 @@ class AOTInductorLoggingTest(LoggingTestCase):
             "x": {0: Dim.AUTO, 1: Dim.AUTO},
         }
         ep = export(Foo(), inputs, dynamic_shapes=dynamic_shapes, strict=False)
-        with (
-            torch.no_grad(),
-            config.patch({"aot_inductor.use_consts_asm_build": False}),
-        ):
+        with torch.no_grad(), config.patch({"aot_inductor.use_consts_asm_build": False}):
             torch._inductor.aot_compile(ep.module(), inputs)
         self.assertEqual([r.msg == "create_env" for r in records].count(True), 1)
 

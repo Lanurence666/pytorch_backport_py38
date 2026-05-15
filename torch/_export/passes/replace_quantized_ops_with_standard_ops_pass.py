@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 import operator
 
@@ -12,14 +14,15 @@ from torch.ao.quantization.fx._decomposed import (
 )
 from torch.ao.quantization.utils import calculate_qmin_qmax
 from torch.fx.graph_module import _assign_attr
+from typing import List, Optional, Set, Tuple, Union, overload
 
 
 log = logging.getLogger(__name__)
 
 # Those values will need to be carried over multiple operators.
-_INPUT_Q_DTYPE: torch.dtype | torch.fx.Node | None = None
-_SCALE: float | torch.fx.Node | None = None
-_ZERO_POINT: float | torch.fx.Node | None = None
+_INPUT_Q_DTYPE: Union[torch.dtype, Optional[torch.fx.Node]] = None
+_SCALE: Union[float, Optional[torch.fx.Node]] = None
+_ZERO_POINT: Union[float, Optional[torch.fx.Node]] = None
 
 
 def int_to_valid_dtype(val: int) -> torch.dtype:
@@ -42,12 +45,12 @@ def fx_enum_to_dtype(gm: torch.fx.GraphModule, val: int) -> torch.fx.Node:
 def insert_quantized_node(
     gm: torch.fx.GraphModule,
     val_node: torch.fx.Node,
-    scale_node: float | torch.fx.Node,
-    zero_point_node: float | torch.fx.Node,
-    qmin_node: float | int | torch.fx.Node,
-    qmax_node: float | int | torch.fx.Node,
-    dtype_node: torch.dtype | torch.fx.Node,
-    qscheme: torch.qscheme | None,
+    scale_node: Union[float, torch.fx.Node],
+    zero_point_node: Union[float, torch.fx.Node],
+    qmin_node: Union[Union[float, int], torch.fx.Node],
+    qmax_node: Union[Union[float, int], torch.fx.Node],
+    dtype_node: Union[torch.dtype, torch.fx.Node],
+    qscheme: Optional[torch.qscheme],
 ) -> torch.fx.Node:
     return gm.graph.call_function(
         quantize_per_tensor,
@@ -64,13 +67,13 @@ def insert_quantized_node(
 
 def get_dequantized(
     val: torch.Tensor,
-    scale: float | torch.Tensor,
-    zero_point: float | torch.Tensor,
-    qmin: float | int,
-    qmax: float | int,
+    scale: Union[float, torch.Tensor],
+    zero_point: Union[float, torch.Tensor],
+    qmin: Union[float, int],
+    qmax: Union[float, int],
     dtype: torch.dtype,
-    axis: int | None,
-    qscheme: torch.qscheme | None,
+    axis: Optional[int],
+    qscheme: Optional[torch.qscheme],
 ) -> torch.Tensor:
     if qscheme is torch.per_tensor_affine:
         return dequantize_per_tensor(
@@ -98,13 +101,13 @@ def get_dequantized(
 def insert_dequantized_node(
     gm: torch.fx.GraphModule,
     val_node: torch.fx.Node,
-    scale_node: float | torch.fx.Node,
-    zero_point_node: float | torch.fx.Node,
-    qmin_node: float | int | torch.fx.Node,
-    qmax_node: float | int | torch.fx.Node,
-    dtype_node: torch.dtype | torch.fx.Node,
-    axis_node: int | torch.fx.Node | None,
-    qscheme: torch.qscheme | None,
+    scale_node: Union[float, torch.fx.Node],
+    zero_point_node: Union[float, torch.fx.Node],
+    qmin_node: Union[Union[float, int], torch.fx.Node],
+    qmax_node: Union[Union[float, int], torch.fx.Node],
+    dtype_node: Union[torch.dtype, torch.fx.Node],
+    axis_node: Union[int, Optional[torch.fx.Node]],
+    qscheme: Optional[torch.qscheme],
 ) -> torch.fx.Node:
     if qscheme is torch.per_tensor_affine:
         return gm.graph.call_function(
@@ -135,13 +138,13 @@ def insert_dequantized_node(
         raise RuntimeError(f"Unsupported dequantization scheme: {qscheme}")
 
 
-def get_qmin_qmax(dtype: torch.dtype) -> tuple[int | float, int | float]:
+def get_qmin_qmax(dtype: torch.dtype) -> Tuple[Union[int, float], Union[int, float]]:
     return calculate_qmin_qmax(None, None, False, dtype, False)  # type: ignore[arg-type]
 
 
 def insert_qmin_qmax_node(
-    gm: torch.fx.GraphModule, dtype_node: torch.dtype | torch.fx.Node
-) -> tuple[torch.fx.Node, torch.fx.Node]:
+    gm: torch.fx.GraphModule, dtype_node: Union[torch.dtype, torch.fx.Node]
+) -> Tuple[torch.fx.Node, torch.fx.Node]:
     q_min_max_node = gm.graph.call_function(
         calculate_qmin_qmax, (None, None, False, dtype_node, False)
     )
@@ -172,7 +175,7 @@ def get_script_object(
 def insert_weight_and_bias_get_attr_node_from_get_attr_to_scriptobject(
     gm: torch.fx.GraphModule,
     param_node: torch.fx.Node,
-) -> tuple[torch.fx.Node, torch.fx.Node | None]:
+) -> Tuple[torch.fx.Node, Optional[torch.fx.Node]]:
     """Directly inline tensor from a get_attr fx node."""
     mod = get_script_object(gm, param_node)
     w_qtensor, b_qtensor = mod.unpack()  # type: ignore[attr-defined]
@@ -188,8 +191,8 @@ def insert_weight_and_bias_get_attr_node_from_get_attr_to_scriptobject(
 def insert_weight_and_bias_get_attr_node_from_get_attr_to_qtensor(
     gm: torch.fx.GraphModule,
     get_attr_to_weight_node: torch.fx.Node,
-    get_attr_to_bias_node: torch.fx.Node | None,
-) -> tuple[torch.fx.Node, torch.fx.Node | None]:
+    get_attr_to_bias_node: Optional[torch.fx.Node],
+) -> Tuple[torch.fx.Node, Optional[torch.fx.Node]]:
     if not isinstance(get_attr_to_weight_node.target, str):
         raise AssertionError(
             f"expected str target, got {type(get_attr_to_weight_node.target).__name__}"
@@ -215,10 +218,10 @@ def insert_weight_and_bias_get_attr_node_from_get_attr_to_qtensor(
 def insert_weight_and_bias_get_attr_node(
     gm: torch.fx.GraphModule,
     w_qtensor: torch.Tensor,
-    b_qtensor: torch.Tensor | None,
+    b_qtensor: Optional[torch.Tensor],
     w_attr_name: str,
     b_attr_name: str,
-) -> tuple[torch.fx.Node, torch.fx.Node | None]:
+) -> Tuple[torch.fx.Node, Optional[torch.fx.Node]]:
     w_tensor = get_tensor_from_qtensor(w_qtensor)
     _assign_attr(w_tensor, gm, w_attr_name)
     w_tensor_attr = gm.graph.get_attr(w_attr_name)
@@ -277,10 +280,10 @@ def insert_fused_activation_node(
 def _conv1d_op_with_squeeze(
     inp: torch.Tensor,
     weight: torch.Tensor,
-    bias: torch.Tensor | None,
-    stride: list[int],
-    padding: list[int],
-    dilation: list[int],
+    bias: Optional[torch.Tensor],
+    stride: List[int],
+    padding: List[int],
+    dilation: List[int],
     groups: int,
 ) -> torch.Tensor:
     # In quantized version, conv1d is emulated using conv2d with squeeze and unsqueeze

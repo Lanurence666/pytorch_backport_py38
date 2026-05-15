@@ -1,6 +1,7 @@
 # mypy: allow-untyped-defs
 # Owner(s): ["module: unknown"]
 
+from __future__ import annotations
 import multiprocessing
 import os
 import random

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This is the top-level configuration module for the compiler, containing
 cross-cutting configuration options that affect all parts of the compiler
@@ -15,6 +16,7 @@ contain configuration options that affect only a specific part of the compiler:
 import sys
 
 from torch.utils._config_module import Config, install_config_module
+from typing import Optional
 
 
 __all__ = [
@@ -44,7 +46,7 @@ __all__ = [
 # FB-internal note: you do NOT have to specify this explicitly specify this if
 # you run on MAST, we will automatically default this to
 # mast:MAST_JOB_NAME:MAST_JOB_VERSION.
-job_id: str | None = Config(
+job_id: Optional[str]= Config(
     env_name_default=["TORCH_COMPILE_JOB_ID", "TORCH_COMPILE_STICKY_PGO_KEY"],
     default=None,
 )
@@ -74,10 +76,10 @@ different profiles.  If you know your workload is truly SPMD, you can run with
 consistent profiles across all ranks.
 """
 
-pgo_extra_read_key: str | None = Config(
+pgo_extra_read_key: Optional[str]= Config(
     env_name_default="TORCH_COMPILE_STICKY_PGO_READ", default=None
 )
-pgo_extra_write_key: str | None = Config(
+pgo_extra_write_key: Optional[str]= Config(
     env_name_default="TORCH_COMPILE_STICKY_PGO_WRITE", default=None
 )
 """
@@ -213,7 +215,7 @@ This is a TorchDynamo-specific setting for handling operations with unpredictabl
 output shapes during tracing.
 """
 
-log_file_name: str | None = Config(alias="torch._dynamo.config.log_file_name")
+log_file_name: Optional[str]= Config(alias="torch._dynamo.config.log_file_name")
 """
 Specifies a file path for TorchDynamo-specific logging output. When set, internal
 TorchDynamo debug information is written to this file rather than stdout. This is

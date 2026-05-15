@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 In NUMA (Non-Uniform Memory Access) systems, accessing memory on remote NUMA
 nodes incurs additional latency. PyTorch provides NUMA binding utilities to
@@ -22,12 +23,16 @@ import os
 import shutil
 import traceback
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+
 from dataclasses import asdict, dataclass
 from enum import Enum
 from functools import wraps
 from logging import getLogger
-from typing import ParamSpec, TypeVar
+from typing import Callable, Dict, Iterable, Set, Tuple, Type, TypeVar, Union
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec
 
 import torch
 from torch._utils_internal import signpost_event
@@ -102,11 +107,11 @@ class NumaOptions:
 
 
 def _maybe_wrap_command_args_with_numa_binding(
-    command_args: tuple[str, ...],
+    command_args: Tuple[str, ...],
     *,
     gpu_index: int,
-    numa_options: NumaOptions | None,
-) -> tuple[str, ...]:
+    numa_options: Union[NumaOptions, None,]
+) -> Tuple[str, ...]:
     """
     Wraps command arguments with numactl to apply NUMA CPU binding.
 
@@ -167,7 +172,7 @@ def _maybe_wrap_with_numa_binding(
     func: Callable[_TParams, _TReturn],
     *,
     gpu_index: int,
-    numa_options: NumaOptions | None,
+    numa_options: Union[NumaOptions, None,]
 ) -> Callable[_TParams, _TReturn]:
     """
     Wraps a function to apply NUMA CPU binding before execution.
@@ -233,8 +238,8 @@ def _maybe_apply_numa_binding_to_current_process(
 
 
 def _assemble_numactl_command_args(
-    *, original_command_args: tuple[str, ...], logical_cpu_indices: set[int]
-) -> tuple[str, ...]:
+    *, original_command_args: Tuple[str, ...], logical_cpu_indices: Set[int]
+) -> Tuple[str, ...]:
     return (
         "numactl",
         f"--physcpubind={_get_ranges_str_from_ints(logical_cpu_indices)}",
@@ -243,7 +248,7 @@ def _assemble_numactl_command_args(
 
 
 def _handle_exception(
-    *, numa_options: NumaOptions, logger_kwargs: dict[str, object]
+    *, numa_options: NumaOptions, logger_kwargs: Dict[str, object]
 ) -> None:
     signpost_event(
         category="numa_binding",
@@ -269,7 +274,7 @@ def _get_validated_logical_cpus_to_bind_to(
     *,
     gpu_index: int,
     numa_options: NumaOptions,
-) -> set[int]:
+) -> Set[int]:
     logical_cpu_indices = _get_logical_cpus_to_bind_to(
         gpu_index=gpu_index, numa_options=numa_options
     )
@@ -278,7 +283,7 @@ def _get_validated_logical_cpus_to_bind_to(
     return logical_cpu_indices
 
 
-def _raise_if_binding_invalid(*, logical_cpu_indices: set[int]) -> None:
+def _raise_if_binding_invalid(*, logical_cpu_indices: Set[int]) -> None:
     # NOTE: numactl CLI is only actually necessary for the str entrypoint path,
     # but for simplicity we will just check it no matter what.
     if shutil.which("numactl") is None:
@@ -289,7 +294,7 @@ def _raise_if_binding_invalid(*, logical_cpu_indices: set[int]) -> None:
 
 
 def _bind_all_threads_in_current_process_to_logical_cpus(
-    *, logical_cpu_indices: set[int]
+    *, logical_cpu_indices: Set[int]
 ) -> None:
     # Save the original affinity of the main thread before changing it
     # pyrefly: ignore [missing-attribute]
@@ -320,7 +325,7 @@ def _get_logical_cpus_to_bind_to(
     *,
     gpu_index: int,
     numa_options: NumaOptions,
-) -> set[int]:
+) -> Set[int]:
     """
     Args:
         gpu_index: The index of the GPU that will be used by the subprocess.
@@ -344,7 +349,7 @@ def _get_logical_cpus_to_bind_to(
     return logical_cpus
 
 
-def _node_get_logical_cpus_to_bind_to(*, gpu_index: int) -> set[int]:
+def _node_get_logical_cpus_to_bind_to(*, gpu_index: int) -> Set[int]:
     """
     Core logic of 'node' numa strategy.
     """
@@ -355,7 +360,7 @@ def _node_get_logical_cpus_to_bind_to(*, gpu_index: int) -> set[int]:
     )
 
 
-def _socket_get_logical_cpus_to_bind_to(*, gpu_index: int) -> set[int]:
+def _socket_get_logical_cpus_to_bind_to(*, gpu_index: int) -> Set[int]:
     """
     Core logic of 'socket' numa strategy.
     """
@@ -378,7 +383,7 @@ def _socket_get_logical_cpus_to_bind_to(*, gpu_index: int) -> set[int]:
     return logical_cpus
 
 
-def _exclusive_get_logical_cpus_to_bind_to(*, gpu_index: int) -> set[int]:
+def _exclusive_get_logical_cpus_to_bind_to(*, gpu_index: int) -> Set[int]:
     """
     Core logic of 'exclusive' numa strategy.
     """
@@ -448,7 +453,7 @@ def _exclusive_get_logical_cpus_to_bind_to(*, gpu_index: int) -> set[int]:
     return logical_cpu_indices_for_original_gpu
 
 
-def _core_complex_get_logical_cpus_to_bind_to(*, gpu_index: int) -> set[int]:
+def _core_complex_get_logical_cpus_to_bind_to(*, gpu_index: int) -> Set[int]:
     """
     Core logic of 'core-complex' numa strategy.
 
@@ -499,11 +504,11 @@ K = TypeVar("K")
 V = TypeVar("V")
 
 
-def _group_by(values: Iterable[V], get_key: Callable[[V], K]) -> dict[K, set[V]]:
+def _group_by(values: Iterable[V], get_key: Callable[[V], K]) -> Dict[K, Set[V]]:
     """
     Groups elements with same key into sets.
     """
-    key_to_values: defaultdict[K, set[V]] = defaultdict(set)
+    key_to_values: defaultdict[K, Set[V]] = defaultdict(set)
     for value in values:
         key = get_key(value)
         key_to_values[key].add(value)
@@ -512,7 +517,7 @@ def _group_by(values: Iterable[V], get_key: Callable[[V], K]) -> dict[K, set[V]]
 
 def _get_logical_cpu_indices_sharing_same_physical_core_as(
     *, logical_cpu_index: int
-) -> set[int]:
+) -> Set[int]:
     thread_siblings_list_absolute_path = (
         f"/sys/devices/system/cpu/cpu{logical_cpu_index}/topology/thread_siblings_list"
     )
@@ -522,7 +527,7 @@ def _get_logical_cpu_indices_sharing_same_physical_core_as(
 
 def _get_logical_cpus_sharing_same_max_level_cache_as(
     *, logical_cpu_index: int
-) -> set[int]:
+) -> Set[int]:
     cpu_cache_dir_absolute_path = (
         f"/sys/devices/system/cpu/cpu{logical_cpu_index}/cache"
     )
@@ -558,7 +563,7 @@ def _get_logical_cpus_sharing_same_max_level_cache_as(
     return logical_cpus_sharing_max_level_cache
 
 
-def _get_allowed_logical_cpu_indices_for_numa_node(*, numa_node_index: int) -> set[int]:
+def _get_allowed_logical_cpu_indices_for_numa_node(*, numa_node_index: int) -> Set[int]:
     all_cpu_indices = _get_cpu_indices_for_numa_node_MAYBE_NOT_ALLOWED(
         numa_node_index=numa_node_index
     )
@@ -568,7 +573,7 @@ def _get_allowed_logical_cpu_indices_for_numa_node(*, numa_node_index: int) -> s
 
 def _get_cpu_indices_for_numa_node_MAYBE_NOT_ALLOWED(
     *, numa_node_index: int
-) -> set[int]:
+) -> Set[int]:
     """
     Returns:
         Indices of all CPUs associated with numa_node_index. However, the list
@@ -607,7 +612,7 @@ def _get_numa_node_index_for_gpu_index(*, gpu_index: int) -> int:
         return max(int(f.read().strip()), 0)
 
 
-def _get_gpu_indices_for_numa_node(*, numa_node_index: int) -> set[int]:
+def _get_gpu_indices_for_numa_node(*, numa_node_index: int) -> Set[int]:
     return {
         gpu_index
         for gpu_index in range(_get_gpu_count())
@@ -640,7 +645,7 @@ def _get_arbitrary_allowed_cpu_index_for_numa_node(*, numa_node_index: int) -> i
     )
 
 
-def _get_set_of_int_from_ranges_str(ranges_str: str) -> set[int]:
+def _get_set_of_int_from_ranges_str(ranges_str: str) -> Set[int]:
     """
     Util for parsing a string of int ranges, as in a sysfs file.
 
@@ -650,7 +655,7 @@ def _get_set_of_int_from_ranges_str(ranges_str: str) -> set[int]:
     Returns:
         E.g., {0, 1, 2, 4, 6, 7}
     """
-    ints: set[int] = set()
+    ints: Set[int] = set()
     for range_str in ranges_str.split(","):
         range_str = range_str.strip()
         if not range_str:
@@ -700,14 +705,14 @@ def _get_ranges_str_from_ints(ints: Iterable[int]) -> str:
     return ",".join(ranges)
 
 
-def _get_systemwide_numa_node_indices() -> set[int]:
+def _get_systemwide_numa_node_indices() -> Set[int]:
     with open("/sys/devices/system/node/possible") as f:
         possible_nodes_str = f.read()
 
     return _get_set_of_int_from_ranges_str(possible_nodes_str)
 
 
-def _get_numa_node_indices_for_socket_index(*, socket_index: int) -> set[int]:
+def _get_numa_node_indices_for_socket_index(*, socket_index: int) -> Set[int]:
     systemwide_numa_node_indices = _get_systemwide_numa_node_indices()
 
     matching_numa_node_indices = set()
@@ -721,7 +726,7 @@ def _get_numa_node_indices_for_socket_index(*, socket_index: int) -> set[int]:
     return matching_numa_node_indices
 
 
-def _get_allowed_cpu_indices_for_current_thread() -> set[int]:
+def _get_allowed_cpu_indices_for_current_thread() -> Set[int]:
     # 0 denotes current thread
     # pyrefly: ignore [missing-attribute]
     return os.sched_getaffinity(0)  # type:ignore[attr-defined]

@@ -19,6 +19,7 @@
 #include <limits>
 #include <unordered_set>
 #include <utility>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 namespace torch::jit {
 

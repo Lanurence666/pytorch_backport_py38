@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import triton
 import triton.language as tl
 
 import torch
+from typing import Tuple
 
 
 @triton.jit
@@ -52,7 +55,7 @@ def _bmm_outer_product_kernel(
     )
 
 
-def _pick_block_sizes(m: int, n: int) -> tuple[int, int]:
+def _pick_block_sizes(m: int, n: int) -> Tuple[int, int]:
     """I swept over some shapes and in the future we should figure out @autotune story"""
     if m <= 32:
         block_m = triton.next_power_of_2(m)

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """This module implements tensor version operations for Dynamo tracing.
 
 It provides primitives for handling tensor versioning during tracing, particularly in the
@@ -17,7 +18,7 @@ Note this is similar to how no_grad is handled.
 """
 
 from contextlib import AbstractContextManager
-from typing import Any
+from typing import Any, Tuple
 
 import torch
 from torch import SymInt
@@ -42,8 +43,7 @@ def _tensor_version_fake(fake_mode: FakeTensorMode, self_tensor: Any) -> SymInt:
     `._version` into an unbacked SymInt so that we don't need to specialize on the `._version`
     of input tensors to the graph.
     """
-    if fake_mode.shape_env is None:
-        raise AssertionError("fake_mode.shape_env must not be None")
+    assert fake_mode.shape_env is not None
     return fake_mode.shape_env.create_unbacked_symint()
 
 
@@ -65,7 +65,7 @@ def _tensor_version_functional(mode: FunctionalTensorMode, self: Any) -> int:
 @_unsafe_set_version_counter.py_impl(FunctionalTensorMode)  # type: ignore[misc]
 def _unsafe_set_version_counter_functional(
     ctx: AbstractContextManager[Any],
-    tensors: tuple[torch.Tensor, ...],
-    versions: tuple[int, ...],
+    tensors: Tuple[torch.Tensor, ...],
+    versions: Tuple[int, ...],
 ) -> None:
     torch._C._autograd._unsafe_set_version_counter(tensors, versions)

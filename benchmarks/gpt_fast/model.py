@@ -1,4 +1,5 @@
 # flake8: noqa: E266, C417
+from __future__ import annotations
 from dataclasses import dataclass
 
 import torch

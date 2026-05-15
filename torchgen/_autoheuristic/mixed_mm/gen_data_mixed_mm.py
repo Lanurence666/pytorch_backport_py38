@@ -1,8 +1,9 @@
 # mypy: ignore-errors
+from __future__ import annotations
 import random
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Tuple
 
 
 sys.path.append(str(Path(__file__).absolute().parents[1]))
@@ -32,7 +33,7 @@ class BenchmarkRunnerMixedMM(BenchmarkRunner):  # type: ignore[misc, no-any-unim
     def __init__(self) -> None:
         super().__init__("mixed_mm")
 
-    def create_input(self) -> tuple[Any, ...]:
+    def create_input(self) -> Tuple[Any, ...]:
         dtype1, dtype2 = self.get_dtypes()
         m, k, n = self.get_m_k_n(dtype1)
         transpose_left, transpose_right = False, True
@@ -108,7 +109,7 @@ class BenchmarkRunnerMixedMM(BenchmarkRunner):  # type: ignore[misc, no-any-unim
         else:
             return get_random_between_pow2(1, 7)
 
-    def get_m_k_n(self, dtype: Any) -> tuple[int, int, int]:
+    def get_m_k_n(self, dtype: Any) -> Tuple[int, int, int]:
         numel_max = 2**31
 
         # repeat until tensors fit in memory

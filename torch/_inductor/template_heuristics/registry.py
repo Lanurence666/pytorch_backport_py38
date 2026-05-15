@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Template heuristic registry system for PyTorch Inductor.
 
@@ -6,11 +7,10 @@ allowing automatic registration based on device type and conditional registratio
 for CUDA vs ROCm based on torch.version.hip.
 """
 
-from __future__ import annotations
 
 import contextlib
 import logging
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Iterator, List, Optional, Set, TYPE_CHECKING, Tuple, Type
 
 from .base import TemplateConfigHeuristics
 
@@ -20,21 +20,21 @@ if TYPE_CHECKING:
 
 
 # Module-wide registry for template heuristics
-_TEMPLATE_HEURISTIC_REGISTRY: dict[
-    tuple[str | None, ...], type[TemplateConfigHeuristics]
+_TEMPLATE_HEURISTIC_REGISTRY: Dict[
+    Tuple[Optional[str], ...], Type[TemplateConfigHeuristics]
 ] = {}
 
 # Manual cache for successful lookups only (fallback instances are not cached)
-_HEURISTIC_CACHE: dict[tuple[str, str, str], TemplateConfigHeuristics] = {}
+_HEURISTIC_CACHE: Dict[Tuple[str, str, str], TemplateConfigHeuristics] = {}
 
 log = logging.getLogger(__name__)
 
 
 def register_template_heuristic(
     template_name: str,
-    device_type: str | None,
+    device_type: Optional[str],
     register: bool = True,
-    op_name: str | None = None,
+    op_name: Optional[str] = None
 ) -> Any:
     """
     Decorator to register template heuristic classes.
@@ -57,10 +57,10 @@ def register_template_heuristic(
     """
 
     def decorator(
-        cls: type[TemplateConfigHeuristics],
-    ) -> type[TemplateConfigHeuristics]:
+        cls: Type[TemplateConfigHeuristics],
+    ) -> Type[TemplateConfigHeuristics]:
         if register:
-            key: tuple[str | None, ...] = (template_name, device_type, op_name)
+            key: Tuple[Optional[str], ...] = (template_name, device_type, op_name)
             _TEMPLATE_HEURISTIC_REGISTRY[key] = cls
             log.info(
                 f"Registered template heuristic: {cls.__name__} for '{template_name=}', '{device_type=}', '{op_name=}'"  # noqa: G004
@@ -114,7 +114,7 @@ def get_template_heuristic(
 
 def get_registered_heuristic_class(
     template_name: str, device_type: str, op_name: str
-) -> None | type[TemplateConfigHeuristics]:
+) -> Optional[Type[TemplateConfigHeuristics]]:
     """
     Get the heuristic class registered for the given template/device/op combination.
 
@@ -159,8 +159,8 @@ def clear_registry() -> None:
 @contextlib.contextmanager
 def override_template_heuristics(
     device_type: str,
-    template_op_pairs: list[tuple[str, str]],
-    override_heuristic_class: type[TemplateConfigHeuristics] = TemplateConfigHeuristics,
+    template_op_pairs: List[Tuple[str, str]],
+    override_heuristic_class: Type[TemplateConfigHeuristics] = TemplateConfigHeuristics,
 ) -> Iterator[None]:
     """
     Context manager to temporarily override template heuristics.

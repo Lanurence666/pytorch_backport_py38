@@ -1,5 +1,6 @@
 # Owner(s): ["module: onnx"]
 
+from __future__ import annotations
 """Test the support on onnxscript in PyTorch-ONNX converter."""
 
 import io

@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import warnings
 
 import torch
@@ -11,6 +13,7 @@ from torch._utils import (
     _unflatten_dense_tensors,
 )
 from torch.cuda import nccl
+from typing import Iterable, List, Sequence
 
 
 def broadcast(tensor, devices=None, *, out=None):
@@ -140,22 +143,22 @@ def reduce_add_coalesced(inputs, destination=None, buffer_size=10485760):
     """
     # TODO: When `len(inputs) == 1` and all inputs are on `destination`, just
     #       return `inputs`.
-    dense_tensors: list[list] = [[] for _ in inputs]  # shape (num_gpus, num_tensors)
+    dense_tensors: List[list] = [[] for _ in inputs]  # shape (num_gpus, num_tensors)
     output = []
     ref_order = []
     # process sparse ones first since they may have different sizes on different gpus
-    for tensor_at_gpus in zip(*inputs, strict=True):
+    for tensor_at_gpus in _zip_strict(*inputs):
         if all(t.is_sparse for t in tensor_at_gpus):
             result = reduce_add(tensor_at_gpus, destination)  # this will be sparse too
             output.append(result)
             ref_order.append(tensor_at_gpus[0])
         else:
-            for coll, t in zip(dense_tensors, tensor_at_gpus, strict=True):
+            for coll, t in _zip_strict(dense_tensors, tensor_at_gpus):
                 coll.append(t.to_dense() if t.is_sparse else t)
             ref_order.append(dense_tensors[0][-1])
     itrs = [_take_tensors(tensors, buffer_size) for tensors in dense_tensors]
     # now the dense ones, which have consistent sizes
-    for chunks in zip(*itrs, strict=True):
+    for chunks in _zip_strict(*itrs):
         flat_tensors = [
             _flatten_dense_tensors(chunk) for chunk in chunks
         ]  # (num_gpus,)

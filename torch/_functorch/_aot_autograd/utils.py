@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Contains various utils for AOTAutograd, including those for handling collections.
 """
@@ -7,10 +8,10 @@ import dataclasses
 import logging
 import operator
 import warnings
-from collections.abc import Callable, Sequence
+
 from contextlib import nullcontext
 from functools import partial, wraps
-from typing import Any, overload, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union, overload
 from typing_extensions import ParamSpec, TypeVar, TypeVarTuple, Unpack
 
 import torch
@@ -62,14 +63,14 @@ def partial_flatten_asdict(obj: object) -> Any:
 
 
 @overload
-def normalize_as_list(x: _T) -> list[_T]: ...
+def normalize_as_list(x: _T) -> List[_T]: ...
 @overload
-def normalize_as_list(x: tuple[_T, ...]) -> list[_T]: ...
+def normalize_as_list(x: Tuple[_T, ...]) -> List[_T]: ...
 @overload
-def normalize_as_list(x: list[_T]) -> list[_T]: ...
+def normalize_as_list(x: List[_T]) -> List[_T]: ...
 
 
-def normalize_as_list(x: object) -> list[object]:
+def normalize_as_list(x: object) -> List[object]:
     if isinstance(x, tuple):
         return list(x)
     elif isinstance(x, list):
@@ -77,7 +78,7 @@ def normalize_as_list(x: object) -> list[object]:
     return [x]
 
 
-def _get_autocast_states() -> list[Any]:
+def _get_autocast_states() -> List[Any]:
     return [
         torch.is_autocast_enabled("cuda"),
         torch.is_autocast_enabled("cpu"),
@@ -87,9 +88,9 @@ def _get_autocast_states() -> list[Any]:
     ]
 
 
-def make_boxed_func(f: Callable[..., Any]) -> Callable[[list[Any]], Any]:
+def make_boxed_func(f: Callable[..., Any]) -> Callable[[List[Any]], Any]:
     @simple_wraps(f)
-    def g(args: list[Any]) -> Any:
+    def g(args: List[Any]) -> Any:
         return f(*args)
 
     # pyrefly: ignore[missing-attribute]
@@ -114,7 +115,7 @@ def call_func_at_runtime_with_args(
     args: Sequence[Any],
     steal_args: bool = False,
     disable_amp: bool = False,
-) -> list[Any]:
+) -> List[Any]:
     if not steal_args:
         args = list(args)
     if not isinstance(args, list):
@@ -139,12 +140,12 @@ def call_func_at_runtime_with_args(
 
 # Inspired by autodidax (thanks!)
 class PytreeThunk:
-    spec: pytree.TreeSpec | None = None
+    spec: Optional[pytree.TreeSpec]= None
     # These are some kinda dumb microoptimizations that save about 3-4 us of overhead.
-    is_simple: bool | None = (
+    is_simple: Optional[bool]= (
         None  # if the output spec is a tuple/list, we won't bother unflattening it.
     )
-    is_really_simple: bool | None = None  # if the output spec is a LeafSpec
+    is_really_simple: Optional[bool]= None  # if the output spec is a LeafSpec
 
     def set(self, spec: pytree.TreeSpec) -> None:
         if not (self.spec is None or self.spec == spec):
@@ -175,15 +176,15 @@ class PytreeThunk:
 def create_tree_flattened_fn(
     fn: Callable[..., Any],
     args: Sequence[Any],
-    kwargs: dict[str, Any] | None = None,
-) -> tuple[Callable[..., list[Any]], PytreeThunk]:
+    kwargs: Optional[Dict[str, Any]]= None,
+) -> Tuple[Callable[..., List[Any]], PytreeThunk]:
     if kwargs is None:
         kwargs = {}
     # Save the args_spec for flat_tensor_args to unflatten while tracing
     _, tensor_args_spec = pytree.tree_flatten((args, kwargs))
     out_spec = PytreeThunk()
 
-    def flat_fn(*flat_args: Any) -> list[Any]:
+    def flat_fn(*flat_args: Any) -> List[Any]:
         # The input are flattened tensor args. Prepare the args in the
         # order that original function expects. Add static args as well.
         # They will appear as tensor constants in the traced graph.
@@ -276,7 +277,7 @@ def unlift_tokens(
     fw_module: torch.fx.GraphModule,
     fw_metadata: "ViewAndMutationMeta",
     aot_config: "AOTConfig",
-    bw_module: torch.fx.GraphModule | None = None,
+    bw_module: Optional[torch.fx.GraphModule]= None,
 ) -> None:
     # Remove the tokens from the inputs/outputs of the graph since inductor does
     # not want these extra inputs/outputs, and replace them with
@@ -358,7 +359,7 @@ def unlift_tokens(
             node.replace_all_uses_with(new_token_node)
             module.graph.erase_node(node)
 
-    def get_output_tokens(node: torch.fx.Node) -> set[torch.fx.Node]:
+    def get_output_tokens(node: torch.fx.Node) -> Set[torch.fx.Node]:
         output_tokens = set()
         for user in list(node.users.keys()):
             # Check if this is a getitem accessing index 0 (the token)
@@ -377,7 +378,7 @@ def unlift_tokens(
     def _unlift_tokens_from_module_helper(
         module: torch.fx.GraphModule,
         subgraph_str: str,
-        expected_num_erased: int | None,
+        expected_num_erased: Union[int, None,]
     ) -> None:
         input_token_nodes = set()
         output_token_nodes = set()
@@ -392,7 +393,7 @@ def unlift_tokens(
                     replace_input_token_with_make_token(module, node.args[0])
 
                 tokens_from_with_effects = get_output_tokens(node)
-                output_token_nodes = output_token_nodes | tokens_from_with_effects
+                output_token_nodes = Union[output_token_nodes, tokens_from_with_effects]
 
             elif (
                 node.op == "call_function"
@@ -461,7 +462,7 @@ def unlift_tokens(
                     # Get output tokens from the new with_effects node
                     tokens_from_invoke_subgraph = get_output_tokens(new_node)
                     output_token_nodes = (
-                        output_token_nodes | tokens_from_invoke_subgraph
+                        Union[output_token_nodes, tokens_from_invoke_subgraph]
                     )
 
         if not output_token_nodes and not input_token_nodes:
@@ -555,7 +556,7 @@ def unlift_tokens(
 
 def root_module_when_exporting_non_strict(
     flat_fn: Callable[..., Any],
-) -> torch.nn.Module | None:
+) -> Optional[torch.nn.Module]:
     # When exporting in non-strict mode, we wrap the root module in a specific pattern.
     # See `_aot_export_non_strict` in torch.export._trace.py.
     # We look for that wrapping pattern here.
@@ -584,7 +585,7 @@ def _is_backward_node_with_seq_nr(node: torch.fx.Node) -> bool:
 
 
 def _collect_fwd_nodes_from_subgraph(
-    fx_g: torch.fx.GraphModule, fwd_seq_nr_to_node: dict[str, torch.fx.Node]
+    fx_g: torch.fx.GraphModule, fwd_seq_nr_to_node: Dict[str, torch.fx.Node]
 ) -> None:
     """Collect forward nodes from a single subgraph into the global mapping."""
     for node in fx_g.graph.nodes:
@@ -600,7 +601,7 @@ def _collect_fwd_nodes_from_subgraph(
 
 
 def _copy_metadata_to_bw_nodes_in_subgraph(
-    fx_g: torch.fx.GraphModule, fwd_seq_nr_to_node: dict[str, torch.fx.Node]
+    fx_g: torch.fx.GraphModule, fwd_seq_nr_to_node: Dict[str, torch.fx.Node]
 ) -> None:
     """Copy metadata from forward nodes to backward nodes in a single subgraph."""
     for node in fx_g.graph.nodes:
@@ -648,7 +649,7 @@ def copy_fwd_metadata_to_bw_nodes(fx_g: torch.fx.GraphModule) -> None:
     """
 
     # Build a global mapping of seq_nr to forward nodes across all subgraphs
-    fwd_seq_nr_to_node: dict[str, torch.fx.Node] = {}
+    fwd_seq_nr_to_node: Dict[str, torch.fx.Node] = {}
 
     # First pass: collect all forward nodes from all subgraphs
     for submod in fx_g.modules():
@@ -667,7 +668,7 @@ def copy_fwd_metadata_to_bw_nodes(fx_g: torch.fx.GraphModule) -> None:
 
 
 def register_buffer_assignment_hook(
-    mod: torch.nn.Module, assigned_buffers: dict[str, str]
+    mod: torch.nn.Module, assigned_buffers: Dict[str, str]
 ) -> Any:
     """
     Register a hook that intercepts buffer assignments.
@@ -745,7 +746,7 @@ _T = TypeVar("_T")
 _S = TypeVar("_S")
 
 
-def without_output_descs(f: Callable[_P, tuple[_T, _S]]) -> Callable[_P, _T]:
+def without_output_descs(f: Callable[_P, Tuple[_T, _S]]) -> Callable[_P, _T]:
     @wraps(f)
     @simple_wraps(f)
     def inner(*args: _P.args, **kwargs: _P.kwargs) -> _T:
@@ -771,8 +772,8 @@ _Ts = TypeVarTuple("_Ts")
 
 
 def call_and_expect_output_descs(
-    fn: Callable[[*_Ts], tuple[Any, Any]], args: tuple[Unpack[_Ts]]
-) -> tuple[Any, Any]:
+    fn: Callable[[*_Ts], Tuple[Any, Any]], args: Tuple[Unpack[_Ts]]
+) -> Tuple[Any, Any]:
     from .descriptors import AOTOutput
 
     outs_pair = fn(*args)
@@ -806,7 +807,7 @@ def call_and_expect_output_descs(
     return outs_pair
 
 
-def fn_wrappers(fn: Callable[..., Any]) -> list[Callable[..., Any]]:
+def fn_wrappers(fn: Callable[..., Any]) -> List[Callable[..., Any]]:
     fns = [fn]
     f = fn
     while hasattr(f, "__wrapped__"):

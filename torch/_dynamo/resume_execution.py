@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module provides functionality for resuming Python execution at specific points in code,
 primarily used by PyTorch Dynamo for control flow handling and optimization. It implements
@@ -17,9 +18,9 @@ import copy
 import dataclasses
 import sys
 import types
-from collections.abc import Callable, Iterable
+
 from contextlib import AbstractContextManager
-from typing import Any, cast
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Type, Union, cast
 
 from .bytecode_transformation import (
     add_push_null,
@@ -56,7 +57,7 @@ IS_TRACING_RESUME_PROLOGUE_VARNAME = "__is_tracing_resume_prologue"
 
 
 # If is_resume - this codegen is for a resume function
-def _initial_push_null(insts: list[Instruction]) -> None:
+def _initial_push_null(insts: List[Instruction]) -> None:
     if sys.version_info >= (3, 11):
         insts.append(create_instruction("PUSH_NULL"))
         if sys.version_info < (3, 13):
@@ -67,8 +68,8 @@ def _initial_push_null(insts: list[Instruction]) -> None:
 def _bytecode_from_template_with_split(
     template: Callable[..., Any],
     stack_index: int,
-    varname_map: dict[str, Any] | None = None,
-) -> tuple[list[Instruction], list[Instruction]]:
+    varname_map: Optional[Dict[str, Any]]= None,
+) -> Tuple[List[Instruction], List[Instruction]]:
     template_code = bytecode_from_template(template, varname_map=varname_map)
     template_code.append(create_instruction("POP_TOP"))
 
@@ -87,19 +88,13 @@ def _bytecode_from_template_with_split(
         ),
         (None, None),
     )
-    if dummy_idx is None:
-        raise AssertionError("LOAD_FAST dummy instruction not found in template code")
-    if dummy_inst is None:
-        raise AssertionError("LOAD_FAST dummy instruction instance is None")
+    assert dummy_idx is not None and dummy_inst is not None
 
     # replace LOAD_FAST dummy with first NOP marking exception area
     overwrite_instruction(dummy_inst, [create_instruction("NOP")])
 
     # POP_TOP follows LOAD_FAST dummy - replace with NOP marking end of exception area
-    if template_code[dummy_idx + 1].opname != "POP_TOP":
-        raise AssertionError(
-            f"Expected POP_TOP after LOAD_FAST dummy, got {template_code[dummy_idx + 1].opname}"
-        )
+    assert template_code[dummy_idx + 1].opname == "POP_TOP"
     overwrite_instruction(template_code[dummy_idx + 1], [create_instruction("NOP")])
 
     return template_code[: dummy_idx + 1], template_code[dummy_idx + 1 :]
@@ -122,11 +117,11 @@ def _try_except_tf_mode_template(dummy: Any, stack_var_name: Any) -> None:
 @dataclasses.dataclass(frozen=True)
 class ReenterWith:
     stack_index: int
-    target_values: tuple[Any, ...] | None = None
+    target_values: Optional[Tuple[Any, ...]]= None
 
     def try_except_torch_function_mode(
-        self, code_options: dict[str, Any], cleanup: list[Instruction]
-    ) -> list[Instruction]:
+        self, code_options: Dict[str, Any], cleanup: List[Instruction]
+    ) -> List[Instruction]:
         """
         Codegen based off of:
         try:
@@ -149,8 +144,8 @@ class ReenterWith:
     # If we do not want to destroy the stack, we can do the same thing as a
     # `SETUP_WITH` block, only that we store the context manager in a local_symbol
     def try_finally(
-        self, code_options: dict[str, Any], cleanup: list[Instruction]
-    ) -> list[Instruction]:
+        self, code_options: Dict[str, Any], cleanup: List[Instruction]
+    ) -> List[Instruction]:
         """
         Codegen based off of:
         load args
@@ -172,7 +167,7 @@ class ReenterWith:
             if name not in code_options["co_names"]:
                 code_options["co_names"] += (name,)
 
-        create_ctx: list[Instruction] = []
+        create_ctx: List[Instruction] = []
         _initial_push_null(create_ctx)
         create_ctx.extend(
             [
@@ -196,8 +191,8 @@ class ReenterWith:
         return create_ctx + setup_try_finally
 
     def __call__(
-        self, code_options: dict[str, Any], cleanup: list[Instruction]
-    ) -> tuple[list[Instruction], Instruction | None]:
+        self, code_options: Dict[str, Any], cleanup: List[Instruction]
+    ) -> Union[Tuple[List[Instruction], Instruction, None]]:
         """
         Codegen based off of:
         with ctx(args):
@@ -209,7 +204,7 @@ class ReenterWith:
         if self.target_values:
             load_args = [create_load_const(val) for val in self.target_values]
 
-        create_ctx: list[Instruction] = []
+        create_ctx: List[Instruction] = []
         # Do not push NULL in Python 3.14+ since the NULL should be on the symbolic stack.
         if sys.version_info < (3, 14):
             _initial_push_null(create_ctx)
@@ -238,8 +233,7 @@ class ReenterWith:
             ),
             None,
         )
-        if load_fast_ctx_inst is None:
-            raise AssertionError("LOAD_FAST ctx instruction not found in setup_with")
+        assert load_fast_ctx_inst is not None
         # ctx already loaded on stack before the template - no need to LOAD_FAST
         overwrite_instruction(load_fast_ctx_inst, [create_instruction("NOP")])
 
@@ -249,8 +243,7 @@ class ReenterWith:
         )
         push_exc_info_inst = next(push_exc_info_gen, None)
         # expect only 1 PUSH_EXC_INFO in epilogue
-        if next(push_exc_info_gen, None) is not None:
-            raise AssertionError("Expected only 1 PUSH_EXC_INFO in epilogue")
+        assert next(push_exc_info_gen, None) is None
 
         return create_ctx + setup_with, push_exc_info_inst
 
@@ -258,17 +251,17 @@ class ReenterWith:
 @dataclasses.dataclass
 class ResumeFunctionMetadata:
     code: types.CodeType
-    instructions: list[Instruction] = dataclasses.field(default_factory=list)
+    instructions: List[Instruction] = dataclasses.field(default_factory=list)
     # Python 3.11+ fields
     # NOTE: Python 3.11 removed blocks, but for our purposes, a "block" consists
     # of instructions of all exception table entries that have the same target.
 
     # map from PUSH_EXC_INFO's in the prefix to original block target offset
-    prefix_block_target_offset_remap: list[int] = dataclasses.field(
+    prefix_block_target_offset_remap: List[int] = dataclasses.field(
         default_factory=list
     )
     # per-offset map from new block target offsets to original block target offsets
-    block_target_offset_remap: dict[tuple[int, int], dict[int, int]] = (
+    block_target_offset_remap: Dict[Tuple[int, int], Dict[int, int]] = (
         dataclasses.field(default_factory=dict)
     )
 
@@ -277,14 +270,14 @@ def _filter_iter(
     l1: Iterable[Any],
     l2: Iterable[Any],
     cond: Callable[[Any, Any], bool],
-) -> list[Any]:
+) -> List[Any]:
     """
     Two-pointer conditional filter.
     e.g. _filter_iter(insts, sorted_offsets, lambda i, o: i.offset == o)
     returns the instructions with offsets in sorted_offsets
     """
     it = iter(l2)
-    res: list[Instruction] = []
+    res: List[Instruction] = []
     try:
         cur = next(it)
         for val in l1:
@@ -296,8 +289,8 @@ def _filter_iter(
     return res
 
 
-def _load_tuple_and_call(tup: tuple[Any, ...]) -> list[Instruction]:
-    insts: list[Instruction] = []
+def _load_tuple_and_call(tup: Tuple[Any, ...]) -> List[Instruction]:
+    insts: List[Instruction] = []
     _initial_push_null(insts)
     insts.extend(create_load_const(val) for val in tup)
     insts.extend(create_call_function(len(tup), False))
@@ -326,33 +319,29 @@ class ContinueExecutionCache:
         lineno: int,
         init_offset: int,
         resume_offset: int,
-        setup_fn_target_offsets: tuple[int, ...],  # only used in Python 3.11+
+        setup_fn_target_offsets: Tuple[int, ...],  # only used in Python 3.11+
         nstack: int,
-        argnames: tuple[str, ...],
-        argnames_null: tuple[str, ...],
-        setup_fns: tuple[ReenterWith, ...],
+        argnames: Tuple[str, ...],
+        argnames_null: Tuple[str, ...],
+        setup_fns: Tuple[ReenterWith, ...],
         handle_inactive_ctx: bool,
-        stack_ctx_vars: tuple[tuple[int, tuple[Any, ...]], ...],
-        argnames_ctx_vars: tuple[tuple[str, tuple[Any, ...]], ...],
-        null_idxes: tuple[int, ...],
+        stack_ctx_vars: Tuple[Tuple[int, Tuple[Any, ...]], ...],
+        argnames_ctx_vars: Tuple[Tuple[str, Tuple[Any, ...]], ...],
+        null_idxes: Tuple[int, ...],
         # mainly used to ensure distinct code objects per stack trace,
         # which prevents excessive recompilation of inner frames
-        nested_code_objs: tuple[types.CodeType],
+        nested_code_objs: Tuple[types.CodeType],
         # Are we currently graph breaking on an instruction that doesn't push
         # its result to the stack? If so, and we are not the leaf resume, then we need to pop
         # the result of calling the next resume function.
         pop_nested_resume_result: bool,
     ) -> types.CodeType:
-        if resume_offset is None:
-            raise AssertionError("resume_offset must not be None")
-        if code.co_flags & (
-            CO_GENERATOR | CO_COROUTINE | CO_ITERABLE_COROUTINE | CO_ASYNC_GENERATOR
-        ):
-            raise AssertionError(
-                "Cannot generate resume function for generator, coroutine, or async generator"
-            )
-        if not (code.co_flags & CO_OPTIMIZED):
-            raise AssertionError("Code object must have CO_OPTIMIZED flag set")
+        assert resume_offset is not None
+        assert not (
+            code.co_flags
+            & (Union[Union[CO_GENERATOR, CO_COROUTINE], Union[CO_ITERABLE_COROUTINE, CO_ASYNC_GENERATOR]])
+        )
+        assert code.co_flags & CO_OPTIMIZED
         if code in ContinueExecutionCache.generated_code_metadata:
             return cls.generate_based_on_original_code_object(
                 code,
@@ -376,7 +365,7 @@ class ContinueExecutionCache:
         meta = ResumeFunctionMetadata(code)
 
         def update(
-            instructions: list[Instruction], code_options: dict[str, Any]
+            instructions: List[Instruction], code_options: Dict[str, Any]
         ) -> None:
             meta.instructions = copy.deepcopy(instructions)
 
@@ -395,10 +384,7 @@ class ContinueExecutionCache:
                 if len(qualified_path) == 1:
                     code_options["co_qualname"] = code_options["co_name"]
                 else:
-                    if len(qualified_path) != 2:
-                        raise AssertionError(
-                            f"Expected qualified path to have 2 parts, got {len(qualified_path)}"
-                        )
+                    assert len(qualified_path) == 2
                     module_name, co_name = qualified_path
                     code_options["co_qualname"] = (
                         f"{module_name}.{TORCH_DYNAMO_RESUME_IN_PREFIX}_{co_name}_at_{lineno}"
@@ -416,7 +402,7 @@ class ContinueExecutionCache:
                 + [IS_TRACING_RESUME_PROLOGUE_VARNAME]
             )
             code_options["co_flags"] = code_options["co_flags"] & ~(
-                CO_VARARGS | CO_VARKEYWORDS
+                Union[CO_VARARGS, CO_VARKEYWORDS]
             )
             target = next(i for i in instructions if i.offset == resume_offset)
 
@@ -440,7 +426,7 @@ class ContinueExecutionCache:
                 ]
             )
 
-            cleanup: list[Instruction] = []
+            cleanup: List[Instruction] = []
             hooks = {fn.stack_index: fn for fn in setup_fns}
             hook_target_offsets = {
                 fn.stack_index: setup_fn_target_offsets[i]
@@ -484,8 +470,7 @@ class ContinueExecutionCache:
                     reversed(meta.prefix_block_target_offset_remap)
                 )
 
-            if hooks:
-                raise AssertionError(f"Unprocessed hooks remaining: {hooks}")
+            assert not hooks
 
             # NOTE: we assume that local var is a context manager CLASS!
             # initialize inactive context vars in argnames
@@ -497,15 +482,9 @@ class ContinueExecutionCache:
 
             # 3.12+: store NULL into variables that were NULL
             if argnames_null:
-                if sys.version_info < (3, 12):
-                    raise AssertionError(
-                        f"argnames_null requires Python 3.12+, got {sys.version_info}"
-                    )
+                assert sys.version_info >= (3, 12)
                 for v in argnames_null:
-                    if v in args:
-                        raise AssertionError(
-                            f"argnames_null variable {v!r} should not be in args"
-                        )
+                    assert v not in args
                     prefix.extend(
                         [
                             create_instruction("PUSH_NULL"),
@@ -597,8 +576,7 @@ class ContinueExecutionCache:
             # remap original instructions' exception table entries
             if old_hook_target_remap:
                 # pyrefly: ignore [unbound-name]
-                if not is_py311_plus:
-                    raise AssertionError("old_hook_target_remap requires Python 3.11+")
+                assert is_py311_plus
                 for inst in instructions:
                     if (
                         inst.exn_tab_entry
@@ -616,7 +594,7 @@ class ContinueExecutionCache:
         return new_code
 
     @staticmethod
-    def unreachable_codes(code_options: dict[str, Any]) -> list[Instruction]:
+    def unreachable_codes(code_options: Dict[str, Any]) -> List[Instruction]:
         """Codegen a `raise None` to make analysis work for unreachable code"""
         return [
             create_load_const(None),
@@ -630,7 +608,7 @@ class ContinueExecutionCache:
         lineno: int,
         init_offset: int,
         resume_offset: int,
-        setup_fn_target_offsets: tuple[int, ...],
+        setup_fn_target_offsets: Tuple[int, ...],
         *args: Any,
     ) -> types.CodeType:
         """
@@ -649,7 +627,7 @@ class ContinueExecutionCache:
             orig_offset = -1
 
             def find_orig_offset_transform(
-                instructions: list[Instruction], code_options: dict[str, Any]
+                instructions: List[Instruction], code_options: Dict[str, Any]
             ) -> None:
                 nonlocal orig_offset
                 (target,) = (i for i in instructions if i.offset == cur_offset)
@@ -668,19 +646,11 @@ class ContinueExecutionCache:
                     # Caller expected to handle this case.
                     return
 
-                if len(new_target_tuple) != 1:
-                    raise AssertionError(
-                        f"Expected exactly 1 matching target, got {len(new_target_tuple)}"
-                    )
+                assert len(new_target_tuple) == 1
                 new_target = new_target_tuple[0]
 
-                if target.opcode != new_target.opcode:
-                    raise AssertionError(
-                        f"Opcode mismatch: target has {target.opcode}, "
-                        f"new_target has {new_target.opcode}"
-                    )
-                if new_target.offset is None:
-                    raise AssertionError("new_target.offset must not be None")
+                assert target.opcode == new_target.opcode
+                assert new_target.offset is not None
                 orig_offset = new_target.offset
 
             transform_code_object(code, find_orig_offset_transform)
@@ -691,10 +661,9 @@ class ContinueExecutionCache:
         # this means we graph broke in the prefix, which only happens with nested graph breaks.
         # We should not be running into ambiguous graph break issues here.
         orig_resume_offset = find_orig_offset(resume_offset)
-        if orig_resume_offset <= -1:
-            raise AssertionError(
-                "resume instruction not found in original code - this is a bug."
-            )
+        assert orig_resume_offset > -1, (
+            "resume instruction not found in original code - this is a bug."
+        )
 
         if sys.version_info >= (3, 11):
             # setup_fn_target_offsets currently contains the target offset of
@@ -714,14 +683,14 @@ class ContinueExecutionCache:
                 ] = {}
 
                 def remap_block_offsets(
-                    instructions: list[Instruction], code_options: dict[str, Any]
+                    instructions: List[Instruction], code_options: Dict[str, Any]
                 ) -> None:
                     # NOTE: each prefix block generates exactly one PUSH_EXC_INFO,
                     # so we can tell which block a prefix PUSH_EXC_INFO belongs to,
                     # by counting. Then we can use meta.prefix_block_target_offset_remap
                     # to determine where in the original code the PUSH_EXC_INFO offset
                     # replaced.
-                    prefix_blocks: list[Instruction] = []
+                    prefix_blocks: List[Instruction] = []
                     for inst in instructions:
                         # NOTE meta.prefix_block_target_offset_remap is based off of how we codegen'd
                         # context managers at the prefix/prologue of the resume function. It is the same for

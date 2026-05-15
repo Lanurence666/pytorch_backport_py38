@@ -1,12 +1,14 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import dataclasses
 import inspect
 import logging
 import sys
 from collections import defaultdict
-from collections.abc import Callable
+
 from enum import auto, Enum
-from typing import Any, TYPE_CHECKING, Union
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, overload
 
 import torch
 from torch.utils._pytree import (
@@ -70,9 +72,9 @@ class _DimHint:
     """
 
     type: _DimHintType
-    min: int | None = None
-    max: int | None = None
-    _factory: bool | None = True
+    min: Optional[int]= None
+    max: Optional[int]= None
+    _factory: Optional[bool]= True
 
     @staticmethod
     def AUTO():
@@ -174,7 +176,7 @@ class Dim:
     DYNAMIC = _DimHint.DYNAMIC()
     STATIC = _DimHint.STATIC()
 
-    def __init__(self, name: str, *, min: int | None = None, max: int | None = None):
+    def __init__(self, name: str, *, min: Optional[int] = None, max: Optional[int] = None):
         from torch.utils._sympy.numbers import int_oo
 
         _min = 0 if min is None else min
@@ -358,8 +360,8 @@ class _DerivedDim(Dim):
 
 
 def dims(
-    *names: str, min: int | None = None, max: int | None = None
-) -> tuple[Dim, ...]:
+    *names: str, min: Optional[int] = None, max: Optional[int] = None
+) -> Tuple[Dim, ...]:
     """
     Util to create multiple :func:`Dim` types.
 
@@ -482,7 +484,7 @@ class _DerivedConstraint(_ConstraintTarget):
 
     name: str
     constraint_range: "StrictMinMaxConstraint"
-    root: _ConstraintTarget | _PhantomRoot
+    root: Union[_ConstraintTarget, _PhantomRoot]
     fn: Callable
 
     @property
@@ -513,7 +515,7 @@ class _RelaxedConstraint(_ConstraintTarget):
         }
 
 
-Constraint = _Constraint | _DerivedConstraint | _RelaxedConstraint
+Constraint = Union[_Constraint, _DerivedConstraint, _RelaxedConstraint]
 
 
 @dataclasses.dataclass
@@ -526,18 +528,18 @@ class _IntWrapper:
 
     val: int
     # Disallow specifying dynamism
-    dynamism: _DimHint | int | None = dataclasses.field(init=False, default=None)
+    dynamism: Optional[Union[_DimHint, int]]= dataclasses.field(init=False, default=None)
 
 
 def _process_equalities(
     constraint: Constraint,
-    get_sources: Callable[[int, int], list["Source"]],
+    get_sources: Callable[[int, int], List["Source"]],
     shape_env: "ShapeEnv",
-    names: dict[str, tuple[int, int]],
-    source_pairs: list[tuple["Source", "Source"]],
-    derived_equalities: list[tuple["Source", Union["Source", "Symbol"], Callable]],
-    phantom_symbols: dict[str, "Symbol"],
-    relaxed_sources: set["Source"],
+    names: Dict[str, Tuple[int, int]],
+    source_pairs: List[Tuple["Source", "Source"]],
+    derived_equalities: List[Tuple["Source", Union["Source", "Symbol"], Callable]],
+    phantom_symbols: Dict[str, "Symbol"],
+    relaxed_sources: Set["Source"],
 ):
     """
     Updates `source_pairs`, `derived_equalities`, and `phantom_symbols` (which become
@@ -592,7 +594,7 @@ def _tree_map_with_path(
     func: Callable[..., Any],
     tree: Any,
     *dynamic_shapes: Any,
-    tree_name: str | None = None,
+    tree_name: Optional[str]= None,
 ) -> Any:
     """
     Customized tree_map for mapping pytrees to dynamic_shapes.
@@ -723,7 +725,7 @@ def _tree_map_with_path(
         raise
 
 
-def _combine_args(f, args, kwargs) -> dict[str, Any]:
+def _combine_args(f, args, kwargs) -> Dict[str, Any]:
     # combine args and kwargs following the signature of f, as it happens
     # in the body of f when called with *args, **kwargs
     if isinstance(f, ExportedProgram):
@@ -942,8 +944,8 @@ def _warn_on_None_dynamic_shape_dimension():
 
 
 def _check_dynamic_shapes(
-    combined_args: dict[str, Any],
-    dynamic_shapes: dict[str, Any] | tuple[Any] | list[Any] | None,
+    combined_args: Dict[str, Any],
+    dynamic_shapes: Union[Dict[str, Any], Tuple[Any], List[Any], None,]
 ):
     """
     Checks the dynamic_shapes specification for correctness,
@@ -956,7 +958,7 @@ def _check_dynamic_shapes(
     if isinstance(dynamic_shapes, (tuple, list)):
         combined_args = type(dynamic_shapes)(combined_args.values())  # type: ignore[assignment, misc]
 
-    bounds: dict[str, tuple[int, int]] = {}
+    bounds: Dict[str, Tuple[int, int]] = {}
 
     def check_same_bounds(dim):
         if dim.__name__ in bounds:
@@ -1080,9 +1082,9 @@ def _check_dynamic_shapes(
 
 
 def _process_dynamic_shapes(
-    combined_args: dict[str, Any],
-    dynamic_shapes: dict[str, Any] | tuple[Any] | list[Any] | None,
-) -> list[Constraint]:
+    combined_args: Dict[str, Any],
+    dynamic_shapes: Union[Dict[str, Any], Tuple[Any], List[Any], None,]
+) -> List[Constraint]:
     """
     Reads the dynamic_shapes specification and produces a list of constraints.
     """
@@ -1095,12 +1097,12 @@ def _process_dynamic_shapes(
         combined_args = type(dynamic_shapes)(combined_args.values())  # type: ignore[assignment, misc]
 
     # map of Dim names representing input shape dimensions to constraints on them
-    symbols: dict[str, list[Constraint]] = defaultdict(list)
+    symbols: Dict[str, List[Constraint]] = defaultdict(list)
     # track roots that do not directly represent input shape dimensions
-    phantom_roots: dict[str, _PhantomRoot] = {}
-    derived_constraints_with_phantom_root: list[_DerivedConstraint] = []
+    phantom_roots: Dict[str, _PhantomRoot] = {}
+    derived_constraints_with_phantom_root: List[_DerivedConstraint] = []
     # list of constraints to return
-    constraints: list[Constraint] = []
+    constraints: List[Constraint] = []
 
     def to_constraint(dim, tensor, i):
         import sympy
@@ -1259,7 +1261,7 @@ def _process_dynamic_shapes(
 
 
 def _get_dim_name_mapping(
-    dynamic_shapes: dict[str, Any] | tuple[Any] | list[Any] | None,
+    dynamic_shapes: Union[Dict[str, Any], Tuple[Any], List[Any], None,]
 ):
     name_to_dim = {}
     for dim in tree_iter(dynamic_shapes, is_leaf=lambda x: isinstance(x, Dim)):
@@ -1280,8 +1282,8 @@ def _get_dim_name_mapping(
 
 def refine_dynamic_shapes_from_suggested_fixes(
     msg: str,
-    dynamic_shapes: dict[str, Any] | tuple[Any] | list[Any],
-) -> dict[str, Any] | tuple[Any] | list[Any]:
+    dynamic_shapes: Union[Dict[str, Any], Tuple[Any], List[Any],]
+) -> Union[Dict[str, Any], Tuple[Any], List[Any]]:
     """
     When exporting with :func:`dynamic_shapes`, export may fail with a ConstraintViolation error if the specification
     doesn't match the constraints inferred from tracing the model. The error message may provide suggested fixes -
@@ -1350,7 +1352,7 @@ def refine_dynamic_shapes_from_suggested_fixes(
     name_to_dim = _get_dim_name_mapping(dynamic_shapes)
 
     # track derived dim roots
-    roots: set[str] = set()
+    roots: Set[str] = set()
     for k, c in shape_fixes.items():
         if not isinstance(c, (int, Dim, _DerivedDim, sympy.Expr)):
             raise AssertionError(
@@ -1372,7 +1374,7 @@ def refine_dynamic_shapes_from_suggested_fixes(
             )
 
     # cache so we don't produce multiple derived dim objects
-    derived_dim_cache: dict[str, _DerivedDim] = {}
+    derived_dim_cache: Dict[str, _DerivedDim] = {}
 
     def apply_fixes(path, dim, dummy):
         if dim is None or isinstance(dim, int):  # not dynamic

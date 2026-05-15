@@ -118,7 +118,7 @@ class TestCase(PytorchTestCase):
                 spec_a,
                 "Both functions must return a result with the same tree structure.",
             )
-            for value_e, value_a in zip(flattened_e, flattened_a, strict=True):
+            for value_e, value_a in _zip_strict(flattened_e, flattened_a):
                 value_e = _as_interleaved(_as_local(value_e))
                 value_a = _as_interleaved(_as_local(value_a))
 

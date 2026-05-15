@@ -5,7 +5,7 @@ from __future__ import annotations
 import functools
 import sys
 import warnings
-from typing import TYPE_CHECKING
+from typing import Optional, Sequence, TYPE_CHECKING, Tuple, Type, Union, cast
 
 import torch
 import torch._C._onnx as _C_onnx
@@ -167,11 +167,11 @@ def _aten_max_pool_onnx(
 # For MaxPool
 def _adjust_attributes_of_max_pool(
     expand_size: int,
-    kernel_size: Sequence[int] | int,
-    stride: Sequence[int] | int,
-    padding: Sequence[int] | int,
-    dilation: Sequence[int] | int,
-) -> tuple[Sequence[int], Sequence[int], Sequence[int], Sequence[int]]:
+    kernel_size: Union[Sequence[int], int],
+    stride: Union[Sequence[int], int],
+    padding: Union[Sequence[int], int],
+    dilation: Union[Sequence[int], int],
+) -> Tuple[Sequence[int], Sequence[int], Sequence[int], Sequence[int]]:
     """Adjust attributes of avg_pool to match ONNX specification."""
 
     if isinstance(dilation, int):
@@ -221,7 +221,7 @@ def _aten_max_pool_with_indices_onnx(
     n_dims_one: Sequence[int],
     n_dims_zero: Sequence[int],
     n_dims_axes: Sequence[int],
-) -> tuple[_C.Value, Sequence[int]]:
+) -> Tuple[_C.Value, Sequence[int]]:
     self_rank = g.op("Size", g.op("Shape", self))
     if self_rank == unbatched_rank:  # C,H,W -> N,C,H,W and N=1
         self = g.op(
@@ -315,7 +315,7 @@ def _max_pool(name: str, expand_size: int, return_indices: bool):
         input: _C.Value,
         kernel_size: Sequence[int],
         stride: Sequence[int],
-        padding: int | Sequence[int],
+        padding: Union[int, Sequence[int]],
         dilation: Sequence[int],
         ceil_mode: bool,
     ):
@@ -355,10 +355,10 @@ def _max_pool(name: str, expand_size: int, return_indices: bool):
 # For AvgPool
 def _adjust_attributes_of_avg_pool(
     expand_size: int,
-    kernel_size: Sequence[int] | int,
-    stride: Sequence[int] | int,
-    padding: Sequence[int] | int,
-) -> tuple[Sequence[int], Sequence[int], Sequence[int]]:
+    kernel_size: Union[Sequence[int], int],
+    stride: Union[Sequence[int], int],
+    padding: Union[Sequence[int], int],
+) -> Tuple[Sequence[int], Sequence[int], Sequence[int]]:
     """Adjust attributes of avg_pool to match ONNX specification."""
 
     if isinstance(kernel_size, int):
@@ -406,7 +406,7 @@ def _avg_pool(name, expand_size):
         input: _C.Value,
         kernel_size: Sequence[int],
         stride: Sequence[int],
-        padding: int | Sequence[int],
+        padding: Union[int, Sequence[int]],
         ceil_mode: int,
         count_include_pad: int,
         divisor_override=None,
@@ -493,10 +493,10 @@ def __interpolate(
 def _slice(
     g: jit_utils.GraphContext,
     input: torch._C.Value,
-    axes: list | torch.Tensor | torch._C.Value,
-    starts: list | torch.Tensor | torch._C.Value,
-    ends: list | torch.Tensor | torch._C.Value,
-    steps: list | torch.Tensor | torch._C.Value | None = None,
+    axes: Union[Union[list, torch.Tensor], torch._C.Value],
+    starts: Union[Union[list, torch.Tensor], torch._C.Value],
+    ends: Union[Union[list, torch.Tensor], torch._C.Value],
+    steps: Union[Union[list, torch.Tensor], torch._C.Optional[Value]] = None
 ):
     def is_none_value(value):
         if value is None:

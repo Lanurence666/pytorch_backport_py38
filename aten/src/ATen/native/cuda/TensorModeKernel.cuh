@@ -249,7 +249,8 @@ __global__ void compute_mode(
   // elements, and bmem marks the valid indices
   bitonicSortKeys<T, unsigned int, Power2Size>(
       smem, bmem, [&] GPU_LAMBDA(const auto& a, const auto& b) {
-        return a < b;
+        using opmath_t = at::opmath_type<T>;
+        return static_cast<opmath_t>(a) < static_cast<opmath_t>(b);
       });
   __syncthreads(); // make no assumptions that the sort syncs at end
 

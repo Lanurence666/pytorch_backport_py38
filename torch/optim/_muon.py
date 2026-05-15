@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Optional
+
 # mypy: allow-untyped-defs
 # mypy: disable-error-code=arg-type
 """Implementation of the Muon optimizer."""
@@ -29,7 +32,7 @@ DEFAULT_NS_STEPS = 5
 
 
 def _zeropower_via_newtonschulz(
-    grad: Tensor, ns_coefficients: tuple[float, float, float], ns_steps: int, eps: float
+    grad: Tensor, ns_coefficients: Tuple[float, float, float], ns_steps: int, eps: float
 ) -> Tensor:
     """
     Newton-Schulz iteration to compute the zeroth power / orthogonalization of G. We opt to use a
@@ -70,7 +73,7 @@ def _zeropower_via_newtonschulz(
     return ortho_grad
 
 
-def _adjust_lr(lr: float, adjust_lr_fn: str | None, param_shape: torch.Size) -> float:
+def _adjust_lr(lr: float, adjust_lr_fn: Optional[str], param_shape: torch.Size) -> float:
     """Default learning rate adjustment used by Muon."""
     A, B = param_shape[:2]
 
@@ -92,10 +95,10 @@ class Muon(Optimizer):
         weight_decay: float = 0.1,
         momentum: float = 0.95,
         nesterov: bool = True,
-        ns_coefficients: tuple[float, float, float] = (DEFAULT_A, DEFAULT_B, DEFAULT_C),
+        ns_coefficients: Tuple[float, float, float] = (DEFAULT_A, DEFAULT_B, DEFAULT_C),
         eps: float = EPS,
         ns_steps: int = DEFAULT_NS_STEPS,
-        adjust_lr_fn: str | None = None,
+        adjust_lr_fn: Optional[str] = None,
     ) -> None:
         if isinstance(lr, Tensor) and lr.numel() != 1:
             raise ValueError("Tensor lr must be 1-element")
@@ -135,9 +138,9 @@ class Muon(Optimizer):
     def _init_group(
         self,
         group: MutableMapping,
-        params_with_grad: list[Tensor],
-        grads: list[Tensor],
-        muon_momentum_bufs: list[Tensor],
+        params_with_grad: List[Tensor],
+        grads: List[Tensor],
+        muon_momentum_bufs: List[Tensor],
     ) -> bool:
         for p in group["params"]:
             if p.grad is None:
@@ -174,9 +177,9 @@ class Muon(Optimizer):
             weight_decay = group["weight_decay"]
             momentum = group["momentum"]
 
-            params_with_grad: list[Tensor] = []
-            grads: list[Tensor] = []
-            muon_momentum_bufs: list[Tensor] = []
+            params_with_grad: List[Tensor] = []
+            grads: List[Tensor] = []
+            muon_momentum_bufs: List[Tensor] = []
 
             has_complex = self._init_group(
                 group,
@@ -306,18 +309,18 @@ Muon.__doc__ = (
 
 
 def _single_tensor_muon(
-    params: list[Tensor],
-    grads: list[Tensor],
-    muon_momentum_bufs: list[Tensor],
+    params: List[Tensor],
+    grads: List[Tensor],
+    muon_momentum_bufs: List[Tensor],
     *,
     lr: float,
     weight_decay: float,
     momentum: float,
     nesterov: bool,
-    ns_coefficients: tuple[float, float, float],
+    ns_coefficients: Tuple[float, float, float],
     ns_steps: int,
     eps: float,
-    adjust_lr_fn: str | None,
+    adjust_lr_fn: Optional[str],
     has_complex: bool,
 ) -> None:
     lr = _to_scalar(lr)
@@ -343,19 +346,19 @@ def _single_tensor_muon(
 
 @_disable_dynamo_if_unsupported(single_tensor_fn=_single_tensor_muon)
 def muon(
-    params: list[Tensor],
-    grads: list[Tensor],
-    muon_momentum_bufs: list[Tensor],
+    params: List[Tensor],
+    grads: List[Tensor],
+    muon_momentum_bufs: List[Tensor],
     *,
-    foreach: bool | None = None,
+    foreach: Optional[bool] = None,
     lr: float,
     weight_decay: float,
     momentum: float,
     nesterov: bool,
-    ns_coefficients: tuple[float, float, float],
+    ns_coefficients: Tuple[float, float, float],
     ns_steps: int,
     eps: float,
-    adjust_lr_fn: str | None,
+    adjust_lr_fn: Optional[str],
     has_complex: bool,
 ) -> None:
     r"""Functional API that performs Muon algorithm computation.

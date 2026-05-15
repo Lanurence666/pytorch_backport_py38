@@ -1,5 +1,7 @@
 # pyre-strict
 
+from __future__ import annotations
+
 import concurrent.futures
 import glob
 import json
@@ -9,7 +11,7 @@ import os
 import struct
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
 import torch
 from torch import distributed as dist
@@ -43,7 +45,7 @@ class _FqnData:
     """
 
     offset_in_file: int = 0
-    shape_in_file: list[int] = field(default_factory=list)
+    shape_in_file: List[int] = field(default_factory=list)
     dtype_size: int = 0
     dtype_str: str = ""
 
@@ -59,7 +61,7 @@ class _OutputFileData:
     """
 
     metadata_size: int = 0
-    fqn_data: dict[str, _FqnData] = field(default_factory=dict)
+    fqn_data: Dict[str, _FqnData] = field(default_factory=dict)
 
 
 @dataclass
@@ -77,8 +79,8 @@ class _InputFileData:
 
 
 def _parse_input_metadata(
-    input_files_data: dict[str, _InputFileData],
-    output_files_data: dict[str, _OutputFileData],
+    input_files_data: Dict[str, _InputFileData],
+    output_files_data: Dict[str, _OutputFileData],
 ) -> None:
     """
     Parse metadata from input safetensors files to determine the full tensor shapes and types.
@@ -97,7 +99,7 @@ def _parse_input_metadata(
     from safetensors.torch import _getdtype  # type: ignore[import]
 
     # Dictionary to track the full size of each tensor across all shards
-    fqn_to_size_mapping: dict[str, tuple[list[int], str]] = {}
+    fqn_to_size_mapping: Dict[str, Tuple[List[int], str]] = {}
 
     for file_data in input_files_data.values():
         safetensors_metadata = file_data.metadata
@@ -141,7 +143,7 @@ def _parse_input_metadata(
 
 
 def _write_metadata(
-    output_files_data: dict[str, _OutputFileData],
+    output_files_data: Dict[str, _OutputFileData],
 ) -> None:
     """
     Write metadata to the beginning of each output safetensors file.
@@ -226,7 +228,7 @@ def _read_tensor_data(
 def _process_output_file(
     output_file: str,
     output_data: _OutputFileData,
-    input_files_data: dict[str, _InputFileData],
+    input_files_data: Dict[str, _InputFileData],
 ) -> None:
     """
     Process a single output file by writing tensor data from input files using direct reads.
@@ -311,8 +313,8 @@ def _process_output_file(
 
 
 def _write_data(
-    input_files_data: dict[str, _InputFileData],
-    output_files_data: dict[str, _OutputFileData],
+    input_files_data: Dict[str, _InputFileData],
+    output_files_data: Dict[str, _OutputFileData],
     num_threads: int = 1,
 ) -> None:
     """
@@ -361,9 +363,9 @@ def _write_sub_tensor_to_file_optimized(
     full_tensor_mv: memoryview,
     sub_tensor_bytes: bytes,
     element_size: int,
-    tensor_shape: list[int],
-    sub_tensor_offsets: list[int],
-    sub_tensor_shape: list[int],
+    tensor_shape: List[int],
+    sub_tensor_offsets: List[int],
+    sub_tensor_shape: List[int],
 ) -> None:
     """
     Optimized version that writes the maximum number of contiguous bytes possible.
@@ -439,9 +441,9 @@ def _write_sub_tensor_to_file_optimized(
 
 
 def _calculate_max_contiguous_elements(
-    indices: list[int],
-    sub_tensor_shape: list[int],
-    tensor_shape: list[int],
+    indices: List[int],
+    sub_tensor_shape: List[int],
+    tensor_shape: List[int],
 ) -> int:
     """
     Calculate the maximum number of contiguous elements that can be written from current position.
@@ -517,7 +519,7 @@ def _calculate_max_contiguous_elements(
 
 def _write_overall_metadata_file(
     output_dir: str,
-    output_files_data: dict[str, _OutputFileData],
+    output_files_data: Dict[str, _OutputFileData],
 ) -> None:
     """
     Write the overall metadata file that maps tensor names to their file locations.
@@ -536,7 +538,7 @@ def _write_overall_metadata_file(
             total_size += math.prod(fqn_data.shape_in_file) * fqn_data.dtype_size
             weight_map[fqn] = os.path.basename(output_path)
 
-    metadata_to_write: dict[str, Any] = {}
+    metadata_to_write: Dict[str, Any] = {}
     metadata_to_write["metadata"] = {"total_size": total_size}
     metadata_to_write["weight_map"] = weight_map
 
@@ -548,10 +550,10 @@ def _write_overall_metadata_file(
 def _consolidate_safetensors_files(
     input_dir: str,
     output_dir: str,
-    fqn_to_file_mapping: dict[str, str],
+    fqn_to_file_mapping: Dict[str, str],
     num_threads: int,
-) -> dict[str, _OutputFileData]:
-    output_files_data: dict[str, _OutputFileData] = {}
+) -> Dict[str, _OutputFileData]:
+    output_files_data: Dict[str, _OutputFileData] = {}
     # Create multiple output files based on the provided mapping
     for fqn, filename in fqn_to_file_mapping.items():
         output_path = os.path.join(output_dir, filename)
@@ -565,7 +567,7 @@ def _consolidate_safetensors_files(
     safetensors_files = glob.glob(os.path.join(input_dir, f"*{SUFFIX}"))
 
     # Read metadata from all input files
-    input_files_data: dict[str, _InputFileData] = {}
+    input_files_data: Dict[str, _InputFileData] = {}
     for safetensor_file in safetensors_files:
         with open(safetensor_file, "rb") as f:
             metadata, size = _get_safetensors_file_metadata(f)
@@ -586,7 +588,7 @@ def _consolidate_safetensors_files(
 def consolidate_safetensors_files(
     input_dir: str,
     output_dir: str,
-    fqn_to_index_mapping: dict[str, int],
+    fqn_to_index_mapping: Dict[str, int],
     num_threads: int = 1,
 ) -> None:
     """
@@ -633,9 +635,9 @@ def consolidate_safetensors_files(
 def consolidate_safetensors_files_on_every_rank(
     input_dir: str,
     output_dir: str,
-    fqn_to_index_mapping: dict[str, int],
+    fqn_to_index_mapping: Dict[str, int],
     num_threads: int = 1,
-    process_group: dist.ProcessGroup | None = None,
+    process_group: dist.Optional[ProcessGroup] = None
 ) -> None:
     """
     Consolidate sharded safetensors files across multiple ranks, with each rank handling a subset of output files.
@@ -699,7 +701,7 @@ def consolidate_safetensors_files_on_every_rank(
         if idx in indices_for_this_rank
     }
 
-    output_files_data: dict[str, _OutputFileData] = {}
+    output_files_data: Dict[str, _OutputFileData] = {}
     if filtered_mapping:
         # Convert index mapping to filename mapping
         max_index = max(unique_indices)
@@ -725,7 +727,7 @@ def consolidate_safetensors_files_on_every_rank(
 
     # Wait for all ranks to complete and gather output_files_data on rank 0
     if dist.is_available() and dist.is_initialized():
-        gathered_output_files_data: list[dict[str, _OutputFileData]] | None = (
+        gathered_output_files_data: Optional[List[Dict[str, _OutputFileData]]]= (
             [{} for _ in range(world_size)] if rank == 0 else None
         )
         dist.gather_object(
@@ -737,7 +739,7 @@ def consolidate_safetensors_files_on_every_rank(
 
         if rank == 0:
             # Merge all output_files_data from all ranks
-            all_output_files_data: dict[str, _OutputFileData] = {}
+            all_output_files_data: Dict[str, _OutputFileData] = {}
             if gathered_output_files_data is None:
                 raise AssertionError
             for rank_data in gathered_output_files_data:

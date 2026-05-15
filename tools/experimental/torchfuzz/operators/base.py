@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 """Base operator implementation."""
 
 from abc import ABC, abstractmethod
@@ -21,7 +23,7 @@ class Operator(ABC):
 
     @property
     @abstractmethod
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """
         Return the torch operation name this operator represents.
 
@@ -36,7 +38,7 @@ class Operator(ABC):
         """Check if this operator can produce the given output spec."""
         raise NotImplementedError("Subclasses must implement can_produce()")
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """
         Get input specifications for fuzzing.
 
@@ -48,7 +50,7 @@ class Operator(ABC):
 
     @abstractmethod
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for this operation."""
         raise NotImplementedError("Subclasses must implement codegen()")
@@ -56,10 +58,10 @@ class Operator(ABC):
     def get_weight(
         self,
         *,
-        target_spec: Spec | None = None,
-        depth: int | None = None,
-        stack_size: int | None = None,
-        template: str | None = None,
+        target_spec: Union[Spec, None] = None,
+        depth: Union[int, None] = None,
+        stack_size: Union[int, None] = None,
+        template: Union[str, None] = None,
     ) -> float:
         """
         Return the selection weight for this operator.

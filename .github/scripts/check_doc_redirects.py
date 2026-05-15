@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Check for moved/deleted doc files and optionally auto-update redirects.py.
 
@@ -13,7 +14,6 @@ Usage:
     python check_doc_redirects.py --base-ref origin/main --auto-fix
 """
 
-from __future__ import annotations
 
 import argparse
 import ast

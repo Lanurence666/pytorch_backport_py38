@@ -2,6 +2,8 @@
 # Taking reference from official Python typing
 # https://github.com/python/cpython/blob/master/Lib/typing.py
 
+from __future__ import annotations
+
 import collections
 import functools
 import numbers
@@ -15,18 +17,26 @@ from collections.abc import Iterator
 
 # TODO: Use TypeAlias when Python 3.6 is deprecated
 from typing import (
-    _eval_type,  # pyrefly: ignore [missing-module-attribute]
-    _GenericAlias,  # pyrefly: ignore [missing-module-attribute]
-    _tp_cache,  # pyrefly: ignore [missing-module-attribute]
-    _type_check,  # pyrefly: ignore [missing-module-attribute]
-    _type_repr,
     Any,
     ForwardRef,
+    Generator,
     Generic,
-    get_type_hints,
+    Iterator,
+    List,
+    Tuple,
+    Type,
     TypeVar,
     Union,
+    _GenericAlias,  # pyrefly: ignore [missing-module-attribute],
+    _eval_type,  # pyrefly: ignore [missing-module-attribute],
+    _tp_cache,  # pyrefly: ignore [missing-module-attribute],
+    _type_check,  # pyrefly: ignore [missing-module-attribute],
+    _type_repr,
+    get_type_hints,
+    overload,
 )
+
+
 
 from torch.utils.data.datapipes._hook_iterator import _SnapshotState, hook_iterator
 
@@ -45,7 +55,7 @@ class Boolean(numbers.Integral):
 
 # Python 'type' object is not subscriptable
 # Tuple[int, List, dict] -> valid
-# tuple[int, list, dict] -> invalid
+# Tuple[int, list, dict] -> invalid
 # Map Python 'type' to abstract base class
 TYPE2ABC = {
     bool: Boolean,
@@ -184,7 +194,7 @@ def _issubtype_with_constraints(variant, constraints, recursive=True):
                         and len(v_args) == len(c_args)
                         and all(
                             issubtype(v_arg, c_arg)
-                            for v_arg, c_arg in zip(v_args, c_args, strict=True)
+                            for v_arg, c_arg in _zip_strict(v_args, c_args)
                         )
                     ):
                         return True
@@ -207,7 +217,7 @@ def issubinstance(data, data_type):
             return True
         if len(dt_args) != len(data):
             return False
-        return all(issubinstance(d, t) for d, t in zip(data, dt_args, strict=True))
+        return all(issubinstance(d, t) for d, t in _zip_strict(data, dt_args))
     elif isinstance(data, (list, set)):
         if dt_args is None or len(dt_args) == 0:
             return True
@@ -471,7 +481,7 @@ def reinforce_type(self, expected_type):
     hint to restrict the type requirement of DataPipe instance.
     """
     if isinstance(expected_type, tuple):
-        expected_type = tuple[expected_type]  # type: ignore[valid-type]
+        expected_type = Tuple[expected_type]  # type: ignore[valid-type]
     _type_check(expected_type, msg="'expected_type' must be a type")
 
     if not issubtype(expected_type, self.type.param):

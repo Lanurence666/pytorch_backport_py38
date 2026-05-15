@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import contextlib
 import copy
 import functools
@@ -8,7 +10,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Union
 
 import torch
 import torch.utils._pytree as pytree
@@ -51,9 +53,9 @@ invoke_subgraph_counter = 0
 # InvokeSubgraphAutogradOp.
 @dataclass
 class OutputMetadata:
-    num_fw_outs: int | None = None
-    indexes_with_symint: set[int] = field(default_factory=set)
-    indexes_with_no_grad: set[int] = field(default_factory=set)
+    num_fw_outs: Optional[int] = None
+    indexes_with_symint: Set[int] = field(default_factory=set)
+    indexes_with_no_grad: Set[int] = field(default_factory=set)
 
 
 # This config will be stored in invoke_subgraph HOP node.meta["custom"]["nested_region_config"]
@@ -62,8 +64,8 @@ class OutputMetadata:
 class NestedCompileRegionOptions:
     # A Callable that takes (gm, example_inputs, decompositions=None, **kwargs) as inputs.
     # Returns AOTCompiledArtifact
-    fw_compiler: Callable | None = None
-    bw_compiler: Callable | None = None
+    fw_compiler: Optional[Callable] = None
+    bw_compiler: Optional[Callable] = None
 
     # Note: [InvokeSubgraphHOP Partitioner]
     # If not None, add "partitioner" to HOP node meta.
@@ -71,11 +73,11 @@ class NestedCompileRegionOptions:
     # If str, the options are "default_partition" and "min_cut_rematerialization_partition".
     # The HOP joint graph will be partitioned using the corresponding functions in
     # torch/_functorch/partitioners.py
-    partitioner: Callable | str | None = None
+    partitioner: Union[Callable, Optional[str]] = None
 
     # If it's None, we'll inherit the parent call's decompositions.
     # Otherwise, the nested region will use this decompositions.
-    decompositions: dict[str, Any] | None = None
+    decompositions: Optional[Dict[str, Any]] = None
 
 
 def _extract_nested_region_config(fn):
@@ -114,7 +116,7 @@ def _next_invoke_subgraph_call_id() -> int:
     return counter
 
 
-def _current_invoke_subgraph_call_id() -> int | None:
+def _current_invoke_subgraph_call_id() -> Optional[int]:
     return getattr(_invoke_subgraph_call_state, "current", None)
 
 
@@ -144,8 +146,8 @@ class InvokeSubgraphHOP(HigherOrderOperator):
     # identifying two invoke_subgraph calls have same subgraph.
     def __call__(
         self,
-        subgraph: GraphModule | FunctionalizeCtxWrapper,
-        identifier: str | None,
+        subgraph: Union[GraphModule, FunctionalizeCtxWrapper],
+        identifier: Optional[str],
         *operands,
     ):
         if identifier is not None and not isinstance(identifier, str):
@@ -203,7 +205,7 @@ invoke_subgraph = InvokeSubgraphHOP()
 
 
 def invoke_subgraph_infer(
-    subgraph: GraphModule | FunctionalizeCtxWrapper,
+    subgraph: Union[GraphModule, FunctionalizeCtxWrapper],
     *operands,
 ):
     """Inference-only entrypoint for invoke_subgraph that auto-generates identifier.
@@ -290,7 +292,7 @@ def invoke_subgraph_placeholder(func, *args, **kwargs):
 
 def mark_compile_region(
     fn=None,
-    options: NestedCompileRegionOptions | None = None,
+    options: Optional[NestedCompileRegionOptions] = None,
     max_reuse_entries: int = 8,
     reuse_hash_fn=None,
 ):
@@ -600,7 +602,7 @@ def trace_joint_graph_as_bwd(
                     )(*joint_operands)
 
 
-def get_non_differentiable_indices(subgraph) -> list[int]:
+def get_non_differentiable_indices(subgraph) -> List[int]:
     """Inspect a subgraph's output node metadata to find outputs that
     were non-differentiable (requires_grad=False) during Dynamo tracing.
 
@@ -627,7 +629,7 @@ def get_non_differentiable_indices(subgraph) -> list[int]:
     if not isinstance(output_args, (tuple, list)):
         output_args = [output_args]
 
-    non_differentiable: list[int] = []
+    non_differentiable: List[int] = []
     for out_idx, arg in enumerate(output_args):
         if not isinstance(arg, torch.fx.Node):
             continue
@@ -669,10 +671,7 @@ class InvokeSubgraphAutogradOp(torch.autograd.Function):
 
         save_values_for_backward(ctx, operands)
 
-        with (
-            torch._C._AutoDispatchBelowAutograd(),
-            _set_invoke_subgraph_call_id(ctx._call_id),
-        ):
+        with torch._C._AutoDispatchBelowAutograd(), _set_invoke_subgraph_call_id(ctx._call_id):
             out = invoke_subgraph(
                 subgraph,
                 f"fw_{identifier}",
@@ -751,7 +750,7 @@ class InvokeSubgraphAutogradOp(torch.autograd.Function):
             raise AssertionError("fake_mode should be enabled for HOPs")
         state = _CacheKeyState(fake_mode.shape_env)
 
-        tangent_metadata: list[object] = []
+        tangent_metadata: List[object] = []
         for tangent in filtered_grad_outs:
             metadata = extract_tensor_metadata(tangent)
             metadata._flatten_into(tangent_metadata, fake_mode, state)
@@ -761,7 +760,7 @@ class InvokeSubgraphAutogradOp(torch.autograd.Function):
         # We create a tuple of tuples where each inner tuple contains indices of aliased tensors
         # e.g. ((0, 1),) would mean there is one aliasing group, and the first and second tangents are aliased
         # e.g. () would mean there is no aliasing between tangents
-        tensor_to_indices: dict[int, list[int]] = defaultdict(list)
+        tensor_to_indices: Dict[int, List[int]] = defaultdict(list)
         for i, tangent in enumerate(filtered_grad_outs):
             if isinstance(tangent, torch.Tensor):
                 tensor_to_indices[id(tangent)].append(i)
@@ -1171,7 +1170,7 @@ def invoke_subgraph_inductor_compile(
 
     # Follow boxed calling convention
     @simple_wraps(compiled_fn_inner)
-    def forward(*runtime_args: tuple[Any]):
+    def forward(*runtime_args: Tuple[Any]):
         full_args = []
         full_args.extend(runtime_args)
         return compiled_fn_inner(full_args)

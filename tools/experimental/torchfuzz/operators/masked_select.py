@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 """Masked select operator implementation."""
 
 import torch
@@ -12,7 +14,7 @@ class MaskedSelectOperator(Operator):
         super().__init__("masked_select")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.masked_select"
 
@@ -20,7 +22,7 @@ class MaskedSelectOperator(Operator):
         """Masked select produces a 1D tensor; we'll synthesize inputs to match size."""
         return isinstance(output_spec, TensorSpec) and len(output_spec.size) == 1
 
-    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 2) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 2) -> List[Spec]:
         """Generate input specs for masked_select operation."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("MaskedSelectOperator can only produce TensorSpec outputs")
@@ -42,7 +44,7 @@ class MaskedSelectOperator(Operator):
         return [input_tensor_spec, mask_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for masked_select with synthesized inputs to match size.
 

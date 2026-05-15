@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 import torch._dynamo.test_case
 import unittest.mock
 import os
@@ -12,6 +14,7 @@ from torch._dynamo.utils import LazyString
 from torch._inductor import config as inductor_config
 import logging
 import io
+from typing import Callable, List, Tuple
 
 @contextlib.contextmanager
 def preserve_log_state():
@@ -215,7 +218,7 @@ def logs_to_string(module, log_option):
     return log_stream, ctx_manager
 
 
-def multiple_logs_to_string(module: str, *log_options: str) -> tuple[list[io.StringIO], Callable[[], AbstractContextManager[None]]]:
+def multiple_logs_to_string(module: str, *log_options: str) -> Tuple[List[io.StringIO], Callable[[], AbstractContextManager[None]]]:
     """Example:
     multiple_logs_to_string("torch._inductor.compile_fx", "pre_grad_graphs", "post_grad_graphs")
     returns the output of TORCH_LOGS="pre_graph_graphs, post_grad_graphs" from the
@@ -228,11 +231,11 @@ def multiple_logs_to_string(module: str, *log_options: str) -> tuple[list[io.Str
     def tmp_redirect_logs():
         loggers = [torch._logging.getArtifactLogger(module, option) for option in log_options]
         try:
-            for logger, handler in zip(loggers, handlers, strict=True):
+            for logger, handler in _zip_strict(loggers, handlers):
                 logger.addHandler(handler)
             yield
         finally:
-            for logger, handler in zip(loggers, handlers, strict=True):
+            for logger, handler in _zip_strict(loggers, handlers):
                 logger.removeHandler(handler)
 
     def ctx_manager() -> AbstractContextManager[None]:

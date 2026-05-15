@@ -1,8 +1,8 @@
+from __future__ import annotations
 """Implementation for higher-order operators."""
 
-from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Dict, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union
 
 from onnxscript.ir import convenience as ir_convenience
 
@@ -20,11 +20,11 @@ if TYPE_CHECKING:
 def _call_symbolic_op(
     op_type: str,
     domain: str,
-    args: Sequence[ir.Value | None],
-    kwargs: dict[str, int | float | str | bool | list[int] | list[float] | list[str]],
+    args: Sequence[Optional[ir.Value]],
+    kwargs: Union[Dict[str, int, float, str, bool, List[int], List[float]] | List[str]],
     dtypes: Sequence[int],
-    version: int | None,
-    metadata_props: dict[str, str] | None,
+    version: Optional[int],
+    metadata_props: Optional[Dict[str, str]],
 ) -> Sequence[ir.Value]:
     """Call an operator with the given arguments and keyword arguments.
 
@@ -74,21 +74,21 @@ def _call_symbolic_op(
 
 @onnx_impl(torch.ops.onnx_symbolic._symbolic.default, no_compile=True)
 def onnx_symbolic_symbolic(
-    inputs: Sequence[ir.Value | None],
+    inputs: Sequence[Optional[ir.Value]],
     op_type: str,
     onnx_dtype: int,
     *,
-    shape: Sequence[int | ir.Value],
+    shape: Sequence[Union[int, ir.Value]],
     attr_keys: Sequence[str],
     attr_types: Sequence[str],
-    attr_pos: Sequence[tuple[int, int]],
+    attr_pos: Sequence[Tuple[int, int]],
     attr_ints: Sequence[int],
     attr_floats: Sequence[float],
     attr_strs: Sequence[str],
     metadata_props_keys: Sequence[str] = (),
     metadata_props_values: Sequence[str] = (),
     domain: str = "",
-    version: int | None = None,
+    version: Optional[int] = None
 ) -> ir.Value:
     del shape  # Unused. The shapes are set by the graph builder
     encoded = _symbolic_impl.EncodedAttrs(
@@ -113,21 +113,21 @@ def onnx_symbolic_symbolic(
 
 @onnx_impl(torch.ops.onnx_symbolic._symbolic_multi_out.default, no_compile=True)
 def onnx_symbolic_symbolic_multi_out(
-    inputs: Sequence[ir.Value | None],
+    inputs: Sequence[Optional[ir.Value]],
     op_type: str,
     onnx_dtypes: Sequence[int],
     *,
-    shapes: Sequence[Sequence[int | ir.Value]],
+    shapes: Sequence[Sequence[Union[int, ir.Value]]],
     attr_keys: Sequence[str],
     attr_types: Sequence[str],
-    attr_pos: Sequence[tuple[int, int]],
+    attr_pos: Sequence[Tuple[int, int]],
     attr_ints: Sequence[int],
     attr_floats: Sequence[float],
     attr_strs: Sequence[str],
     metadata_props_keys: Sequence[str] = (),
     metadata_props_values: Sequence[str] = (),
     domain: str = "",
-    version: int | None = None,
+    version: Optional[int] = None
 ) -> Sequence[ir.Value]:
     del shapes  # Unused. The shapes are set by the graph builder
     encoded = _symbolic_impl.EncodedAttrs(

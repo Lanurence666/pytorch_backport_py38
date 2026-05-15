@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module implements distributed training optimizations for TorchDynamo backends.
 
@@ -18,9 +19,9 @@ of compilation.
 
 import logging
 import traceback
-from collections.abc import Callable
+
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, List, Optional, Set, TYPE_CHECKING, Tuple, Union
 from unittest import mock
 
 import torch
@@ -58,11 +59,11 @@ def args_str(args: Any) -> str:
 @dataclass
 class Bucket:
     size: int = 0
-    params: list[str] = field(default_factory=list)
-    nodes: list[fx.Node] = field(default_factory=list)
+    params: List[str] = field(default_factory=list)
+    nodes: List[fx.Node] = field(default_factory=list)
 
     # param_ids is just used for unit testing
-    param_ids: list[int] = field(default_factory=list)
+    param_ids: List[int] = field(default_factory=list)
 
     # keep track of any buckets that were extended for logging purposes
     opcount_increased_to_capture_external_output: int = 0
@@ -82,9 +83,9 @@ def bucket_has_external_output(bucket: Bucket) -> bool:
     return False
 
 
-def pretty_print_buckets(buckets: list[Bucket], bucket_bytes_cap: int) -> None:
+def pretty_print_buckets(buckets: List[Bucket], bucket_bytes_cap: int) -> None:
     headers = ("Index", "Size (b)", "Param Names")
-    rows: list[tuple[int | None, int | None, str]] = []
+    rows: Union[List[Tuple[int, None, int, None, str]]]= Union[[]]
     # pyrefly: ignore [implicit-any]
     extended_buckets = []
     for idx, bucket in enumerate(reversed(buckets)):
@@ -174,7 +175,7 @@ def propagate_dynamo_source(orig_gm: fx.GraphModule, split_gm: fx.GraphModule) -
 class DDPOptimizerContext:
     def __init__(self) -> None:
         self.curr_bucket: int = -1
-        self.metadata_per_bucket: list[ViewAndMutationMeta] = []
+        self.metadata_per_bucket: List[ViewAndMutationMeta] = []
 
 
 # compile each of the partitioned submodules using the user-provided compiler
@@ -196,15 +197,14 @@ class SubmodCompiler(torch.fx.interpreter.Interpreter):
             ctx.ddp_optimizer_ctx = DDPOptimizerContext()
 
     def compile_submod(
-        self, input_mod: fx.GraphModule, args: list[torch.Tensor], kwargs: Any
+        self, input_mod: fx.GraphModule, args: List[torch.Tensor], kwargs: Any
     ) -> Any:
         """
         Compile the submodule,
         using a wrapper to make sure its output is always a tuple,
         which is required by AotAutograd based compilers
         """
-        if len(kwargs) != 0:
-            raise AssertionError("We assume only args for these modules")
+        assert len(kwargs) == 0, "We assume only args for these modules"
 
         class WrapperModule(torch.nn.Module):
             def __init__(
@@ -270,8 +270,7 @@ class SubmodCompiler(torch.fx.interpreter.Interpreter):
     def run_node(self, n: Node) -> Any:
         args, kwargs = self.fetch_args_kwargs_from_env(n)
         new_args = []
-        if not self.fake_mode:
-            raise AssertionError("fake_mode must be set")
+        assert self.fake_mode
         for arg in args:
             if isinstance(arg, torch.Tensor) and not isinstance(
                 arg, torch._subclasses.FakeTensor
@@ -281,10 +280,8 @@ class SubmodCompiler(torch.fx.interpreter.Interpreter):
                 new_args.append(arg)
 
         log.debug("run_node %s, %s got args %s", n.op, n.target, args_str(args))
-        if not isinstance(args, tuple):
-            raise AssertionError(f"Expected args to be a tuple, got {type(args)}")
-        if not isinstance(kwargs, dict):
-            raise AssertionError(f"Expected kwargs to be a dict, got {type(kwargs)}")
+        assert isinstance(args, tuple)
+        assert isinstance(kwargs, dict)
 
         if n.op == "call_module":
             real_mod = self.fetch_attr(str(n.target))
@@ -316,8 +313,7 @@ class SubmodCompiler(torch.fx.interpreter.Interpreter):
             class FakeifyFirstAOTInvocationGuard:
                 def __init__(self) -> None:
                     self.tc = torch._guards.TracingContext.try_get()
-                    if not self.tc:
-                        raise AssertionError("TracingContext must be set")
+                    assert self.tc
                     self.tc.fakify_first_call = True
 
                 def __del__(self) -> None:
@@ -346,33 +342,24 @@ class SubmodCompiler(torch.fx.interpreter.Interpreter):
             # Finally, we have to produce inputs for use compiling the next submodule,
             # and these need to be FakeTensors, so we execute the module under fake_mode
             # Because parameters are not fake we patch fake tensor mode to allow non fake inputs
-            with (
-                self.fake_mode,
-                mock.patch.object(self.fake_mode, "allow_non_fake_inputs", True),
-            ):
+            with self.fake_mode, mock.patch.object(self.fake_mode, "allow_non_fake_inputs", True):
                 if has_tracing_context and invoked_aot_autograd:
                     tracing_ctx = torch._guards.TracingContext.try_get()
-                    if tracing_ctx is None:
-                        raise AssertionError("TracingContext must not be None")
+                    assert tracing_ctx is not None
                     # DDPOptimizer maintains 1 dynamo graph -> N AOT graphs
                     # Dynamo only has 1 tracing context, so it needs to maintain all N AOT metadata instances
                     ddp_ctx = tracing_ctx.ddp_optimizer_ctx
-                    if ddp_ctx is None:
-                        raise AssertionError("ddp_optimizer_ctx must not be None")
-                    if tracing_ctx.fw_metadata is None:
-                        raise AssertionError("fw_metadata must not be None")
+                    assert ddp_ctx is not None
+                    assert tracing_ctx.fw_metadata is not None
                     ddp_ctx.curr_bucket += 1
                     ddp_ctx.metadata_per_bucket.append(tracing_ctx.fw_metadata)
 
                     out = compiled_submod_real(*new_args, **kwargs)
                     # output should be fake or subclass
-                    if not all(
+                    assert all(
                         (not isinstance(t, torch.Tensor) or type(t) is not torch.Tensor)
                         for t in (out if isinstance(out, (list, tuple)) else [out])
-                    ):
-                        raise AssertionError(
-                            "Output should be fake or subclass, not plain torch.Tensor"
-                        )
+                    )
                     return out
                 else:
                     return curr_submod(*new_args, **kwargs)
@@ -446,7 +433,7 @@ class DDPOptimizer:
         self,
         bucket_bytes_cap: int,
         backend_compile_fn: CompilerFn,
-        first_bucket_cap: int | None = None,
+        first_bucket_cap: Optional[int]= None,
     ) -> None:
         if first_bucket_cap is not None:
             self.first_bucket_cap = first_bucket_cap
@@ -457,10 +444,9 @@ class DDPOptimizer:
             self.first_bucket_cap = bucket_bytes_cap
 
         self.bucket_bytes_cap = bucket_bytes_cap
-        if self.first_bucket_cap > self.bucket_bytes_cap:
-            raise AssertionError(
-                "First bucket should be smaller/equal to other buckets to get comms warmed up ASAP"
-            )
+        assert self.first_bucket_cap <= self.bucket_bytes_cap, (
+            "First bucket should be smaller/equal to other buckets to get comms warmed up ASAP"
+        )
 
         self.backend_compile_fn = backend_compile_fn
 
@@ -476,7 +462,7 @@ class DDPOptimizer:
         self,
         mod: torch.nn.Module,
         bucket: Bucket,
-        processed_modules: set[torch.nn.Module],
+        processed_modules: Set[torch.nn.Module],
         prefix: str,
     ) -> None:
         processed_modules.add(mod)
@@ -501,7 +487,7 @@ class DDPOptimizer:
     def compile_fn(
         self,
         gm: fx.GraphModule,
-        example_inputs: list[torch.Tensor],
+        example_inputs: List[torch.Tensor],
         **compiler_configs: Any,
     ) -> CompiledFn:
         """
@@ -512,7 +498,7 @@ class DDPOptimizer:
         """
         # 1: compute the partition map according to DDP bucket logic
         buckets = [Bucket()]  # (size, param_names)
-        processed_modules: set[torch.nn.Module] = set()
+        processed_modules: Set[torch.nn.Module] = set()
         for node in reversed(gm.graph.nodes):
             if node.op in ("output", "placeholder"):
                 continue
@@ -574,8 +560,7 @@ class DDPOptimizer:
         if len(buckets) > 1 and buckets[0].size == 0:
             # we collected a small preamble graph with ops that don't include parameters, fuse it back
             buckets[1].nodes.extend(buckets[0].nodes)
-            if len(buckets[0].params) != 0:
-                raise AssertionError("Params should be empty if size is 0")
+            assert len(buckets[0].params) == 0, "Params should be empty if size is 0"
             del buckets[0]
 
         # stash buckets for testing/debugging purposes

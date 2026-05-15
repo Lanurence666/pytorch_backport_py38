@@ -6,15 +6,18 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import inspect
 import logging
 import os
 import warnings
 
 from torch.distributed.elastic.utils.log_level import get_log_level
+from typing import Optional
 
 
-def get_logger(name: str | None = None) -> logging.Logger:
+def get_logger(name: Optional[str] = None) -> logging.Logger:
     """
     Util function to set up a simple logger that writes
     into stderr. The loglevel is fetched from the LOGLEVEL
@@ -31,13 +34,13 @@ def get_logger(name: str | None = None) -> logging.Logger:
     return _setup_logger(name or _derive_module_name(depth=2))
 
 
-def _setup_logger(name: str | None = None) -> logging.Logger:
+def _setup_logger(name: Optional[str] = None) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(os.environ.get("LOGLEVEL", get_log_level()))
     return logger
 
 
-def _derive_module_name(depth: int = 1) -> str | None:
+def _derive_module_name(depth: int = 1) -> Optional[str]:
     """
     Derives the name of the caller module from the stack frames.
 

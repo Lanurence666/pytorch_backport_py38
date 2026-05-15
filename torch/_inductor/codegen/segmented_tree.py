@@ -1,18 +1,20 @@
-from collections.abc import Callable
-from typing import Generic, TypeVar
+from __future__ import annotations
+
+
+from typing import Callable, Generic, List, Optional, Type, TypeVar
 
 
 T = TypeVar("T")
 
 
-def _value_or(opt: T | None, default: T) -> T:
+def _value_or(opt: Optional[T], default: T) -> T:
     return opt if opt is not None else default
 
 
 class SegmentedTree(Generic[T]):
     def __init__(
         self,
-        values: list[T],
+        values: List[T],
         update_op: Callable[[T, T], T],
         summary_op: Callable[[T, T], T],
         identity_element: T,
@@ -55,12 +57,12 @@ class SegmentedTree(Generic[T]):
         # we receive an interval query that neither fully
         # contains the node nor fully doesn't contain the
         # node
-        self.lazy: list[T | None] = [None] * self.size
+        self.lazy: List[Optional[T]] = [None] * self.size
 
         # Build the tree
         self._build(values, 1, 0, self.n - 1)
 
-    def _build(self, values: list[T], node: int, start: int, end: int) -> None:
+    def _build(self, values: List[T], node: int, start: int, end: int) -> None:
         """
         Build the segment tree recursively.
 
@@ -87,7 +89,7 @@ class SegmentedTree(Generic[T]):
         # Update current node with summary of children
         self.tree[node] = self.summary_op(self.tree[left_child], self.tree[right_child])
 
-    def _children(self, node: int) -> list[int]:
+    def _children(self, node: int) -> List[int]:
         return [2 * node, 2 * node + 1]
 
     def _push_lazy(self, node: int, start: int, end: int) -> None:

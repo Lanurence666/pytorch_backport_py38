@@ -369,13 +369,7 @@ class NumaBindingTest(TestCase):
             num_physical_core_per_l3_cache=1,
         )
 
-        with (
-            patch("torch.numa.binding.signpost_event") as signpost_patch,
-            patch(
-                "torch.numa.binding._get_numa_node_index_for_gpu_index",
-                side_effect=Exception("Mock exception!"),
-            ),
-        ):
+        with patch("torch.numa.binding.signpost_event") as signpost_patch, patch( "torch.numa.binding._get_numa_node_index_for_gpu_index", side_effect=Exception("Mock exception!"), ):
             command_args = (
                 self._start_processes_for_str_entrypoint_and_get_command_args(
                     numa_options=NumaOptions(
@@ -403,10 +397,7 @@ class NumaBindingTest(TestCase):
             num_physical_core_per_l3_cache=1,
         )
 
-        with (
-            patch("torch.numa.binding.signpost_event") as signpost_patch,
-            patch("torch.numa.binding.shutil.which", return_value=None),
-        ):
+        with patch("torch.numa.binding.signpost_event") as signpost_patch, patch("torch.numa.binding.shutil.which", return_value=None):
             command_args = (
                 self._start_processes_for_str_entrypoint_and_get_command_args(
                     numa_options=NumaOptions(
@@ -712,14 +703,7 @@ class NumaBindingTest(TestCase):
             num_physical_core_per_l3_cache=1,
         )
 
-        with (
-            patch(
-                "torch.numa.binding._get_logical_cpus_to_bind_to", return_value=set()
-            ),
-            self.assertRaisesRegex(
-                RuntimeError, "Must bind to a non-empty set of CPU indices"
-            ),
-        ):
+        with patch( "torch.numa.binding._get_logical_cpus_to_bind_to", return_value=set() ), self.assertRaisesRegex( RuntimeError, "Must bind to a non-empty set of CPU indices" ):
             self._start_processes_for_callable_entrypoint_and_get_sched_setaffinity_cpus(
                 numa_options=NumaOptions(affinity_mode=AffinityMode.NODE),
                 target_local_rank=0,
@@ -764,12 +748,7 @@ class NumaBindingTest(TestCase):
         def mock_sched_setaffinity_impl(tid: int, cpus: set[int]) -> None:
             call_order.append((tid, cpus))
 
-        with (
-            patch("os.sched_getaffinity", side_effect=mock_sched_getaffinity_impl),
-            patch(
-                "os.sched_setaffinity", side_effect=mock_sched_setaffinity_impl
-            ) as mock_sched_setaffinity,
-        ):
+        with patch("os.sched_getaffinity", side_effect=mock_sched_getaffinity_impl), patch( "os.sched_setaffinity", side_effect=mock_sched_setaffinity_impl ) as mock_sched_setaffinity:
             _bind_all_threads_in_current_process_to_logical_cpus(
                 logical_cpu_indices={2, 0, 9}  # arbitrary
             )

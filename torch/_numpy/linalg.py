@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import functools
 import math
-from typing import TYPE_CHECKING
+from typing import Sequence, TYPE_CHECKING
 
 import torch
 

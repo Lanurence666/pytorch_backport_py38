@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import logging
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, List
 
 import torch
 from functorch.compile import make_boxed_func
@@ -15,19 +17,19 @@ log = logging.getLogger(__name__)
 
 @register_experimental_backend
 def openxla_eval(
-    model: fx.GraphModule, fake_tensor_inputs: list[torch.Tensor]
+    model: fx.GraphModule, fake_tensor_inputs: List[torch.Tensor]
 ) -> CompiledFn:
     return xla_backend_helper(model, fake_tensor_inputs, boxed=False)
 
 
 def openxla_eval_boxed(
-    model: fx.GraphModule, fake_tensor_inputs: list[torch.Tensor]
+    model: fx.GraphModule, fake_tensor_inputs: List[torch.Tensor]
 ) -> Callable[..., Any]:
     return xla_backend_helper(model, fake_tensor_inputs, boxed=True)
 
 
 def xla_backend_helper(
-    model: fx.GraphModule, fake_tensor_inputs: list[torch.Tensor], boxed: bool = False
+    model: fx.GraphModule, fake_tensor_inputs: List[torch.Tensor], boxed: bool = False
 ) -> Callable[..., Any]:
     try:
         import torch_xla.core.dynamo_bridge as bridge

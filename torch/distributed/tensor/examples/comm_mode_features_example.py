@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 To run the example, use the following command:
 torchrun --standalone --nnodes=1 --nproc-per-node=4 comm_mode_features_example.py -e MLP_operation_tracing
@@ -5,7 +6,7 @@ torchrun --standalone --nnodes=1 --nproc-per-node=4 comm_mode_features_example.p
 
 import argparse
 import os
-from typing import TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, TYPE_CHECKING, Tuple
 
 import torch
 import torch.nn as nn
@@ -55,8 +56,8 @@ class CommDebugModeExample:
         self.device_type = get_device_type()
 
     def _MLP_model_setup(
-        self, model_type: type, parallelize_plan: dict | None = None
-    ) -> tuple[nn.Module, torch.Tensor]:
+        self, model_type: type, parallelize_plan: Optional[dict] = None
+    ) -> Tuple[nn.Module, torch.Tensor]:
         """
         Creates MLP or MLPStacked model for examples
         """
@@ -81,7 +82,7 @@ class CommDebugModeExample:
 
     def _transformer_model_setup(
         self, is_seq_parallel: bool = False
-    ) -> tuple[nn.Module, torch.Tensor]:
+    ) -> Tuple[nn.Module, torch.Tensor]:
         """
         Creates transformer model for examples
         """
@@ -718,7 +719,7 @@ def run_example(world_size: int, rank: int, example_name: str) -> None:
     # initializing class with all of the functions
     instantiated_example = CommDebugModeExample(world_size, rank)
     # dict that stores example code function names
-    name_to_example_code: dict[str, Callable[[], None]] = {
+    name_to_example_code: Dict[str, Callable[[], None]] = {
         "MLP_distributed_sharding_display": instantiated_example.example_MLP_distributed_sharding_display,
         "MLPStacked_distributed_sharding_display": instantiated_example.example_MLPStacked_distributed_sharding_display,
         "MLP_module_tracing": instantiated_example.example_MLP_module_tracing,

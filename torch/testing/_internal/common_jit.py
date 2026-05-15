@@ -1,6 +1,8 @@
 # mypy: ignore-errors
 
 # Torch
+from __future__ import annotations
+
 import torch
 import torch.cuda
 import torch.jit
@@ -19,6 +21,7 @@ from itertools import chain
 from torch._C import TensorType
 
 import io
+from typing import List, Type, Union
 
 def check_output_types(self, func, ref_outputs, args, kwargs):
     graph = getattr(func, 'last_graph', None)
@@ -61,7 +64,7 @@ def check_against_reference(self, func, reference_func, output_func, args, kwarg
         return t.detach().clone().requires_grad_(require_grad)
 
     def clone_inputs(preserve_requires_grad: bool):
-        inputs: list[torch.Tensor | list[torch.Tensor]] = []
+        inputs: Union[List[torch.Tensor, List[torch.Tensor]]]= []
 
         for arg in args:
             if isinstance(arg, torch.Tensor):
@@ -75,7 +78,7 @@ def check_against_reference(self, func, reference_func, output_func, args, kwarg
 
     # Returns tensors in args that requires_grad, including tensors in TensorList args
     def get_recording_tensors(args):
-        recording_tensors: list[torch.Tensor] = []
+        recording_tensors: List[torch.Tensor] = []
 
         for arg in args:
             if isinstance(arg, torch.Tensor) and arg.requires_grad:
@@ -134,7 +137,7 @@ def check_against_reference(self, func, reference_func, output_func, args, kwarg
 
         self.assertEqual(outputs, outputs_test)
         self.assertEqual(grads, grads_test)
-        for g2, g2_test in zip(grads2, grads2_test, strict=True):
+        for g2, g2_test in _zip_strict(grads2, grads2_test):
             if g2 is None and g2_test is None:
                 continue
             self.assertEqual(g2, g2_test, atol=5e-4, rtol=1e-4)
@@ -283,7 +286,7 @@ class JitCommonTestCase(TestCase):
             self.assertEqual(should_autodiff_node,
                              found_all_nonfusible_nodes and found_all_fusible_nodes, err_msg)
 
-    def checkShapeAnalysis(self, out_sizes: list[int] | list[list[int]],
+    def checkShapeAnalysis(self, out_sizes: Union[List[int], List[List[int]]],
                            traced_graph, assert_propagation, constant_prop=True):
         # repropagte input shapes provided by tracing,
         prev_symbolic_shapes_test_enabled = torch._C._jit_symbolic_shapes_test_mode_enabled()

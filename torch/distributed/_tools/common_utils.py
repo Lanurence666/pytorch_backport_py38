@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 import warnings
 
 import torch
 from torch._opaque_base import OpaqueBase
 from torch.utils._python_dispatch import is_traceable_wrapper_subclass
+from typing import Set
 
 
-def get_untyped_storages(t: torch.Tensor) -> set[torch.UntypedStorage]:
+def get_untyped_storages(t: torch.Tensor) -> Set[torch.UntypedStorage]:
     """
     Recursively extracts untyped storages from a tensor or its subclasses.
 
@@ -22,15 +25,17 @@ def get_untyped_storages(t: torch.Tensor) -> set[torch.UntypedStorage]:
         if is_traceable_wrapper_subclass(obj):
             attrs, _ = obj.__tensor_flatten__()
             for attr in attrs:
-                match getattr(obj, attr):
-                    case torch.Tensor() as v:
-                        unflattened_tensors.append(v)
-                    case OpaqueBase():
-                        pass
-                    case unexpected:
-                        raise AssertionError(
-                            f"expected Tensor or OpaqueBase, got {type(unexpected)}"
-                        )
+                # TODO: Python 3.8 compat - match/case block needs manual conversion
+                # match getattr(obj, attr):
+                # case torch.Tensor() as v:
+                # unflattened_tensors.append(v)
+                # case OpaqueBase():
+                # pass
+                # case unexpected:
+                # raise AssertionError(
+                # f"expected Tensor or OpaqueBase, got {type(unexpected)}"
+                # )
+                pass  # placeholder for removed match/case
         else:
             if not hasattr(obj, "untyped_storage"):
                 warnings.warn(

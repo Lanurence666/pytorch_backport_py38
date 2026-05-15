@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 import torch.nn.functional as F
 
@@ -53,7 +55,7 @@ class LayerNormPerSampleGrad(torch.autograd.Function):
         input, normalized_shape = ctx.args
         mean, rstd = ctx.mean, ctx.rstd
 
-        results: list[torch.Tensor | None] = []
+        results: Union[List[torch.Tensor, None]]= []
         results.append(None)  # for kwarg names
         results.append(None)  # for op reference
         if input.requires_grad:

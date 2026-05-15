@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module provides common utilities and base classes for TorchDynamo backends.
 
@@ -19,8 +20,8 @@ optimization of both forward and backward passes.
 import contextlib
 import functools
 import logging
-from collections.abc import Callable, Iterable, Sequence
-from typing import Any
+
+from typing import Any, Callable, Dict, Iterable, List, Sequence, Type
 from typing_extensions import ParamSpec, TypeVar
 from unittest.mock import patch
 
@@ -134,7 +135,7 @@ def aot_autograd(**kwargs: Any) -> AotAutograd:
     return AotAutograd(**kwargs)
 
 
-def mem_efficient_fusion_kwargs(use_decomps: bool) -> dict[str, Any]:
+def mem_efficient_fusion_kwargs(use_decomps: bool) -> Dict[str, Any]:
     from functorch.compile import (
         default_decompositions,
         min_cut_rematerialization_partition,
@@ -155,7 +156,7 @@ def mem_efficient_fusion_kwargs(use_decomps: bool) -> dict[str, Any]:
     return kwargs
 
 
-def fake_tensor_unsupported(fn: Callable[[Any, list[Any], Any], R]) -> Any:
+def fake_tensor_unsupported(fn: Callable[[Any, List[Any], Any], R]) -> Any:
     """
     Decorator for backends that need real inputs.  We swap out fake
     tensors for zero tensors.

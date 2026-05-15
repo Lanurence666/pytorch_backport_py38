@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 import re
 import sys
 import time
@@ -9,6 +11,7 @@ import torch.distributed as dist
 import torch.distributed.rpc as rpc
 from torch.distributed.rpc import _rref_context_get_debug_info
 from torch.testing._internal.common_utils import FILE_SCHEMA, TEST_WITH_TSAN
+from typing import Set, Tuple, Type
 
 
 if not dist.is_available():
@@ -135,7 +138,7 @@ def wait_until_pending_futures_and_users_flushed(timeout: int = 20) -> None:
             )
 
 
-def get_num_owners_and_forks() -> tuple[str, str]:
+def get_num_owners_and_forks() -> Tuple[str, str]:
     """
     Retrieves number of OwnerRRefs and forks on this node from
     _rref_context_get_debug_info.

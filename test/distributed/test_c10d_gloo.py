@@ -940,7 +940,7 @@ class ProcessGroupGlooTest(MultiProcessTestCase):
 
                 outputs = [torch.empty(s) for s in out_sizes]
                 inputs = []
-                for in_size, out_size in zip(in_sizes, out_sizes, strict=True):
+                for in_size, out_size in _zip_strict(in_sizes, out_sizes):
                     inp = torch.empty(in_size)
                     for i in range(self.world_size):
                         inp[i * out_size : (i + 1) * out_size] = float(
@@ -972,7 +972,7 @@ class ProcessGroupGlooTest(MultiProcessTestCase):
                 else:
                     raise ValueError(f"Unsupported op: {op}")
 
-                for output, out_size in zip(outputs, out_sizes, strict=True):
+                for output, out_size in _zip_strict(outputs, out_sizes):
                     expect = torch.full((out_size,), expected_val)
                     self.assertTrue(
                         torch.allclose(output, expect),

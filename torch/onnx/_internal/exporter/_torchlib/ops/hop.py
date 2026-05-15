@@ -1,8 +1,8 @@
+from __future__ import annotations
 """Implementation for higher-order operators."""
 
-from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import List, Optional, Sequence, TYPE_CHECKING, Type, Union
 
 import torch
 from torch.onnx._internal._lazy_import import onnx_ir as ir
@@ -16,10 +16,10 @@ if TYPE_CHECKING:
 
 def call_op(
     op_type: str,
-    *args: ir.Value | None,
+    *args: Optional[ir.Value],
     _num_outputs: int = 1,
     _domain: str = "",
-    **kwargs: int | float | str | bool | ir.Graph | ir.TensorProtocol | Sequence[int],
+    **kwargs: Union[Union[int, float], Union[str, bool]] | Union[Union[ir.Graph, ir.TensorProtocol], Sequence[int]],
 ) -> Sequence[ir.Value]:
     """Call an operator with the given arguments and keyword arguments.
 
@@ -100,7 +100,7 @@ def higher_order_scan(
     body_func: ir.Function,
     scan_inits: Sequence[ir.Value],
     scan_inputs: Sequence[ir.Value],
-    additional_inputs: Sequence[ir.Value] | None,
+    additional_inputs: Optional[Sequence[ir.Value]],
     reverse: bool = False,
 ) -> Sequence[ir.Value]:
     """https://github.com/pytorch/pytorch/blob/66ac724b56e6c37a534f3e066423ef2f41d7477f/torch/_higher_order_ops/scan.py#L109"""
@@ -162,7 +162,7 @@ def higher_order_scan(
 def higher_order_while_loop(
     cond_func: ir.Function,
     body_func: ir.Function,
-    carried_inputs: Sequence[ir.Value | int | float],
+    carried_inputs: Union[Sequence[Union[ir.Value, int], float]],
     additional_inputs: Sequence[ir.Value],
 ) -> Sequence[ir.Value]:
     """Implementation of while_loop using ONNX Loop operator.
@@ -288,7 +288,7 @@ def higher_order_while_loop(
 
     # End subgraph construction
 
-    carried_inputs_values: list[ir.Value] = []
+    carried_inputs_values: List[ir.Value] = []
     for inp in carried_inputs:
         if isinstance(inp, ir.Value):
             carried_inputs_values.append(inp)
@@ -336,7 +336,7 @@ def higher_order_while_loop(
 @onnx_impl(torch.ops.higher_order.invoke_subgraph, no_compile=True)
 def higher_order_invoke_subgraph(
     subgraph: ir.Function,
-    identifier: str | None,
+    identifier: Optional[str],
     *operands: ir.Value,
 ) -> Sequence[ir.Value]:
     """Export invoke_subgraph HOP by creating a direct function call.

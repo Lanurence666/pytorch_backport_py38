@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Type definitions for distributed training and checkpointing.
 
@@ -7,11 +8,15 @@ saving and loading.
 """
 
 from dataclasses import dataclass
-from typing import Any, TypeAlias
+from typing import Any, Dict, Type
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 
 # Type alias for state dictionaries used in checkpointing
-STATE_DICT: TypeAlias = dict[str, Any]
+STATE_DICT: TypeAlias = Dict[str, Any]
 
 
 @dataclass

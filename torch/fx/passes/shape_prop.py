@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 import traceback
-from typing import Any, NamedTuple
+from typing import Any, Dict, Optional, Tuple
+from typing_extensions import NamedTuple
+
 
 import torch
 import torch.fx
@@ -22,12 +26,12 @@ class TensorMetadata(NamedTuple):
     shape: torch.Size
     dtype: torch.dtype
     requires_grad: bool
-    stride: tuple[int, ...]
-    memory_format: torch.memory_format | None
+    stride: Tuple[int, ...]
+    memory_format: Optional[torch.memory_format]
 
     # Quantization metadata
     is_quantized: bool
-    qparams: dict[str, Any]
+    qparams: Dict[str, Any]
 
 
 # When include_contiguity is True, we will set contiguity when its always true for the tensor.
@@ -61,7 +65,7 @@ def _extract_tensor_metadata(
                 break
 
     is_quantized = result.is_quantized
-    qparams: dict[str, Any] = {}
+    qparams: Dict[str, Any] = {}
     if is_quantized:
         qscheme = result.qscheme()
         qparams["qscheme"] = qscheme

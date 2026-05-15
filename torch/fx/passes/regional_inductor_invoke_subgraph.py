@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import logging
 from collections import defaultdict
@@ -18,7 +20,7 @@ __all__ = ["regional_inductor_invoke_subgraph"]
 
 
 def _compile_submod(
-    gm: torch.fx.GraphModule, subgraph: str, subgraph_users: list[torch.fx.Node]
+    gm: torch.fx.GraphModule, subgraph: str, subgraph_users: List[torch.fx.Node]
 ) -> torch.fx.GraphModule:
     """
     Compiles subgraph submodule in gm. subgraph is used by subgraph_users.
@@ -64,13 +66,7 @@ def _compile_submod(
 
         context = torch._guards.TracingContext(context.fake_mode)
 
-        with (
-            torch._guards.tracing(context),
-            CacheArtifactManager.with_fresh_cache(),
-            torch._functorch.config.patch("bundled_autograd_cache", True),
-            _disable_remat_for_regional_subcompile(),
-            torch.fx.traceback._set_regional_inductor_subgraph_name(subgraph),
-        ):
+        with torch._guards.tracing(context), CacheArtifactManager.with_fresh_cache(), torch._functorch.config.patch("bundled_autograd_cache", True), _disable_remat_for_regional_subcompile():
             # compile_fx can mutate gm
             gm = copy.deepcopy(submod)
 
@@ -127,7 +123,7 @@ def _compile_invoke_subgraph_nodes_with_inductor(
     gm: torch.fx.GraphModule,
 ) -> torch.fx.GraphModule:
     map_subgraph_to_nodes = defaultdict(list)
-    subgraphs: set[str] = set()
+    subgraphs: Set[str] = set()
 
     for node in gm.graph.find_nodes(
         op="call_function", target=torch.ops.higher_order.invoke_subgraph

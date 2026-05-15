@@ -8,7 +8,6 @@
 #include <ATen/native/TensorShape.h>
 #include <ATen/native/TypeProperties.h>
 #include <ATen/native/mps/OperationUtils.h>
-#include <c10/metal/common.h>
 #include <fmt/format.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -30,8 +29,11 @@ static auto& lib = MetalShaderLibrary::getBundledLibrary();
 #include <ATen/native/mps/Sort_metallib.h>
 #endif
 
+// TODO: reuse DEFAULT_ILP from c10/metal/common.h
+static constexpr int TN = 4; // elements per thread
+
 static int select_tptg(int sort_size, size_t elem_size) {
-  int potential_tptg = at::ceil_div(sort_size, static_cast<int>(c10::metal::ILP_PER_THREAD));
+  int potential_tptg = at::ceil_div(sort_size, TN);
   int tptg = std::clamp<int>(std::bit_ceil(static_cast<unsigned>(std::max(potential_tptg, 1))), 32, 1024);
 
   // 8-byte types: tgmem stages 8 bytes (value) + 4 bytes (uint index) per
@@ -181,7 +183,7 @@ TORCH_IMPL_FUNC(sort_stable_out_mps)
   if (is_last_dim) {
     const int n_rows = static_cast<int>(self.numel() / sort_size);
     const int tptg = select_tptg(sort_size, self.element_size());
-    const int elems_per_tg = tptg * static_cast<int>(c10::metal::ILP_PER_THREAD);
+    const int elems_per_tg = tptg * TN;
     if (n_rows >= 2 && sort_size <= elems_per_tg) {
       Tensor input = self.contiguous();
       Tensor out_vals = values;

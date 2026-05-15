@@ -1,7 +1,7 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """The ONNX verification module provides a set of tools to verify the correctness of ONNX models."""
 
-from __future__ import annotations
 
 
 __all__ = [
@@ -18,8 +18,8 @@ import io
 import os
 import tempfile
 import warnings
-from collections.abc import Mapping, Sequence
-from typing import Any
+
+from typing import Any, List, Mapping, Optional, Sequence, Set, Tuple, Type, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -34,11 +34,11 @@ from torch.types import Number
 
 _ORT_PROVIDERS = ("CPUExecutionProvider",)
 
-_NumericType = Number | torch.Tensor | np.ndarray
-_ModelType = torch.nn.Module | torch.jit.ScriptModule
-_InputArgsType = torch.Tensor | tuple[Any, ...]
+_NumericType = Union[Number, torch.Tensor, np.ndarray]
+_ModelType = Union[torch.nn.Module, torch.jit.ScriptModule]
+_InputArgsType = Union[torch.Tensor, Tuple[Any, ...]]
 _InputKwargsType = Mapping[str, Any]
-_OutputsType = Sequence[_NumericType] | Sequence
+_OutputsType = Union[Sequence[_NumericType], Sequence]
 
 
 class OnnxBackend(enum.Enum):
@@ -93,8 +93,8 @@ class VerificationOptions:
     backend: OnnxBackend = OnnxBackend.ONNX_RUNTIME_CPU
     rtol: float = 1e-3
     atol: float = 1e-7
-    remained_onnx_input_idx: Sequence[int] | None = None
-    acceptable_error_percentage: float | None = None
+    remained_onnx_input_idx: Optional[Sequence[int]] = None
+    acceptable_error_percentage: Optional[float] = None
 
 
 def _flatten_tuples(elem):
@@ -107,7 +107,7 @@ def _flatten_tuples(elem):
     return flattened
 
 
-def _to_numpy(elem) -> list | npt.NDArray:
+def _to_numpy(elem) -> Union[list, npt.NDArray]:
     if isinstance(elem, torch.Tensor):
         if elem.requires_grad:
             return elem.detach().cpu().numpy()
@@ -173,7 +173,7 @@ def _run_onnx(onnx_session, inputs) -> _OutputsType:
 
 
 def _ort_session(
-    model: str | io.BytesIO, ort_providers: Sequence[str] = _ORT_PROVIDERS
+    model: Union[str, io.BytesIO], ort_providers: Sequence[str] = _ORT_PROVIDERS
 ):
     try:
         import onnxruntime  # type: ignore[import]
@@ -195,7 +195,7 @@ def _ort_session(
     return ort_session
 
 
-def _onnx_backend_session(model: str | io.BytesIO, backend: OnnxBackend):
+def _onnx_backend_session(model: Union[str, io.BytesIO], backend: OnnxBackend):
     if backend == OnnxBackend.REFERENCE:
         raise NotImplementedError
     elif backend in {OnnxBackend.ONNX_RUNTIME_CPU, OnnxBackend.ONNX_RUNTIME_CUDA}:
@@ -337,7 +337,7 @@ def _prepare_input_for_export(args, kwargs):
 
 
 def _prepare_input_for_onnx(
-    args, kwargs, remained_onnx_input_idx: Sequence[int] | None, flatten: bool
+    args, kwargs, remained_onnx_input_idx: Optional[Sequence[int]], flatten: bool
 ):
     """Prepare input for ONNX model execution in ONNX backend.
 
@@ -379,10 +379,10 @@ def _try_clone_model(model):
 
 def _compare_onnx_pytorch_model(
     pt_model: _ModelType,
-    onnx_model_f: str | io.BytesIO,
+    onnx_model_f: Union[str, io.BytesIO],
     input_args: _InputArgsType,
-    input_kwargs: _InputKwargsType | None,
-    additional_test_inputs: Sequence[_InputArgsType] | None,
+    input_kwargs: Optional[_InputKwargsType],
+    additional_test_inputs: Optional[Sequence[_InputArgsType]],
     options: VerificationOptions,
 ) -> None:
     """Compare outputs from ONNX model runs with outputs from PyTorch model runs.
@@ -430,20 +430,20 @@ def _compare_onnx_pytorch_model(
 def verify(
     model: _ModelType,
     input_args: _InputArgsType,
-    input_kwargs: _InputKwargsType | None = None,
+    input_kwargs: Optional[_InputKwargsType] = None,
     do_constant_folding: bool = True,
-    dynamic_axes: Mapping[str, Mapping[int, str] | Mapping[str, Sequence[int]]]
+    dynamic_axes: Union[Mapping[str, Mapping[int, str], Mapping[str, Sequence[int]]]]
     | None = None,
-    input_names: Sequence[str] | None = None,
-    output_names: Sequence[str] | None = None,
+    input_names: Optional[Sequence[str]] = None,
+    output_names: Optional[Sequence[str]] = None,
     training: _C_onnx.TrainingMode = _C_onnx.TrainingMode.EVAL,
-    opset_version: int | None = None,
+    opset_version: Optional[int] = None,
     keep_initializers_as_inputs: bool = True,
     verbose: bool = False,
     fixed_batch_size: bool = False,
     use_external_data: bool = False,
-    additional_test_inputs: Sequence[_InputArgsType] | None = None,
-    options: VerificationOptions | None = None,
+    additional_test_inputs: Optional[Sequence[_InputArgsType]] = None,
+    options: Optional[VerificationOptions] = None,
 ) -> None:
     """Verify model export to ONNX against original PyTorch model.
 
@@ -482,7 +482,7 @@ def verify(
     elif training == torch.onnx.TrainingMode.EVAL:
         model.eval()
     with torch.no_grad(), contextlib.ExitStack() as stack:
-        model_f: str | io.BytesIO = io.BytesIO()
+        model_f: Union[str, io.BytesIO] = io.BytesIO()
         if use_external_data:
             tmpdir_path = stack.enter_context(tempfile.TemporaryDirectory())
             model_f = os.path.join(tmpdir_path, "model.onnx")

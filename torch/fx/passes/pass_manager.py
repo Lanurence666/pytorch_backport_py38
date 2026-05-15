@@ -1,8 +1,18 @@
+from __future__ import annotations
+
 import logging
-from collections.abc import Callable
+
 from functools import wraps
 from inspect import unwrap
-from typing import Any, Concatenate, ParamSpec, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
+try:
+    from typing import Concatenate
+except ImportError:
+    from typing_extensions import Concatenate
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec
 
 
 _P = ParamSpec("_P")
@@ -85,8 +95,8 @@ def log_hook(fn: Callable[_P, _R], level: int = logging.INFO) -> Callable[_P, _R
 
 def loop_pass(
     base_pass: Callable[[_T], _T],
-    n_iter: int | None = None,
-    predicate: Callable[[_T], bool] | None = None,
+    n_iter: Optional[int]= None,
+    predicate: Optional[Callable[[_T], bool]]= None,
 ) -> Callable[[_T], _T]:
     """
     Convenience wrapper for passes which need to be applied multiple times.
@@ -127,7 +137,7 @@ def loop_pass(
 # has a valid partial ordering according to this comparison operator.
 def _validate_pass_schedule_constraint(
     constraint: Callable[[Callable[..., Any], Callable[..., Any]], bool],
-    passes: list[Callable[..., Any]],
+    passes: List[Callable[..., Any]],
 ) -> None:
     for i, a in enumerate(passes):
         for j, b in enumerate(passes[i + 1 :]):
@@ -200,20 +210,20 @@ class PassManager:
             `this_before_that_pass_constraint` for example.
     """
 
-    passes: list[Callable[..., Any]]
-    constraints: list[Callable[..., Any]]
+    passes: List[Callable[..., Any]]
+    constraints: List[Callable[..., Any]]
     _validated: bool = False
 
     def __init__(
         self,
-        passes: list[Callable[..., Any]] | None = None,
-        constraints: list[Callable[..., Any]] | None = None,
+        passes: Optional[List[Callable[..., Any]]]= None,
+        constraints: Optional[List[Callable[..., Any]]]= None,
     ) -> None:
         self.passes = passes or []
         self.constraints = constraints or []
 
     @classmethod
-    def build_from_passlist(cls, passes: list[Callable[..., Any]]) -> "PassManager":
+    def build_from_passlist(cls, passes: List[Callable[..., Any]]) -> "PassManager":
         pm = PassManager(passes)
         # TODO(alexbeloi): add constraint management/validation
         return pm
@@ -226,7 +236,7 @@ class PassManager:
         self.constraints.append(constraint)
         self._validated = False
 
-    def remove_pass(self, _passes: list[str]) -> None:
+    def remove_pass(self, _passes: List[str]) -> None:
         if _passes is None:
             return
         passes_left = [ps for ps in self.passes if ps.__name__ not in _passes]

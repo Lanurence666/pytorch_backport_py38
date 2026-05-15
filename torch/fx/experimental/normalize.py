@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import operator
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, Optional, Tuple, Type
 
 import torch
 import torch.fx
@@ -38,7 +40,7 @@ class NormalizeArgs(Transformer):
         self, module: torch.fx.GraphModule, normalize_to_only_use_kwargs: bool = True
     ) -> None:
         super().__init__(module)
-        self.node_map: dict[Proxy, Node] = {}
+        self.node_map: Dict[Proxy, Node] = {}
         self.normalize_to_only_use_kwargs = normalize_to_only_use_kwargs
 
     def run_node(self, n: Node) -> Any:
@@ -67,10 +69,10 @@ class NormalizeArgs(Transformer):
     def call_function(
         self,
         target: Target,
-        args: tuple[Argument, ...],
-        kwargs: dict[str, Any],
-        arg_types: tuple[Any, ...] | None = None,
-        kwarg_types: dict[str, Any] | None = None,
+        args: Tuple[Argument, ...],
+        kwargs: Dict[str, Any],
+        arg_types: Optional[Tuple[Any, ...]]= None,
+        kwarg_types: Optional[Dict[str, Any]]= None,
     ) -> Proxy:
         if not callable(target):
             raise AssertionError(f"Expected callable target, got {type(target)}")
@@ -91,7 +93,7 @@ class NormalizeArgs(Transformer):
             return super().call_function(target, args, kwargs)
 
     def call_module(
-        self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: Target, args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Proxy:
         if not isinstance(target, str):
             raise AssertionError(f"Expected str target, got {type(target)}")
@@ -127,7 +129,7 @@ class NormalizeOperators(AnnotateTypesWithSchema):
         traced = NormalizeOperators(traced).transform()
     """
 
-    binary_magic_method_remap: dict[
+    binary_magic_method_remap: Dict[
         Callable[[Any, Any], Any], Callable[[Any, Any], Any]
     ] = {
         torch.add: operator.add,
@@ -145,7 +147,7 @@ class NormalizeOperators(AnnotateTypesWithSchema):
     }
 
     def call_function(
-        self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: Target, args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Proxy:
         # Normalize operators according to the magic methods implemented on tensors here:
         # https://github.com/pytorch/pytorch/blob/28c5d90b679c6b38bf4183ec99f16d933c2f1bcd/tools/autograd/templates/python_variable_methods.cpp#L1137

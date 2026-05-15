@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 
 import torch
@@ -8,6 +10,7 @@ from torch.utils._ordered_set import OrderedSet
 
 from . import config, ir
 from .virtualized import V
+from typing import Set, Tuple, Type
 
 
 log = logging.getLogger(__name__)
@@ -138,7 +141,7 @@ def _get_data(x: ir.TensorBox) -> ir.IRNode:
         )
 
 
-_bufs_to_skip_wait = OrderedSet[tuple[int, str]]()
+_bufs_to_skip_wait = OrderedSet[Tuple[int, str]]()
 
 
 def mark_as_skip_wait(x: ir.IRNode) -> None:

@@ -1,29 +1,40 @@
+from __future__ import annotations
 import argparse
 import ast
 import json
 import random
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Union
 
 
-def get_source_segment(source: str, node: ast.AST) -> str | None:
+try:
+    from ast import unparse as _ast_unparse_compat
+except ImportError:
+    import ast as _ast_mod
+    def _ast_unparse_compat(node):
+        try:
+            import astunparse
+            return astunparse.unparse(node)
+        except ImportError:
+            return _ast_mod.dump(node)
+def get_source_segment(source: str, node: ast.AST) -> Union[str, None]:
     return ast.get_source_segment(source, node)
 
 
-def load_registry(path: Path) -> dict[str, Any]:
+def load_registry(path: Path) -> Dict[str, Any]:
     if path.exists():
         with path.open() as f:
             return json.load(f)  # type: ignore[no-any-return]
     return {}
 
 
-def save_registry(reg: dict[str, Any], path: Path) -> None:
+def save_registry(reg: Dict[str, Any], path: Path) -> None:
     with path.open("w") as f:
         json.dump(reg, f, indent=2)
 
 
-def next_gb_id(reg: dict[str, Any]) -> str:
+def next_gb_id(reg: Dict[str, Any]) -> str:
     """Generate a random unused GB ID from GB0000-GB9999 range."""
     used_ids = set(reg.keys())
     max_attempts = 100
@@ -64,7 +75,7 @@ def clean_string(s: Any) -> Any:
     return s
 
 
-def expand_hints(hints: list[str], dynamo_dir: str | None = None) -> list[str]:
+def expand_hints(hints: List[str], dynamo_dir: Union[str, None] = None) -> List[str]:
     """
     Expands hint references to their actual values from graph_break_hints.
     Uses exec() to avoid import dependencies.
@@ -80,7 +91,7 @@ def expand_hints(hints: list[str], dynamo_dir: str | None = None) -> list[str]:
     with open(graph_break_hints_path) as f:
         hints_source = f.read()
 
-    hints_namespace: dict[str, Any] = {}
+    hints_namespace: Dict[str, Any] = {}
     exec(hints_source, hints_namespace)
 
     hint_constants = {
@@ -120,7 +131,7 @@ def extract_info_from_keyword(source: str, kw: ast.keyword) -> Any:
         evaluated_context = []
         for value in kw.value.values:
             if isinstance(value, ast.FormattedValue):
-                evaluated_context.append(f"{{{ast.unparse(value.value)}}}")
+                evaluated_context.append(f"{{{_ast_unparse_compat(value.value)}}}")
             elif isinstance(value, ast.Constant):
                 # pyrefly: ignore [bad-argument-type]
                 evaluated_context.append(value.value)
@@ -133,8 +144,8 @@ def extract_info_from_keyword(source: str, kw: ast.keyword) -> Any:
 
 
 def find_unimplemented_calls(
-    path: str, dynamo_dir: str | None = None
-) -> list[dict[str, Any]]:
+    path: str, dynamo_dir: Union[str, None] = None
+) -> List[Dict[str, Any]]:
     results = []
     path_obj = Path(path)
 
@@ -162,7 +173,7 @@ def find_unimplemented_calls(
                         and node.func.id
                         in ("unimplemented", "unimplemented_with_warning")
                     ):
-                        info: dict[str, Any] = {
+                        info: Dict[str, Any] = {
                             "gb_type": None,
                             "context": None,
                             "explanation": None,

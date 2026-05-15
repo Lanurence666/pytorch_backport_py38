@@ -1,9 +1,9 @@
+from __future__ import annotations
 """Internal flags for ONNX export."""
 
-from __future__ import annotations
 
 import functools
-from typing import TYPE_CHECKING, TypeVar
+from typing import Any, Callable, TYPE_CHECKING, Type, TypeVar
 from typing_extensions import ParamSpec
 
 

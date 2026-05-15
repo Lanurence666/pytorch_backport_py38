@@ -6,7 +6,7 @@ import math
 import os
 from functools import partial
 from threading import Lock
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import sympy
 
@@ -44,7 +44,7 @@ from .registry import register_template_heuristic
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator
+    
 
     from triton import Config as TritonConfig
 
@@ -64,7 +64,7 @@ class BaseConfig:
     block_k: int
     num_stages: int
     num_warps: int
-    hint_override: int | None = dataclasses.field(kw_only=True, default=None)
+    hint_override: Optional[int] = dataclasses.field(default=None)
 
 
 @dataclasses.dataclass
@@ -73,7 +73,7 @@ class GemmConfig(BaseConfig):
     Gemm configuration used for most backends (CPU, CUDA)
     """
 
-    group_m: int = dataclasses.field(kw_only=True, default=8)
+    group_m: int = dataclasses.field(default=8)
 
 
 ConvConfig = BaseConfig
@@ -102,9 +102,9 @@ class BlackwellGPUGemmConfig(GemmConfig):
     """
 
     # epilogue_subtile must be a power of 2 (1 means no subtiling)
-    epilogue_subtile: int = dataclasses.field(kw_only=True, default=1)
-    warp_specialize: bool = dataclasses.field(kw_only=True, default=True)
-    flatten: bool = dataclasses.field(kw_only=True, default=True)
+    epilogue_subtile: int = dataclasses.field(default=1)
+    warp_specialize: bool = dataclasses.field(default=True)
+    flatten: bool = dataclasses.field(default=True)
 
 
 # FlexAttention Configs
@@ -232,7 +232,7 @@ class BaseHeuristicSingleton(type):
     to ensure heavy __init__ calls are not repeatedly run
     """
 
-    _instances: dict[type[Any], Any] = {}
+    _instances: Dict[Type[Any], Any] = {}
     _lock: Lock = Lock()
 
     def __call__(
@@ -260,7 +260,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
         # List of dictionaries to store the kernel configs. Configs that evaluate to true
         # will be utilised on the target platform. The configs are as follows:
         # (BLOCK_M, BLOCK_N, BLOCK_K, num_stages, num_warps)
-        self.mm_configs: list[BaseConfig] = [
+        self.mm_configs: List[BaseConfig] = [
             GemmConfig(32, 32, 16, 1, 2),
             GemmConfig(32, 32, 128, 2, 4),
             GemmConfig(32, 64, 32, 5, 8),
@@ -284,7 +284,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
         ]
 
         # Exhaustive search for mm configs
-        self.exhaustive_configs: list[BaseConfig] = [
+        self.exhaustive_configs: List[BaseConfig] = [
             GemmConfig(
                 BLOCK_M, BLOCK_N, BLOCK_K, num_stages, num_warps, group_m=group_m
             )
@@ -301,7 +301,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
         # when the learned heuristic is used, the learned heuristic reduces the number of configs down to 10
         # which saves compilation time (since less configs are autotuned) and potentially increase performance
         # because the learned heuristic might predict a config that is not part mm_configs
-        self.extra_mm_configs: list[BaseConfig] = [
+        self.extra_mm_configs: List[BaseConfig] = [
             GemmConfig(16, 32, 16, 3, 2),
             GemmConfig(16, 32, 32, 4, 2),
             GemmConfig(16, 32, 32, 5, 2),
@@ -314,7 +314,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             GemmConfig(128, 128, 64, 5, 4),
         ]
 
-        self.int8_mm_configs: list[BaseConfig] = [
+        self.int8_mm_configs: List[BaseConfig] = [
             GemmConfig(64, 64, 32, 2, 4),
             GemmConfig(64, 128, 32, 3, 4),
             GemmConfig(128, 64, 32, 3, 4),
@@ -328,12 +328,12 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             GemmConfig(256, 128, 128, 3, 8),
         ]
 
-        self.mixed_mm_configs: list[BaseConfig] = [
+        self.mixed_mm_configs: List[BaseConfig] = [
             GemmConfig(16, 128, 256, 3, 4),
             GemmConfig(16, 128, 256, 5, 8),
         ]
 
-        self.persistent_mm_configs: list[BaseConfig] = [
+        self.persistent_mm_configs: List[BaseConfig] = [
             GemmConfig(128, 256, 64, 3, 8),
             GemmConfig(128, 128, 64, 3, 8),
             GemmConfig(128, 128, 128, 3, 8),
@@ -344,7 +344,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             GemmConfig(128, 128, 64, 5, 4),
         ]
 
-        self.blackwell_persistent_mm_configs: list[BaseConfig] = [
+        self.blackwell_persistent_mm_configs: List[BaseConfig] = [
             BlackwellGPUGemmConfig(
                 128,
                 256,
@@ -459,7 +459,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             ),
         ]
 
-        self.blackwell_persistent_addmm_configs: list[BaseConfig] = [
+        self.blackwell_persistent_addmm_configs: List[BaseConfig] = [
             # Include each subtiling factor for testing.
             BlackwellGPUGemmConfig(
                 256,
@@ -493,7 +493,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             ),
         ]
 
-        self.scaled_mm_configs: list[BaseConfig] = [
+        self.scaled_mm_configs: List[BaseConfig] = [
             GemmConfig(128, 256, 32, 3, 8),
             GemmConfig(256, 128, 32, 3, 8),
             GemmConfig(256, 64, 32, 4, 4),
@@ -601,7 +601,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             GemmConfig(256, 128, 128, 2, 8),
         ]
 
-        self.scaled_persistent_mm_configs: list[BaseConfig] = [
+        self.scaled_persistent_mm_configs: List[BaseConfig] = [
             GemmConfig(128, 128, 64, 3, 8),
             GemmConfig(128, 128, 128, 3, 8),
             GemmConfig(128, 128, 128, 4, 8),
@@ -617,7 +617,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             GemmConfig(64, 256, 128, 4, 4),
         ]
 
-        self.blackwell_scaled_persistent_mm_configs: list[BaseConfig] = [
+        self.blackwell_scaled_persistent_mm_configs: List[BaseConfig] = [
             BlackwellGPUGemmConfig(
                 block_m=c.block_m,
                 block_n=c.block_n,
@@ -635,7 +635,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
 
         # TODO: Unify with other gemm patterns, mm_plus_mm currently follows
         # slightly different pattern than rest
-        self.mm_plus_mm_configs: list[BaseConfig] = [
+        self.mm_plus_mm_configs: List[BaseConfig] = [
             GemmConfig(64, 64, 32, 2, 4),
             GemmConfig(64, 64, 32, 3, 8),
             GemmConfig(64, 64, 32, 4, 16),
@@ -648,7 +648,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             GemmConfig(32, 32, 16, 1, 2),
         ]
 
-        self.conv_configs: list[BaseConfig] = [
+        self.conv_configs: List[BaseConfig] = [
             # BLOCK_K=16 configs
             ConvConfig(64, 256, 16, 2, 4),
             ConvConfig(256, 64, 16, 2, 4),
@@ -676,7 +676,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
         # Derived from autotuning results on H100 for depthwise conv1d
         # channels-last (NLC) layout with shape x=[3072, 128, 202]
         # Matches _nlc_autotune_configs from depthwise_conv1d_benchmark.py
-        self.depthwise_conv_configs: list[DepthwiseConvConfig] = [
+        self.depthwise_conv_configs: List[DepthwiseConvConfig] = [
             # BLOCK_C=32, BLOCK_L=32
             DepthwiseConvConfig(
                 block_n=16, block_l=32, block_c=32, num_stages=4, num_warps=8
@@ -729,7 +729,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             ),
         ]
 
-        self.flex_attn_fwd_autotune_configs: list[FlexConfig] = [
+        self.flex_attn_fwd_autotune_configs: List[FlexConfig] = [
             FlexConfig(128, 64, 3, 4),
             FlexConfig(128, 128, 3, 4),
             FlexConfig(128, 128, 2, 8),
@@ -738,7 +738,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             FlexConfig(64, 64, 3, 4),
         ]
 
-        self.flex_attn_bwd_autotune_configs: list[FlexBwDConfig] = [
+        self.flex_attn_bwd_autotune_configs: List[FlexBwDConfig] = [
             # See Note: flex bwd configs
             FlexBwDConfig(BLOCK_M, BLOCK_N, BLOCK_N, BLOCK_M, s, w)
             for BLOCK_M in [32, 64]
@@ -748,13 +748,13 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             if BLOCK_N % BLOCK_M == 0
         ]
 
-        self.flex_decode_autotune_configs: list[FlexDecodeConfig] = [
+        self.flex_decode_autotune_configs: List[FlexDecodeConfig] = [
             FlexDecodeConfig(64, 3, 2),
             FlexDecodeConfig(32, 3, 2),
             FlexDecodeConfig(128, 3, 2),
         ]
 
-        self.exhaustive_flex_attn_fwd_configs: list[FlexConfig] = [
+        self.exhaustive_flex_attn_fwd_configs: List[FlexConfig] = [
             FlexConfig(BLOCK_M, BLOCK_N, num_stages, num_warps)
             for BLOCK_M in [16, 32, 64, 128]
             for BLOCK_N in [32, 64, 128]
@@ -762,7 +762,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             for num_warps in [2, 4, 8]
         ]
 
-        self.exhaustive_flex_attn_bwd_configs: list[FlexBwDConfig] = [
+        self.exhaustive_flex_attn_bwd_configs: List[FlexBwDConfig] = [
             # See Note: flex bwd configs
             FlexBwDConfig(BLOCK_M1, BLOCK_N1, BLOCK_M2, BLOCK_N2, num_stages, num_warps)
             for BLOCK_M1 in [16, 32, 64, 128]
@@ -775,7 +775,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             and BLOCK_M2 % BLOCK_N2 == 0  # kernel static assertions
         ]
 
-        self.exhaustive_flex_decode_configs: list[FlexDecodeConfig] = [
+        self.exhaustive_flex_decode_configs: List[FlexDecodeConfig] = [
             FlexDecodeConfig(block_n, num_stages, num_warps)
             for block_n in [16, 32, 64, 128]
             for num_stages in [1, 3, 4, 5]
@@ -784,18 +784,18 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
 
     def _get_extra_config_key_and_kwargs(
         self, conf: BaseConfig
-    ) -> tuple[tuple[int | None, ...], dict[str, Any]]:
+    ) -> Tuple[Tuple[Optional[int], ...], Dict[str, Any]]:
         """Hook for subclasses to extend config dedup key and kwargs."""
         return (), {}
 
     def _finalize_mm_configs(
         self,
-        configs: list[BaseConfig],
+        configs: List[BaseConfig],
     ) -> Generator[TritonConfig, None, None]:
         """
         Finalizes configs after scaling, applying additional constraints.
         """
-        used: OrderedSet[tuple[int | None, ...]] = OrderedSet()
+        used: OrderedSet[Tuple[Optional[int], ...]] = OrderedSet()
 
         max_mm_configs = config.test_configs.max_mm_configs
 
@@ -804,7 +804,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             num_warps = min(conf.num_warps, conf.block_m * conf.block_n // 256)
 
             # Construct key for finding duplicate configs
-            key: tuple[int | None, ...] = (
+            key: Tuple[Optional[int], ...] = (
                 conf.block_m,
                 conf.block_n,
                 conf.block_k,
@@ -829,7 +829,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
                 max_mm_configs is None or len(used) < max_mm_configs
             ):
                 used.add(key)
-                kwargs: dict[str, Any] = {
+                kwargs: Dict[str, Any] = {
                     "BLOCK_M": conf.block_m,
                     "BLOCK_N": conf.block_n,
                     "BLOCK_K": conf.block_k,
@@ -853,12 +853,12 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
         m: int,
         n: int,
         k: int,
-        configs: list[BaseConfig],
+        configs: List[BaseConfig],
         scale: float,
         has_int8_tensor: bool,
         exclude: Callable[[sympy.Integer, sympy.Integer, sympy.Integer], bool],
-        hint_override: int | None = None,
-    ) -> list[BaseConfig]:
+        hint_override: Optional[int] = None,
+    ) -> List[BaseConfig]:
         """
         Scales and filters matrix multiplication configs based on input size.
         """
@@ -999,11 +999,11 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
 
     def _prune_exceeding_max_shared_mem_configs(
         self,
-        configs: list[BaseConfig],
+        configs: List[BaseConfig],
         dtype_size: int,
         has_sm_layout_conversion: bool = False,
         layout_conversion_byte_size: int = 0,
-    ) -> list[BaseConfig]:
+    ) -> List[BaseConfig]:
         if dtype_size <= 0:
             return configs
 
@@ -1017,8 +1017,8 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
 
     def _prune_reg_spill_configs(
         self,
-        configs: list[BaseConfig],
-    ) -> list[BaseConfig]:
+        configs: List[BaseConfig],
+    ) -> List[BaseConfig]:
         pruned_configs = []
         for gemm_config in configs:
             NUM_REG = 255
@@ -1033,7 +1033,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
 
         return pruned_configs
 
-    def _filter_configs(self, configs: list[BaseConfig]) -> list[BaseConfig]:
+    def _filter_configs(self, configs: List[BaseConfig]) -> List[BaseConfig]:
         """
         Filter configs based on specific requirements.
         Subclasses can override this to implement custom filtering logic.
@@ -1045,7 +1045,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
         m: int,
         n: int,
         k: int,
-        configs: list[BaseConfig],
+        configs: List[BaseConfig],
         has_int8_tensor: bool = False,
         scale: float = 1.0,
         exclude: Callable[
@@ -1091,7 +1091,7 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
             self.preprocess_mm_configs, configs=self.conv_configs, op_name="conv"
         )
 
-    def get_depthwise_conv_configs(self) -> list[TritonConfig]:
+    def get_depthwise_conv_configs(self) -> List[TritonConfig]:
         """Return TritonConfig list for depthwise conv1d autotuning."""
         return [
             TritonConfig(
@@ -1107,8 +1107,8 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
         ]
 
     # Flex attn helpers
-    def get_flex_attn_fwd_configs(self, head_dim: int, dtype: Any) -> list[FlexConfig]:
-        flex_attn_fwd_configs: list[FlexConfig] = []
+    def get_flex_attn_fwd_configs(self, head_dim: int, dtype: Any) -> List[FlexConfig]:
+        flex_attn_fwd_configs: List[FlexConfig] = []
 
         if config.max_autotune:
             if config.max_autotune_flex_search_space == "EXHAUSTIVE":
@@ -1133,8 +1133,8 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
 
     def get_flex_attn_bwd_configs(
         self, head_dim: int, dtype: Any
-    ) -> list[FlexBwDConfig]:
-        flex_attn_bwd_configs: list[FlexBwDConfig] = []
+    ) -> List[FlexBwDConfig]:
+        flex_attn_bwd_configs: List[FlexBwDConfig] = []
 
         if config.max_autotune:
             if config.max_autotune_flex_search_space == "EXHAUSTIVE":
@@ -1150,8 +1150,8 @@ class BaseConfigHeuristic(metaclass=BaseHeuristicSingleton):
 
     def get_flex_decode_configs(
         self, head_dim: int, dtype: Any
-    ) -> list[FlexDecodeConfig]:
-        flex_decode_configs: list[FlexDecodeConfig] = []
+    ) -> List[FlexDecodeConfig]:
+        flex_decode_configs: List[FlexDecodeConfig] = []
 
         if config.max_autotune:
             if config.max_autotune_flex_search_space == "EXHAUSTIVE":
@@ -1214,7 +1214,7 @@ class CPUConfigHeuristic(BaseConfigHeuristic):
         m: int,
         n: int,
         k: int,
-        configs: list[BaseConfig],
+        configs: List[BaseConfig],
         has_int8_tensor: bool = False,
         scale: float = 1.0,
         exclude: Callable[
@@ -1298,16 +1298,14 @@ class CUDAConfigHeuristic(BaseConfigHeuristic):
             (torch.float32, 256): FlexConfig(64, 16, 3, 4),
             (torch.bfloat16, 64): FlexConfig(128, 64, 3, 4),
             (torch.bfloat16, 128): FlexConfig(128, 64, 3, 8),
-            (torch.bfloat16, 192): FlexConfig(128, 32, 2, 8),
             (torch.bfloat16, 256): FlexConfig(32, 64, 3, 4),
             (torch.float16, 64): FlexConfig(128, 64, 3, 4),
             (torch.float16, 128): FlexConfig(128, 64, 3, 8),
-            (torch.float16, 192): FlexConfig(128, 32, 2, 8),
             (torch.float16, 256): FlexConfig(32, 64, 3, 4),
         }
 
         # Overwriting the configs omitting BLOCK_N of size 128 that cause ULFs
-        self.flex_attn_bwd_autotune_configs: list[FlexBwDConfig] = [
+        self.flex_attn_bwd_autotune_configs: List[FlexBwDConfig] = [
             # See Note: flex bwd configs
             FlexBwDConfig(BLOCK_M, BLOCK_N, BLOCK_N, BLOCK_M, s, 4)
             for BLOCK_M in [32, 64]
@@ -1316,9 +1314,9 @@ class CUDAConfigHeuristic(BaseConfigHeuristic):
             if BLOCK_N % BLOCK_M == 0
         ]
 
-    def get_flex_attn_fwd_configs(self, head_dim: int, dtype: Any) -> list[FlexConfig]:
+    def get_flex_attn_fwd_configs(self, head_dim: int, dtype: Any) -> List[FlexConfig]:
         capability = torch.cuda.get_device_capability()
-        flex_attn_fwd_configs: list[FlexConfig] = []
+        flex_attn_fwd_configs: List[FlexConfig] = []
 
         if config.max_autotune:
             if config.max_autotune_flex_search_space == "EXHAUSTIVE":
@@ -1360,9 +1358,9 @@ class CUDAConfigHeuristic(BaseConfigHeuristic):
 
     def get_flex_attn_bwd_configs(
         self, head_dim: int, dtype: Any
-    ) -> list[FlexBwDConfig]:
+    ) -> List[FlexBwDConfig]:
         capability = torch.cuda.get_device_capability()
-        flex_attn_bwd_configs: list[FlexBwDConfig] = []
+        flex_attn_bwd_configs: List[FlexBwDConfig] = []
         if config.max_autotune:
             if config.max_autotune_flex_search_space == "EXHAUSTIVE":
                 return self.exhaustive_flex_attn_bwd_configs
@@ -1434,12 +1432,12 @@ class CUDAConfigHeuristic(BaseConfigHeuristic):
 
     def get_flex_decode_configs(
         self, head_dim: int, dtype: Any
-    ) -> list[FlexDecodeConfig]:
+    ) -> List[FlexDecodeConfig]:
         capability = torch.cuda.get_device_capability()
 
         default_config = FlexDecodeConfig(64, 1, 2)
 
-        flex_decode_configs: list[FlexDecodeConfig] = []
+        flex_decode_configs: List[FlexDecodeConfig] = []
 
         if config.max_autotune:
             if config.max_autotune_flex_search_space == "EXHAUSTIVE":
@@ -1472,7 +1470,7 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
 
         self.default_num_stages = get_backend_num_stages()
 
-        self.mm_configs: list[BaseConfig] = [
+        self.mm_configs: List[BaseConfig] = [
             ROCmGemmConfig(
                 16, 16, 256, self.default_num_stages, 4, group_m=4, waves_per_eu=2
             ),
@@ -1530,7 +1528,7 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
         ]
 
         # Exhaustive search for mm configs
-        self.exhaustive_configs: list[BaseConfig] = [
+        self.exhaustive_configs: List[BaseConfig] = [
             ROCmGemmConfig(
                 BLOCK_M,
                 BLOCK_N,
@@ -1580,14 +1578,14 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
             (torch.float16, 256): ROCmFlexConfig(32, 32, 1, 8, kpack=default_kpack),
         }
 
-        self.flex_attn_fwd_autotune_configs: list[FlexConfig] = [
+        self.flex_attn_fwd_autotune_configs: List[FlexConfig] = [
             ROCmFlexConfig(BLOCK1, BLOCK2, 1, w, kpack=default_kpack)
             for BLOCK1 in [16, 64, 128]
             for BLOCK2 in [16, 32, 64, 128]
             for w in [4, 8]
         ]
 
-        self.flex_attn_bwd_autotune_configs: list[FlexBwDConfig] = [
+        self.flex_attn_bwd_autotune_configs: List[FlexBwDConfig] = [
             # See Note: flex bwd configs
             ROCmFlexBwDConfig(
                 BLOCK1, BLOCK2, BLOCK2, BLOCK1, 1, w, mfma, kpack=default_kpack
@@ -1599,7 +1597,7 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
             if BLOCK2 % BLOCK1 == 0
         ]
 
-        self.flex_decode_autotune_configs: list[FlexDecodeConfig] = [
+        self.flex_decode_autotune_configs: List[FlexDecodeConfig] = [
             ROCmFlexDecodeConfig(32, 1, 4, kpack=default_kpack),
             ROCmFlexDecodeConfig(64, 1, 4, kpack=default_kpack),
             ROCmFlexDecodeConfig(128, 1, 4, kpack=default_kpack),
@@ -1608,7 +1606,7 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
             ROCmFlexDecodeConfig(128, 1, 8, kpack=default_kpack),
         ]
 
-        self.exhaustive_flex_attn_fwd_configs: list[FlexConfig] = [
+        self.exhaustive_flex_attn_fwd_configs: List[FlexConfig] = [
             ROCmFlexConfig(BLOCK_M, BLOCK_N, num_stages, num_warps, mfma, wpeu, kpack)
             for BLOCK_M in [16, 32, 64, 128]
             for BLOCK_N in [32, 64, 128]
@@ -1619,7 +1617,7 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
             for kpack in [1, 2]
         ]
 
-        self.exhaustive_flex_attn_bwd_configs: list[FlexBwDConfig] = [
+        self.exhaustive_flex_attn_bwd_configs: List[FlexBwDConfig] = [
             # See Note: flex bwd configs
             ROCmFlexBwDConfig(
                 BLOCK_M1,
@@ -1645,7 +1643,7 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
             and BLOCK_M2 % BLOCK_N2 == 0  # kernel static assertions
         ]
 
-        self.exhaustive_flex_decode_configs: list[FlexDecodeConfig] = [
+        self.exhaustive_flex_decode_configs: List[FlexDecodeConfig] = [
             ROCmFlexDecodeConfig(
                 block_n, num_stages, num_warps, mfma, wpeu, kpack=kpack
             )
@@ -1659,9 +1657,9 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
 
     def _prune_exhaustive_configs(
         self,
-        configs: list[BaseConfig],
+        configs: List[BaseConfig],
         dtype_size: int,
-    ) -> list[BaseConfig]:
+    ) -> List[BaseConfig]:
         # these cause AMD compile to crash
         pruned_configs = [
             c
@@ -1676,7 +1674,7 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
         ]
         return pruned_configs
 
-    def _filter_configs(self, configs: list[BaseConfig]) -> list[BaseConfig]:
+    def _filter_configs(self, configs: List[BaseConfig]) -> List[BaseConfig]:
         """
         ROCm specific filtering
         """
@@ -1686,12 +1684,12 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
 
     def _finalize_mm_configs(
         self,
-        configs: list[BaseConfig],
+        configs: List[BaseConfig],
     ) -> Generator[TritonConfig, None, None]:
         """
         Finalizes configs after scaling, applying additional constraints.
         """
-        used: OrderedSet[tuple[int, ...]] = OrderedSet()
+        used: OrderedSet[Tuple[int, ...]] = OrderedSet()
 
         max_mm_configs = config.test_configs.max_mm_configs
 
@@ -1714,7 +1712,7 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
                 continue
 
             # Construct key for finding duplicate configs
-            key: tuple[int, ...] = (
+            key: Tuple[int, ...] = (
                 conf.block_m,
                 conf.block_n,
                 conf.block_k,
@@ -1754,8 +1752,8 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
                     kwargs["GROUP_M"] = group_m
                 yield self.triton_config(**kwargs)
 
-    def get_flex_attn_fwd_configs(self, head_dim: int, dtype: Any) -> list[FlexConfig]:
-        flex_attn_fwd_configs: list[FlexConfig] = []
+    def get_flex_attn_fwd_configs(self, head_dim: int, dtype: Any) -> List[FlexConfig]:
+        flex_attn_fwd_configs: List[FlexConfig] = []
 
         if config.max_autotune:
             if config.max_autotune_flex_search_space == "EXHAUSTIVE":
@@ -1791,8 +1789,8 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
 
     def get_flex_attn_bwd_configs(
         self, head_dim: int, dtype: Any
-    ) -> list[FlexBwDConfig]:
-        flex_attn_bwd_configs: list[FlexBwDConfig] = []
+    ) -> List[FlexBwDConfig]:
+        flex_attn_bwd_configs: List[FlexBwDConfig] = []
 
         if config.max_autotune:
             if config.max_autotune_flex_search_space == "EXHAUSTIVE":
@@ -1829,8 +1827,8 @@ class ROCmConfigHeuristic(BaseConfigHeuristic):
 
     def get_flex_decode_configs(
         self, head_dim: int, dtype: Any
-    ) -> list[FlexDecodeConfig]:
-        flex_decode_configs: list[FlexDecodeConfig] = []
+    ) -> List[FlexDecodeConfig]:
+        flex_decode_configs: List[FlexDecodeConfig] = []
 
         if config.max_autotune:
             if config.max_autotune_flex_search_space == "EXHAUSTIVE":
@@ -1868,18 +1866,18 @@ class XPUConfigHeuristic(BaseConfigHeuristic):
             (torch.float16, 128): FlexConfig(128, 64, 1, 16),
             (torch.float16, 256): FlexConfig(32, 64, 1, 4),
         }
-        self.flex_attn_fwd_autotune_configs: list[FlexConfig] = [
+        self.flex_attn_fwd_autotune_configs: List[FlexConfig] = [
             FlexConfig(32, 16, 2, 4),
             FlexConfig(128, 64, 2, 16),
             FlexConfig(128, 64, 2, 8),
             FlexConfig(128, 32, 2, 16),
             FlexConfig(128, 32, 2, 8),
         ]
-        self.flex_attn_bwd_autotune_configs: list[FlexBwDConfig] = [
+        self.flex_attn_bwd_autotune_configs: List[FlexBwDConfig] = [
             FlexBwDConfig(32, 32, 32, 32, 2, 4),
             FlexBwDConfig(64, 64, 64, 64, 2, 4),
         ]
-        self.flex_decode_autotune_configs: list[FlexDecodeConfig] = []
+        self.flex_decode_autotune_configs: List[FlexDecodeConfig] = []
 
         if not bool(os.getenv("CI")):
             self.flex_attn_bwd_autotune_configs += [
@@ -1902,8 +1900,8 @@ class XPUConfigHeuristic(BaseConfigHeuristic):
                 FlexDecodeConfig(64, 2, 1),
             ]
 
-    def get_flex_attn_fwd_configs(self, head_dim: int, dtype: Any) -> list[FlexConfig]:
-        flex_attn_fwd_configs: list[FlexConfig] = []
+    def get_flex_attn_fwd_configs(self, head_dim: int, dtype: Any) -> List[FlexConfig]:
+        flex_attn_fwd_configs: List[FlexConfig] = []
 
         if config.max_autotune:
             if config.max_autotune_flex_search_space == "EXHAUSTIVE":
@@ -1931,8 +1929,8 @@ class XPUConfigHeuristic(BaseConfigHeuristic):
 
     def get_flex_attn_bwd_configs(
         self, head_dim: int, dtype: Any
-    ) -> list[FlexBwDConfig]:
-        flex_attn_bwd_configs: list[FlexBwDConfig] = []
+    ) -> List[FlexBwDConfig]:
+        flex_attn_bwd_configs: List[FlexBwDConfig] = []
 
         if config.max_autotune:
             if config.max_autotune_flex_search_space == "EXHAUSTIVE":
@@ -1958,8 +1956,8 @@ class XPUConfigHeuristic(BaseConfigHeuristic):
 
     def get_flex_decode_configs(
         self, head_dim: int, dtype: Any
-    ) -> list[FlexDecodeConfig]:
-        flex_decode_configs: list[FlexDecodeConfig] = []
+    ) -> List[FlexDecodeConfig]:
+        flex_decode_configs: List[FlexDecodeConfig] = []
 
         if config.max_autotune:
             if config.max_autotune_flex_search_space == "EXHAUSTIVE":
@@ -1975,9 +1973,9 @@ class XPUConfigHeuristic(BaseConfigHeuristic):
 
     def _prune_exhaustive_configs(
         self,
-        configs: list[BaseConfig],
+        configs: List[BaseConfig],
         dtype_size: int,
-    ) -> list[BaseConfig]:
+    ) -> List[BaseConfig]:
         return configs
 
 
@@ -2001,13 +1999,13 @@ class MMTemplateConfigMixin(GemmMaxAutotuneTemplateConfigHeuristics):
     get_exhaustive_mm_configs: Callable[
         [], partial[Generator[TritonConfig, None, None]]
     ]
-    _filter_configs: Callable[[list[BaseConfig]], list[BaseConfig]]
+    _filter_configs: Callable[[List[BaseConfig]], List[BaseConfig]]
 
     def get_extra_kwargs(
         self,
         kernel_inputs: KernelInputs,
         op_name: str,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         assert isinstance(kernel_inputs, MMKernelInputs)
         m, n, k = kernel_inputs.mnk_symbolic()
         # Calculate allow_tf32
@@ -2041,7 +2039,7 @@ class MMTemplateConfigMixin(GemmMaxAutotuneTemplateConfigHeuristics):
         kernel_inputs: KernelInputs,
         op_name: str,
         **kwargs,
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         """
         Convert config lists to template kwargs.
         This replaces the logic from choices.get_mm_configs and inlines mm_options.
@@ -2085,11 +2083,11 @@ class MMTemplateConfigMixin(GemmMaxAutotuneTemplateConfigHeuristics):
     def _convert_config_to_template_kwargs(
         self,
         triton_config: TritonConfig,
-        m: sympy.Integer | sympy.Symbol,
-        n: sympy.Integer | sympy.Symbol,
-        k: sympy.Integer | sympy.Symbol,
+        m: Union[sympy.Integer, sympy.Symbol],
+        n: Union[sympy.Integer, sympy.Symbol],
+        k: Union[sympy.Integer, sympy.Symbol],
         out_dtype: torch.dtype,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """
         Convert triton config to template kwargs.
         Moved from mm_common.mm_options.
@@ -2112,7 +2110,7 @@ class MMTemplateConfigMixin(GemmMaxAutotuneTemplateConfigHeuristics):
         # If GROUP_M not specified then default to 8
         if "GROUP_M" not in triton_config.kwargs:
             group_m = triton_config.kwargs.get("GROUP_M", 8)
-            options_dict["GROUP_M"] = group_m
+            options_Dict["GROUP_M"] = group_m
 
         return options_dict
 
@@ -2159,7 +2157,7 @@ class MMPlusMMTemplateConfigMixin(MMTemplateConfigMixin):
         kernel_inputs: KernelInputs,
         op_name: str,
         **kwargs,
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         assert isinstance(kernel_inputs, MMKernelInputs), "Expect MMKernelInputs"
         m, n, k = kernel_inputs.mnk_symbolic()
         for template_kwargs in super()._get_template_configs_impl(
@@ -2184,7 +2182,7 @@ class TMAWorkspaceMixin(MMTemplateConfigMixin):
         self,
         kernel_inputs: KernelInputs,
         op_name: str,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         kwargs = super().get_extra_kwargs(kernel_inputs, op_name)
         kwargs["workspace_arg"] = get_tma_workspace_arg(
             num_tma_descriptors=2,
@@ -2193,7 +2191,7 @@ class TMAWorkspaceMixin(MMTemplateConfigMixin):
         return kwargs
 
     # pyrefly: ignore [bad-override]
-    def _filter_configs(self, configs: list[BaseConfig]) -> list[BaseConfig]:
+    def _filter_configs(self, configs: List[BaseConfig]) -> List[BaseConfig]:
         """
         TMA specific filtering, as num_warps=2 not safe for TMA
         """
@@ -2222,7 +2220,7 @@ class TMATemplateConfigMixin(TMAWorkspaceMixin, MMTemplateConfigMixin):
         kernel_inputs: KernelInputs,
         op_name: str,
         **kwargs,
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         """
         Generate TMA template configs by calling super and adding TMA-specific options.
         """
@@ -2258,7 +2256,7 @@ class BlackwellTMATemplateConfigMixin(TMATemplateConfigMixin):
         kernel_inputs: KernelInputs,
         op_name: str,
         **kwargs,
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         """
         Generate TMA template configs by calling super and adding TMA-specific options.
         """
@@ -2287,8 +2285,8 @@ class BlackwellTMATemplateConfigMixin(TMATemplateConfigMixin):
             }
 
     @staticmethod
-    def _generate_exhaustive_configs() -> list[BaseConfig]:
-        configs: list[BaseConfig] = []
+    def _generate_exhaustive_configs() -> List[BaseConfig]:
+        configs: List[BaseConfig] = []
         for BLOCK_M, BLOCK_N, BLOCK_K in itertools.product(
             [32, 64, 128, 256],
             repeat=3,
@@ -2361,7 +2359,7 @@ class BaseScaledMMConfigMixin(MMTemplateConfigMixin):
         kernel_inputs: KernelInputs,
         op_name: str,
         **kwargs,
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         """
         Generate scaled MM template configs with scaled MM-specific options.
         Handles the remaining logic from mm_common, including assertions.
@@ -2420,7 +2418,7 @@ class ScaledMMConfigMixin(BaseScaledMMConfigMixin):
         self,
         kernel_inputs: KernelInputs,
         op_name: str,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         kwargs = super().get_extra_kwargs(kernel_inputs, op_name)
         from ..kernel.mm_common import scale_mm_epilogue
 
@@ -2447,7 +2445,7 @@ class ScaledMMConfigMixin(BaseScaledMMConfigMixin):
         return True
 
     # pyrefly: ignore [bad-override]
-    def _filter_configs(self, configs: list[BaseConfig]) -> list[BaseConfig]:
+    def _filter_configs(self, configs: List[BaseConfig]) -> List[BaseConfig]:
         """
         Filter out bad configs for specific hardware.
         On AMD MI350X (GFX 9.5+), skip configs with BLOCK_K<=64 due to lack of corresponding MFMA instructions.
@@ -2479,7 +2477,7 @@ class ScaledTMAConfigMixin(TMAWorkspaceMixin, BaseScaledMMConfigMixin):
     """
 
     # pyrefly: ignore [bad-override]
-    def _filter_configs(self, configs: list[BaseConfig]) -> list[BaseConfig]:
+    def _filter_configs(self, configs: List[BaseConfig]) -> List[BaseConfig]:
         """
         TMA specific filtering:
         - num_warps=2 not safe for TMA
@@ -2493,7 +2491,7 @@ class ScaledTMAConfigMixin(TMAWorkspaceMixin, BaseScaledMMConfigMixin):
         kernel_inputs: KernelInputs,
         op_name: str,
         **kwargs,
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         """
         Generate scaled TMA template configs with both scaled MM and TMA-specific options.
         """
@@ -2521,7 +2519,7 @@ class ScaledBlackwellTMAConfigMixin(
     This inherits from ScaledMMConfigMixin, which inherits the scale_mm_epilogue, and adds TMA-specific options.
     """
 
-    def _filter_configs(self, configs: list[BaseConfig]) -> list[BaseConfig]:
+    def _filter_configs(self, configs: List[BaseConfig]) -> List[BaseConfig]:
         """
         Warp specialization-specific filtering (BlackwellTMATemplateConfigMixin)
         (compilation issues occur in some versions of Triton)
@@ -2615,7 +2613,7 @@ class PersistentMMTemplateConfigHeuristic(
         kernel_inputs: KernelInputs,
         op_name: str,
         **kwargs,
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         for template_kwargs in super()._get_template_configs_impl(
             kernel_inputs, op_name, **kwargs
         ):
@@ -2682,7 +2680,7 @@ class CUDAScaledMMTemplateConfigHeuristic(ScaledMMConfigMixin, CUDAConfigHeurist
         # Override mm_configs to use scaled_mm_configs
         self.mm_configs = self.scaled_mm_configs
 
-    def _filter_configs(self, configs: list[BaseConfig]) -> list[BaseConfig]:
+    def _filter_configs(self, configs: List[BaseConfig]) -> List[BaseConfig]:
         configs = [c for c in configs if c.block_k >= 32]
         return super()._filter_configs(configs)
 
@@ -2728,7 +2726,7 @@ class CUDAScaledTMAMainLoopScalingTemplateConfigHeuristic(
         kernel_inputs: KernelInputs,
         op_name: str,
         **kwargs,
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         """
         Generate main loop scaling kernel inputs.
         """
@@ -2897,7 +2895,7 @@ class ROCmScaledMMTemplateConfigHeuristic(ScaledMMConfigMixin, ROCmConfigHeurist
         # Override mm_configs to use scaled_mm_configs
         self.mm_configs = self.scaled_mm_configs
 
-    def _filter_configs(self, configs: list[BaseConfig]) -> list[BaseConfig]:
+    def _filter_configs(self, configs: List[BaseConfig]) -> List[BaseConfig]:
         configs = [c for c in configs if c.block_k >= 32]
         return super()._filter_configs(configs)
 

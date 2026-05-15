@@ -1,11 +1,11 @@
+from __future__ import annotations
 """torch.ops.aten operators under the `core` module."""
 # mypy: disable-error-code="misc,arg-type,type-arg,valid-type,assignment,return-value,type-var,operator,no-untyped-def,index"
 # pyrefly: ignore-errors
 # ruff: noqa: TC001
 
-from __future__ import annotations
 
-from typing import Sequence, TYPE_CHECKING  # noqa: UP035
+from typing import Optional, Sequence, TYPE_CHECKING, TYPE_CHECKING  # noqa: UP035, Tuple
 
 from onnxscript.onnx_opset import (  # type: ignore[attr-defined]
     opset20 as op20,
@@ -38,8 +38,8 @@ def aten_gelu_opset20(
 def aten_group_norm(
     input: TFloat,
     num_groups: int,
-    weight: TFloat | None = None,
-    bias: TFloat | None = None,
+    weight: Optional[TFloat]= None,
+    bias: Optional[TFloat]= None,
     eps: float = 1e-05,
     cudnn_enabled: bool = True,
 ) -> TFloat:
@@ -59,8 +59,8 @@ def aten_group_norm(
 def aten_rms_norm(
     input: TFloat,
     normalized_shape: Sequence[int],
-    weight: TFloat | None = None,
-    eps: float | None = None,
+    weight: Optional[TFloat]= None,
+    eps: Optional[float]= None,
 ) -> TFloat:
     """rms_norm(Tensor input, SymInt[] normalized_shape, Tensor? weight=None, float? eps=None) -> Tensor"""
 
@@ -91,10 +91,10 @@ def aten_scaled_dot_product_attention_23(
     query: TFloat,
     key: TFloat,
     value: TFloat,
-    attn_mask: TFloat | None = None,
+    attn_mask: Optional[TFloat]= None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
-    scale: float | None = None,
+    scale: Optional[float]= None,
     enable_gqa: bool = False,
 ) -> TFloat:
     """scaled_dot_product_attention(Tensor query, Tensor key, Tensor value, Tensor? attn_mask=None, float dropout_p=0.0, bool is_causal=False, *, float? scale=None, bool enable_gqa=False) -> Tensor
@@ -183,7 +183,7 @@ def aten_scaled_dot_product_attention_23(
 
 def _attention_repeat_kv_for_group_query(
     query: TFloat, key: TFloat, value: TFloat, op: Opset
-) -> tuple[TFloat, TFloat]:
+) -> Tuple[TFloat, TFloat]:
     """Expand key and value for group query attention.
 
     repeat_interleave is applied on key and value to match the number of heads in query.

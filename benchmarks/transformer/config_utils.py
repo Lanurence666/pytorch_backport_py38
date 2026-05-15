@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Configuration utilities for parsing JSON and YAML config files."""
 
 import json

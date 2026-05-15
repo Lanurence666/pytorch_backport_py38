@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from collections import defaultdict
-from collections.abc import Callable, Iterator, Sized
-from typing import Any, NoReturn, TypeVar
+from collections.abc import Sized
+from typing import Any, Callable, Iterable, Iterator, List, NoReturn, Optional, Type, TypeVar
 
 from torch.utils.data.datapipes._decorator import functional_datapipe
 from torch.utils.data.datapipes.datapipe import DataChunk, IterDataPipe
@@ -55,7 +57,7 @@ class BatcherIterDataPipe(IterDataPipe[DataChunk]):
         datapipe: IterDataPipe,
         batch_size: int,
         drop_last: bool = False,
-        wrapper_class: type[DataChunk] = DataChunk,
+        wrapper_class: Type[DataChunk] = DataChunk,
     ) -> None:
         if batch_size <= 0:
             raise AssertionError("Batch size is required to be larger than 0!")
@@ -200,8 +202,8 @@ class GrouperIterDataPipe(IterDataPipe[DataChunk]):
         *,
         keep_key: bool = False,
         buffer_size: int = 10000,
-        group_size: int | None = None,
-        guaranteed_group_size: int | None = None,
+        group_size: Optional[int]= None,
+        guaranteed_group_size: Optional[int]= None,
         drop_remaining: bool = False,
     ) -> None:
         _check_unpickable_fn(group_key_fn)

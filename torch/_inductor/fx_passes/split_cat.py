@@ -1,11 +1,17 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import itertools
 import logging
 import operator
 import os
 from collections import defaultdict
-from collections.abc import Callable, Sequence
-from typing import Any, TypeAlias
+from collections.abc import Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, Union
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 import torch
 from torch._dynamo.utils import counters
@@ -35,18 +41,18 @@ from .group_batch_fusion import is_node_meta_valid, POST_GRAD_FUSIONS, PRE_GRAD_
 
 log = logging.getLogger(__name__)
 
-_Arguments: TypeAlias = tuple[torch.fx.node.Argument, ...]
-_TransformParam: TypeAlias = tuple[
-    _Arguments | None,
-    _Arguments | None,
-    _Arguments | None,
-    _Arguments | None,
+_Arguments: TypeAlias = Tuple[torch.fx.node.Argument, ...]
+_TransformParam: TypeAlias = Tuple[
+    Optional[_Arguments],
+    Optional[_Arguments],
+    Optional[_Arguments],
+    Optional[_Arguments],
 ]
-_Range: TypeAlias = tuple[int, int]
+_Range: TypeAlias = Tuple[int, int]
 
 
-PRE_GRAD_PATTERNS: dict[str, PatternMatcherPass] = {}
-POST_GRAD_PATTERNS: dict[str, PatternMatcherPass] = {}
+PRE_GRAD_PATTERNS: Dict[str, PatternMatcherPass] = {}
+POST_GRAD_PATTERNS: Dict[str, PatternMatcherPass] = {}
 
 pre_grad_pass_names = [
     "normalization_pass",
@@ -165,7 +171,7 @@ def _get_dim(node: Any):
 def normalize_split_base(
     match: Match,
     _get_split_args: Callable[
-        [torch.fx.Node], tuple[torch.fx.Node | None, Any | None, int | None]
+        [torch.fx.Node], Tuple[Optional[torch.fx.Node], Optional[Any], Optional[int]]
     ],
 ):
     """
@@ -400,7 +406,7 @@ def normalize_stack_default(match: Match, *args, **kwargs):
     counters[backend]["normalization_pass"] += 1
 
 
-def find_next_users(split_node: torch.fx.Node) -> list[torch.fx.Node]:
+def find_next_users(split_node: torch.fx.Node) -> List[torch.fx.Node]:
     next_users = []
     for getitem_node in split_node.users:
         for getitem_user in getitem_node.users:
@@ -585,8 +591,8 @@ class TorchSplit(CallFunction):
 def merge_splits(
     match: Match,
     first_split_input: torch.fx.Node,
-    first_split_sections: list[int],
-    next_split_sections: list[int],
+    first_split_sections: List[int],
+    next_split_sections: List[int],
     # Note: dim is implicitly passed by TorchSplit, as it internally uses a pattern with dim
     dim: int,
 ):
@@ -684,7 +690,7 @@ class SplitCatSimplifier:
         self,
         graph: torch.fx.Graph,
         split_node: torch.fx.Node,
-        split_sections: list[int],
+        split_sections: List[int],
     ):
         # Find the next users (i.e. users after the getitem)
         next_users = find_next_users(split_node)
@@ -719,15 +725,15 @@ class SplitCatSimplifier:
         counters[backend]["unbind_stack_pass"] += 1
 
     def get_user_input_list(
-        self, split_node: torch.fx.Node, next_users: list[torch.fx.Node]
-    ) -> list[list[torch.fx.Node | _Range]]:
+        self, split_node: torch.fx.Node, next_users: List[torch.fx.Node]
+    ) -> List[List[Union[torch.fx.Node, _Range]]]:
         """
         Returns list of inputs to the following user nodes, in order. The outer list represents the user node. The inner
         list represents the inputs to that particular node. This list can either contain
           - a tuple representing the ranges of get_items that should go into the cat (closed interval)
           - torch.fx.Node representing "other" inputs (which are not coming from our split)
         """
-        user_inputs_list: list[list[torch.fx.Node | _Range]] = []
+        user_inputs_list: List[List[Union[torch.fx.Node, _Range]]] = []
         for user in next_users:
             if user.target in (torch.cat, torch.stack):
                 user_inputs_list.append(self.get_merged_user_inputs(split_node, user))
@@ -737,7 +743,7 @@ class SplitCatSimplifier:
 
     def get_merged_user_inputs(
         self, split_node: torch.fx.Node, cat_node: torch.fx.Node
-    ) -> list[torch.fx.Node | _Range]:
+    ) -> List[Union[torch.fx.Node, _Range]]:
         user_inputs = get_arg_value(cat_node, 0, "tensors")
         simplified_user_inputs = []
         split_users = OrderedSet(split_node.users.keys())
@@ -751,7 +757,7 @@ class SplitCatSimplifier:
 
     def get_non_cat_node_input(
         self, split_node: torch.fx.Node, node: torch.fx.Node
-    ) -> list[_Range]:
+    ) -> List[_Range]:
         """
         Get input for a non cat node in the same format as `get_merged_user_inputs`
         """
@@ -764,8 +770,8 @@ class SplitCatSimplifier:
         return node_input
 
     def merge_consecutive_inputs(
-        self, inputs: list[torch.fx.Node | int]
-    ) -> list[torch.fx.Node | _Range]:
+        self, inputs: List[Union[torch.fx.Node, int]]
+    ) -> List[Union[torch.fx.Node, _Range]]:
         """
         Merge consecutive inputs going into a user node.
 
@@ -797,8 +803,8 @@ class SplitCatSimplifier:
         self,
         split_sections,
         next_users,
-        user_inputs_list: list[list[torch.fx.Node | _Range]],
-    ) -> list[_Range] | None:
+        user_inputs_list: List[List[Union[torch.fx.Node, _Range]]],
+    ) -> Optional[List[_Range]]:
         ranges = OrderedSet[Any]()
         for user_inputs in user_inputs_list:
             ranges.update(u for u in user_inputs if isinstance(u, tuple))
@@ -821,13 +827,13 @@ class SplitCatSimplifier:
         )
         return split_ranges
 
-    def has_non_overlapping_ranges(self, ranges: list[_Range]) -> bool:
+    def has_non_overlapping_ranges(self, ranges: List[_Range]) -> bool:
         for range_, next_range in itertools.pairwise(ranges):
             if range_[1] > next_range[0]:
                 return False
         return True
 
-    def fill_gaps(self, ranges: list[_Range], min_: int, max_: int) -> list[_Range]:
+    def fill_gaps(self, ranges: List[_Range], min_: int, max_: int) -> List[_Range]:
         cur = min_
         filled_ranges = []
         for a, b in ranges:
@@ -842,9 +848,9 @@ class SplitCatSimplifier:
     def get_transform_params(
         self,
         split_node: torch.fx.Node,
-        next_users: list[torch.fx.Node],
-        user_inputs_list: list[list[torch.fx.Node | _Range]],
-    ) -> list[list[_TransformParam]] | None:
+        next_users: List[torch.fx.Node],
+        user_inputs_list: List[List[Union[torch.fx.Node, _Range]]],
+    ) -> List[List[_TransformParam]] | None:
         """
         Figure out what transforms are needed for each input to each cat node.
 
@@ -852,7 +858,7 @@ class SplitCatSimplifier:
         """
         split_dim = _get_dim(split_node)
         split_sections = split_node.args[1]
-        transform_params_list: list[list[_TransformParam]] = []
+        transform_params_list: List[List[_TransformParam]] = []
 
         for user_node, user_inputs in zip(next_users, user_inputs_list):
             if user_node.target not in (torch.cat, torch.stack):
@@ -860,7 +866,7 @@ class SplitCatSimplifier:
                 continue
 
             cat_dim = get_arg_value(user_node, 1, "dim")
-            transform_params: list[_TransformParam] = []
+            transform_params: List[_TransformParam] = []
             for user_input in user_inputs:
                 if split_dim == cat_dim and user_node.target is torch.cat:
                     # No transform needed
@@ -897,10 +903,10 @@ class SplitCatSimplifier:
         self,
         graph: torch.fx.Graph,
         split_node: torch.fx.Node,
-        split_sections: list[int],
-        user_inputs_list: list[list[torch.fx.Node | _Range]],
-        split_ranges: list[_Range],
-    ) -> list[list[torch.fx.Node]]:
+        split_sections: List[int],
+        user_inputs_list: List[List[Union[torch.fx.Node, _Range]]],
+        split_ranges: List[_Range],
+    ) -> List[List[torch.fx.Node]]:
         """
         Replace the split node. It can either remove the split node if len(split_ranges) == 1, or simplify it
         into a split with lesser sections if len(split_ranges) > 1.
@@ -965,9 +971,9 @@ class SplitCatSimplifier:
         self,
         graph: torch.fx.Graph,
         split_node: torch.fx.Node,
-        next_users: list[torch.fx.Node],
+        next_users: List[torch.fx.Node],
         user_inputs_list_new,
-        transform_params_list: list[list[_TransformParam]],
+        transform_params_list: List[List[_TransformParam]],
     ):
         split_dim = _get_dim(split_node)
         split_users = split_node.users.keys()
@@ -1126,7 +1132,7 @@ class SplitCatSimplifier:
         self,
         graph: torch.fx.Graph,
         split_node: torch.fx.Node,
-        next_users: list[torch.fx.Node],
+        next_users: List[torch.fx.Node],
     ):
         to_remove = [split_node]
         counters[backend]["scmerge_split_removed"] += 1
@@ -1171,10 +1177,10 @@ class UnbindCatRemover(SplitCatSimplifier):
 
     def get_simplified_split_ranges(
         self,
-        split_sections: list[int],
-        next_users: list[torch.fx.Node],
-        user_inputs_list: list[list[torch.fx.Node | _Range]],
-    ) -> list[_Range] | None:
+        split_sections: List[int],
+        next_users: List[torch.fx.Node],
+        user_inputs_list: List[List[Union[torch.fx.Node, _Range]]],
+    ) -> Optional[List[_Range]]:
         simplified_split_ranges = super().get_simplified_split_ranges(
             split_sections, next_users, user_inputs_list
         )
@@ -1185,9 +1191,9 @@ class UnbindCatRemover(SplitCatSimplifier):
     def get_transform_params(
         self,
         split_node: torch.fx.Node,
-        next_users: list[torch.fx.Node],
-        user_inputs_list: list[list[torch.fx.Node | _Range]],
-    ) -> list[list[_TransformParam]] | None:
+        next_users: List[torch.fx.Node],
+        user_inputs_list: List[List[Union[torch.fx.Node, _Range]]],
+    ) -> List[List[_TransformParam]] | None:
         """
         Figure out what transforms are needed for each input to each cat node.
 
@@ -1210,10 +1216,10 @@ class UnbindCatRemover(SplitCatSimplifier):
 
         """
         split_dim = _get_dim(split_node)
-        transform_params_list: list[list[_TransformParam]] = []
+        transform_params_list: List[List[_TransformParam]] = []
         for user_node, user_inputs in zip(next_users, user_inputs_list):
             cat_dim = get_arg_value(user_node, 1, "dim") or 0
-            transform_params: list[_TransformParam] = []
+            transform_params: List[_TransformParam] = []
             for user_input in user_inputs:
                 if isinstance(user_input, tuple):
                     # User input is coming from unbind
@@ -1291,7 +1297,7 @@ class GetItem(CallFunction):
     pass_dict=construct_pattern_matcher_pass("split_cat_pass"),
 )
 def merge_split_squeeze(
-    match: Match, split_input: torch.fx.Node, split_sizes: list[int], dim: int
+    match: Match, split_input: torch.fx.Node, split_sizes: List[int], dim: int
 ):
     graph = match.graph
     split = next(node for node in match.nodes if node.target is torch.split)
@@ -1421,7 +1427,7 @@ reshape_getitem_split = ListOf(
     ),
     pass_dict=construct_pattern_matcher_pass("split_cat_pass"),
 )
-def simplify_split_cat(match: Match, split_sections: list[int], dim: int):
+def simplify_split_cat(match: Match, split_sections: List[int], dim: int):
     if not isinstance(split_sections, (list, tuple)):  # Unnormalized split
         return
     split_node = next(node for node in match.nodes if node.target is torch.split)
@@ -1460,7 +1466,7 @@ def has_same_parent_node(node: torch.fx.Node):
     return True
 
 
-def remove_zeros(split_sections: list[int]):
+def remove_zeros(split_sections: List[int]):
     """
     Remove zeros from the list and get the index mapping dict from getitem
     in split node to getitem in new split node
@@ -1476,7 +1482,7 @@ def remove_zeros(split_sections: list[int]):
     return new_split_sections, index_mapping
 
 
-def is_sorted_and_consecutive(arr: list[int]) -> bool:
+def is_sorted_and_consecutive(arr: List[int]) -> bool:
     # check if the array is sorted
     if arr == sorted(arr):
         # check if the differences between adjacent elements are all 1
@@ -1485,7 +1491,7 @@ def is_sorted_and_consecutive(arr: list[int]) -> bool:
         return False
 
 
-def calculate_fused_tensor_size(split_node: torch.fx.Node, indices: list[int]) -> int:
+def calculate_fused_tensor_size(split_node: torch.fx.Node, indices: List[int]) -> int:
     """
     Calculate the fused tensor size in the indices
     """
@@ -1506,7 +1512,7 @@ def calculate_fused_tensor_size(split_node: torch.fx.Node, indices: list[int]) -
     ),
     pass_dict=construct_pattern_matcher_pass("merge_getitem_cat_pass"),
 )
-def merge_getitem_cat(match: Match, split_sections: list[int], dim: int):
+def merge_getitem_cat(match: Match, split_sections: List[int], dim: int):
     if not isinstance(split_sections, (list, tuple)):  # Unnormalized split
         return
     graph = match.graph
@@ -1613,7 +1619,7 @@ def merge_getitem_cat(match: Match, split_sections: list[int], dim: int):
     ),
     pass_dict=construct_pattern_matcher_pass("mutate_cat_pass"),
 )
-def mutate_cat_node(match: Match, split_sections: list[int], dim: int):
+def mutate_cat_node(match: Match, split_sections: List[int], dim: int):
     if not isinstance(split_sections, (list, tuple)):  # Unnormalized split
         return
     graph = match.graph
@@ -2050,7 +2056,7 @@ def merge_unbind_stack_aten(match: Match, *args, **kwargs):
     counters[backend]["unbind_stack_aten_pass"] += 1
 
 
-def divide_into_consecutive_sublists(indices: list[int]) -> list[list[int]]:
+def divide_into_consecutive_sublists(indices: List[int]) -> List[List[int]]:
     n = len(indices)
     if n <= 1:
         return [indices]
@@ -2082,11 +2088,11 @@ def divide_into_consecutive_sublists(indices: list[int]) -> list[list[int]]:
 def update_args_from_split_getitem(
     graph: torch.fx.Graph,
     node: torch.fx.Node,
-    getitem_indices: list[int],
-    parents_seen: list[torch.fx.Node],
-    new_cat_args: list[torch.fx.Node],
-    new_cat_args_meta: list[torch.fx.Node],
-    idx_to_getitems: dict[int, torch.fx.Node],
+    getitem_indices: List[int],
+    parents_seen: List[torch.fx.Node],
+    new_cat_args: List[torch.fx.Node],
+    new_cat_args_meta: List[torch.fx.Node],
+    idx_to_getitems: Dict[int, torch.fx.Node],
     threshold_to_cat: int = 2,
 ):
     split_input, split_size, split_dim = _get_split_args_default(parents_seen[-1])
@@ -2175,11 +2181,11 @@ def reshape_cat_node(
 def update_args_from_unbind_getitem(
     graph: torch.fx.Graph,
     node: torch.fx.Node,  # cat or stack node
-    getitem_indices: list[int],
-    parents_seen: list[torch.fx.Node],
-    new_cat_args: list[torch.fx.Node],
-    new_cat_args_meta: list[torch.fx.Node],
-    idx_to_getitems: dict[int, torch.fx.Node],
+    getitem_indices: List[int],
+    parents_seen: List[torch.fx.Node],
+    new_cat_args: List[torch.fx.Node],
+    new_cat_args_meta: List[torch.fx.Node],
+    idx_to_getitems: Dict[int, torch.fx.Node],
     threshold_to_cat: int = 2,
 ):
     unbind_input = get_arg_value(parents_seen[-1], 0, "input")  # split or unbind input
@@ -2242,11 +2248,11 @@ def update_args_from_unbind_getitem(
 def construct_cat_args(
     graph: torch.fx.Graph,
     cat_or_stack_node: torch.fx.Node,
-    inputs: list[torch.fx.Node],
+    inputs: List[torch.fx.Node],
     split_or_unbind_node: torch.fx.Node,
     threshold_to_cat: int = 2,
     run_update_func: Callable = update_args_from_split_getitem,  # type: ignore[type-arg]
-) -> tuple[list[torch.fx.Node], list[torch.Tensor]]:
+) -> Tuple[List[torch.fx.Node], List[torch.Tensor]]:
     new_cat_args, parents_seen, getitem_indices, idx_to_getitems = [], [], [], {}  # type: ignore[var-annotated]
     new_cat_args_meta = []  # type: ignore[var-annotated]
     for input in inputs:
@@ -2311,7 +2317,7 @@ def construct_cat_args(
     return new_cat_args, new_cat_args_meta
 
 
-def remove_split_unbind_children(graph: torch.fx.Graph, inputs: list[torch.fx.Node]):
+def remove_split_unbind_children(graph: torch.fx.Graph, inputs: List[torch.fx.Node]):
     nodes = OrderedSet[Any]()
     for input in inputs:
         if input.target is operator.getitem:
@@ -2349,7 +2355,7 @@ def remove_split_unbind_children(graph: torch.fx.Graph, inputs: list[torch.fx.No
     ),
     pass_dict=construct_pattern_matcher_pass("split_cat_to_slices_pass"),
 )
-def split_cat_to_slices(match: Match, split_sections: list[int], dim: int):
+def split_cat_to_slices(match: Match, split_sections: List[int], dim: int):
     if not isinstance(split_sections, (list, tuple)):  # Unnormalized split
         return
     split_nodes = [node for node in match.nodes if node.target is torch.split]
@@ -2606,7 +2612,7 @@ def convert_reshape_cat_arg_to_stack(
     ),
     pass_dict=construct_pattern_matcher_pass("split_stack_to_cats_pass"),
 )
-def split_stack_to_cats(match: Match, split_sections: list[int], dim: int):
+def split_stack_to_cats(match: Match, split_sections: List[int], dim: int):
     if not isinstance(split_sections, (list, tuple)):  # Unnormalized split
         return
     split_node = next(node for node in match.nodes if node.target is torch.split)
@@ -2746,7 +2752,7 @@ def unbind_stack_to_slices(match: Match, unbind_input: torch.fx.Node, dim: int):
 #                           |
 
 
-def get_view_shape_list(cat_arg: torch.fx.Node, stack_dim: int) -> list[int]:
+def get_view_shape_list(cat_arg: torch.fx.Node, stack_dim: int) -> List[int]:
     # cat_arg must be the split input
     view_shape_list = []
     for user in cat_arg.users:

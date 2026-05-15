@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List
 """This file exports ONNX ops for opset 19.
 
 Note [ONNX Operators that are added/updated in opset 19]
@@ -28,4 +30,4 @@ Size
 # EDITING THIS FILE? READ THIS FIRST!
 # see Note [Edit Symbolic Files] in symbolic_helper.py
 
-__all__: list[str] = []
+__all__: List[str] = []

@@ -1,9 +1,10 @@
+from __future__ import annotations
 import csv
 import random
 import sys
 from collections.abc import Generator
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Tuple
 
 
 sys.path.append(str(Path(__file__).absolute().parents[1]))
@@ -44,8 +45,8 @@ class BenchmarkRunnerPadMM(BenchmarkRunner):  # type: ignore[misc, no-any-unimpo
         )
 
         # Initialize additional_shape_collections
-        self.additional_shape_collections: list[
-            list[tuple[int, int, int, torch.dtype, torch.dtype]]
+        self.additional_shape_collections: List[
+            List[Tuple[int, int, int, torch.dtype, torch.dtype]]
         ] = []
 
         # Initialize the shape generator (will be set up after parsing args)
@@ -53,7 +54,7 @@ class BenchmarkRunnerPadMM(BenchmarkRunner):  # type: ignore[misc, no-any-unimpo
 
     def load_shapes_from_csv(
         self, csv_file: str
-    ) -> list[tuple[int, int, int, torch.dtype, torch.dtype]]:
+    ) -> List[Tuple[int, int, int, torch.dtype, torch.dtype]]:
         """Load matrix multiplication shapes from a CSV file in M,K,N,dtype format."""
         shapes = []
         dtype_map = {
@@ -86,7 +87,7 @@ class BenchmarkRunnerPadMM(BenchmarkRunner):  # type: ignore[misc, no-any-unimpo
 
         return shapes
 
-    def setup_shape_collections(self, csv_files: list[str]) -> None:
+    def setup_shape_collections(self, csv_files: List[str]) -> None:
         """Setup additional shape collections from CSV files and built-in collection."""
         self.additional_shape_collections = []
 
@@ -99,7 +100,7 @@ class BenchmarkRunnerPadMM(BenchmarkRunner):  # type: ignore[misc, no-any-unimpo
         self.additional_shape_collections.append(collect_known_mm_shapes())
         self.shape_generator = self.generate_mm_shapes()
 
-    def generate_mm_shapes(self) -> Generator[tuple[int, int, int, Any], None, None]:
+    def generate_mm_shapes(self) -> Generator[Tuple[int, int, int, Any], None, None]:
         """Generator that yields (m, k, n, dtype) tuples for matrix multiplication.
 
         First exhausts all shapes from additional_shape_collections, then generates random shapes.
@@ -146,7 +147,7 @@ class BenchmarkRunnerPadMM(BenchmarkRunner):  # type: ignore[misc, no-any-unimpo
                     yield (m, k, n, dtype)
                     break
 
-    def create_input(self) -> tuple[Any, ...]:
+    def create_input(self) -> Tuple[Any, ...]:
         # Get the next shape from the generator
         m, k, n, dtype = next(self.shape_generator)
         set_precision(dtype)

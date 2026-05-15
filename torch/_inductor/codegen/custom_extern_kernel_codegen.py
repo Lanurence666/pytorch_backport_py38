@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Custom extern kernel codegen registry.
 
@@ -23,14 +24,13 @@ Usage:
     codegen.python(node, writeline)  # Direct attribute access
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Type
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
 
     from .. import ir
 
@@ -71,8 +71,8 @@ def generate_print_python(
         print('x = {x}, y = {y}'.format(x=buf0, y=buf1))
         print('x = {}, y = {y}'.format(buf0, y=buf1))
     """
-    codegen_args: list[str] = node.codegen_args()
-    codegen_kwargs: list[str] = node.codegen_kwargs()
+    codegen_args: List[str] = node.codegen_args()
+    codegen_kwargs: List[str] = node.codegen_kwargs()
 
     # First arg is the format string
     if not codegen_args:
@@ -94,7 +94,7 @@ def generate_print_python(
 
 # Registry mapping operator names to their custom codegen implementations
 # Usage: CUSTOM_EXTERN_KERNEL_CODEGEN[op_name].python(node, writeline)
-CUSTOM_EXTERN_KERNEL_CODEGEN: dict[str, CustomCodegen] = {
+CUSTOM_EXTERN_KERNEL_CODEGEN: Dict[str, CustomCodegen] = {
     "torch.ops.higher_order.print": CustomCodegen(
         python=generate_print_python,
     ),

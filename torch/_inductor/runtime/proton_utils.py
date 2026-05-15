@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Utilities for post-processing Triton Proton profiling trace files.
 
@@ -9,18 +10,18 @@ import gzip
 import json
 import os
 import re
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from torch.utils._ordered_set import OrderedSet
 
 
-def _write_trace(path: str, data: dict[str, Any]) -> None:
+def _write_trace(path: str, data: Dict[str, Any]) -> None:
     """Write trace data to a gzipped JSON file."""
     with gzip.open(path, "wt", encoding="utf-8") as f:
         json.dump(data, f)
 
 
-def _read_trace(path: str) -> dict[str, Any]:
+def _read_trace(path: str) -> Dict[str, Any]:
     """Read trace data from a JSON file (gzipped or not)."""
     if path.endswith(".gz"):
         with gzip.open(path, "rt", encoding="utf-8") as f:
@@ -39,7 +40,7 @@ def _get_base_name(trace_path: str) -> str:
     return os.path.splitext(base_name)[0]
 
 
-def _group_events_by_sm(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _group_events_by_sm(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Group events so all CTAs on the same SM share one track.
 
@@ -65,8 +66,8 @@ def _group_events_by_sm(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _group_events_per_cta_occupancy(
-    events: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    events: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
     """
     Process warp events into CTA-level events with slot assignment.
 
@@ -76,7 +77,7 @@ def _group_events_per_cta_occupancy(
     core_cta_pattern = re.compile(r"^(.*?)\s*(Core\d+)\s+(CTA\d+)$")
 
     # Group events by (prefix, SM, CTA)
-    cta_events: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    cta_events: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = {}
 
     for event in events:
         pid = event.get("pid", "")
@@ -91,7 +92,7 @@ def _group_events_per_cta_occupancy(
             cta_events[key].append(event)
 
     # For each CTA, compute min start and max end
-    cta_intervals: dict[tuple[str, str, str], tuple[float, float]] = {}
+    cta_intervals: Dict[Tuple[str, str, str], Tuple[float, float]] = {}
     for key, evts in cta_events.items():
         min_start = float("inf")
         max_end = float("-inf")
@@ -104,7 +105,7 @@ def _group_events_per_cta_occupancy(
             cta_intervals[key] = (min_start, max_end)
 
     # Group CTAs by (prefix, SM) and assign to slots
-    sm_ctas: dict[tuple[str, str], list[tuple[str, float, float]]] = {}
+    sm_ctas: Dict[Tuple[str, str], List[Tuple[str, float, float]]] = {}
     for (prefix, core, cta), (start, end) in cta_intervals.items():
         sm_key = (prefix, core)
         if sm_key not in sm_ctas:
@@ -112,11 +113,11 @@ def _group_events_per_cta_occupancy(
         sm_ctas[sm_key].append((cta, start, end))
 
     # Assign CTAs to slots using interval scheduling (greedy)
-    cta_slot_assignments: dict[tuple[str, str, str], int] = {}
+    cta_slot_assignments: Dict[Tuple[str, str, str], int] = {}
     for sm_key, ctas in sm_ctas.items():
         prefix, core = sm_key
         sorted_ctas = sorted(ctas, key=lambda x: x[1])
-        slots: list[float] = []
+        slots: List[float] = []
         for cta, start, end in sorted_ctas:
             assigned_slot = None
             for i, slot_end in enumerate(slots):
@@ -131,8 +132,8 @@ def _group_events_per_cta_occupancy(
 
     # Build numeric ID mappings for pids and tids
     # Chrome trace format requires numeric pid/tid values
-    pid_names: dict[str, int] = {}
-    tid_names: dict[tuple[int, str], int] = {}  # (pid, tid_name) -> tid_num
+    pid_names: Dict[str, int] = {}
+    tid_names: Dict[Tuple[int, str], int] = {}  # (pid, tid_name) -> tid_num
 
     for key in cta_intervals:
         prefix, core, cta = key
@@ -140,7 +141,7 @@ def _group_events_per_cta_occupancy(
         if pid_name not in pid_names:
             pid_names[pid_name] = len(pid_names)
 
-    new_events: list[dict[str, Any]] = []
+    new_events: List[Dict[str, Any]] = []
 
     # Add process name metadata events
     for pid_name, pid_num in pid_names.items():
@@ -193,8 +194,8 @@ def _group_events_per_cta_occupancy(
 
 
 def _apply_grouping(
-    events: list[dict[str, Any]], group_by_sm: bool, per_cta_occupancy: bool
-) -> list[dict[str, Any]]:
+    events: List[Dict[str, Any]], group_by_sm: bool, per_cta_occupancy: bool
+) -> List[Dict[str, Any]]:
     """Apply grouping transformation to events."""
     if per_cta_occupancy:
         return _group_events_per_cta_occupancy(events)
@@ -204,15 +205,15 @@ def _apply_grouping(
 
 
 def _split_events_by_invocation(
-    events: list[dict[str, Any]],
+    events: List[Dict[str, Any]],
     gap_threshold_ns: float = 1000.0,
-) -> list[list[dict[str, Any]]]:
+) -> List[List[Dict[str, Any]]]:
     """Split events into separate invocations based on time gaps."""
     if not events:
         return []
 
     events_sorted = sorted(events, key=lambda e: e.get("ts", 0))
-    invocations: list[list[dict[str, Any]]] = [[]]
+    invocations: List[List[Dict[str, Any]]] = [[]]
     prev_end = events_sorted[0].get("ts", 0)
 
     for event in events_sorted:
@@ -227,8 +228,8 @@ def _split_events_by_invocation(
 
 
 def _normalize_timestamps(
-    events: list[dict[str, Any]], scale_factor: float = 1.0
-) -> list[dict[str, Any]]:
+    events: List[Dict[str, Any]], scale_factor: float = 1.0
+) -> List[Dict[str, Any]]:
     """Normalize timestamps to start at 0 and optionally scale."""
     if not events:
         return events
@@ -250,13 +251,13 @@ def _normalize_timestamps(
 
 def process_proton_trace(
     trace_path: str,
-    output_dir: str | None = None,
+    output_dir: Optional[str]= None,
     group_by_sm: bool = True,
     split_invocations: bool = True,
     scale_factor: float = 1.0,
     gap_threshold_ns: float = 1000.0,
     per_cta_occupancy: bool = True,
-) -> list[str]:
+) -> List[str]:
     """
     Process a proton trace file with various transformations.
 
@@ -298,7 +299,7 @@ def process_proton_trace(
 
     # Write complete trace (dedupe metadata events)
     complete_events = []
-    seen_metadata: OrderedSet[tuple[str | None, int | None, int | None]] = OrderedSet()
+    seen_metadata: Union[OrderedSet[Tuple[str, None, int, None, int, None]]]= OrderedSet()
     for inv_events in invocations:
         for event in inv_events:
             if event.get("ph") == "M":

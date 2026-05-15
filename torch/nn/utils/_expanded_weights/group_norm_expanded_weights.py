@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import operator
 from functools import reduce
 
@@ -52,7 +54,7 @@ class GroupNormPerSampleGrad(torch.autograd.Function):
         weight, bias, eps = ctx.weight, ctx.bias, ctx.eps
         mean, rstd = ctx.mean, ctx.rstd
 
-        results: list[torch.Tensor | None] = []
+        results: Union[List[torch.Tensor, None]]= []
         results.append(None)  # for kwarg names
         results.append(None)  # for op reference
 

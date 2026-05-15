@@ -1,4 +1,5 @@
 # Owner(s): ["module: fsdp"]
+from __future__ import annotations
 import functools
 import gc
 

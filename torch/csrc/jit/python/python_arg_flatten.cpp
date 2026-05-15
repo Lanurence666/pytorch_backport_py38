@@ -4,6 +4,7 @@
 #include <torch/csrc/utils/structseq.h>
 
 #include <torch/csrc/autograd/grad_mode.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 namespace torch::jit::python {
 

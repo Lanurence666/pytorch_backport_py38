@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+from typing import Dict, List, Tuple, Union
 import random
 from dataclasses import dataclass
 
@@ -30,7 +32,7 @@ def _get_cached_operators():
 
 
 def _get_template_filtered_operators(
-    template: str = "default", supported_ops: list[str] | None = None
+    template: str = "default", supported_ops: Union[List[str], None] = None
 ):
     """Get operators filtered by template's supported_ops, with user override.
 
@@ -106,9 +108,9 @@ class OperationNode:
 
     node_id: str
     op_name: str
-    input_specs: list[Spec]
+    input_specs: List[Spec]
     output_spec: Spec
-    input_nodes: list[str]
+    input_nodes: List[str]
     depth: int
 
     def __str__(self) -> str:
@@ -137,7 +139,7 @@ class OperationGraph:
         target_spec: The specification that the root node should produce
     """
 
-    nodes: dict[str, OperationNode]
+    nodes: Dict[str, OperationNode]
     root_node_id: str  # The output node - produces the final result of the graph
     target_spec: Spec
 
@@ -146,7 +148,7 @@ class OperationGraph:
         if self.root_node_id not in self.nodes:
             raise ValueError(f"Root node {self.root_node_id} not found in nodes")
 
-    def get_topological_order(self) -> list[str]:
+    def get_topological_order(self) -> List[str]:
         """
         Get nodes in topological order (dependencies before dependents).
 
@@ -182,11 +184,11 @@ class OperationGraph:
 
         return result
 
-    def get_leaf_nodes(self) -> list[str]:
+    def get_leaf_nodes(self) -> List[str]:
         """Get all leaf nodes (nodes with no inputs)."""
         return [node_id for node_id, node in self.nodes.items() if not node.input_nodes]
 
-    def get_node_dependencies(self, node_id: str) -> list[str]:
+    def get_node_dependencies(self, node_id: str) -> List[str]:
         """Get all nodes that this node depends on (transitive closure)."""
         visited = set()
         dependencies = []
@@ -256,8 +258,8 @@ def fuzz_op(
     depth,
     stack_size,
     template: str = "default",
-    supported_ops: list[str] | None = None,
-) -> tuple[str, list[Spec]]:
+    supported_ops: Union[List[str], None] = None,
+) -> Tuple[str, List[Spec]]:
     """
     Given an output specification, returns an operation that can
     produce a tensor with that layout using the operator class system.
@@ -396,7 +398,7 @@ def fuzz_op(
 _next_arg_id = 0
 
 
-def _get_arg_args_specs(target_spec: Spec) -> tuple[str, list[Spec]]:
+def _get_arg_args_specs(target_spec: Spec) -> Tuple[str, List[Spec]]:
     """Get argument specifications for arg operation."""
     global _next_arg_id
 
@@ -411,9 +413,9 @@ def _get_arg_args_specs(target_spec: Spec) -> tuple[str, list[Spec]]:
 def fuzz_operation_graph(
     target_spec: Spec,
     max_depth: int = 7,
-    seed: int | None = None,
+    seed: Union[int, None] = None,
     template: str = "default",
-    supported_ops: list[str] | None = None,
+    supported_ops: Union[List[str], None] = None,
 ) -> OperationGraph:
     """
     Generate a graph of operations that produces the target specification.
@@ -445,7 +447,7 @@ def fuzz_operation_graph(
     node_counter = 0
 
     # Dictionary to store all nodes: node_id -> OperationNode
-    nodes: dict[str, OperationNode] = {}
+    nodes: Dict[str, OperationNode] = {}
 
     def _generate_node(spec: Spec, depth: int, stack_size: int = 0) -> str:
         """

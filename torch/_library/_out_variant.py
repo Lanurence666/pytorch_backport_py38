@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 import torch
+from typing import Dict, List, Optional, overload
 
 
 log = logging.getLogger(__name__)
@@ -10,7 +11,7 @@ log = logging.getLogger(__name__)
 
 # Manual registry for ops whose out variant is not discoverable via
 # to_out_variant() (e.g. flat _out naming instead of .out overload).
-_manual_out_variant_registry: dict[torch._ops.OpOverload, torch._ops.OpOverload] = {}
+_manual_out_variant_registry: Dict[torch._ops.OpOverload, torch._ops.OpOverload] = {}
 
 
 def register_out_variant(
@@ -23,7 +24,7 @@ def register_out_variant(
 
 def lookup_manual_out_variant(
     op: torch._ops.OpOverload,
-) -> torch._ops.OpOverload | None:
+) -> Optional[torch._ops.OpOverload]:
     """Return the manually registered out variant for op, or None."""
     return _manual_out_variant_registry.get(op)
 
@@ -64,7 +65,7 @@ def _signatures_match(
 
 def _has_valid_out_variant_returns(
     schema: torch._C.FunctionSchema,
-    mutable_args: list[torch._C.Argument],
+    mutable_args: List[torch._C.Argument],
 ) -> bool:
     """Out variant must return either nothing or the mutable args themselves."""
     if len(schema.returns) == 0:
@@ -82,13 +83,13 @@ def _has_valid_out_variant_returns(
     return True
 
 
-def get_out_arg_names(out_op: torch._ops.OpOverload) -> list[str]:
+def get_out_arg_names(out_op: torch._ops.OpOverload) -> List[str]:
     """Get the names of out arguments for an out variant op."""
     schema = out_op._schema
     return [arg.name for arg in schema.arguments if _is_mutable_arg(arg)]
 
 
-def to_out_variant(op: torch._ops.OpOverload) -> torch._ops.OpOverload | None:
+def to_out_variant(op: torch._ops.OpOverload) -> Optional[torch._ops.OpOverload]:
     """
     Given a functional operator overload, return its corresponding out variant.
     """
@@ -170,7 +171,7 @@ def _get_out_variants_info(functional_op) -> str:
     op_name = functional_op._schema.name.split("::")[1]
     torch_packet = getattr(getattr(torch.ops, namespace), op_name)
 
-    overloads_info: list[str] = []
+    overloads_info: List[str] = []
     for overload_name in torch_packet.overloads():
         candidate = getattr(torch_packet, overload_name)
         # pyrefly: ignore [missing-attribute]

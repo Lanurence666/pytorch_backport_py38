@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import collections
 import copy
 import dis
@@ -9,10 +11,10 @@ import sys
 import traceback
 import types
 from collections import OrderedDict
-from collections.abc import Callable, Iterator
+
 from dataclasses import fields, is_dataclass
-from typing import Any, cast, TypeVar
-from typing_extensions import Never
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, cast, overload
+from typing_extensions import NamedTuple, Never
 
 import torch
 import torch.fx.traceback as fx_traceback
@@ -68,7 +70,7 @@ def _is_arbitrary_callable(obj: object) -> bool:
 
 
 def _find_arbitrary_callable(
-    args: tuple[object, ...], kwargs: dict[str, object]
+    args: Tuple[object, ...], kwargs: Dict[str, object]
 ) -> object:
     """
     Recursively searches args and kwargs for any arbitrary callable.
@@ -169,19 +171,6 @@ _COPY_META_FIELDS = [
 ]
 
 
-# Set of (filename, co_name) pairs registered as user-code anchors. Frames
-# matching any entry are preserved by ``_filter_traceback_frames`` when
-# ``_record_forward_stack_traces_only`` is True. Populated via
-# ``_register_stack_trace_anchor`` (e.g. by ``annotate_fn``).
-_STACK_TRACE_ANCHORS: set[tuple[str, str]] = set()
-
-
-def _register_stack_trace_anchor(fn: Callable[..., Any]) -> None:
-    code = getattr(fn, "__code__", None)
-    if code is not None:
-        _STACK_TRACE_ANCHORS.add((code.co_filename, code.co_name))
-
-
 @compatibility(is_backward_compatible=True)
 class TracerBase:
     graph: Graph
@@ -206,20 +195,20 @@ class TracerBase:
     scope: Scope
 
     # Records the module call stack
-    module_stack: OrderedDict[str, tuple[str, Any]]
+    module_stack: OrderedDict[str, Tuple[str, Any]]
 
     # Mapping of node name to module scope
-    node_name_to_scope: dict[str, tuple[str, type]]
+    node_name_to_scope: Dict[str, Tuple[str, type]]
 
     @compatibility(is_backward_compatible=True)
     def create_node(
         self,
         kind: str,
         target: Target,
-        args: tuple[Argument, ...],
-        kwargs: dict[str, Argument],
-        name: str | None = None,
-        type_expr: Any | None = None,
+        args: Tuple[Argument, ...],
+        kwargs: Dict[str, Argument],
+        name: Optional[str]= None,
+        type_expr: Optional[Any]= None,
     ) -> Node:
         """
         Inserts a graph node given target, args, kwargs, and name.
@@ -243,7 +232,7 @@ class TracerBase:
 
         # Optionally set stack trace on the created Node for debugging purposes
         if fx_traceback.has_preserved_node_meta():
-            current_meta: dict[str, Any] = fx_traceback.get_current_meta()
+            current_meta: Dict[str, Any] = fx_traceback.get_current_meta()
 
             stack_trace = current_meta.get("stack_trace")
             if stack_trace:
@@ -269,7 +258,7 @@ class TracerBase:
             # See Note [Functionalization View Replay Annotation]
             # Overriding some node meta with the original node meta of the
             # regenerated node.
-            replay_node: Node | None = fx_traceback.get_current_replay_node()
+            replay_node: Optional[Node]= fx_traceback.get_current_replay_node()
             if replay_node is not None:
                 node.meta["is_functional_regenerated"] = True
                 if "custom" in replay_node.meta:
@@ -298,7 +287,7 @@ class TracerBase:
     ) -> traceback.StackSummary:
         # This method can be overridden to customize the frame filtering logic
         # for the recorded stack trace
-        user_frames: list[traceback.FrameSummary] = []
+        user_frames: List[traceback.FrameSummary] = []
         if self._record_forward_stack_traces_only:
             user_frames = [
                 frame
@@ -306,7 +295,6 @@ class TracerBase:
                 if (
                     frame.name == "forward"
                     or frame.filename.endswith("torch/__init__.py")
-                    or (frame.filename, frame.name) in _STACK_TRACE_ANCHORS
                 )
             ]
         else:
@@ -320,7 +308,7 @@ class TracerBase:
             # Not having a "forward" call in the stacktrace implies the
             # stacktrace will probably be irrelevant
             if first_forward == -1:
-                user_frames: list[traceback.FrameSummary] = []
+                user_frames: List[traceback.FrameSummary] = []
 
         from torch.fx.experimental.symbolic_shapes import uninteresting_files
 
@@ -341,11 +329,11 @@ class TracerBase:
         self,
         kind: str,
         target: Target,
-        args: tuple[Any, ...],
-        kwargs: dict[str, Any],
-        name: str | None = None,
-        type_expr: Any | None = None,
-        proxy_factory_fn: Callable[[Node], "Proxy"] | None = None,
+        args: Tuple[Any, ...],
+        kwargs: Dict[str, Any],
+        name: Optional[str]= None,
+        type_expr: Optional[Any]= None,
+        proxy_factory_fn: Optional[Callable[[Node], "Proxy"]]= None,
     ) -> "Proxy":
         """
         Create a Node from the given arguments, then return the Node
@@ -373,7 +361,7 @@ class TracerBase:
 
         return proxy
 
-    def _find_user_frame(self) -> types.FrameType | None:
+    def _find_user_frame(self) -> Optional[types.FrameType]:
         """
         Find the Python stack frame executing the user code during
         symbolic tracing.
@@ -520,7 +508,7 @@ class TracerBase:
         return Attribute(obj, "keys")()
 
 
-def _get_seq_nr(node_name: str = "") -> int | None:
+def _get_seq_nr(node_name: str = "") -> Optional[int]:
     """
     Returns the seq_nr node meta for the current proxy node that we're creating.
     The seq_nr number in node meta is related to but not the same as the "sequence number"
@@ -536,7 +524,7 @@ def _get_seq_nr(node_name: str = "") -> int | None:
 
     `node_name` is the name of the node that we're creating. It is used for logging only.
     """
-    current_meta: dict[str, Any] = fx_traceback.get_current_meta()
+    current_meta: Dict[str, Any] = fx_traceback.get_current_meta()
     new_seq_nr = None
     # The sequence_nr increments every time a new autograd Node
     # is created. During the FWD pass we store the sequence_nr
@@ -565,7 +553,7 @@ def _get_seq_nr(node_name: str = "") -> int | None:
         # See Note [Functionalization View Replay Annotation]
         # Overriding some node meta with the original node meta of the
         # regenerated node.
-        replay_node: Node | None = fx_traceback.get_current_replay_node()
+        replay_node: Optional[Node]= fx_traceback.get_current_replay_node()
         if replay_node is not None:
             if "seq_nr" in replay_node.meta:
                 annotation_log.debug("%s: seq_nr from replay_node", node_name)
@@ -581,8 +569,8 @@ class GraphAppendingTracer(TracerBase):
         super().__init__()
         self.graph = graph
         self.scope = Scope("", None)
-        self.module_stack: OrderedDict[str, tuple[str, Any]] = collections.OrderedDict()
-        self.node_name_to_scope: dict[str, tuple[str, type]] = {}
+        self.module_stack: OrderedDict[str, Tuple[str, Any]] = collections.OrderedDict()
+        self.node_name_to_scope: Dict[str, Tuple[str, type]] = {}
 
 
 @compatibility(is_backward_compatible=False)
@@ -627,7 +615,7 @@ class Proxy:
     """
 
     @compatibility(is_backward_compatible=True)
-    def __init__(self, node: Node, tracer: "TracerBase | None" = None) -> None:
+    def __init__(self, node: Node, tracer: "Optional[TracerBase]" = None) -> None:
         if tracer is None:
             # This allows you to create a Proxy object around a raw Node
             tracer = GraphAppendingTracer(node.graph)
@@ -642,16 +630,16 @@ class Proxy:
         # we peephole optimize to the method invocation
         return Attribute(self, k)
 
-    def __getstate__(self) -> dict[str, Any]:
+    def __getstate__(self) -> Dict[str, Any]:
         return self.__dict__
 
-    def __deepcopy__(self, memo: dict[int, Any]) -> "Proxy":
+    def __deepcopy__(self, memo: Dict[int, Any]) -> "Proxy":
         # We have to explicitly override this method, because otherwise deepcopy
         # will go to __getattr__(self, "__deepcopy__") and return a
         # Attribute(__deepcopy__), and may go into an infinite loop in some cases.
         import copy
 
-        new_dict: dict[str, Any] = {}
+        new_dict: Dict[str, Any] = {}
         for k, v in self.__dict__.items():
             try:
                 new_obj = copy.deepcopy(v, memo)
@@ -673,7 +661,7 @@ class Proxy:
             new_proxy.__dict__[k] = v
         return new_proxy
 
-    def __setstate__(self, d: dict[str, Any]) -> None:
+    def __setstate__(self, d: Dict[str, Any]) -> None:
         # This is called when being unpickled/loaded.
         self.__dict__ = d
 
@@ -721,7 +709,7 @@ class Proxy:
             if sys.version_info >= (3, 11):
                 from bisect import bisect_left
 
-                cur = bisect_left(insts, calling_frame.f_lasti, key=lambda x: x.offset)
+                cur = _bisect_left_key_compat(insts, calling_frame.f_lasti, lambda x: x.offset)
             else:
                 cur = calling_frame.f_lasti // 2
             inst = insts[cur]
@@ -757,14 +745,14 @@ class Proxy:
     def __torch_function__(
         cls,
         orig_method: Callable[..., Any],
-        types: tuple[type, ...],
-        args: tuple[Any, ...] | None = None,
-        kwargs: dict[str, Any] | None = None,
+        types: Tuple[type, ...],
+        args: Optional[Tuple[Any, ...]]= None,
+        kwargs: Optional[Dict[str, Any]]= None,
     ) -> "Proxy":
         args = args if args else ()
         kwargs = kwargs if kwargs else {}
 
-        tracers: dict[TracerBase, None] = {}
+        tracers: Dict[TracerBase, None] = {}
 
         def find_tracer(a: Any) -> None:
             if isinstance(a, cls):
@@ -813,7 +801,7 @@ class MetaProxy(Proxy):
     """
 
     def __init__(
-        self, node: Node, tracer: "TracerBase | None" = None, fake_mode: Any = None
+        self, node: Node, tracer: "Optional[TracerBase]" = None, fake_mode: Any = None
     ) -> None:
         super().__init__(node, tracer)
         self.fake_mode = fake_mode
@@ -825,9 +813,9 @@ class MetaProxy(Proxy):
     def __torch_function__(
         cls,
         orig_method: Callable[..., Any],
-        types: tuple[type, ...],
-        args: tuple[Any, ...] | None = None,
-        kwargs: dict[str, Any] | None = None,
+        types: Tuple[type, ...],
+        args: Optional[Tuple[Any, ...]]= None,
+        kwargs: Optional[Dict[str, Any]]= None,
     ) -> "MetaProxy":
         args = args if args else ()
         kwargs = kwargs if kwargs else {}
@@ -859,7 +847,7 @@ class Attribute(Proxy):
         self.root = root
         self.attr = attr
         self.tracer = root.tracer
-        self._node: Node | None = None
+        self._node: Optional[Node] = None
 
     @property
     def node(self) -> Node:  # pyrefly: ignore[bad-override]
@@ -956,8 +944,8 @@ def _no_nodes_error(arg: Argument) -> Never:
     )
 
 
-def _create_arg_dict(self: TracerBase, a: dict[Any, Any]) -> dict[Any, Argument]:
-    r: dict[Any, Argument] = {}
+def _create_arg_dict(self: TracerBase, a: Dict[Any, Any]) -> Dict[Any, Argument]:
+    r: Dict[Any, Argument] = {}
     for k, v in a.items():
         if not isinstance(k, str):
             # Check for invalid dict keys. We do not want a Proxy to appear

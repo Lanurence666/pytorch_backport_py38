@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import collections
 import heapq
 import operator
-from collections.abc import Mapping
+
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 
 import torch
 import torch.fx
@@ -20,16 +22,16 @@ __all__ = [
     "stable_topological_sort",
 ]
 
-Tensors = tuple[torch.Tensor] | list[torch.Tensor]
-TensorOrTensors = torch.Tensor | Tensors
-NodeList = list[torch.fx.Node]
-NodeSet = set[torch.fx.Node]
-Names = list[str]
+Tensors = Union[Tuple[torch.Tensor], List[torch.Tensor]]
+TensorOrTensors = Union[torch.Tensor, Tensors]
+NodeList = List[torch.fx.Node]
+NodeSet = Set[torch.fx.Node]
+Names = List[str]
 CALLABLE_NODE_OPS = {"call_module", "call_function", "call_method"}
 
 
 @compatibility(is_backward_compatible=False)
-def get_acc_ops_name(k: str | type) -> str:
+def get_acc_ops_name(k: Union[str, type]) -> str:
     if isinstance(k, str):
         return k
     elif k.__module__ and "acc_ops" in k.__module__:
@@ -145,8 +147,8 @@ class FxNetAccFusionsFinder:
     def recursive_add_node(
         self,
         fusion_group: "FxNetAccFusionsFinder.FusionGroup",
-        inputs: NodeSet | NodeList,
-        visited: NodeSet | None = None,
+        inputs: Union[NodeSet, NodeList],
+        visited: Optional[NodeSet] = None,
     ) -> bool:
         """
         Start from inputs and going reverse topological order. If any upstream node
@@ -180,8 +182,8 @@ class FxNetAccFusionsFinder:
 
         return False
 
-    def __call__(self) -> dict[torch.fx.Node, NodeSet]:
-        result: dict[torch.fx.Node, NodeSet] = {}
+    def __call__(self) -> Dict[torch.fx.Node, NodeSet]:
+        result: Dict[torch.fx.Node, NodeSet] = {}
         acc_nodes = list(self.acc_nodes)
 
         for node in acc_nodes:
@@ -306,7 +308,7 @@ def legalize_graph(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
     for node in gm.graph.nodes:
         if indeg[node] == 0:
             queue.append(node)
-    env: dict[torch.fx.Node, torch.fx.Node] = {}
+    env: Dict[torch.fx.Node, torch.fx.Node] = {}
     # Pop nodes from the queue, and add nodes that have had all their
     # dependencies fulfilled
     while len(queue) > 0:
@@ -355,7 +357,7 @@ def stable_topological_sort(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
     new_graph = torch.fx.Graph()
 
     # Build node to original index mapping
-    node_to_id: dict[torch.fx.Node, int] = {
+    node_to_id: Dict[torch.fx.Node, int] = {
         node: idx for idx, node in enumerate(gm.graph.nodes)
     }
 
@@ -366,12 +368,12 @@ def stable_topological_sort(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
 
     # Priority queue: (original_index, node)
     # Use min-heap to always process the node with smallest original index
-    ready_queue: list[tuple[int, torch.fx.Node]] = []
+    ready_queue: List[Tuple[int, torch.fx.Node]] = []
     for node in gm.graph.nodes:
         if indeg[node] == 0:
             heapq.heappush(ready_queue, (node_to_id[node], node))
 
-    env: dict[torch.fx.Node, torch.fx.Node] = {}
+    env: Dict[torch.fx.Node, torch.fx.Node] = {}
 
     # Process nodes
     while ready_queue:

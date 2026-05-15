@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Type annotations for various benchmark objects."""
 
 # mypy: ignore-errors

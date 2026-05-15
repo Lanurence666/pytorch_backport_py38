@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module contains tensor creation utilities.
 """
@@ -6,7 +7,7 @@ import collections.abc
 import functools
 import math
 import warnings
-from typing import cast
+from typing import List, Optional, Set, Tuple, Type, Union, cast
 
 import torch
 
@@ -43,15 +44,15 @@ def _uniform_random_(t: torch.Tensor, low: float, high: float) -> torch.Tensor:
 
 
 def make_tensor(
-    *shape: int | torch.Size | list[int] | tuple[int, ...],
+    *shape: Union[Union[int, torch.Size], Union[List[int]], Tuple[int, ...]],
     dtype: torch.dtype,
-    device: str | torch.device,
-    low: float | None = None,
-    high: float | None = None,
+    device: Union[str, torch.device],
+    low: Optional[float] = None,
+    high: Optional[float] = None,
     requires_grad: bool = False,
     noncontiguous: bool = False,
     exclude_zero: bool = False,
-    memory_format: torch.memory_format | None = None,
+    memory_format: Optional[torch.memory_format] = None,
 ) -> torch.Tensor:
     r"""Creates a tensor with the given :attr:`shape`, :attr:`device`, and :attr:`dtype`, and filled with
     values uniformly drawn from ``[low, high)``.
@@ -125,14 +126,14 @@ def make_tensor(
     """
 
     def modify_low_high(
-        low: float | None,
-        high: float | None,
+        low: Optional[float],
+        high: Optional[float],
         *,
         lowest_inclusive: float,
         highest_exclusive: float,
         default_low: float,
         default_high: float,
-    ) -> tuple[float, float]:
+    ) -> Tuple[float, float]:
         """
         Modifies (and raises ValueError when appropriate) low and high values given by the user (input_low, input_high)
         if required.
@@ -177,7 +178,7 @@ def make_tensor(
 
     if len(shape) == 1 and isinstance(shape[0], collections.abc.Sequence):
         shape = shape[0]  # type: ignore[assignment]
-    shape = cast(tuple[int, ...], tuple(shape))
+    shape = cast(Tuple[int, ...], tuple(shape))
 
     if noncontiguous and memory_format is not None:
         raise ValueError(
@@ -194,11 +195,11 @@ def make_tensor(
     if noncontiguous:
         # Double the size of the shape in the last dimension, so that we have
         # non-identical values when we make the non-contiguous operation.
-        shape = cast(tuple[int, ...], (*shape[:-1], 2 * shape[-1]))
+        shape = cast(Tuple[int, ...], (*shape[:-1], 2 * shape[-1]))
 
     if dtype is torch.bool:
         low, high = cast(
-            tuple[int, int],
+            Tuple[int, int],
             modify_low_high(
                 low,
                 high,
@@ -211,7 +212,7 @@ def make_tensor(
         result = torch.randint(low, high, shape, device=device, dtype=dtype)
     elif dtype in _BOOLEAN_OR_INTEGRAL_TYPES:
         low, high = cast(
-            tuple[int, int],
+            Tuple[int, int],
             modify_low_high(
                 low,
                 high,

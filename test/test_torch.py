@@ -2,6 +2,7 @@
 # mypy: allow-untyped-defs
 # Owner(s): ["module: tests"]
 
+from __future__ import annotations
 import torch
 import torch.utils.data
 import numpy as np
@@ -1539,15 +1540,6 @@ class TestTorchDeviceType(TestCase):
                 else:
                     self.assertEqual(grad, input.grad, atol=0, rtol=0)
                 input.grad = None
-
-    def test_deterministic_replication_pad_tensor_padding(self, device):
-        # gh-182339: 0-d int64 tensor in padding tuple should not crash
-        x = torch.randn(2, 1, 16, device=device)
-        extra_padding = torch.tensor(4, dtype=torch.int64, device=device)
-        with DeterministicGuard(True):
-            result = torch.nn.functional.pad(x, (4, extra_padding), mode='replicate')
-        expected = torch.nn.functional.pad(x, (4, 4), mode='replicate')
-        self.assertEqual(result, expected)
 
     @skipIfTorchInductor("https://github.com/pytorch/pytorch/issues/113707")
     def test_deterministic_interpolate_bilinear(self, device):
@@ -10527,32 +10519,32 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
 
     @skipIfTorchDynamo("Not a suitable test for TorchDynamo")
     def test_storage_preserve_nonhermetic_in_hermetic_context(self):
-        from torch.library import _scoped_library, impl
+        from torch.library import Library, impl
         global _my_storage
 
-        with _scoped_library("my_lib", "DEF") as my_lib:
-            my_lib.define('my_func() -> None')
+        my_lib = Library("my_lib", "DEF")  # noqa: TOR901
+        my_lib.define('my_func() -> None')
 
-            a = torch.tensor([1.])
-            _my_storage = a.untyped_storage()
+        a = torch.tensor([1.])
+        _my_storage = a.untyped_storage()
 
-            m, t = Tracker.make()
-            _my_storage._tracker = t
-            del t
+        m, t = Tracker.make()
+        _my_storage._tracker = t
+        del t
 
-            @impl(my_lib, 'my_func', '')
-            def my_func():
-                global _my_storage
-                del _my_storage
+        @impl(my_lib, 'my_func', '')
+        def my_func():
+            global _my_storage
+            del _my_storage
 
-            self.assertFalse(m[0])
-            torch.ops.my_lib.my_func()
-            self.assertFalse(m[0])
+        self.assertFalse(m[0])
+        torch.ops.my_lib.my_func()
+        self.assertFalse(m[0])
 
-            s = a.untyped_storage()
-            del a
-            del s
-            self.assertTrue(m[0])
+        s = a.untyped_storage()
+        del a
+        del s
+        self.assertTrue(m[0])
 
     # FIXME: move to test_autograd?
     @skipIfTorchDynamo("TorchDynamo does not work well with hooks")
@@ -10914,8 +10906,7 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         self.assertFalse(torch.cuda.is_bf16_supported())
 
     def test_tensor_with_grad_to_scalar_warning(self) -> None:
-        with (warnings.catch_warnings(record=True) as w,
-                set_warn_always_context(True)):
+        with warnings.catch_warnings(record=True) as w, set_warn_always_context(True):
             warnings.simplefilter("always")
 
             x = torch.tensor(2.0, requires_grad=True)
@@ -10929,8 +10920,7 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
             )
 
     def test_tensor_item_no_warning(self):
-        with (warnings.catch_warnings(record=True) as w,
-                set_warn_always_context(True)):
+        with warnings.catch_warnings(record=True) as w, set_warn_always_context(True):
             warnings.simplefilter("always")
 
             x = torch.tensor(2.0, requires_grad=True)

@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import itertools
 from collections.abc import Iterable, Iterator
 
@@ -9,6 +11,7 @@ import torch.distributed as dist
 # USE_DISTRIBUTED compile flag. Make sure they raise import error
 # if we're trying to use them.
 from torch.distributed import group, ProcessGroup
+from typing import Dict, Iterable, Iterator, Union
 
 
 __all__ = [
@@ -50,7 +53,7 @@ def average_parameters(
 
 
 def get_params_to_average(
-    params: Iterable[torch.nn.Parameter] | Iterable[dict[str, torch.nn.Parameter]],
+    params: Union[Iterable[torch.nn.Parameter], Iterable[Dict[str, torch.nn.Parameter]]],
 ):
     """
     Return a list of parameters that need to average.
@@ -79,7 +82,7 @@ def get_params_to_average(
 
 
 def average_parameters_or_parameter_groups(
-    params: Iterable[torch.nn.Parameter] | Iterable[dict[str, torch.nn.Parameter]],
+    params: Union[Iterable[torch.nn.Parameter], Iterable[Dict[str, torch.nn.Parameter]]],
     process_group: ProcessGroup,
 ):
     """Averages parameters of a model or parameter groups of an optimizer."""

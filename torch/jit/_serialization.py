@@ -18,6 +18,7 @@ from torch._jit_internal import _get_model_id
 from torch._utils_internal import log_torchscript_usage
 from torch.jit._recursive import wrap_cpp_module
 from torch.serialization import validate_cuda_device
+from typing import Dict
 
 
 def save(m, f, _extra_files=None) -> None:

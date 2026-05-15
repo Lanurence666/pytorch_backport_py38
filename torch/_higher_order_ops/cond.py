@@ -1,11 +1,13 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import contextlib
 import functools
 import logging
 import warnings
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import torch
 import torch.utils._pytree as pytree
@@ -94,10 +96,10 @@ cond_op = CondOp()
 
 @exposed_in("torch")
 def cond(
-    pred: bool | int | float | torch.Tensor,
+    pred: Union[Union[bool, int], Union[float, torch.Tensor]],
     true_fn: Callable,
     false_fn: Callable,
-    operands: tuple | list = (),
+    operands: Union[tuple, list] = (),
 ) -> Any:
     r"""
     Conditionally applies `true_fn` or `false_fn`.
@@ -431,7 +433,7 @@ def cond_fake_tensor_mode(mode, pred, true_fn, false_fn, operands):
 
 
 def check_tensor_meta_match(
-    t1: torch.Tensor, t2: torch.Tensor, attr_names: tuple[str, ...], msg_prefix: str
+    t1: torch.Tensor, t2: torch.Tensor, attr_names: Tuple[str, ...], msg_prefix: str
 ) -> None:
     def _get_attr_maybe_call(t: torch.Tensor, attr_name: str) -> Any:
         attr = getattr(t, attr_name)
@@ -449,8 +451,8 @@ def check_tensor_meta_match(
 
 
 def _merge_output(
-    a: torch.Tensor | int | None,
-    b: torch.Tensor | int | None,
+    a: Union[torch.Tensor, Optional[int]],
+    b: Union[torch.Tensor, Optional[int]],
     mode: FakeTensorMode,
 ):
     from torch.fx.experimental.symbolic_shapes import (
@@ -528,9 +530,9 @@ def _merge_output(
         u2 has range [5, 8]
         u3 has range [5, 7]
     """
-    merged_size: list[int | torch.SymInt] = []
+    merged_size: List[Union[int, torch.SymInt]] = Union[[]]
 
-    def _has_unbacked_symbols(s: int | torch.SymInt) -> bool:
+    def _has_unbacked_symbols(s: Union[int, torch.SymInt]) -> bool:
         if isinstance(s, int):
             return False
         else:
@@ -604,19 +606,19 @@ def _merge_output(
     def _bound_stride(
         a_ex_size: torch.Size,
         b_ex_size: torch.Size,
-        a_ex_stride: tuple[int, ...],
-        b_ex_stride: tuple[int, ...],
-        merged_size: list[int | torch.SymInt],
-    ) -> list[int | torch.SymInt]:
+        a_ex_stride: Tuple[int, ...],
+        b_ex_stride: Tuple[int, ...],
+        merged_size: List[Union[int, torch.SymInt]],
+    ) -> List[Union[int, torch.SymInt]]:
         from torch._inductor.ir import get_stride_order
 
         a_sorted_stride_idx = get_stride_order(a_ex_stride, mode.shape_env)
         b_sorted_stride_idx = get_stride_order(b_ex_stride, mode.shape_env)
 
-        a_stride_li: list[tuple[int | torch.SymInt, int] | None] = [None] * len(
+        a_stride_li: Union[List[Tuple[int, torch.SymInt, int], None]] = [None] * len(
             a_ex_stride
         )
-        b_stride_li: list[tuple[int | torch.SymInt, int] | None] = [None] * len(
+        b_stride_li: Union[List[Tuple[int, torch.SymInt, int], None]] = [None] * len(
             b_ex_stride
         )
         for i, idx in enumerate(a_sorted_stride_idx):
@@ -640,14 +642,14 @@ def _merge_output(
                     f"Consider using contiguous() to make the two branches have the same contiguousness."
                 )
 
-        def _maybe_expr(s: int | torch.SymInt):
+        def _maybe_expr(s: Union[int, torch.SymInt]):
             if isinstance(s, int):
                 return s
             return s.node.expr
 
-        a_stride_expr: dict[Any, int | torch.SymInt] = {}
-        b_stride_expr: dict[Any, int | torch.SymInt] = {}
-        merged_strides: list[int | torch.SymInt] = [None] * len(a_ex_stride)  # type: ignore[list-item]
+        a_stride_expr: Dict[Any, Union[int, torch.SymInt]] = {}
+        b_stride_expr: Dict[Any, Union[int, torch.SymInt]] = {}
+        merged_strides: List[Union[int, torch.SymInt]] = [None] * len(a_ex_stride)  # type: ignore[list-item]
         for a_pair, b_pair in zip(a_stride_li, b_stride_li):
             if a_pair is None or b_pair is None:
                 raise AssertionError(
@@ -697,7 +699,7 @@ def _merge_output(
             b_stride_expr[_maybe_expr(b_val * b_ex_size[i])] = nxt_merged_stride_expr
         return merged_strides
 
-    merged_stride: list[int | torch.SymInt] = _bound_stride(
+    merged_stride: List[Union[int, torch.SymInt]] = _bound_stride(
         a.size(), b.size(), a.stride(), b.stride(), merged_size
     )
 

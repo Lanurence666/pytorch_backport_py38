@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import itertools
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import torch.ao.nn.intrinsic as nni
 import torch.nn as nn
@@ -91,7 +93,7 @@ def fuse_conv_bn_relu(is_qat, conv, bn, relu):
         raise AssertionError(
             "Conv and BN both must be in the same mode (train or eval)."
         )
-    fused_module: type[nn.Sequential] | None = None
+    fused_module: Optional[Type[nn.Sequential]]= None
     if is_qat:
         map_to_fused_module_train = {
             nn.Conv1d: nni.ConvBnReLU1d,
@@ -211,7 +213,7 @@ def _sequential_wrapper2(sequential):
     return fuser_method
 
 
-_DEFAULT_OP_LIST_TO_FUSER_METHOD: dict[tuple, nn.Sequential | Callable] = {
+_DEFAULT_OP_LIST_TO_FUSER_METHOD: Union[Dict[tuple, nn.Sequential, Callable]]= {
     (nn.Conv1d, nn.BatchNorm1d): fuse_conv_bn,
     (nn.Conv1d, nn.BatchNorm1d, nn.ReLU): fuse_conv_bn_relu,
     (nn.Conv2d, nn.BatchNorm2d): fuse_conv_bn,
@@ -285,7 +287,7 @@ def _get_valid_patterns(op_pattern):
      (MatchAllNode, (MatchAllNode, MatchAllNode)),
     ]
     """
-    result: list[Any]
+    result: List[Any]
     if isinstance(op_pattern, (tuple, list)):
         sub_combs = [_get_valid_patterns(sub_pattern) for sub_pattern in op_pattern]
         result = list(itertools.product(*sub_combs))
@@ -296,7 +298,7 @@ def _get_valid_patterns(op_pattern):
 
 def get_fuser_method_new(
     op_pattern: Pattern,
-    fuser_method_mapping: dict[Pattern, nn.Sequential | Callable],
+    fuser_method_mapping: Union[Dict[Pattern, nn.Sequential, Callable],]
 ):
     """Get fuser method.
 

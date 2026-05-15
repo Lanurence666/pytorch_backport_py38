@@ -1,13 +1,16 @@
+from __future__ import annotations
 """
 This is an experimental new API for PyTorch Distributed. This is actively in development and subject to change or deletion entirely.
 
 This is intended as a proving ground for more flexible and object oriented distributed APIs.
 """
 
-from collections.abc import Generator
+
 from contextlib import contextmanager
 from datetime import timedelta
-from typing import Protocol
+from typing import Dict, Generator, Type, Union
+from typing_extensions import Protocol
+
 
 import torch
 from torch._C._distributed_c10d import (
@@ -20,7 +23,7 @@ from torch._C._distributed_c10d import (
 from torch.distributed.rendezvous import rendezvous
 
 
-_BACKENDS: dict[str, "ProcessGroupFactory"] = {}
+_BACKENDS: Dict[str, "ProcessGroupFactory"] = {}
 
 __all__ = [
     "ProcessGroup",
@@ -127,7 +130,7 @@ register_backend("nccl", _nccl_factory)
 def new_group(
     backend: str,
     timeout: timedelta,
-    device: str | torch.device,
+    device: Union[str, torch.device],
     **kwargs: object,
 ) -> ProcessGroup:
     """

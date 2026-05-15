@@ -1,3 +1,7 @@
+from __future__ import annotations
+from typing import Optional, Union
+
+
 import functools
 import math
 import operator
@@ -34,7 +38,7 @@ def _gcd_list(numbers: Sequence[int]) -> int:
     return 0 if not numbers else functools.reduce(math.gcd, numbers)
 
 
-def _indices_to_layout(indices: list[int]) -> tuple[tuple[int, ...], tuple[int, ...]]:
+def _indices_to_layout(indices: List[int]) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
     # Base case: A single index represents a point, not a dimension.
     if len(indices) <= 1:
         return (), ()
@@ -75,8 +79,8 @@ def _indices_to_layout(indices: list[int]) -> tuple[tuple[int, ...], tuple[int, 
 
 
 def _prepare_collective_groups(
-    process_group_so: ScriptObject | ProcessGroup,
-) -> tuple[list[int], list[int], int]:
+    process_group_so: Union[ScriptObject, ProcessGroup],
+) -> Tuple[List[int], List[int], int]:
     process_group = (
         ProcessGroup.unbox(process_group_so)
         if isinstance(process_group_so, ScriptObject)
@@ -118,7 +122,7 @@ def _local_functional_all_gather_into_tensor(
 
     if not isinstance(tensor, LocalTensor):
         raise AssertionError("Input tensor must be a LocalTensor")
-    output_local_tensors: dict[int, torch.Tensor] = {}
+    output_local_tensors: Dict[int, torch.Tensor] = {}
 
     for group_offset in group_offsets:
         group_ranks = [group_offset + r for r in ranks]
@@ -153,7 +157,7 @@ def _local_functional_reduce_scatter_tensor(
 
     if not isinstance(tensor, LocalTensor):
         raise AssertionError("Input tensor must be a LocalTensor")
-    output_local_tensors: dict[int, torch.Tensor] = {}
+    output_local_tensors: Dict[int, torch.Tensor] = {}
 
     for group_offset in group_offsets:
         group_ranks = [group_offset + r for r in ranks]
@@ -197,7 +201,7 @@ def _local_functional_shard_dim_alltoall(
 
     if not isinstance(tensor, LocalTensor):
         raise AssertionError("Input tensor must be a LocalTensor")
-    output_local_tensors: dict[int, torch.Tensor] = {}
+    output_local_tensors: Dict[int, torch.Tensor] = {}
 
     for group_offset in group_offsets:
         group_ranks = [group_offset + r for r in ranks]
@@ -233,8 +237,8 @@ def _local_functional_shard_dim_alltoall(
 
 def _local_functional_all_to_all_single(
     tensor: torch.Tensor,
-    output_split_sizes: list[torch.SymInt],
-    input_split_sizes: list[torch.SymInt],
+    output_split_sizes: List[torch.SymInt],
+    input_split_sizes: List[torch.SymInt],
     group_name: GroupName,
 ) -> torch.Tensor:
     # "all_to_all_single(Tensor input, SymInt[] output_split_sizes, SymInt[] input_split_sizes, str group_name) -> Tensor"
@@ -247,7 +251,7 @@ def _local_functional_all_to_all_single(
     if not isinstance(tensor, LocalTensor):
         raise AssertionError("Input tensor must be a LocalTensor")
 
-    split_local_sizes: dict[int, list[int]] = {}
+    split_local_sizes: Dict[int, List[int]] = {}
     for input_split_size in input_split_sizes:
         if isinstance(input_split_size, torch.SymInt) and isinstance(
             input_split_size.node, LocalIntNode
@@ -260,14 +264,14 @@ def _local_functional_all_to_all_single(
                 split_local_sizes[rank] = []
             split_local_sizes[rank].append(split_size)
 
-    split_local_tensors: dict[int, list[torch.Tensor]] = {}
+    split_local_tensors: Dict[int, List[torch.Tensor]] = {}
 
     for rank, split_sizes in split_local_sizes.items():
         split_local_tensors[rank] = list(
             torch.split(tensor._local_tensors[rank], split_sizes)
         )
 
-    output_local_tensors: dict[int, torch.Tensor] = {}
+    output_local_tensors: Dict[int, torch.Tensor] = {}
 
     for group_offset in group_offsets:
         group_ranks = [group_offset + r for r in ranks]
@@ -288,13 +292,13 @@ def _local_functional_all_to_all_single(
 
 
 def _local_broadcast_(
-    tensors: list[torch.Tensor],
+    tensors: List[torch.Tensor],
     process_group_so: ScriptObject,
     root_rank: int,
     root_tensor: int,
     async_op: bool = True,
     timeout: int = -1,
-) -> tuple[list[torch.Tensor], ScriptObject]:
+) -> Tuple[List[torch.Tensor], ScriptObject]:
     # "broadcast_(Tensor[] tensors, __torch__.torch.classes.c10d.ProcessGroup process_group, "
     # "int root_rank, int root_tensor, bool async_op=True, int timeout=-1) -> (Tensor[], __torch__.torch.classes.c10d.Work)"
     from . import LocalTensor
@@ -335,8 +339,8 @@ def _local_broadcast_(
 
 
 def _local_reduce(
-    reduce_op: ReduceOp | str,
-    tensors: list[torch.Tensor],
+    reduce_op: Union[ReduceOp, str],
+    tensors: List[torch.Tensor],
 ) -> torch.Tensor:
     if reduce_op == ReduceOp.SUM or reduce_op == "sum":
         op = operator.add
@@ -368,13 +372,13 @@ def _local_reduce(
 
 
 def _local_all_reduce_(
-    tensors: list[torch.Tensor],
+    tensors: List[torch.Tensor],
     process_group_so: ScriptObject,
     reduce_op_so: ScriptObject,
-    sparse_indices: torch.Tensor | None = None,
+    sparse_indices: Optional[torch.Tensor] = None,
     async_op: bool = True,
     timeout: int = -1,
-) -> tuple[list[torch.Tensor], ScriptObject]:
+) -> Tuple[List[torch.Tensor], ScriptObject]:
     # "allreduce_(Tensor[] tensors, __torch__.torch.classes.c10d.ProcessGroup process_group, "
     # "__torch__.torch.classes.c10d.ReduceOp reduce_op, Tensor? sparse_indices, bool async_op=True, "
     # "int timeout=-1) -> (Tensor[], __torch__.torch.classes.c10d.Work)");
@@ -415,7 +419,7 @@ def _local_all_reduce_(
 
 
 def _local_allreduce_coalesced_(
-    tensors: list[torch.Tensor],
+    tensors: List[torch.Tensor],
     process_group_so: ScriptObject,
     reduce_op_so: ScriptObject,
     async_op: bool = True,
@@ -457,8 +461,8 @@ def _local_allreduce_coalesced_(
 
 
 def _local_reduce_scatter_tensor_coalesced_(
-    output_tensors: list[torch.Tensor],
-    input_tensors: list[torch.Tensor],
+    output_tensors: List[torch.Tensor],
+    input_tensors: List[torch.Tensor],
     process_group_so: ScriptObject,
     reduce_op_so: ScriptObject,
     async_op: bool = True,
@@ -517,7 +521,7 @@ def _local_allgather_base_(
     process_group_so: ScriptObject,
     async_op: bool = True,
     timeout: int = -1,
-) -> tuple[torch.Tensor, ScriptObject]:
+) -> Tuple[torch.Tensor, ScriptObject]:
     # "_allgather_base_(Tensor output_tensor, Tensor input_tensor, __torch__.torch.classes.c10d.ProcessGroup
     # process_group, bool async_op=True, int timeout=-1) -> (Tensor, __torch__.torch.classes.c10d.Work)");
     from . import LocalTensor
@@ -558,7 +562,7 @@ def _local_reduce_scatter_base_(  # type: ignore[no-untyped-def]
     reduce_op_so: ScriptObject,
     async_op: bool = True,
     timeout: int = -1,
-) -> tuple[torch.Tensor, ScriptObject]:
+) -> Tuple[torch.Tensor, ScriptObject]:
     # "_reduce_scatter_base_(Tensor output_tensor, Tensor input_tensor,
     # __torch__.torch.classes.c10d.ProcessGroup process_group, __torch__.torch.classes.c10d.ReduceOp reduce_op,
     # bool async_op=True, int timeout=-1) -> (Tensor, __torch__.torch.classes.c10d.Work)"
@@ -601,12 +605,12 @@ def _local_reduce_scatter_base_(  # type: ignore[no-untyped-def]
 
 
 def _local_all_gather_(
-    output_tensors: list[list[torch.Tensor]],
-    input_tensors: list[torch.Tensor],
+    output_tensors: List[List[torch.Tensor]],
+    input_tensors: List[torch.Tensor],
     process_group_so: ScriptObject,
     async_op: bool = True,
     timeout: int = -1,
-) -> tuple[list[list[torch.Tensor]], ScriptObject]:
+) -> Tuple[List[List[torch.Tensor]], ScriptObject]:
     # "allgather_(Tensor[][] output_tensors, Tensor[] input_tensors, "
     # "__torch__.torch.classes.c10d.ProcessGroup process_group, bool async_op=True, "
     # "int timeout=-1) -> (Tensor[][], __torch__.torch.classes.c10d.Work)");
@@ -649,8 +653,8 @@ def _local_all_gather_(
 
 
 def _local_allgather_into_tensor_coalesced_(
-    output_tensors: list[torch.Tensor],
-    input_tensors: list[torch.Tensor],
+    output_tensors: List[torch.Tensor],
+    input_tensors: List[torch.Tensor],
     process_group_so: ScriptObject,
     async_op: bool = True,
 ) -> ScriptObject:
@@ -704,8 +708,8 @@ def _local_allgather_into_tensor_coalesced_(
 
 
 def _local_gather_(
-    output_tensors: list[list[torch.Tensor]],
-    input_tensors: list[torch.Tensor],
+    output_tensors: List[List[torch.Tensor]],
+    input_tensors: List[torch.Tensor],
     process_group_so: ScriptObject,
     root_rank: int,
     async_op: bool = True,
@@ -721,13 +725,13 @@ def _local_gather_(
 
 
 def _local_scatter_(
-    output_tensors: list[torch.Tensor],
-    input_tensors: list[list[torch.Tensor]],
+    output_tensors: List[torch.Tensor],
+    input_tensors: List[List[torch.Tensor]],
     process_group_so: ScriptObject,
     root_rank: int,
     async_op: bool = True,
     timeout: int = -1,
-) -> tuple[list[torch.Tensor], ScriptObject]:
+) -> Tuple[List[torch.Tensor], ScriptObject]:
     # "scatter_(Tensor[] output_tensors, Tensor[][] input_tensors, "
     # "__torch__.torch.classes.c10d.ProcessGroup process_group, int root_rank, "
     # "bool async_op=True, int timeout=-1) -> (Tensor[], __torch__.torch.classes.c10d.Work)");
@@ -777,12 +781,12 @@ def _local_scatter_(
 
 
 def _local_alltoall_(
-    output_tensors: list[torch.Tensor],
-    input_tensors: list[torch.Tensor],
+    output_tensors: List[torch.Tensor],
+    input_tensors: List[torch.Tensor],
     process_group_so: ScriptObject,
     async_op: bool = True,
     timeout: int = -1,
-) -> tuple[list[torch.Tensor], ScriptObject]:
+) -> Tuple[List[torch.Tensor], ScriptObject]:
     # "alltoall_(Tensor[] output_tensors, Tensor[] input_tensors, "
     # "__torch__.torch.classes.c10d.ProcessGroup process_group, bool async_op=True, "
     # "int timeout=-1) -> (Tensor[], __torch__.torch.classes.c10d.Work)";
@@ -832,8 +836,8 @@ def _local_alltoall_base_(
     output_tensor: torch.Tensor,
     input_tensor: torch.Tensor,
     process_group_so: ScriptObject,
-    output_split_sizes: list[int],
-    input_split_sizes: list[int],
+    output_split_sizes: List[int],
+    input_split_sizes: List[int],
     async_op: bool = True,
     timeout: int = -1,
 ) -> ScriptObject:
@@ -919,7 +923,7 @@ def _local_alltoall_base_(
 def _local_barrier(
     tensor: torch.Tensor,
     process_group_so: ScriptObject,
-    device_ids: list[int],
+    device_ids: List[int],
     async_op: bool = True,
     timeout: int = -1,
 ) -> ScriptObject:
@@ -944,7 +948,7 @@ def _local_barrier(
 def _local_monitored_barrier_(
     tensor: torch.Tensor,
     process_group_so: ScriptObject,
-    device_ids: list[int],
+    device_ids: List[int],
     timeout: int,
     wait_all_ranks: bool,
 ) -> None:
@@ -966,7 +970,7 @@ def _local_monitored_barrier_(
 
 
 def _local_send(
-    tensors: list[torch.Tensor],
+    tensors: List[torch.Tensor],
     process_group_so: ScriptObject,
     dst: int,
     tag: int,
@@ -992,7 +996,7 @@ def _local_send(
 
 
 def _local_recv_(
-    tensors: list[torch.Tensor],
+    tensors: List[torch.Tensor],
     process_group_so: ScriptObject,
     src: int,
     tag: int,
@@ -1026,7 +1030,7 @@ def _local_recv_(
 
 
 def _local_recv_any_source_(
-    tensors: list[torch.Tensor], process_group_so: ScriptObject, tag: int
+    tensors: List[torch.Tensor], process_group_so: ScriptObject, tag: int
 ) -> ScriptObject:
     # "recv_any_source_(Tensor[] tensors, __torch__.torch.classes.c10d.ProcessGroup process_group, "
     # "int tag) -> __torch__.torch.classes.c10d.Work";
@@ -1051,8 +1055,8 @@ def _attach_rank(tensor: torch.Tensor, rank: int) -> torch.Tensor:
 def local_p2p_op(
     dst: torch.SymInt,
     tensor: torch.Tensor,
-    op: Callable[[torch.Tensor, int], Work | None],
-) -> Work | list[Work | None] | None:
+    op: Callable[[torch.Tensor, int], Optional[Work]],
+) -> Union[Work, Union[List[Work, None]], None]:
     """
     Runs a point-to-point (P2P) operation for all combinations of source and destination ranks.
     """
@@ -1073,7 +1077,7 @@ def local_p2p_op(
     return w
 
 
-def wait_all(work: Work | list[Work | None] | None) -> None:
+def wait_all(work: Union[Work, List[Work, None]] | None) -> None:
     """
     Waits for all work objects in the input to complete.
 

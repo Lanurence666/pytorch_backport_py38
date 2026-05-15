@@ -10,6 +10,7 @@
 #include <torch/csrc/dynamo/framelocals_mapping.h>
 #include <torch/csrc/dynamo/guards.h>
 #include <torch/csrc/utils/python_compat.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 #if IS_PYTHON_3_12_PLUS
 #define _PyCode_GetExtra PyUnstable_Code_GetExtra

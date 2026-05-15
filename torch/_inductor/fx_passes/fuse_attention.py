@@ -1,4 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+from typing import Optional
+
+
 import functools
 import inspect
 import logging
@@ -946,7 +950,7 @@ def partialize_and_update_signature(func, **kwargs):
     return wrapper
 
 
-def _get_sfdp_patterns(input_device: torch.device | None = None):
+def _get_sfdp_patterns(input_device: Optional[torch.device] = None):
     from .joint_graph import patterns
 
     if input_device:
@@ -1365,7 +1369,7 @@ def _get_sfdp_patterns(input_device: torch.device | None = None):
             )
 
 
-@functools.cache
-def _sfdp_init(input_device: torch.device | None = None):
+@functools.lru_cache(maxsize=None)
+def _sfdp_init(input_device: Optional[torch.device] = None):
     for key, register_replacement_kwargs in _get_sfdp_patterns(input_device):
         gen_register_replacement(key, **register_replacement_kwargs)

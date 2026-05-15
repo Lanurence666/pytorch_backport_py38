@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 import re
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import torch.fx as fx  # noqa: TC001
 from torch.utils._ordered_set import OrderedSet
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-def _get_module_stack(node: fx.Node) -> list[tuple[str, type[Any]]]:
+def _get_module_stack(node: fx.Node) -> List[Tuple[str, Type[Any]]]:
     nn_stack = node.meta.get("nn_module_stack", "")
     if nn_stack:
         return list(nn_stack.values())
@@ -25,12 +25,12 @@ def _get_module_stack(node: fx.Node) -> list[tuple[str, type[Any]]]:
 
 
 def _addindent(s_: str, num_spaces: int) -> str:
-    s: list[str] = s_.split("\n")
+    s: List[str] = s_.split("\n")
     # don't do anything for single-line stuff
     if len(s) == 1:
         return s_
     first: str = s.pop(0)
-    s: list[str] = [(num_spaces * " ") + line for line in s]
+    s: List[str] = [(num_spaces * " ") + line for line in s]
     joint_s: str = "\n".join(s)
     joint_s = first + "\n" + joint_s
     return joint_s
@@ -47,25 +47,25 @@ class GraphView:
 
     Attributes:
         name (str): The name of the module or container scope.
-        klass (type[Any]): The class type associated with this module/container.
-        data (list[fx.Node]): A list of FX graph nodes belonging to this module.
+        klass (Type[Any]): The class type associated with this module/container.
+        data (List[fx.Node]): A list of FX graph nodes belonging to this module.
         unique_nodes (OrderedSet[fx.Node]): A deduplicated set of nodes to ensure no duplicates.
-        children (dict[str, GraphView]): A mapping of child module names to their corresponding GraphView instances.
+        children (Dict[str, GraphView]): A mapping of child module names to their corresponding GraphView instances.
     """
 
-    def __init__(self, name: str, klass: type[Any]) -> None:
+    def __init__(self, name: str, klass: Type[Any]) -> None:
         self.name: str = name
-        self.klass: type[Any] = klass
-        self.data: list[fx.Node] = []
+        self.klass: Type[Any] = klass
+        self.data: List[fx.Node] = []
         self.unique_nodes: OrderedSet[fx.Node] = OrderedSet()
-        self.children: dict[str, GraphView] = {}
+        self.children: Dict[str, GraphView] = {}
 
     def add(self, data: fx.Node) -> None:
         if data not in self.unique_nodes:
             self.data.append(data)
             self.unique_nodes.add(data)
 
-    def get_child(self, module_stack: str, klass: type[Any] | None = None) -> GraphView:
+    def get_child(self, module_stack: str, klass: Optional[Type[Any]] = None) -> GraphView:
         if module_stack not in self.children:
             new_stack = GraphView(module_stack, klass or self.klass)
             self.children[module_stack] = new_stack
@@ -78,7 +78,7 @@ class GraphView:
         return self.children[name]
 
     def __repr__(self) -> str:
-        child_lines: list[str] = []
+        child_lines: List[str] = []
         for name, child in self.children.items():
             mod_str = repr(child)
             mod_str = _addindent(mod_str, 2)
@@ -109,8 +109,8 @@ def _is_root(stack: str) -> bool:
 
 def make_graph_view(
     graph: fx.Graph,
-    module_stack_fn: Callable[[fx.Node], list[tuple[str, type[Any]]]] | None = None,
-) -> GraphView | None:
+    module_stack_fn: Optional[Callable[[fx.Node], List[Tuple[str, Type[Any]]]]]= None,
+) -> Optional[GraphView]:
     """
     Code from: https://github.com/meta-pytorch/autoparallel/pull/158
 
@@ -155,7 +155,7 @@ def make_graph_view(
 
     module_stack_fn: Optional callable for extracting module hierarchy information from nodes.
 
-        Signature: Callable[[fx.Node], list[tuple[str, type[Any]]]]
+        Signature: Callable[[fx.Node], List[Tuple[str, Type[Any]]]]
 
         Takes an FX node and returns a list of (module_path, module_class) tuples representing
         the nested module hierarchy for that node, ordered from outermost to innermost scope.
@@ -178,7 +178,7 @@ def make_graph_view(
         node.meta["fwd_nn_module_stack"].
     """
 
-    def nn_module_stack_meta(node: fx.Node) -> list[tuple[str, type[Any]]]:
+    def nn_module_stack_meta(node: fx.Node) -> List[Tuple[str, Type[Any]]]:
         result = []
         for module_stack, module_class in _get_module_stack(node):
             module_stack = _clean_stack_name(module_stack)
@@ -187,11 +187,11 @@ def make_graph_view(
 
     if module_stack_fn is None:
         module_stack_fn = nn_module_stack_meta
-    nodes: list[fx.Node] = list(graph.nodes)
-    nodes_by_module_stack_root: GraphView | None = None
+    nodes: List[fx.Node] = list(graph.nodes)
+    nodes_by_module_stack_root: Optional[GraphView]= None
     for node in nodes:
         for module_stack, module_class in module_stack_fn(node):
-            nodes_by_module_stack: GraphView | None = nodes_by_module_stack_root
+            nodes_by_module_stack: Optional[GraphView]= nodes_by_module_stack_root
             for name in module_stack.split("."):
                 if nodes_by_module_stack is None:
                     nodes_by_module_stack = GraphView(name, module_class)
@@ -207,15 +207,15 @@ def make_graph_view(
 
 
 def get_subgraph_by_path(
-    graph_view: GraphView, paths: str | list[str]
-) -> list[fx.Node]:
+    graph_view: Union[GraphView, paths: str, List[str]]
+) -> List[fx.Node]:
     """
     Get subgraph by path(s).
     Args:
         graph_view (object): Root graph view object.
         paths (str or list of str): Path(s) to subgraph.
     Returns:
-        list[fx.Node]: fx nodes belong to the subgraph
+        List[fx.Node]: fx nodes belong to the subgraph
     """
 
     def get_node_by_path(node: GraphView, path: str) -> GraphView:

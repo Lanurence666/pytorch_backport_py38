@@ -1,8 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import warnings
 from abc import ABC, abstractmethod
 from types import TracebackType
-from typing import Any, NamedTuple
+from typing import Any, List, Optional, Set, Tuple, Type
+from typing_extensions import NamedTuple
+
 
 import torch
 import torch.distributed as dist
@@ -165,7 +169,7 @@ class Join:
 
     def __init__(
         self,
-        joinables: list[Joinable],
+        joinables: List[Joinable],
         enable: bool = True,
         throw_on_early_termination: bool = False,
         **kwargs,
@@ -229,9 +233,9 @@ class Join:
 
     def __exit__(
         self,
-        type: type[BaseException] | None,
-        value: BaseException | None,
-        traceback: TracebackType | None,
+        type: Optional[Type[BaseException]],
+        value: Optional[BaseException],
+        traceback: Optional[TracebackType],
     ):
         r"""
         Repeatedly runs the main hooks until all processes join; then, runs the post-hooks.

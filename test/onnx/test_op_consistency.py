@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 
 """Test consistency between the output values of torch.onnx exported operators
@@ -22,7 +23,6 @@ Note:
 
 """
 
-from __future__ import annotations
 
 import copy
 

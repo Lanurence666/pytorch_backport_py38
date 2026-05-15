@@ -1,11 +1,14 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch import Tensor
 from torch.distributions import constraints
 from torch.distributions.exp_family import ExponentialFamily
 from torch.distributions.utils import broadcast_all
 from torch.types import _Number, _size
+from typing import Optional, Tuple, Union
 
 
 __all__ = ["Gamma"]
@@ -56,9 +59,9 @@ class Gamma(ExponentialFamily):
 
     def __init__(
         self,
-        concentration: Tensor | float,
-        rate: Tensor | float,
-        validate_args: bool | None = None,
+        concentration: Union[Tensor, float],
+        rate: Union[Tensor, float],
+        validate_args: Optional[bool] = None,
     ) -> None:
         self.concentration, self.rate = broadcast_all(concentration, rate)
         if isinstance(concentration, _Number) and isinstance(rate, _Number):
@@ -106,7 +109,7 @@ class Gamma(ExponentialFamily):
         )
 
     @property
-    def _natural_params(self) -> tuple[Tensor, Tensor]:
+    def _natural_params(self) -> Tuple[Tensor, Tensor]:
         return (self.concentration - 1, -self.rate)
 
     # pyrefly: ignore [bad-override]

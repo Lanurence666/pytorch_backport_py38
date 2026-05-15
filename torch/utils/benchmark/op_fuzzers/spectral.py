@@ -4,6 +4,7 @@ import math
 import torch
 from torch.utils import benchmark
 from torch.utils.benchmark import FuzzedParameter, FuzzedTensor, ParameterAlias
+from typing import List
 
 
 __all__ = ['SpectralOpFuzzer']

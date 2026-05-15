@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Dict, Tuple, Union
 from dataclasses import dataclass
 
 
@@ -47,11 +48,11 @@ class SelectiveBuildOperator:
     include_all_overloads: bool
 
     # Debug Information at the operator level
-    _debug_info: tuple[str, ...] | None
+    _debug_info: Union[Tuple[str, Ellipsis], None]
 
     @staticmethod
     def from_yaml_dict(
-        op_name: str, op_info: dict[str, object]
+        op_name: str, op_info: Dict[str, object]
     ) -> SelectiveBuildOperator:
         allowed_keys = {
             "name",
@@ -92,7 +93,7 @@ class SelectiveBuildOperator:
                 f"Expected 'include_all_overloads' to be bool, got {type(include_all_overloads)}"
             )
 
-        debug_info: tuple[str, ...] | None = None
+        debug_info: Union[Tuple[str, Ellipsis], None] = None
         if "debug_info" in op_info:
             di_list = op_info["debug_info"]
             if not isinstance(di_list, list):
@@ -121,8 +122,8 @@ class SelectiveBuildOperator:
             _debug_info=None,
         )
 
-    def to_dict(self) -> dict[str, object]:
-        ret: dict[str, object] = {
+    def to_dict(self) -> Dict[str, object]:
+        ret: Dict[str, object] = {
             "is_root_operator": self.is_root_operator,
             "is_used_for_training": self.is_used_for_training,
             "include_all_overloads": self.include_all_overloads,
@@ -134,9 +135,9 @@ class SelectiveBuildOperator:
 
 
 def merge_debug_info(
-    lhs: tuple[str, ...] | None,
-    rhs: tuple[str, ...] | None,
-) -> tuple[str, ...] | None:
+    lhs: Union[Tuple[str, Ellipsis], None],
+    rhs: Union[Tuple[str, Ellipsis], None],
+) -> Union[Tuple[str, Ellipsis], None]:
     # Ensure that when merging, each entry shows up just once.
     if lhs is None and rhs is None:
         return None
@@ -168,10 +169,10 @@ def combine_operators(
 
 
 def merge_operator_dicts(
-    lhs: dict[str, SelectiveBuildOperator],
-    rhs: dict[str, SelectiveBuildOperator],
-) -> dict[str, SelectiveBuildOperator]:
-    operators: dict[str, SelectiveBuildOperator] = {}
+    lhs: Dict[str, SelectiveBuildOperator],
+    rhs: Dict[str, SelectiveBuildOperator],
+) -> Dict[str, SelectiveBuildOperator]:
+    operators: Dict[str, SelectiveBuildOperator] = {}
     for op_name, op in list(lhs.items()) + list(rhs.items()):
         new_op = op
         if op_name in operators:

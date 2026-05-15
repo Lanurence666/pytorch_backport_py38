@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import re
 from collections import defaultdict
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import sympy as sp
@@ -14,10 +16,10 @@ s_pattern = r"s\d+"
 
 
 def infer_symbol_values(
-    symints: list[torch.SymInt | int],
-    init_symints: list[torch.SymInt | int],
-    symbol_idx_dict: dict[str, int],
-    padding_constraints: defaultdict[torch.SymInt, list[sp.Expr | int]],
+    symints: List[Union[torch.SymInt, int]],
+    init_symints: List[Union[torch.SymInt, int]],
+    symbol_idx_dict: Dict[str, int],
+    padding_constraints: defaultdict[torch.SymInt, List[Union[sp.Expr, int]]],
     constraint: str,
 ) -> None:
     if constraint.find("non-singleton") != -1:
@@ -82,10 +84,10 @@ def infer_symbol_values(
 
 
 def calculate_value(
-    left_expression: str | Any | None,
-    right_expression: str | Any | None,
-    symints: list[torch.SymInt | int],
-    symbol_idx_dict: dict[str, int],
+    left_expression: Union[str, Optional[Any]],
+    right_expression: Union[str, Optional[Any]],
+    symints: List[Union[torch.SymInt, int]],
+    symbol_idx_dict: Dict[str, int],
 ) -> None:
     var, val = solve_equation(left_expression, right_expression)
     idx = symbol_idx_dict[var]
@@ -94,9 +96,9 @@ def calculate_value(
 
 
 def solve_equation(
-    left_expression: str | Any | None,
-    right_expression: str | Any | None,
-) -> tuple[str, int]:
+    left_expression: Union[str, Optional[Any]],
+    right_expression: Union[str, Optional[Any]],
+) -> Tuple[str, int]:
     expression = f"{left_expression} - {right_expression}"
     var = re.findall(s_pattern, expression)[0]
     if re.findall(parentheses_pattern, expression):
@@ -117,9 +119,9 @@ def solve_equation(
 
 
 def update_equation(
-    symints: list[torch.SymInt | int],
-    init_symints: list[torch.SymInt | int],
-    padding_constraints: defaultdict[torch.SymInt, list[sp.Expr | int]],
+    symints: List[Union[torch.SymInt, int]],
+    init_symints: List[Union[torch.SymInt, int]],
+    padding_constraints: defaultdict[torch.SymInt, List[Union[sp.Expr, int]]],
     init_eq: sp.Expr,
     new_mod_num: int,
     var: torch.SymInt,

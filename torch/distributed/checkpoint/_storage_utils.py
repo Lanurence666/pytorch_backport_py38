@@ -1,14 +1,17 @@
+from __future__ import annotations
+
 import os
 
 from .filesystem import FileSystemReader, FileSystemWriter
 from .storage import StorageReader, StorageWriter
+from typing import List, Optional, Type, Union
 
 
 def _storage_setup(
-    storage: StorageReader | StorageWriter | None,
-    checkpoint_id: str | os.PathLike | None,
+    storage: Union[StorageReader, Optional[StorageWriter]],
+    checkpoint_id: Union[str, Optional[os.PathLike]],
     reader: bool = False,
-) -> StorageReader | StorageWriter | None:
+) -> Union[StorageReader, Optional[StorageWriter]]:
     if storage:
         if checkpoint_id is not None:
             storage.reset(checkpoint_id)
@@ -20,7 +23,7 @@ def _storage_setup(
             "storage_reader/storage_writer is None."
         )
 
-    targets: list[type[StorageReader | StorageWriter]] = []
+    targets: List[Type[Union[StorageReader, StorageWriter]]] = Union[[]]
     if reader:
         targets = [
             FileSystemReader,

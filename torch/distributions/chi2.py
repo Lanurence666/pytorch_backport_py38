@@ -1,5 +1,9 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+from typing import Optional, Union
+
+
 from torch import Tensor
 from torch.distributions import constraints
 from torch.distributions.gamma import Gamma
@@ -28,8 +32,8 @@ class Chi2(Gamma):
 
     def __init__(
         self,
-        df: Tensor | float,
-        validate_args: bool | None = None,
+        df: Union[Tensor, float],
+        validate_args: Optional[bool] = None,
     ) -> None:
         super().__init__(0.5 * df, 0.5, validate_args=validate_args)
 

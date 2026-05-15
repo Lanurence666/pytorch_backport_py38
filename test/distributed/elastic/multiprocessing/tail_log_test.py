@@ -6,6 +6,7 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+from __future__ import annotations
 import io
 import os
 import shutil
@@ -30,7 +31,6 @@ def write(max: int, sleep: float, file: str):
 
 class TailLogTest(unittest.TestCase):
     def setUp(self):
-        super().setUp()
         self.test_dir = tempfile.mkdtemp(prefix=f"{self.__class__.__name__}_")
         self.threadpool = ThreadPoolExecutor()
 

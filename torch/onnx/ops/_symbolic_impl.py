@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Implementation of symbolic FX ops to represent arbitrary ONNX ops.
 
 This module provides a way to create symbolic FX operators that can represent
@@ -16,6 +17,7 @@ from collections.abc import Sequence
 
 import torch
 from torch.onnx.ops import _dtype_mappings
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 
 _INT_TYPE = "i"
@@ -44,17 +46,17 @@ class EncodedAttrs:
         attr_strs: List of string attributes.
     """
 
-    attr_keys: list[str]
-    attr_types: list[str]
-    attr_pos: list[tuple[int, int]]
-    attr_ints: list[int]
-    attr_floats: list[float]
-    attr_strs: list[str]
+    attr_keys: List[str]
+    attr_types: List[str]
+    attr_pos: List[Tuple[int, int]]
+    attr_ints: List[int]
+    attr_floats: List[float]
+    attr_strs: List[str]
 
     @classmethod
     def from_dict(
         cls,
-        attrs: dict[
+        attrs: Dict[
             str,
             int
             | float
@@ -125,14 +127,14 @@ class EncodedAttrs:
 
     def to_dict(
         self,
-    ) -> dict[
+    ) -> Dict[
         str,
-        int | float | str | list[int] | list[float] | list[str],
+        Union[Union[int, float], Union[str, List[int]]] | Union[List[float], List[str]],
     ]:
         """Convert the encoded attributes back to a dictionary for creating an ONNX node."""
-        attrs: dict[
+        attrs: Dict[
             str,
-            int | float | str | list[int] | list[float] | list[str],
+            Union[Union[int, float], Union[str, List[int]]] | Union[List[float], List[str]],
         ] = {}
         for i, key in enumerate(self.attr_keys):
             attr_type = self.attr_types[i]
@@ -165,21 +167,21 @@ class EncodedAttrs:
     ),
 )
 def _symbolic(
-    inputs: Sequence[torch.Tensor | None],
+    inputs: Sequence[Optional[torch.Tensor]],
     op_type: str,
     onnx_dtype: int,
     *,
-    shape: Sequence[int | torch.SymInt],
+    shape: Sequence[Union[int, torch.SymInt]],
     attr_keys: Sequence[str],
     attr_types: Sequence[str],
-    attr_pos: Sequence[tuple[int, int]],
+    attr_pos: Sequence[Tuple[int, int]],
     attr_ints: Sequence[int],
     attr_floats: Sequence[float],
     attr_strs: Sequence[str],
     metadata_props_keys: Sequence[str] = (),
     metadata_props_values: Sequence[str] = (),
     domain: str = "",
-    version: int | None = None,
+    version: Optional[int] = None
 ) -> torch.Tensor:
     torch._check(
         onnx_dtype in _dtype_mappings.ONNX_DTYPE_TO_TORCH_DTYPE,
@@ -196,17 +198,17 @@ def _(
     op_type: str,
     onnx_dtype: int,
     *,
-    shape: Sequence[int | torch.SymInt],
+    shape: Sequence[Union[int, torch.SymInt]],
     attr_keys: Sequence[str],
     attr_types: Sequence[str],
-    attr_pos: Sequence[tuple[int, int]],
+    attr_pos: Sequence[Tuple[int, int]],
     attr_ints: Sequence[int],
     attr_floats: Sequence[float],
     attr_strs: Sequence[str],
     metadata_props_keys: Sequence[str] = (),
     metadata_props_values: Sequence[str] = (),
     domain: str = "",
-    version: int | None = None,
+    version: Optional[int] = None
 ) -> torch.Tensor:
     torch._check(
         onnx_dtype in _dtype_mappings.ONNX_DTYPE_TO_TORCH_DTYPE,
@@ -231,22 +233,22 @@ def _(
     ),
 )
 def _symbolic_multi_out(
-    inputs: Sequence[torch.Tensor | None],
+    inputs: Sequence[Optional[torch.Tensor]],
     op_type: str,
     onnx_dtypes: Sequence[int],
     *,
-    shapes: Sequence[Sequence[int | torch.SymInt]],
+    shapes: Sequence[Sequence[Union[int, torch.SymInt]]],
     attr_keys: Sequence[str],
     attr_types: Sequence[str],
-    attr_pos: Sequence[tuple[int, int]],
+    attr_pos: Sequence[Tuple[int, int]],
     attr_ints: Sequence[int],
     attr_floats: Sequence[float],
     attr_strs: Sequence[str],
     metadata_props_keys: Sequence[str] = (),
     metadata_props_values: Sequence[str] = (),
     domain: str = "",
-    version: int | None = None,
-) -> list[torch.Tensor]:
+    version: Optional[int] = None
+) -> List[torch.Tensor]:
     outputs = []
     torch._check(
         len(shapes) == len(onnx_dtypes),
@@ -271,18 +273,18 @@ def _(
     op_type: str,
     onnx_dtypes: Sequence[int],
     *,
-    shapes: Sequence[Sequence[int | torch.SymInt]],
+    shapes: Sequence[Sequence[Union[int, torch.SymInt]]],
     attr_keys: Sequence[str],
     attr_types: Sequence[str],
-    attr_pos: Sequence[tuple[int, int]],
+    attr_pos: Sequence[Tuple[int, int]],
     attr_ints: Sequence[int],
     attr_floats: Sequence[float],
     attr_strs: Sequence[str],
     metadata_props_keys: Sequence[str] = (),
     metadata_props_values: Sequence[str] = (),
     domain: str = "",
-    version: int | None = None,
-) -> list[torch.Tensor]:
+    version: Optional[int] = None
+) -> List[torch.Tensor]:
     outputs = []
     torch._check(
         len(shapes) == len(onnx_dtypes),

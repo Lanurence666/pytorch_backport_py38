@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
 import os
 import sys
 from pathlib import Path
@@ -10,7 +11,7 @@ import argparse
 import json
 import zipfile
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Dict, List, Tuple, Union
 
 import pandas as pd  # type: ignore[import]
 from tools.stats.upload_stats_lib import download_s3_artifacts, upload_to_s3
@@ -40,8 +41,8 @@ class SegmentGenerator:
     """
 
     def generate(
-        self, records: list[UtilizationRecord], segment_delta_threshold: int = 60
-    ) -> list[OssCiSegmentV1]:
+        self, records: List[UtilizationRecord], segment_delta_threshold: int = 60
+    ) -> List[OssCiSegmentV1]:
         if len(records) == 0:
             return []
 
@@ -67,7 +68,7 @@ class SegmentGenerator:
         ][cmd_col_name].tolist()
 
         # find segments by screening continuoues time series data
-        segments: list[OssCiSegmentV1] = []
+        segments: List[OssCiSegmentV1] = []
         for value in cmd_list:
             subset = df[df[cmd_col_name] == value].copy()
 
@@ -93,7 +94,7 @@ class SegmentGenerator:
         threshold: int,
         time_column_name: str,
         df: Any,  # the lintrunner keep complaining about the type of df, but it's not a problem
-    ) -> list[dict[str, Any]]:
+    ) -> List[Dict[str, Any]]:
         time_threshold = pd.Timedelta(seconds=threshold)
         df = df.sort_values(by=time_column_name).reset_index(drop=True)
         df["time_diff"] = df[time_column_name].diff()
@@ -116,8 +117,8 @@ class UtilizationDbConverter:
         self,
         info: WorkflowInfo,
         metadata: UtilizationMetadata,
-        records: list[UtilizationRecord],
-        segments: list[OssCiSegmentV1],
+        records: List[UtilizationRecord],
+        segments: List[OssCiSegmentV1],
     ):
         self.metadata = metadata
         self.records = records
@@ -129,7 +130,7 @@ class UtilizationDbConverter:
 
     def convert(
         self,
-    ) -> tuple[OssCiUtilizationMetadataV1, list[OssCiUtilizationTimeSeriesV1]]:
+    ) -> Tuple[OssCiUtilizationMetadataV1, List[OssCiUtilizationTimeSeriesV1]]:
         db_metadata = self._to_oss_ci_metadata()
         timeseries = self._to_oss_ci_timeseries_list()
         return db_metadata, timeseries
@@ -154,14 +155,14 @@ class UtilizationDbConverter:
             tags=[],
         )
 
-    def _to_oss_ci_timeseries_list(self) -> list[OssCiUtilizationTimeSeriesV1]:
+    def _to_oss_ci_timeseries_list(self) -> List[OssCiUtilizationTimeSeriesV1]:
         return [
             self._to_oss_ci_time_series(record, type="utilization", tags=["record"])
             for record in self.records
         ]
 
     def _to_oss_ci_time_series(
-        self, record: UtilizationRecord, type: str, tags: list[str]
+        self, record: UtilizationRecord, type: str, tags: List[str]
     ) -> OssCiUtilizationTimeSeriesV1:
         return OssCiUtilizationTimeSeriesV1(
             created_at=self.created_at,
@@ -271,7 +272,7 @@ class UploadUtilizationData:
         workflow_run_attempt: int,
         job_id: int,
         file_name: str,
-        docs: list[dict[str, Any]],
+        docs: List[Dict[str, Any]],
     ) -> None:
         bucket_name = UTILIZATION_BUCKET
         key = f"{collection}/{version}/{repo}/{workflow_run_id}/{workflow_run_attempt}/{job_id}/{file_name}"
@@ -281,8 +282,8 @@ class UploadUtilizationData:
         self,
         file_path: str,
         artifact_prefix: str = "",
-    ) -> tuple[
-        UtilizationMetadata | None, list[UtilizationRecord], list[UtilizationRecord]
+    ) -> Tuple[
+        Union[UtilizationMetadata, None], List[UtilizationRecord], List[UtilizationRecord]
     ]:
         test_log_content = read_file(file_path)
         if not test_log_content:
@@ -299,8 +300,8 @@ class UploadUtilizationData:
         job_id: int,
         workflow_run_attempt: int,
         artifact_prefix: str = JOB_TEST_ARTIFACT_PREFIX,
-    ) -> tuple[
-        UtilizationMetadata | None, list[UtilizationRecord], list[UtilizationRecord]
+    ) -> Tuple[
+        Union[UtilizationMetadata, None], List[UtilizationRecord], List[UtilizationRecord]
     ]:
         artifact_paths = download_s3_artifacts(
             artifact_prefix, workflow_run_id, workflow_run_attempt, job_id
@@ -329,7 +330,7 @@ class UploadUtilizationData:
         print(f"Converted Log Model: UtilizationMetadata:\n {metadata}")
         return metadata, records, error_records
 
-    def _process_raw_record(self, line: str) -> tuple[UtilizationRecord | None, bool]:
+    def _process_raw_record(self, line: str) -> Tuple[Union[UtilizationRecord, None], bool]:
         try:
             record = UtilizationRecord.from_json(line)
             if record.error:
@@ -341,8 +342,8 @@ class UploadUtilizationData:
 
     def _process_utilization_records(
         self,
-        lines: list[str],
-    ) -> tuple[list[UtilizationRecord], list[UtilizationRecord]]:
+        lines: List[str],
+    ) -> Tuple[List[UtilizationRecord], List[UtilizationRecord]]:
         results = [self._process_raw_record(line) for line in lines[1:]]
         valid_records = [
             record for record, valid in results if valid and record is not None
@@ -355,8 +356,8 @@ class UploadUtilizationData:
     def convert_to_log_models(
         self,
         content: str,
-    ) -> tuple[
-        UtilizationMetadata | None, list[UtilizationRecord], list[UtilizationRecord]
+    ) -> Tuple[
+        Union[UtilizationMetadata, None], List[UtilizationRecord], List[UtilizationRecord]
     ]:
         if not content:
             return None, [], []
@@ -393,7 +394,7 @@ def handle_file(file_path: Path) -> str:
     return ""
 
 
-def read_file(file_path: str | Path) -> str:
+def read_file(file_path: Union[str, Path]) -> str:
     try:
         if isinstance(file_path, Path):
             if file_path.is_file():

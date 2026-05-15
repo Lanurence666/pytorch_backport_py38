@@ -1,7 +1,7 @@
 # mypy: allow-untyped-defs
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Tuple, Union
 
 import torch
 from torch._higher_order_ops.wrap import wrap_with_set_grad_enabled
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from torch.export.graph_signature import ExportGraphSignature
 
 
-def _is_set_grad_enabled_node(node: torch.fx.Node) -> torch.fx.Node | bool:
+def _is_set_grad_enabled_node(node: torch.fx.Node) -> Union[torch.fx.Node, bool]:
     return (
         node
         and node.op == "call_function"
@@ -28,7 +28,7 @@ def _is_set_grad_enabled_node(node: torch.fx.Node) -> torch.fx.Node | bool:
 
 def _is_set_grad_enabled_sub_mod(
     node: torch.fx.Node, omit_if_same_with_ambient: bool = False
-) -> bool | torch.Tensor:
+) -> Union[bool, torch.Tensor]:
     if node.op == "call_module":
         if not isinstance(node.target, str):
             raise AssertionError(f"expected str target, got {type(node.target)}")
@@ -90,8 +90,8 @@ def _remove_set_grad_and_inline(node: torch.fx.Node) -> None:
 
 
 def _sequential_split_and_maybe_inline_subgraphs(
-    gm: torch.fx.GraphModule, graph_signature: ExportGraphSignature | None
-) -> tuple[torch.fx.GraphModule, ExportGraphSignature | None]:
+    gm: Optional[torch.fx.GraphModule, graph_signature: ExportGraphSignature]
+) -> Union[Tuple[torch.fx.GraphModule, ExportGraphSignature, None]]:
     """
     Helper function for replace_set_grad_with_hop_pass().
     Split the graph module into multiple subgraphs based on the set_grad_enabled nodes.
@@ -118,8 +118,8 @@ def _sequential_split_and_maybe_inline_subgraphs(
 
 
 def replace_set_grad_with_hop_pass(
-    gm: torch.fx.GraphModule, graph_signature: ExportGraphSignature | None
-) -> tuple[torch.fx.GraphModule, ExportGraphSignature | None]:
+    gm: Optional[torch.fx.GraphModule, graph_signature: ExportGraphSignature]
+) -> Union[Tuple[torch.fx.GraphModule, ExportGraphSignature, None]]:
     """
     Split gm into sub-graph-modules using `sequential_split_and_maybe_inline_subgraphs`, and
     then recursively call itself on each of the submodules.

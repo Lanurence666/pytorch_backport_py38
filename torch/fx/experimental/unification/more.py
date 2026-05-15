@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Dict, TYPE_CHECKING, Union, overload
 
 from .core import (  # type: ignore[attr-defined]
     _reify as core_reify,
@@ -47,7 +47,7 @@ def unifiable(cls: type) -> type:
 #########
 
 
-def reify_object(o: object, s: dict[Var, object]) -> object:
+def reify_object(o: object, s: Dict[Var, object]) -> object:
     """Reify a Python object with a substitution
     >>> # xdoctest: +SKIP
     >>> class Foo(object):
@@ -70,7 +70,7 @@ def reify_object(o: object, s: dict[Var, object]) -> object:
         return _reify_object_dict(o, s)
 
 
-def _reify_object_dict(o: object, s: dict[Var, object]) -> object:
+def _reify_object_dict(o: object, s: Dict[Var, object]) -> object:
     obj = object.__new__(type(o))
     d = reify(o.__dict__, s)  # pyrefly: ignore[missing-attribute]
     if d == o.__dict__:  # pyrefly: ignore[missing-attribute]
@@ -79,7 +79,7 @@ def _reify_object_dict(o: object, s: dict[Var, object]) -> object:
     return obj
 
 
-def _reify_object_slots(o: object, s: dict[Var, object]) -> object:
+def _reify_object_slots(o: object, s: Dict[Var, object]) -> object:
     attrs = [
         getattr(o, attr)
         for attr in o.__slots__  # pyrefly: ignore[missing-attribute]
@@ -98,7 +98,7 @@ def _reify_object_slots(o: object, s: dict[Var, object]) -> object:
 
 
 @dispatch(slice, dict)
-def _reify(o: slice, s: dict[Var, object]) -> slice:
+def _reify(o: slice, s: Dict[Var, object]) -> slice:
     """Reify a Python ``slice`` object"""
 
     return slice(*reify((o.start, o.stop, o.step), s))  # pyrefly: ignore[not-iterable]
@@ -110,8 +110,8 @@ def _reify(o: slice, s: dict[Var, object]) -> slice:
 
 
 def unify_object(
-    u: object, v: object, s: dict[Var, object]
-) -> dict[Var, object] | bool:
+    u: object, v: object, s: Dict[Var, object]
+) -> Union[Dict[Var, object], bool]:
     """Unify two Python objects
     Unifies their type and ``__dict__`` attributes
     >>> # xdoctest: +SKIP
@@ -151,6 +151,6 @@ def unify_object(
 
 
 @dispatch(slice, slice, dict)
-def _unify(u: slice, v: slice, s: dict[Var, object]) -> dict[Var, object] | bool:
+def _unify(u: slice, v: slice, s: Dict[Var, object]) -> Union[Dict[Var, object], bool]:
     """Unify a Python ``slice`` object"""
     return unify((u.start, u.stop, u.step), (v.start, v.stop, v.step), s)

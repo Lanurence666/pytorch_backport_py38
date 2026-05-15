@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 """Unique operator implementation."""
 
 from torchfuzz.operators.base import Operator
@@ -11,7 +13,7 @@ class UniqueOperator(Operator):
         super().__init__("unique")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.unique"
 
@@ -23,7 +25,7 @@ class UniqueOperator(Operator):
         """
         return isinstance(output_spec, TensorSpec) and len(output_spec.size) == 1
 
-    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 1) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 1) -> List[Spec]:
         """Generate input spec for unique operation."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("UniqueOperator can only produce TensorSpec outputs")
@@ -38,7 +40,7 @@ class UniqueOperator(Operator):
         return [input_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for unique with deterministic target size input (no guards)."""
         if len(input_names) != 1:

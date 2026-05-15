@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module provides iterator-related variable tracking functionality for Dynamo.
 It implements variable classes for handling Python iterators and itertools functions
@@ -15,8 +16,8 @@ handling of iterator operations during code transformation and optimization.
 
 import itertools
 import sys
-from collections.abc import Callable, Sequence
-from typing import Any, TYPE_CHECKING
+
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union
 
 from .. import graph_break_hints, polyfills, variables
 from ..bytecode_transformation import (
@@ -63,7 +64,7 @@ class ItertoolsVariable(VariableTracker):
         self,
         tx: "InstructionTranslator",
         args: Sequence["VariableTracker"],
-        kwargs: "dict[str, VariableTracker]",
+        kwargs: "Dict[str, VariableTracker]",
     ) -> "VariableTracker":
         # See also: module `torch._dynamo.polyfills.itertools`
 
@@ -256,8 +257,8 @@ class IteratorVariable(VariableTracker):
     # Example of unsafe eager unpacking: list(islice(map(f, seq), 5))
     def force_unpack_var_sequence(
         self, tx: "InstructionTranslator"
-    ) -> list[VariableTracker]:
-        result: list[VariableTracker] = []
+    ) -> List[VariableTracker]:
+        result: List[VariableTracker] = []
         self.force_apply_to_var_sequence(tx, result.append)
         return result
 
@@ -328,8 +329,8 @@ class CountIteratorVariable(IteratorVariable):
 
     def __init__(
         self,
-        item: int | VariableTracker = 0,
-        step: int | VariableTracker = 1,
+        item: Union[int, VariableTracker]= 0,
+        step: Union[int, VariableTracker]= 1,
         advance_count: int = 0,
         **kwargs: Any,
     ) -> None:
@@ -344,8 +345,7 @@ class CountIteratorVariable(IteratorVariable):
 
     def tp_iternext_impl(self, tx: "InstructionTranslator") -> VariableTracker:
         # ref: https://github.com/python/cpython/blob/3.13/Modules/itertoolsmodule.c#L4189-L4216
-        if not self.is_mutable():
-            raise AssertionError("CountIteratorVariable must be mutable for next()")
+        assert self.is_mutable()
         old_item = self.item
         tx.output.side_effects.mutation(self)
         self.item = self.item.call_method(tx, "__add__", [self.step], {})
@@ -382,19 +382,18 @@ class ZipVariable(IteratorVariable):
 
     def __init__(
         self,
-        iterables: list[VariableTracker],
+        iterables: List[VariableTracker],
         strict: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
-        if not isinstance(iterables, list):
-            raise AssertionError(f"Expected list of iterables, got {type(iterables)}")
-        # can be list[Variable] or VariableTracker (with next_variable implemented)
+        assert isinstance(iterables, list)
+        # can be List[Variable] or VariableTracker (with next_variable implemented)
         self.iterables = iterables
         self.index = 0
         self.strict = strict
 
-    def python_type(self) -> type[zip]:  # type: ignore[type-arg]
+    def python_type(self) -> Type[zip]:  # type: ignore[type-arg]
         return zip
 
     def has_unpack_var_sequence(self, tx: "InstructionTranslator") -> bool:
@@ -405,11 +404,8 @@ class ZipVariable(IteratorVariable):
 
     def unpack_var_sequence(
         self, tx: "InstructionTranslator"
-    ) -> list["VariableTracker"]:
-        if not self.has_unpack_var_sequence(tx):
-            raise AssertionError(
-                "Cannot unpack var sequence: not all iterables are unpackable"
-            )
+    ) -> List["VariableTracker"]:
+        assert self.has_unpack_var_sequence(tx)
         iterables = []
         for it in self.iterables:
             if isinstance(it, list):
@@ -422,8 +418,7 @@ class ZipVariable(IteratorVariable):
 
     def tp_iternext_impl(self, tx: "InstructionTranslator") -> VariableTracker:
         # ref: https://github.com/python/cpython/blob/v3.13.3/Python/bltinmodule.c#L2906-L2994
-        if not self.is_mutable():
-            raise AssertionError("ZipVariable must be mutable for next()")
+        assert self.is_mutable()
 
         if len(self.iterables) == 0:
             raise_observed_exception(StopIteration, tx)
@@ -432,7 +427,7 @@ class ZipVariable(IteratorVariable):
         args = []
 
         def get_item(
-            it: list[VariableTracker] | VariableTracker,
+            it: Union[List[VariableTracker], VariableTracker,]
         ) -> VariableTracker:
             if isinstance(it, list):
                 if old_index >= len(it):
@@ -441,7 +436,7 @@ class ZipVariable(IteratorVariable):
             else:
                 return it.next_variable(tx)
 
-        idx: int | None = None
+        idx: Optional[int]= None
         try:
             for idx, it in enumerate(self.iterables):
                 args.append(get_item(it))
@@ -507,7 +502,7 @@ class MapVariable(ZipVariable):
     def __init__(
         self,
         fn: VariableTracker,
-        iterables: list[VariableTracker],
+        iterables: List[VariableTracker],
         **kwargs: Any,
     ) -> None:
         super().__init__(iterables, **kwargs)
@@ -531,10 +526,9 @@ class MapVariable(ZipVariable):
         self.reconstruct_items(codegen)
         codegen.append_output(create_build_tuple(len(self.iterables) + 1))
         if self.strict:
-            if sys.version_info < (3, 14):
-                raise AssertionError(
-                    "Unexpected bug: map(strict=True) requires Python 3.14+"
-                )
+            assert sys.version_info >= (3, 14), (
+                "Unexpected bug: map(strict=True) requires Python 3.14+"
+            )
             codegen.extend_output(
                 [
                     codegen.create_load_const("strict"),
@@ -563,7 +557,7 @@ class FilterVariable(IteratorVariable):
     def __init__(
         self,
         fn: VariableTracker,
-        iterable: list[VariableTracker],
+        iterable: List[VariableTracker],
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -581,11 +575,8 @@ class FilterVariable(IteratorVariable):
 
     def unpack_var_sequence(
         self, tx: "InstructionTranslator"
-    ) -> list["VariableTracker"]:
-        if not self.has_unpack_var_sequence(tx):
-            raise AssertionError(
-                "Cannot unpack var sequence: iterable is not unpackable"
-            )
+    ) -> List["VariableTracker"]:
+        assert self.has_unpack_var_sequence(tx)
         it = None
         if isinstance(self.iterable, list):
             it = self.iterable[self.index :]
@@ -646,7 +637,7 @@ class DictViewIterator(IteratorVariable):
 
     def __init__(
         self,
-        items: dict[HashableTracker, VariableTracker],
+        items: Dict[HashableTracker, VariableTracker],
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -655,10 +646,7 @@ class DictViewIterator(IteratorVariable):
         elif self.view_type == "values":
             self._iter = iter(items.values())  # type: ignore[bad-assignment]
         else:
-            if self.view_type != "items":
-                raise AssertionError(
-                    f"Expected view_type 'items', got {self.view_type!r}"
-                )
+            assert self.view_type == "items"
             self._iter = iter(items.items())  # type: ignore[bad-assignment]
 
     def tp_iternext_impl(self, tx: "InstructionTranslator") -> VariableTracker:

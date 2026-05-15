@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import warnings
 
 import torch
@@ -9,6 +11,7 @@ from torch.autograd import Function
 # USE_DISTRIBUTED compile flag. Make sure they raise import error
 # if we're trying to use them.
 from torch.distributed import group, ReduceOp
+from typing import List, Tuple
 
 
 def _not_supported_under_compile(name, *, suggestion=None):
@@ -65,7 +68,7 @@ def gather(tensor, dst=0, group=group.WORLD):
         group (ProcessGroup, optional): The process group to work on.
 
     Returns:
-        tuple[Tensor]: List of appropriately-sized tensors with the gathered data.
+        Tuple[Tensor]: List of appropriately-sized tensors with the gathered data.
     """
     if torch.compiler.is_compiling():
         _not_supported_under_compile("gather")
@@ -80,7 +83,7 @@ def scatter(tensors, src=0, group=group.WORLD):
     ``tensor`` argument.
 
     Arguments:
-        tensors (list[Tensor]): List of tensors to scatter on the source rank.
+        tensors (List[Tensor]): List of tensors to scatter on the source rank.
             Receivers must pass ``None`.
         src (int, optional): Source rank (default is 0).
         group (ProcessGroup, optional): The process group to work on.
@@ -123,7 +126,7 @@ def reduce_scatter(output, input_list, op=ReduceOp.SUM, group=group.WORLD):
 
     Arguments:
         output (Tensor): Output tensor.
-        input_list (list[Tensor]): List of tensors to reduce and scatter.
+        input_list (List[Tensor]): List of tensors to reduce and scatter.
         op (optional): One of the values from
             ``torch.distributed.ReduceOp``
             enum.  Specifies an operation used for element-wise reductions.
@@ -211,8 +214,8 @@ def all_to_all(output_tensor_list, input_tensor_list, group=group.WORLD):
     Each process scatters list of input tensors to all processes in a group and return gathered list of tensors in output list.
 
     Arguments:
-        output_tensor_list (list[Tensor]): list of tensors to gather one per rank.
-        input_tensor_list (list[Tensor]): List of tensors to scatter one per rank.
+        output_tensor_list (List[Tensor]): list of tensors to gather one per rank.
+        input_tensor_list (List[Tensor]): List of tensors to scatter one per rank.
         group (ProcessGroup, optional): The process group to work on.
 
     Returns:
@@ -239,10 +242,10 @@ def all_to_all_single(
     Arguments:
         output (Tensor): Gathered concatenated output tensor.
         input (Tensor): Input tensor to scatter.
-        output_split_sizes: (list[Int], optional): Output split sizes for dim 0
+        output_split_sizes: (List[Int], optional): Output split sizes for dim 0
             if specified None or empty, dim 0 of ``output`` tensor must divide
             equally by ``world_size``.
-        input_split_sizes: (list[Int], optional): Input split sizes for dim 0
+        input_split_sizes: (List[Int], optional): Input split sizes for dim 0
             if specified None or empty, dim 0 of ``input`` tensor must divide
             equally by ``world_size``.
 

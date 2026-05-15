@@ -70,10 +70,7 @@ class TestNetMinBaseBlock(TestCase):
 
     def test_no_discrepancy(self) -> None:
         # No discrepancies should handle gracefully with an empty set
-        with (
-            mock.patch("torch.fx.passes.net_min_base._MinimizerBase.run_a"),
-            mock.patch("torch.fx.passes.net_min_base._MinimizerBase.run_b"),
-        ):
+        with mock.patch("torch.fx.passes.net_min_base._MinimizerBase.run_a"), mock.patch("torch.fx.passes.net_min_base._MinimizerBase.run_b"):
             # Have both run_a and run_b return the same result
             return_value = torch.zeros((2, 5))
             self.minimizer.run_a.return_value = return_value

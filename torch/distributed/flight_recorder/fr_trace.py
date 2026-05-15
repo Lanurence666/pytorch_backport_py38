@@ -28,8 +28,9 @@ python fr_trace.py <dump dir containing trace files> [-o <output file>]
 - This script is versioned so that we can ensure our future changes to flight recorder are backwards compatible.
 """
 
+from typing import Optional, Sequence, overload
 import pickle
-from collections.abc import Sequence
+
 
 from torch.distributed.flight_recorder.components.builder import build_db, transform_ft
 from torch.distributed.flight_recorder.components.config_manager import JobConfig
@@ -40,7 +41,7 @@ from torch.distributed.flight_recorder.components.types import types
 __all__ = ["main"]
 
 
-def main(args: Sequence[str] | None = None) -> None:
+def main(args: Optional[Sequence[str]] = None) -> None:
     config = JobConfig()
     # pyrefly: ignore [bad-assignment]
     args = config.parse_args(args)

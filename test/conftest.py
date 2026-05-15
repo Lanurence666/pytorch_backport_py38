@@ -1,3 +1,4 @@
+from __future__ import annotations
 import copy
 import functools
 import json
@@ -149,7 +150,7 @@ class _NodeReporterReruns(_NodeReporter):
                     f"Expected report.longrepr to be tuple, got {type(report.longrepr)}"
                 )
             filename, lineno, skipreason = report.longrepr
-            skipreason = skipreason.removeprefix("Skipped: ")
+            skipreason = (skipreason[len("Skipped: "):] if skipreason.startswith("Skipped: ") else skipreason)
             details = f"{filename}:{lineno}: {skipreason}"
 
             skipped = ET.Element(

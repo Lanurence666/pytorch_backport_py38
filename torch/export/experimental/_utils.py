@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import logging
 
 import torch
 from torch._inductor.utils import IndentedBuffer
+from typing import Dict, List, Optional, Type
 
 
 __all__ = []  # type: ignore[var-annotated]
@@ -10,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 def _get_main_cpp_file(
     package_name: str,
-    model_names: list[str],
-    example_inputs_map: dict[str, int] | None,
+    model_names: List[str],
+    example_inputs_map: Optional[Dict[str, int]],
     device_type: str,
 ) -> str:
     """
@@ -188,7 +191,7 @@ def _get_main_cpp_file(
     return ib.getvalue()
 
 
-def _get_make_file(package_name: str, model_names: list[str], device_type: str) -> str:
+def _get_make_file(package_name: str, model_names: List[str], device_type: str) -> str:
     ib = IndentedBuffer()
 
     ib.writelines(

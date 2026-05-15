@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Dict, IO, List, Optional
 """
 This module provides functionality for caching and looking up fully qualified function
 and class names from Python source files by line number.
@@ -19,7 +21,7 @@ IO errors are handled gracefully by returning empty cache entries.
 import tokenize
 
 
-cache: dict[str, dict[int, str]] = {}
+cache: Dict[str, Dict[int, str]] = {}
 
 
 def clearcache() -> None:
@@ -36,11 +38,11 @@ def _add_file(filename: str) -> None:
 
     # NOTE: undefined behavior if file is not valid Python source,
     # since tokenize will have undefined behavior.
-    result: dict[int, str] = {}
+    result: Dict[int, str] = {}
     # current full funcname, e.g. xxx.yyy.zzz
     cur_name = ""
     cur_indent = 0
-    significant_indents: list[int] = []
+    significant_indents: List[int] = []
 
     for i, token in enumerate(tokens):
         if token.type == tokenize.INDENT:
@@ -68,7 +70,7 @@ def _add_file(filename: str) -> None:
     cache[filename] = result
 
 
-def get_funcname(filename: str, lineno: int) -> str | None:
+def get_funcname(filename: str, lineno: int) -> Optional[str]:
     if filename not in cache:
         _add_file(filename)
     return cache[filename].get(lineno, None)

@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 from collections import defaultdict
 from threading import Lock
@@ -12,6 +14,7 @@ from torch import Tensor
 from torch.distributed.rpc import RRef
 
 from .utils import functional_optim_map
+from typing import List, Union
 
 
 __all__ = ["DistributedOptimizer"]
@@ -50,7 +53,7 @@ class _ScriptLocalOptimizer(nn.Module):
     def step(self, autograd_ctx_id: int):
         all_local_grads = dist_autograd.get_gradients(autograd_ctx_id)
         # apply functional optimizer step with a list of gradients
-        grads: list[Tensor | None] = [
+        grads: Union[List[Tensor, None]]= [
             all_local_grads[p] if p in all_local_grads else None  # noqa: SIM401
             for p in self._local_params
         ]
@@ -152,7 +155,7 @@ class DistributedOptimizer:
     Args:
         optimizer_class (optim.Optimizer): the class of optimizer to
             instantiate on each worker.
-        params_rref (list[RRef]): list of RRefs to local or remote parameters
+        params_rref (List[RRef]): list of RRefs to local or remote parameters
             to optimize.
         args: arguments to pass to the optimizer constructor on each worker.
         kwargs: arguments to pass to the optimizer constructor on each worker.

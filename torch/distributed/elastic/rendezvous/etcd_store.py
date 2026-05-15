@@ -5,6 +5,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import datetime
 import random
 import time
@@ -18,6 +20,7 @@ try:
     import etcd  # type: ignore[import]
 except ModuleNotFoundError:
     from . import _etcd_stub as etcd
+from typing import Optional
 
 
 # Delay (sleep) for a small random amount to reduce CAS failures.
@@ -39,7 +42,7 @@ class EtcdStore(Store):
         etcd_client,
         etcd_store_prefix,
         # Default timeout same as in c10d/Store.hpp
-        timeout: datetime.timedelta | None = None,
+        timeout: Optional[datetime.timedelta]= None,
     ):
         super().__init__()  # required for pybind trampoline.
 
@@ -121,7 +124,7 @@ class EtcdStore(Store):
                 cas_delay()
 
     # pyrefly: ignore [bad-override]
-    def wait(self, keys, override_timeout: datetime.timedelta | None = None):
+    def wait(self, keys, override_timeout: Optional[datetime.timedelta] = None):
         """
         Wait until all of the keys are published, or until timeout.
 

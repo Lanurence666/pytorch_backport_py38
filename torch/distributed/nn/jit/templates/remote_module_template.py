@@ -10,7 +10,7 @@ def get_remote_module_template(enable_moving_cpu_tensors_to_cuda: bool):
     )
 
 
-_TEMPLATE_PREFIX = """from typing import *
+_TEMPLATE_PREFIX = """from typing import *, Any, Tuple
 
 import torch
 import torch.distributed.rpc as rpc

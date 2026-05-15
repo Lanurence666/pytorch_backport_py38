@@ -1,7 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import gc
 import sys
-from typing import Any, NamedTuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Type
+from typing_extensions import NamedTuple
+
 import types
 import weakref
 import json
@@ -101,7 +105,7 @@ def annotated_references(obj):
     need for a list.  Descriptions are currently strings.
 
     """
-    references: dict[int, list[str]] = {}
+    references: Dict[int, List[str]] = {}
 
     def add_reference(name, obj) -> None:
         references.setdefault(id(obj), []).append(name)
@@ -233,7 +237,7 @@ def object_annotation(obj):
     elif isinstance(obj, tuple):
         return f"({format_sequence(obj)})"
     elif isinstance(obj, dict):
-        return f"dict[{len(obj)}]"
+        return f"Dict[{len(obj)}]"
     elif isinstance(obj, types.ModuleType):
         return f"module\n{obj.__name__}"
     elif isinstance(obj, type):
@@ -258,9 +262,9 @@ def object_annotation(obj):
 
 class Node(NamedTuple):
     label: str
-    context: str | None
+    context: Optional[str]
     root: bool
-    referrents: list[tuple[str, int]]
+    referrents: List[Tuple[str, int]]
 
 def create_graph(objects, *, context=None, filter=None):
     if context is None:
@@ -270,7 +274,7 @@ def create_graph(objects, *, context=None, filter=None):
 
     objects = [obj for obj in objects if not isinstance(obj, weakref.ProxyTypes)]
     nodes = [Node(object_annotation(obj), context(obj), filter(obj), []) for obj in objects]
-    node_referrers: list[list[int]] = [[] for obj in objects]
+    node_referrers: List[List[int]] = [[] for obj in objects]
 
     id_to_node = {id(obj): i for i, obj in enumerate(objects)}
     for obj in objects:
@@ -296,8 +300,8 @@ def create_graph(objects, *, context=None, filter=None):
         to_keep.add(idx)
         referrers = node_referrers[idx]
         to_search.extend(referrers)
-    id_to_filtered_id: dict[int, int] = {}
-    filtered: list[Any] = []
+    id_to_filtered_id: Dict[int, int] = {}
+    filtered: List[Any] = []
     for i, n in enumerate(nodes):
         if i in to_keep:
             id_to_filtered_id[i] = len(id_to_filtered_id)

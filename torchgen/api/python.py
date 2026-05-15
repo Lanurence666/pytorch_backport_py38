@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Dict, List, Set, TYPE_CHECKING, Tuple, Union
 
 from torchgen.api import cpp
 from torchgen.api.types import Binding, CppSignature, CppSignatureGroup
@@ -202,7 +202,7 @@ if TYPE_CHECKING:
 
 
 def format_function_signature(
-    name: str, arguments: Iterable[str] = (), return_type: str | None = None
+    name: str, arguments: Iterable[str] = (), return_type: Union[str, None] = None
 ) -> str:
     if not isinstance(arguments, (list, tuple)):
         arguments = tuple(arguments)
@@ -222,19 +222,19 @@ def format_function_signature(
         return sig
     # ruff format bug for compound statements: https://github.com/astral-sh/ruff/issues/18658
     # use `skip` instead of `on` + `off`
-    return sig.removesuffix(" ...") + "  # fmt: skip\n    ..."
+    return (sig[:-len(" ...")] if " ..." and sig.endswith(" ...") else sig) + "  # fmt: skip\n    ..."
 
 
 @dataclass(frozen=True)
 class PythonReturns:
-    returns: tuple[Return, ...]
+    returns: Tuple[Return, ...]
 
 
 @dataclass(frozen=True)
 class PythonArgument:
     name: str
     type: Type
-    default: str | None
+    default: Union[str, None]
 
     # Used to generate the default init expr for some PythonArgParser outputs, e.g.:
     #
@@ -242,7 +242,7 @@ class PythonArgument:
     #                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #                            ^
     #                            +--- default_init str
-    default_init: str | None
+    default_init: Union[str, None]
 
     # Compute argument formal for python argument parsing.
     # Needs to be consistent with torch/csrc/utils/python_arg_parser.h.
@@ -330,10 +330,10 @@ class PythonOutArgument(PythonArgument):
     #   'auto out = _r.tensorlist_n<2>(2);',
     # then binded to scattered C++ output arguments as 'out[0]', 'out[1]', and etc.
     # TODO: maybe don't need keep scattered out fields for python signature?
-    outputs: tuple[PythonArgument, ...]
+    outputs: Tuple[PythonArgument, ...]
 
     @staticmethod
-    def from_outputs(outputs: tuple[PythonArgument, ...]) -> PythonOutArgument | None:
+    def from_outputs(outputs: Tuple[PythonArgument, ...]) -> Union[PythonOutArgument, None]:
         if not outputs:
             return None
 
@@ -367,13 +367,13 @@ class PythonSignature:
 
     # Positional arguments.
     # TODO: create a dedicated SelfArgument type for 'self'?
-    input_args: tuple[PythonArgument, ...]
+    input_args: Tuple[PythonArgument, ...]
 
     # Keyword arguments excluding the 'out' argument and scattered kwargs belonging
     # to TensorOptions (dtype, layout, device, pin_memory, requires_grad, etc).
-    input_kwargs: tuple[PythonArgument, ...]
+    input_kwargs: Tuple[PythonArgument, ...]
 
-    output_args: PythonOutArgument | None
+    output_args: Union[PythonOutArgument, None]
 
     # Return types, which are only used by pyi
     returns: PythonReturns
@@ -384,7 +384,7 @@ class PythonSignature:
     # for out variant), in which case they will be used as scattered fields without
     # being packed into 'options'.
     # TODO: maybe create a PythonTensorOptionsArgument?
-    tensor_options_args: tuple[PythonArgument, ...]
+    tensor_options_args: Tuple[PythonArgument, ...]
 
     # method or function signature?
     method: bool
@@ -395,8 +395,8 @@ class PythonSignature:
 
     def arguments(
         self, *, skip_outputs: bool = False, skip_tensor_options: bool = False
-    ) -> tuple[PythonArgument | PythonOutArgument, ...]:
-        result: list[PythonArgument | PythonOutArgument] = []
+    ) -> Tuple[Union[PythonArgument, PythonOutArgument], ...]:
+        result: List[Union[PythonArgument, PythonOutArgument]] = []
         result.extend(self.input_args)
         result.extend(self.input_kwargs)
         if self.output_args is not None and not skip_outputs:
@@ -422,7 +422,7 @@ class PythonSignature:
     # signature_str_pyi().
     def signature_str(self, *, skip_outputs: bool = False, symint: bool = True) -> str:
         args = self.arguments(skip_outputs=skip_outputs)
-        schema_formals: list[str] = [
+        schema_formals: List[str] = [
             a.argument_str(method=self.method, symint=symint) for a in args
         ]
         positional_argc = len(self.input_args)
@@ -433,7 +433,7 @@ class PythonSignature:
 
     def signature_str_pyi(self, *, skip_outputs: bool = False) -> str:
         args = self.arguments(skip_outputs=skip_outputs)
-        schema_formals: list[str] = [
+        schema_formals: List[str] = [
             a.argument_str_pyi(method=self.method) for a in args
         ]
         positional_argc = len(self.input_args)
@@ -447,10 +447,10 @@ class PythonSignature:
             schema_formals.insert(0, "self")
         return format_function_signature(self.name, schema_formals, returns_str)
 
-    def signature_str_pyi_vararg(self, *, skip_outputs: bool = False) -> str | None:
+    def signature_str_pyi_vararg(self, *, skip_outputs: bool = False) -> Union[str, None]:
         # only pyi uses vararg signatures
         args = self.arguments(skip_outputs=skip_outputs)
-        schema_formals: list[str] = [
+        schema_formals: List[str] = [
             a.argument_str_pyi(method=self.method) for a in args
         ]
         # vararg only applies to pyi signatures. vararg variants are not generated for all signatures
@@ -497,7 +497,7 @@ class PythonSignatureDeprecated(PythonSignature):
     #   [func schema]: aten::addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor
     #   [func call]: self.addmm(mat1, mat2, beta, 1)
     # We store ['self', 'mat1', 'mat2', 'beta', '1'] in this case.
-    deprecated_args_exprs: tuple[str, ...]
+    deprecated_args_exprs: Tuple[str, ...]
 
     @property
     def deprecated(self) -> bool:
@@ -513,7 +513,7 @@ class PythonSignatureDeprecated(PythonSignature):
 
     def signature_str_pyi(self, *, skip_outputs: bool = False) -> str:
         args = self.arguments(skip_outputs=skip_outputs)
-        schema_formals: list[str] = [
+        schema_formals: List[str] = [
             a.argument_str_pyi(method=self.method, deprecated=True) for a in args
         ]
         positional_argc = len(self.input_args)
@@ -523,7 +523,7 @@ class PythonSignatureDeprecated(PythonSignature):
         returns_str = returns_str_pyi(self)
         return format_function_signature(self.name, schema_formals, returns_str)
 
-    def signature_str_pyi_vararg(self, *, skip_outputs: bool = False) -> str | None:
+    def signature_str_pyi_vararg(self, *, skip_outputs: bool = False) -> Union[str, None]:
         # the codegen doesn't include vararg variants for deprecated signatures
         return None
 
@@ -557,13 +557,13 @@ class PythonSignatureGroup:
     base: NativeFunction
 
     # The out variant (e.g. conv2d_out)
-    outplace: NativeFunction | None
+    outplace: Union[NativeFunction, None]
 
     @classmethod
     def from_pairs(
         cls,
         functional: PythonSignatureNativeFunctionPair,
-        out: PythonSignatureNativeFunctionPair | None,
+        out: Union[PythonSignatureNativeFunctionPair, None],
     ) -> PythonSignatureGroup:
         if out is None:
             return PythonSignatureGroup(
@@ -739,7 +739,7 @@ def argument_type_str(
     raise RuntimeError(f"unrecognized type {repr(t)}")
 
 
-def argument_type_size(t: Type) -> int | None:
+def argument_type_size(t: Type) -> Union[int, None]:
     l = t.is_list_like()
     if l is not None and str(l.elem) != "bool":
         return l.size
@@ -773,11 +773,11 @@ def signature(
 def signature_from_schema(
     func: FunctionSchema,
     *,
-    category_override: str | None,
+    category_override: Union[str, None],
     method: bool = False,
     pyi: bool = False,
 ) -> PythonSignature:
-    args: list[Argument] = []
+    args: List[Argument] = []
     args.extend(func.arguments.pre_self_positional)
     # Skip SelfArgument if this is method.
     if not method and func.arguments.self_arg is not None:
@@ -830,10 +830,10 @@ def signature_from_schema(
     )
     is_dummy_function = category_override == "dummy"
 
-    tensor_options_args: list[PythonArgument] = []
+    tensor_options_args: List[PythonArgument] = []
     if (is_factory_function or is_like_or_new_function) and not is_dummy_function:
 
-        def topt_default_init(name: str) -> str | None:
+        def topt_default_init(name: str) -> Union[str, None]:
             topt_args = func.arguments.tensor_options
             if topt_args is None:
                 return None
@@ -914,7 +914,7 @@ def signature_from_schema(
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 
-def structseq_fieldnames(returns: tuple[Return, ...]) -> list[str]:
+def structseq_fieldnames(returns: Tuple[Return, ...]) -> List[str]:
     if len(returns) <= 1 or all(r.name is None for r in returns):
         return []
     else:
@@ -1028,7 +1028,7 @@ def return_type_str_pyi(t: Type) -> str:
     return argument_type_str_pyi(t)
 
 
-def returns_structseq_pyi(signature: PythonSignature) -> tuple[str, str] | None:
+def returns_structseq_pyi(signature: PythonSignature) -> Union[Tuple[str, str], None]:
     python_returns = [return_type_str_pyi(r.type) for r in signature.returns.returns]
     structseq_name = signature.name
     field_names = structseq_fieldnames(signature.returns.returns)
@@ -1138,7 +1138,7 @@ def returns_str_pyi(signature: PythonSignature) -> str:
 
 def dispatch_lambda_args(
     ps: PythonSignature, f: NativeFunction, symint: bool = True
-) -> tuple[DispatchLambdaArgument, ...]:
+) -> Tuple[DispatchLambdaArgument, ...]:
     if isinstance(ps, PythonSignatureDeprecated):
         schema = ps.deprecated_schema
     else:
@@ -1152,7 +1152,7 @@ def dispatch_lambda_args(
         method=False,
         cpp_no_default_args=f.cpp_no_default_args,
     )
-    out_args: set[str] = {a.name for a in schema.arguments.out}
+    out_args: Set[str] = {a.name for a in schema.arguments.out}
 
     # Convert from cpp argument to lambda argument
     def dispatch_lambda_arg(cpp_arg: Binding) -> DispatchLambdaArgument:
@@ -1258,11 +1258,11 @@ def cpp_dispatch_target(f: NativeFunction) -> str:
 def cpp_dispatch_exprs(
     f: NativeFunction,
     *,
-    python_signature: PythonSignature | None = None,
-) -> tuple[str, ...]:
+    python_signature: Union[PythonSignature, None] = None,
+) -> Tuple[str, ...]:
     cpp_args: Sequence[Binding] = _cpp_signature(f, method=False).arguments()
 
-    exprs: tuple[str, ...] = ()
+    exprs: Tuple[str, ...] = ()
     if not isinstance(python_signature, PythonSignatureDeprecated):
         # By default the exprs are consistent with the C++ signature.
         exprs = tuple(a.name for a in cpp_args)
@@ -1296,7 +1296,7 @@ def cpp_dispatch_exprs(
 # For certain cases it is intentionally more restrictive than necessary,
 # e.g.: it doesn't accepts doublelist with definite size.
 def arg_parser_unpack_method(
-    t: Type, default: str | None, default_init: str | None, *, symint: bool = True
+    t: Type, default: Union[str, None], default_init: Union[str, None], *, symint: bool = True
 ) -> str:
     has_default_init = default_init is not None
     if has_default_init and str(t) not in (
@@ -1410,7 +1410,7 @@ def arg_parser_output_expr(
 # Returns a map with key = arg_name and value = PythonArgParserOutputExpr.
 def arg_parser_output_exprs(
     ps: PythonSignature, f: NativeFunction, *, symint: bool = True
-) -> dict[str, PythonArgParserOutputExpr]:
+) -> Dict[str, PythonArgParserOutputExpr]:
     return {
         e.name: e
         for i, a in enumerate(ps.arguments())
@@ -1437,8 +1437,8 @@ def dispatch_lambda_exprs(
     # outputs.
     arg_parser_outputs = arg_parser_output_exprs(ps, f, symint=symint)
     lambda_args = dispatch_lambda_args(ps, f, symint=symint)
-    inits: list[str] = []
-    lambda_args_exprs: dict[str, str] = {}
+    inits: List[str] = []
+    lambda_args_exprs: Dict[str, str] = {}
 
     has_toptions = has_tensor_options(f)
 

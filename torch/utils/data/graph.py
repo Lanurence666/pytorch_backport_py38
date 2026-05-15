@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import io
 import pickle
 import warnings
@@ -6,13 +8,14 @@ from collections.abc import Collection
 
 from torch.utils._import_utils import dill_available
 from torch.utils.data.datapipes.datapipe import IterDataPipe, MapDataPipe
+from typing import Dict, List, Optional, Set, Tuple, Type, Union, overload
 
 
 __all__ = ["traverse", "traverse_dps"]
 
-DataPipe = IterDataPipe | MapDataPipe
+DataPipe = Union[IterDataPipe, MapDataPipe]
 # pyrefly: ignore [invalid-type-alias]
-DataPipeGraph = dict[int, tuple[DataPipe, "DataPipeGraph"]]
+DataPipeGraph = Dict[int, Tuple[DataPipe, "DataPipeGraph"]]
 
 
 def _stub_unpickler() -> str:
@@ -21,8 +24,8 @@ def _stub_unpickler() -> str:
 
 # TODO(VitalyFedyunin): Make sure it works without dill module installed
 def _list_connected_datapipes(
-    scan_obj: DataPipe, only_datapipe: bool, cache: set[int]
-) -> list[DataPipe]:
+    scan_obj: DataPipe, only_datapipe: bool, cache: Set[int]
+) -> List[DataPipe]:
     f = io.BytesIO()
     p = pickle.Pickler(
         f
@@ -61,7 +64,7 @@ def _list_connected_datapipes(
             cache.add(id(obj))
             return _stub_unpickler, ()
 
-    datapipe_classes: tuple[type[DataPipe]] = (IterDataPipe, MapDataPipe)  # type: ignore[assignment]
+    datapipe_classes: Tuple[Type[DataPipe]] = (IterDataPipe, MapDataPipe)  # type: ignore[assignment]
 
     try:
         for cls in datapipe_classes:
@@ -102,11 +105,11 @@ def traverse_dps(datapipe: DataPipe) -> DataPipeGraph:
         A graph represented as a nested dictionary, where keys are ids of DataPipe instances
         and values are tuples of DataPipe instance and the sub-graph
     """
-    cache: set[int] = set()
+    cache: Set[int] = set()
     return _traverse_helper(datapipe, only_datapipe=True, cache=cache)
 
 
-def traverse(datapipe: DataPipe, only_datapipe: bool | None = None) -> DataPipeGraph:
+def traverse(datapipe: DataPipe, only_datapipe: Optional[bool] = None) -> DataPipeGraph:
     r"""
     Traverse the DataPipes and their attributes to extract the DataPipe graph.
 
@@ -135,13 +138,13 @@ def traverse(datapipe: DataPipe, only_datapipe: bool | None = None) -> DataPipeG
     warnings.warn(msg, FutureWarning, stacklevel=2)
     if only_datapipe is None:
         only_datapipe = False
-    cache: set[int] = set()
+    cache: Set[int] = set()
     return _traverse_helper(datapipe, only_datapipe, cache)
 
 
 # Add cache here to prevent infinite recursion on DataPipe
 def _traverse_helper(
-    datapipe: DataPipe, only_datapipe: bool, cache: set[int]
+    datapipe: DataPipe, only_datapipe: bool, cache: Set[int]
 ) -> DataPipeGraph:
     if not isinstance(datapipe, (IterDataPipe, MapDataPipe)):
         raise RuntimeError(

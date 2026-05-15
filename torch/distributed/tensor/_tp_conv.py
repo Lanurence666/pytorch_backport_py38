@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
 # implement matrix related ops for distributed tensor
-from typing import cast
+from __future__ import annotations
+
+from typing import Dict, List, Tuple, cast
 
 import torch
 import torch.distributed as dist
@@ -108,9 +110,9 @@ def _ring_send_recv_aggregate(grad_in_tensor, d1, d2, left, right, rank, size):
 
 def tp_convolution(
     op_call: torch._ops.OpOverload,
-    local_tensor_args: tuple[object, ...],
-    local_tensor_kwargs: dict[str, object],
-    dim_map: list[int],
+    local_tensor_args: Tuple[object, ...],
+    local_tensor_kwargs: Dict[str, object],
+    dim_map: List[int],
 ) -> object:
     if op_call != aten.convolution.default:
         raise AssertionError
@@ -151,7 +153,7 @@ def tp_convolution(
         # step2 feed local input tensor to op_call
         local_tensor_args_list = list(local_tensor_args)
         local_tensor_args_list[0] = in_tensor
-        local_tensor_args = cast(tuple[object, ...], local_tensor_args_list)
+        local_tensor_args = cast(Tuple[object, ...], local_tensor_args_list)
         local_results = op_call(*local_tensor_args, **local_tensor_kwargs)
 
         # step3 remove extra outputs from the results
@@ -169,9 +171,9 @@ def tp_convolution(
 
 def tp_convolution_backward(
     op_call: torch._ops.OpOverload,
-    local_tensor_args: tuple[object, ...],
-    local_tensor_kwargs: dict[str, object],
-    dim_map: list[int],
+    local_tensor_args: Tuple[object, ...],
+    local_tensor_kwargs: Dict[str, object],
+    dim_map: List[int],
 ) -> object:
     if op_call != aten.convolution_backward.default:
         raise AssertionError
@@ -229,7 +231,7 @@ def tp_convolution_backward(
         local_tensor_args_list = list(local_tensor_args)
         local_tensor_args_list[0] = grad_out_tensor
         local_tensor_args_list[1] = in_tensor
-        local_tensor_args = cast(tuple[object, ...], local_tensor_args_list)
+        local_tensor_args = cast(Tuple[object, ...], local_tensor_args_list)
         local_results = op_call(*local_tensor_args, **local_tensor_kwargs)
 
         # step4 aggregate gradients for edge pixels
@@ -241,15 +243,15 @@ def tp_convolution_backward(
             local_results = list(local_results)
             local_results[0] = grad_in_tensor
 
-        local_results = cast(tuple[object, ...], local_results)
+        local_results = cast(Tuple[object, ...], local_results)
 
         return local_results
 
 
 def convolution_handler(
     op_call: torch._ops.OpOverload,
-    args: tuple[object, ...],
-    kwargs: dict[str, object],
+    args: Tuple[object, ...],
+    kwargs: Dict[str, object],
 ) -> object:
     # extract local tensor and sharding infos to a OpInfo
     op_info = dtensor.DTensor._op_dispatcher.unwrap_to_op_info(op_call, args, kwargs)
@@ -276,8 +278,8 @@ def convolution_handler(
 
 def convolution_backward_handler(
     op_call: torch._ops.OpOverload,
-    args: tuple[object, ...],
-    kwargs: dict[str, object],
+    args: Tuple[object, ...],
+    kwargs: Dict[str, object],
 ) -> object:
     # Redistribute grad_output tensor to the same placement as input tensor
     # pyrefly: ignore [bad-assignment]

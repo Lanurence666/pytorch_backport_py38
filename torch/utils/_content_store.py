@@ -18,6 +18,8 @@
 # Because of the weak portability guarantees, you can only write to the
 # content store from a single process; we don't provide any capability
 # of "reopening" a content store to add more things to it.  But we don't
+from __future__ import annotations
+
 # assume that you can keep all of the tensors you want to add to the store
 # in memory at once, because you probably can't!  Nor do we assume that
 # you know a priori whether or not two storages can be deduplicated or not.
@@ -40,6 +42,7 @@ import torch._prims as prims
 import torch._utils
 import torch.nn.functional as F
 from torch.multiprocessing.reductions import StorageWeakRef
+from typing import Dict, Optional, Set, overload
 
 
 def lazy_compile(**compile_kwargs):
@@ -147,7 +150,7 @@ class ContentStoreWriter:
     #     name
     def __init__(self, loc: str, stable_hash: bool = False) -> None:
         self.loc: str = loc
-        self.seen_storage_hashes: set[str] = set()
+        self.seen_storage_hashes: Set[str] = set()
         self.stable_hash = stable_hash
 
     # TODO: offer some sort of non-blocking API to speed things up
@@ -192,9 +195,9 @@ class ContentStoreWriter:
 class ContentStoreReader:
     def __init__(self, loc: str, *, cache=True) -> None:
         self.loc = loc
-        self.storage_cache: (
-            dict[torch.device | None, dict[str, StorageWeakRef]] | None
-        ) = None
+        self.storage_cache: Optional[
+            Dict[Optional[torch.device], Dict[str, StorageWeakRef]]
+        ] = None
         if cache:
             self.storage_cache = defaultdict(dict)
 
@@ -206,7 +209,7 @@ class ContentStoreReader:
             if self.storage_cache is not None
             else None
         )
-        s: torch.UntypedStorage | None
+        s: Optional[torch.UntypedStorage]
         if ws is not None:
             s = torch.UntypedStorage._new_with_weak_ptr(ws.cdata)
             if s is not None:

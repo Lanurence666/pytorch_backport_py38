@@ -1,11 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import contextlib
 import dataclasses
 import logging
 import textwrap
-from collections.abc import Callable
-from typing import Any
-from unittest.mock import patch
+
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import sympy
 
@@ -48,7 +49,7 @@ cutedsl_pexpr = PythonPrinter().doprint
 class CuteDSLKernelWrapper:
     """Wrapper to provide .run() interface for CuteDSL kernels"""
 
-    def __init__(self, kernel_fn: Callable[..., Any], kernel_path: str | None = None):
+    def __init__(self, kernel_fn: Callable[..., Any], kernel_path: Optional[str] = None):
         self.kernel_fn = kernel_fn
         self.kernel_path = kernel_path
         kernel_code_log.info("CuteDSL kernel path: %s", kernel_path)
@@ -73,9 +74,9 @@ class CuteDSLSubgraphInfo:
     """Minimal subgraph info for CuteDSL kernels."""
 
     body: IndentedBuffer
-    template_mask: str | None = None
-    template_out: str | None = None
-    cse: CSE[Any] | None = None
+    template_mask: Optional[str] = None
+    template_out: Optional[str] = None
+    cse: Optional[CSE[Any]] = None
 
     def __post_init__(self):
         self.only_copy_if_non_none_fields = ("cse",)
@@ -96,9 +97,9 @@ class CuteDSLTemplateKernel(Kernel):
     def __init__(
         self,
         kernel_name: str,
-        input_nodes: list[Buffer],
+        input_nodes: List[Buffer],
         output_node: Buffer,
-        subgraphs: list[Buffer] | None = None,
+        subgraphs: Optional[List[Buffer]] = None,
     ) -> None:
         # Call parent Kernel constructor
         super().__init__()
@@ -106,19 +107,19 @@ class CuteDSLTemplateKernel(Kernel):
         self.input_nodes = input_nodes
         self.output_node = output_node
         self.subgraphs = subgraphs
-        self.subgraph_bodies: dict[str, CuteDSLSubgraphInfo] = {}
+        self.subgraph_bodies: Dict[str, CuteDSLSubgraphInfo] = {}
 
         # Template attributes
         self.body: IndentedBuffer = IndentedBuffer()
-        self.template_mask: str | None = None
-        self.template_out: str | None = None
-        self.template_indices: list[Any] | None = None
-        self.render_hooks: dict[str, Any] = {}
+        self.template_mask: Optional[str] = None
+        self.template_out: Optional[str] = None
+        self.template_indices: Optional[List[Any]] = None
+        self.render_hooks: Dict[str, Any] = {}
 
         # TODO Additional attributes needed by template system
         self.prologue_fused_inputs: OrderedSet[str] = OrderedSet()
         self.prologue_fused_inputs_preserve_zero: OrderedSet[str] = OrderedSet()
-        self.named_input_nodes: dict[str, Buffer] = {}
+        self.named_input_nodes: Dict[str, Buffer] = {}
 
         # Create named input nodes mapping
         for i, input_node in enumerate(input_nodes):
@@ -128,34 +129,7 @@ class CuteDSLTemplateKernel(Kernel):
         self.cse = CSE(name_prefix="tmp")
 
         # Track all tensor buffers added during modification processing
-        self.collected_tensor_buffers: list[str] = []
-
-        # Captured IR nodes keyed by buffer name. Used by call_kernel to emit
-        # reinterpret_tensor for view captures in the python_argdefs loop.
-        self._capture_input_nodes: dict[str, Any] = {}
-
-    def set_capture_input_nodes(self, nodes_by_name: dict[str, Any]) -> None:
-        """Set captured inputs collected while rendering the CuteDSL template."""
-        self._capture_input_nodes = nodes_by_name
-
-    def _get_capture_input_node(self, name: str) -> Any | None:
-        """Return the IR node for a captured input name, if known."""
-        graph_captures = getattr(V.graph, "_cutedsl_capture_nodes", {})
-        return self._capture_input_nodes.get(name, graph_captures.get(name))
-
-    @contextlib.contextmanager
-    def _patch_get_dtype_for_captures(self):
-        """Teach python_argdefs to resolve synthetic captured input names."""
-        original_get_dtype = V.graph.get_dtype
-
-        def get_dtype(name: str) -> torch.dtype:
-            capture = self._get_capture_input_node(name)
-            if capture is not None:
-                return capture.get_dtype()
-            return original_get_dtype(name)
-
-        with patch.object(V.graph, "get_dtype", get_dtype):
-            yield
+        self.collected_tensor_buffers: List[str] = []
 
     def kexpr(self, expr: sympy.Expr) -> str:
         """Convert sympy expression to CuteDSL string representation."""
@@ -276,7 +250,7 @@ class CuteDSLTemplateKernel(Kernel):
         with self.set_subgraph_body(body_name):
             yield
 
-    def _get_reinterpret_view(self, node) -> ReinterpretView | None:
+    def _get_reinterpret_view(self, node) -> Optional[ReinterpretView]:
         """Extract or convert to ReinterpretView from a node, handling all views."""
         while isinstance(node, MutableBox):
             node = node.data
@@ -294,7 +268,7 @@ class CuteDSLTemplateKernel(Kernel):
         renames = IndentedBuffer(initial_indent=1)
 
         # Track template input args - each input gets its own arg even if buffers are shared
-        self._template_input_args: list[tuple[str, Buffer]] = []
+        self._template_input_args: List[Tuple[str, Buffer]] = []
         self._seen_input_args: OrderedSet[str] = OrderedSet()
 
         for i, input_node in enumerate(self.input_nodes):
@@ -322,8 +296,7 @@ class CuteDSLTemplateKernel(Kernel):
             params = [arg_name for arg_name, _ in self._template_input_args]
 
             # Get additional args from python_argdefs (output, sizevars, etc.)
-            with self._patch_get_dtype_for_captures():
-                arg_defs, _, _, _ = self.args.python_argdefs()
+            arg_defs, _, _, _ = self.args.python_argdefs()
             for arg_def in arg_defs:
                 if arg_def.full_name() not in self._seen_input_args:
                     params.append(arg_def.full_name())
@@ -409,23 +382,14 @@ class CuteDSLTemplateKernel(Kernel):
             arg_types.append(V.graph.get_dtype(input_node.get_name()))
 
         # Add additional args from python_argdefs (output, sizevars, ..)
-        with self._patch_get_dtype_for_captures():
-            orig_arg_defs, orig_call_args, _, orig_arg_types = (
-                self.args.python_argdefs()
-            )
+        orig_arg_defs, orig_call_args, _, orig_arg_types = self.args.python_argdefs()
         for arg_def, call_arg, arg_type in zip(
             orig_arg_defs, orig_call_args, orig_arg_types
         ):
-            if arg_def.full_name() in self._seen_input_args:
-                continue
-            capture = self._get_capture_input_node(call_arg)
-            if isinstance(capture, ReinterpretView):
-                # Pass the original view expression so stride/offset metadata is
-                # preserved at the kernel call site.
-                call_args.append(capture.codegen_reference())
-            else:
+            # dedupe
+            if arg_def.full_name() not in self._seen_input_args:
                 call_args.append(call_arg)
-            arg_types.append(arg_type)
+                arg_types.append(arg_type)
 
         # TODO this karg really should not be called `triton`
         wrapper.generate_kernel_call(name, call_args, triton=True, arg_types=arg_types)
@@ -445,8 +409,8 @@ class CuteDSLTemplateKernel(Kernel):
     def modification(
         self,
         subgraph_number: int,
-        output_name: str | None,
-        mask: str | None = None,
+        output_name: Optional[str],
+        mask: Optional[str] = None,
         **fixed_inputs,
     ) -> str:
         """Generate CuteDSL code for a subgraph modification."""
@@ -509,8 +473,8 @@ class ModificationWrapperCuteDSL(V.WrapperHandler):  # type: ignore[name-defined
         self,
         kernel,
         subgraph_number: int,
-        fixed_inputs: dict[str, Any],
-        mask: str | None,
+        fixed_inputs: Dict[str, Any],
+        mask: Optional[str],
     ):
         cutedsl_ops = CuteDSLOpOverrides()
         super().__init__(cutedsl_ops)
@@ -519,7 +483,7 @@ class ModificationWrapperCuteDSL(V.WrapperHandler):  # type: ignore[name-defined
         self.fixed_inputs = fixed_inputs
         self.mask = mask
         # Track tensor buffers that get added during modification processing
-        self.tensor_buffers: list[str] = []
+        self.tensor_buffers: List[str] = []
 
     def _get_input_dtype(self, name: str) -> torch.dtype:
         """Get the dtype for an input from the kernel's named_input_nodes."""
@@ -534,9 +498,7 @@ class ModificationWrapperCuteDSL(V.WrapperHandler):  # type: ignore[name-defined
 
         if name not in self.fixed_inputs:
             var = self._add_kernel_input(name)
-            buffer = self.kernel._get_capture_input_node(name)
-            if buffer is None:
-                buffer = V.graph.get_buffer(name)
+            buffer = V.graph.get_buffer(name)
             var_dtype = buffer.dtype
 
             cute_dtype = CuteDSLOpOverrides.TORCH_TO_CUTE_DTYPE.get(
@@ -635,7 +597,7 @@ class ModificationWrapperCuteDSL(V.WrapperHandler):  # type: ignore[name-defined
         renamed = self.kernel.rename_indexing(index)
         return self.kernel.kexpr(renamed)
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         try:
             return getattr(self._inner, name)(*args, **kwargs)
         except NotImplementedError as e:

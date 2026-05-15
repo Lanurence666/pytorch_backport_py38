@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Where should I add a new type? `types_base.py` vs `types.py`
 
@@ -13,12 +14,11 @@ Add new types to `types.py` if these types are ATen/c10 related.
 Add new types to `types_base.py` if they are basic and not attached to ATen/c10.
 """
 
-from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import auto, Enum
-from typing import TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Union
 
 
 if TYPE_CHECKING:
@@ -35,13 +35,13 @@ class SpecialArgName(Enum):
     possibly_redundant_memory_format = auto()
 
 
-ArgName = str | SpecialArgName
+ArgName = Union[str, SpecialArgName]
 
 
 # This class shouldn't be created directly; instead, use/create one of the singletons below.
 @dataclass(frozen=True)
 class BaseCppType:
-    ns: str | None
+    ns: Union[str, None]
     name: str
 
     def __str__(self) -> str:
@@ -127,7 +127,7 @@ class ArrayCType(CType):
 
 @dataclass(frozen=True)
 class TupleCType(CType):
-    elems: list[CType]
+    elems: List[CType]
 
     def cpp_type(self, *, strip_ref: bool = False) -> str:
         # Do not pass `strip_ref` recursively.
@@ -184,9 +184,9 @@ class NamedCType:
 class Binding:
     name: str
     nctype: NamedCType
-    argument: Argument | TensorOptionsArguments | SelfArgument
+    argument: Union[Argument, TensorOptionsArguments, SelfArgument]
     # TODO: maybe don't represent default here
-    default: str | None = None
+    default: Union[str, None] = None
 
     def rename(self, name: str) -> Binding:
         return Binding(

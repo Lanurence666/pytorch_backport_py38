@@ -1,10 +1,11 @@
+from __future__ import annotations
 """Kernel wrapper for dense_blockscaled_gemm_persistent vendored template."""
 
-from __future__ import annotations
 
 import itertools
 import logging
-from collections.abc import Callable, Generator  # noqa: TC003
+from typing import Callable, Generator, List, Optional, overload
+from collections.abc import Generator  # noqa: TC003
 
 import cutlass_api
 from cutlass_api.arguments import GemmArguments  # noqa: TC002
@@ -77,7 +78,7 @@ class VendoredDenseBlockScaledGemmKernel(CuteDslKernel):
 
         return a_major_mode, b_major_mode, out_layout
 
-    def compile(self, args: GemmArguments, cc: int | None = None) -> CompiledArtifact:
+    def compile(self, args: GemmArguments, cc: Optional[int] = None) -> CompiledArtifact:
         import cutlass.cute as cute
 
         stream = cute.runtime.make_fake_stream()
@@ -382,8 +383,8 @@ class VendoredDenseBlockScaledGemmKernel(CuteDslKernel):
     def generate_kernels(
         metadata_filter: Callable[[KernelMetadata], bool],
         epilogue_args=None,
-        cc: int | None = None,
-    ) -> list[VendoredDenseBlockScaledGemmKernel]:
+        cc: Optional[int]= None,
+    ) -> List[VendoredDenseBlockScaledGemmKernel]:
         if cc is not None and cc not in [100, 101, 103]:
             return []
         if epilogue_args is not None:

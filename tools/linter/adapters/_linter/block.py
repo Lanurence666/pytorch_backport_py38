@@ -4,8 +4,8 @@ import dataclasses as dc
 import itertools
 import token
 from enum import Enum
-from functools import cached_property, total_ordering
-from typing import Any, TYPE_CHECKING
+from functools import lru_cached_property, total_ordering
+from typing import Any, Dict, List, TYPE_CHECKING, Union
 
 
 if TYPE_CHECKING:
@@ -61,10 +61,10 @@ class Block:
     is_method: bool = dc.field(default=False, repr=False)
 
     # A block index to the parent of this block, or None for a top-level block.
-    parent: int | None = None
+    parent: Union[int, None] = None
 
     # A list of block indexes for the children
-    children: list[int] = dc.field(default_factory=list)
+    children: List[int] = dc.field(default_factory=list)
 
     @property
     def start_line(self) -> int:
@@ -94,7 +94,7 @@ class Block:
         return f"{self.category.value} {self.full_name}{ending}"
 
     @cached_property
-    def decorators(self) -> list[str]:
+    def decorators(self) -> List[str]:
         """A list of decorators for this function or method.
 
         Each decorator both the @ symbol and any arguments to the decorator
@@ -121,7 +121,7 @@ class Block:
         "start_line",
     )
 
-    def as_data(self) -> dict[str, Any]:
+    def as_data(self) -> Dict[str, Any]:
         d = {i: getattr(self, i) for i in self.DATA_FIELDS}
         d["category"] = d["category"].value
         return d
@@ -150,7 +150,7 @@ class Block:
 _IGNORE = {token.COMMENT, token.DEDENT, token.INDENT, token.NL}
 
 
-def _get_decorators(tokens: Sequence[TokenInfo], block_start: int) -> list[str]:
+def _get_decorators(tokens: Sequence[TokenInfo], block_start: int) -> List[str]:
     def decorators() -> Iterator[str]:
         rev = reversed(range(block_start))
         newlines = (i for i in rev if tokens[i].type == token.NEWLINE)

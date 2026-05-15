@@ -1,12 +1,14 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import itertools
 import logging
 import operator
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+
 from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union, cast
 
 import torch
 import torch.fx.node
@@ -41,11 +43,11 @@ aten = torch.ops.aten
 @dataclass(frozen=True)
 class InplaceableOp:
     inplace_op: Callable[..., Any]
-    mutated_arg: int | tuple[int, ...]  # Single index or tuple of indices
+    mutated_arg: Union[int, Tuple[int, ...]]  # Single index or tuple of indices
     extra_check: Callable[[torch.fx.Node], bool] = lambda node: True
 
     @property
-    def mutated_args(self) -> tuple[int, ...]:
+    def mutated_args(self) -> Tuple[int, ...]:
         """Return mutated_arg as a tuple for uniform handling."""
         if isinstance(self.mutated_arg, int):
             return (self.mutated_arg,)
@@ -79,12 +81,12 @@ def graph_call_function(graph: torch.fx.Graph, fn, *args, **kwargs):
 @dataclass
 class ViewOp:
     target: torch._ops.OpOverload
-    args: tuple[Any, ...]
-    kwargs: dict[str, Any]
+    args: Tuple[Any, ...]
+    kwargs: Dict[str, Any]
 
 
 def _inplace_generalized_scatter(
-    inp: torch.Tensor, src: torch.Tensor, view_ops: list[ViewOp]
+    inp: torch.Tensor, src: torch.Tensor, view_ops: List[ViewOp]
 ) -> torch.Tensor:
     tmp = inp
     for view in view_ops:
@@ -95,11 +97,7 @@ def _inplace_generalized_scatter(
         # slice and select can allocate new unbacked symints, but those won't be reflected
         # in the output of this function, hence shall be ignored.
         fake_mode = detect_fake_mode(fake_args)
-        with (
-            fake_mode.shape_env.ignore_fresh_unbacked_symbols()
-            if fake_mode and fake_mode.shape_env
-            else nullcontext()
-        ):
+        with fake_mode.shape_env.ignore_fresh_unbacked_symbols() if fake_mode and fake_mode.shape_env else nullcontext():
             tmp = view.target(tmp, *fake_args, **fake_kwargs)
     try:
         tmp.copy_(src)
@@ -111,7 +109,7 @@ def _inplace_generalized_scatter(
 
 
 def _generalized_scatter(
-    inp: torch.Tensor, src: torch.Tensor, view_ops: list[ViewOp]
+    inp: torch.Tensor, src: torch.Tensor, view_ops: List[ViewOp]
 ) -> torch.Tensor:
     out = inp.clone()
     return _inplace_generalized_scatter(out, src, view_ops)
@@ -121,7 +119,7 @@ def _decompose_scatter_functional_helper(
     graph: torch.fx.Graph,
     inp: torch.Tensor,
     src: torch.Tensor,
-    view_ops: list[ViewOp],
+    view_ops: List[ViewOp],
 ) -> torch.fx.Node:
     view_op, view_ops_tail = view_ops[0], view_ops[1:]
 
@@ -284,8 +282,8 @@ def canonicalize_view_scatter_ops(graph: torch.fx.Graph) -> None:
     easier to reinplace since there is only one use of `self`
     """
 
-    node_to_view_base: dict[torch.fx.Node, torch.fx.Node] = {}
-    node_to_view_op: dict[torch.fx.Node, list[ViewOp]] = defaultdict(list)
+    node_to_view_base: Dict[torch.fx.Node, torch.fx.Node] = {}
+    node_to_view_op: Dict[torch.fx.Node, List[ViewOp]] = defaultdict(list)
 
     def handle_views(node: torch.fx.Node):
         inp = node.args[0]
@@ -368,7 +366,7 @@ def canonicalize_view_scatter_ops(graph: torch.fx.Graph) -> None:
             handle_view_scatter(node)
 
 
-inplaceable_ops: dict[Callable[..., Any], InplaceableOp] = {
+inplaceable_ops: Dict[Callable[..., Any], InplaceableOp] = {
     aten.index_put.default: InplaceableOp(aten.index_put_.default, 0),
     aten._unsafe_index_put.default: InplaceableOp(inductor_prims._unsafe_index_put_, 0),
     _generalized_scatter: InplaceableOp(
@@ -380,7 +378,7 @@ inplaceable_ops: dict[Callable[..., Any], InplaceableOp] = {
 
 try:
     c10d_functional = torch.ops._c10d_functional
-    inplaceable_collective_ops: dict[Callable[..., Any], InplaceableOp] = {
+    inplaceable_collective_ops: Dict[Callable[..., Any], InplaceableOp] = {
         c10d_functional.all_reduce.default: InplaceableOp(
             c10d_functional.all_reduce_.default, 0
         ),
@@ -394,7 +392,7 @@ except AttributeError:
     # is built with USE_DISTRIBUTED=1.
     pass
 
-inplaceable_foreach_ops: dict[torch._ops.OpOverload, InplaceableOp] = {}
+inplaceable_foreach_ops: Dict[torch._ops.OpOverload, InplaceableOp] = {}
 for outplace_op, inplace_op in inplaceable_foreach_ops_lowerings.items():
     inplaceable_foreach_ops[outplace_op] = InplaceableOp(inplace_op, 0)
 
@@ -437,7 +435,7 @@ def reinplace_inplaceable_ops_core(graph: torch.fx.Graph) -> None:
     copy_nodes = {}
     mutated_inputs = OrderedSet[Any]()
     storage_to_nodes = defaultdict(list)
-    node_order: dict[Any, int] = {}
+    node_order: Dict[Any, int] = {}
     for i, node in enumerate(reversed(graph.nodes)):
         node_order[node] = len(graph.nodes) - i - 1
         storage_to_nodes[get_node_storage(node)].append(node)
@@ -609,13 +607,13 @@ def reinplace_inplaceable_ops_core(graph: torch.fx.Graph) -> None:
         ReinplaceCounters.add_missed_opportunities(trigger, len(missed_args))
         ReinplaceCounters.add_missed_bytes(trigger, missed_bytes)
 
-    replace_dict: dict[torch.fx.Node, torch.fx.Node] = {}
+    replace_dict: Dict[torch.fx.Node, torch.fx.Node] = {}
 
     def reinplace_and_refine_tensors_to_clone(
         old_tensors_to_clone, kwargs, node_name, old_node_name, trigger
     ):
-        tensors_to_clone: list[str] = []
-        storage_of_reinplaced_args = OrderedSet[int | None]()
+        tensors_to_clone: List[str] = []
+        storage_of_reinplaced_args = OrderedSet[Optional[int]]()
 
         # Those used to count possibly_missed_reinplacing_opportunities
         missed_nodes = []
@@ -651,7 +649,7 @@ def reinplace_inplaceable_ops_core(graph: torch.fx.Graph) -> None:
                 # In general, we probably do not need those optimizations.
                 copy_node = copy_args_to_copy_nodes.get((mutated_arg, node))
                 if copy_node is not None:
-                    replace_dict[copy_node] = copy_node.args[0]
+                    replace_Dict[copy_node] = copy_node.args[0]
                 if trigger != ReInplaceTrigger.AUTO_FUNC_V2:
                     for user in node.users:
                         # For auto_functionalize_v2, arg is the index of the base, where base at index i corresponds to
@@ -659,7 +657,7 @@ def reinplace_inplaceable_ops_core(graph: torch.fx.Graph) -> None:
                         # This used to compare string with integers before for auto_functionalize_v2. Not sure
                         # if it was needed for inplaceable_triton_ops?
                         if user.target is operator.getitem and user.args[1] == arg:
-                            replace_dict[user] = mutated_arg
+                            replace_Dict[user] = mutated_arg
 
                 if isinstance(mutated_arg, (list, tuple)):
                     for a in mutated_arg:
@@ -693,7 +691,7 @@ def reinplace_inplaceable_ops_core(graph: torch.fx.Graph) -> None:
                 for mutated_arg in mutated_args:
                     copy_node = copy_args_to_copy_nodes.get((mutated_arg, node))
                     if copy_node is not None:
-                        replace_dict[copy_node] = copy_node.args[0]
+                        replace_Dict[copy_node] = copy_node.args[0]
                 node.target = inplaceable_op.inplace_op
         elif node.target is torch.ops.higher_order.auto_functionalized_v2:
             _mutable_op = node.args[0]
@@ -708,7 +706,7 @@ def reinplace_inplaceable_ops_core(graph: torch.fx.Graph) -> None:
                 all_bases = kwargs["_all_bases"]
                 bases_to_clone = range(len(all_bases))
                 base_tensors_dct = dict(enumerate(all_bases))
-                new_bases_to_clone: list[int] = reinplace_and_refine_tensors_to_clone(
+                new_bases_to_clone: List[int] = reinplace_and_refine_tensors_to_clone(
                     bases_to_clone,
                     base_tensors_dct,
                     node.name,
@@ -724,7 +722,7 @@ def reinplace_inplaceable_ops_core(graph: torch.fx.Graph) -> None:
             from torch._higher_order_ops.auto_functionalize import get_mutable_args
 
             tensors_to_clone, _ = get_mutable_args(_mutable_op)
-            # Don't try to reinplace Tensor | None args that are None.
+            # Don't try to reinplace Optional[Tensor] args that are None.
             tensors_to_clone = [
                 t for t in tensors_to_clone if node.kwargs[t] is not None
             ]
@@ -755,7 +753,7 @@ def reinplace_inplaceable_ops_core(graph: torch.fx.Graph) -> None:
                 # Build flat list of tensors for can_inplace check
                 # and a mapping of output index -> replacement tensor(s)
                 mutated_tensors_flat = []
-                output_idx_to_replacement: dict[int, Any] = {}
+                output_idx_to_replacement: Dict[int, Any] = {}
 
                 for position, idx in enumerate(mutated_arg_indices):
                     actual_idx = idx + 2  # offset for token and op
@@ -822,13 +820,13 @@ def reinplace_inplaceable_ops_core(graph: torch.fx.Graph) -> None:
                             # Leaf node - add to replace_dict with actual replacement
                             if isinstance(replacement_tensors, (list, tuple)):
                                 if len(replacement_tensors) == 1:
-                                    replace_dict[current_node] = replacement_tensors[0]
+                                    replace_Dict[current_node] = replacement_tensors[0]
                                     return True
                                 else:
                                     # Multiple tensors but no indexing - can't replace
                                     return False
                             else:
-                                replace_dict[current_node] = replacement_tensors
+                                replace_Dict[current_node] = replacement_tensors
                                 return True
 
                         # Process children first (so they're added to replace_dict before parent)
@@ -859,7 +857,7 @@ def reinplace_inplaceable_ops_core(graph: torch.fx.Graph) -> None:
                         # Add this node to replace_dict after children (even if it has non-getitem users)
                         # Non-getitem users will have their input replaced via replace_all_uses_with
                         if all_children_replaced and first_replacement is not None:
-                            replace_dict[current_node] = first_replacement
+                            replace_Dict[current_node] = first_replacement
 
                         return all_children_replaced
 
@@ -925,13 +923,13 @@ def reinplace_inplaceable_ops_core(graph: torch.fx.Graph) -> None:
             if can_inplace(node, mutated_args):
                 for arg in mutated_args:
                     copy_node = copy_args_to_copy_nodes[(arg, node)]
-                    replace_dict[copy_node] = copy_node.args[0]
+                    replace_Dict[copy_node] = copy_node.args[0]
 
                 node.target = inplaceable_op.inplace_op
     for node, replacement in replace_dict.items():
         while replacement in replace_dict:
-            replacement = replace_dict[replacement]
-        replace_dict[node] = replacement
+            replacement = replace_Dict[replacement]
+        replace_Dict[node] = replacement
 
         node.replace_all_uses_with(replacement)
         graph.erase_node(node)

@@ -1,9 +1,10 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Module for handling symbolic function registration."""
 
 import warnings
-from collections.abc import Callable, Collection, Sequence
-from typing import Generic, TypeVar
+
+from typing import Callable, Collection, Dict, Generic, Optional, Sequence, Set, Type, TypeVar, Union
 from typing_extensions import ParamSpec
 
 from torch.onnx import _constants, errors
@@ -14,7 +15,7 @@ OpsetVersion = int
 
 def _dispatch_opset_version(
     target: OpsetVersion, registered_opsets: Collection[OpsetVersion]
-) -> OpsetVersion | None:
+) -> Optional[OpsetVersion]:
     """Finds the registered opset given a target opset version and the available opsets.
 
     Args:
@@ -64,9 +65,9 @@ class OverrideDict(Collection[_K], Generic[_K, _V]):
     """
 
     def __init__(self) -> None:
-        self._base: dict[_K, _V] = {}
-        self._overrides: dict[_K, _V] = {}
-        self._merged: dict[_K, _V] = {}
+        self._base: Dict[_K, _V] = {}
+        self._overrides: Dict[_K, _V] = {}
+        self._merged: Dict[_K, _V] = {}
 
     def set_base(self, key: _K, value: _V) -> None:
         self._base[key] = value
@@ -96,7 +97,7 @@ class OverrideDict(Collection[_K], Generic[_K, _V]):
     def __getitem__(self, key: _K) -> _V:
         return self._merged[key]
 
-    def get(self, key: _K, default: _V | None = None):
+    def get(self, key: _K, default: Optional[_V] = None):
         return self._merged.get(key, default)
 
     def __contains__(self, key: object) -> bool:
@@ -143,7 +144,7 @@ class _SymbolicFunctionGroup:
 
     # TODO(justinchuby): Add @functools.lru_cache(maxsize=None) if lookup time becomes
     # a problem.
-    def get(self, opset: OpsetVersion) -> Callable | None:
+    def get(self, opset: OpsetVersion) -> Optional[Callable]:
         """Find the most recent version of the function."""
         version = _dispatch_opset_version(opset, self._functions)
         if version is None:
@@ -205,7 +206,7 @@ class SymbolicRegistry:
     """
 
     def __init__(self) -> None:
-        self._registry: dict[str, _SymbolicFunctionGroup] = {}
+        self._registry: Dict[str, _SymbolicFunctionGroup] = {}
 
     def register(
         self, name: str, opset: OpsetVersion, func: Callable, custom: bool = False
@@ -245,7 +246,7 @@ class SymbolicRegistry:
             return
         self._registry[name].remove_custom(opset)
 
-    def get_function_group(self, name: str) -> _SymbolicFunctionGroup | None:
+    def get_function_group(self, name: str) -> Optional[_SymbolicFunctionGroup]:
         """Returns the function group for the given name."""
         return self._registry.get(name)
 
@@ -256,15 +257,15 @@ class SymbolicRegistry:
             return False
         return functions.get(version) is not None
 
-    def all_functions(self) -> set[str]:
+    def all_functions(self) -> Set[str]:
         """Returns the set of all registered function names."""
         return set(self._registry)
 
 
 def onnx_symbolic(
     name: str,
-    opset: OpsetVersion | Sequence[OpsetVersion],
-    decorate: Sequence[Callable] | None = None,
+    opset: Union[OpsetVersion, Sequence[OpsetVersion]],
+    decorate: Optional[Sequence[Callable]] = None,
     custom: bool = False,
 ) -> Callable:
     """Registers a symbolic function.
@@ -314,8 +315,8 @@ def onnx_symbolic(
 
 def custom_onnx_symbolic(
     name: str,
-    opset: OpsetVersion | Sequence[OpsetVersion],
-    decorate: Sequence[Callable] | None = None,
+    opset: Union[OpsetVersion, Sequence[OpsetVersion]],
+    decorate: Optional[Sequence[Callable]] = None,
 ) -> Callable:
     """Registers a custom symbolic function.
 

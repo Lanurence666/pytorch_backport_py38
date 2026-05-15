@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import List, Union
 import os
 import subprocess
 
@@ -16,7 +17,7 @@ def get_oss_binary_folder(test_type: TestType) -> str:
     )
 
 
-def get_oss_shared_library() -> list[str]:
+def get_oss_shared_library() -> List[str]:
     lib_dir = os.path.join(get_pytorch_folder(), "build", "lib")
     return [
         os.path.join(lib_dir, lib)
@@ -49,7 +50,7 @@ def get_pytorch_folder() -> str:
     )
 
 
-def detect_compiler_type() -> CompilerType | None:
+def detect_compiler_type() -> Union[CompilerType, None]:
     # check if user specifies the compiler type
     user_specify = os.environ.get("CXX", None)
     if user_specify:
@@ -77,7 +78,7 @@ def clean_up_gcda() -> None:
         remove_file(item)
 
 
-def get_gcda_files() -> list[str]:
+def get_gcda_files() -> List[str]:
     folder_has_gcda = os.path.join(get_pytorch_folder(), "build")
     if os.path.isdir(folder_has_gcda):
         # TODO use glob

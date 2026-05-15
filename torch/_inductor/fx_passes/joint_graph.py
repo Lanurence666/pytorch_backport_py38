@@ -1,12 +1,14 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import itertools
 import logging
 import operator
 import typing
 from collections import Counter
-from collections.abc import Sequence
-from typing import Any
+
+from typing import Any, Dict, List, Optional, Sequence, Set, Union, cast
 
 import torch
 import torch._guards
@@ -77,7 +79,7 @@ def _is_lossless_fp_widening_cast(
 
 
 @init_once_fakemode
-def lazy_init(input_device: torch.device | None = None):
+def lazy_init(input_device: Optional[torch.device] = None):
     from .fuse_attention import _sfdp_init
     from .misc_patterns import _misc_patterns_init
     from .pad_mm import _pad_mm_init
@@ -210,7 +212,7 @@ def remove_redundant_views(gm: torch.fx.GraphModule):
     """
     with torch.utils._python_dispatch._disable_current_modes():
         # A dictionary mapping a tensor to all aliased views.
-        views: dict[torch.fx.Node, dict[torch.dtype, torch.fx.Node]] = {}
+        views: Dict[torch.fx.Node, Dict[torch.dtype, torch.fx.Node]] = {}
         graph = gm.graph
 
         for node in graph.find_nodes(
@@ -257,11 +259,11 @@ class UniformValueConstantFolder(ConstantFolder):
 
     def __init__(self, gm, skip_constructors=False) -> None:
         super().__init__(gm, skip_constructors)
-        self.node_storages_ptrs: dict[torch.fx.Node, int] = {}
-        self.constant_data_ptrs: dict[torch.fx.Node, StorageWeakRef] = {}
+        self.node_storages_ptrs: Dict[torch.fx.Node, int] = {}
+        self.constant_data_ptrs: Dict[torch.fx.Node, StorageWeakRef] = {}
         # we may constant fold a tensor which in the graph has a sym size
         # see: [constant folding refining of symints]
-        self.node_replacements_shapes: dict[torch.fx.Node, list[int]] = {}
+        self.node_replacements_shapes: Dict[torch.fx.Node, List[int]] = {}
 
         # initialize symint -> node mapping so that we can
         # use symint nodes in full constructors
@@ -336,7 +338,7 @@ class UniformValueConstantFolder(ConstantFolder):
         self.node_replacements_shapes[node] = node.meta["val"].shape
         self.constant_data_ptrs[node] = StorageWeakRef(tensor.untyped_storage())
 
-    def insert_placerholder_values(self, env: dict[torch.fx.Node, Any]) -> None:
+    def insert_placerholder_values(self, env: Dict[torch.fx.Node, Any]) -> None:
         for n in self.module.graph.find_nodes(op="placeholder"):  # type: ignore[operator, union-attr]
             if "val" in n.meta and isinstance(n.meta["val"], torch.SymInt):
                 env[n] = n.meta["val"]
@@ -426,7 +428,7 @@ class UniformValueConstantFolder(ConstantFolder):
 
 
 def _has_self_referential_shape(
-    shapes: list[int | torch.fx.Node], node: torch.fx.Node
+    shapes: List[Union[int, torch.fx.Node]], node: torch.fx.Node
 ) -> bool:
     """
     Check if any shape in `shapes` depends on `node`.
@@ -639,7 +641,7 @@ def canonicalize_aten_ir_passes(gm: torch.fx.GraphModule):
 
 def joint_graph_passes(
     graph: torch.fx.GraphModule,
-    input_device: torch.device | None = None,
+    input_device: torch.Optional[device] = None
 ):
     """
     Run FX transformations on the joint forwards+backwards graph.
@@ -801,8 +803,8 @@ def pointless_convert(match: Match, arg, dtype1: torch.dtype, dtype2: torch.dtyp
 
 
 def definitely_equal(
-    old_sizes: Sequence[torch.SymInt | int],
-    new_sizes: Sequence[torch.SymInt | torch.fx.Node | int],
+    old_sizes: Sequence[Union[torch.SymInt, int]],
+    new_sizes: Union[Sequence[Union[torch.SymInt, torch.fx.Node], int]],
 ) -> bool:
     """
     Leverage guard_or_true/false to compare if two lists of int/symint are equal.
@@ -1004,7 +1006,7 @@ def mul_softmax_pattern(match: Match, *, inp, other, dim, keepdim, dtype=None):
         if dtype is not None:
             inp = inp.to(dtype)
 
-        sign: int | float | torch.Tensor
+        sign: Union[Union[int, float], torch.Tensor]
         if isinstance(other, (int, float, torch.SymInt, torch.SymFloat)):
             sign = 1 if other >= 0 else -1
         else:
@@ -1034,7 +1036,7 @@ def div_softmax_pattern(match: Match, *, inp, other, dim, keepdim, dtype=None):
         if dtype is not None:
             inp = inp.to(dtype)
 
-        sign: int | float | torch.Tensor
+        sign: Union[Union[int, float], torch.Tensor]
         if isinstance(other, (int, float, torch.SymInt, torch.SymFloat)):
             sign = 1 if other >= 0 else -1
         else:

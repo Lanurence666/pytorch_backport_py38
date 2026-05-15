@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from collections.abc import Iterator, Sequence
 
 from torch.utils.data.datapipes._decorator import functional_datapipe
 from torch.utils.data.datapipes.datapipe import IterDataPipe
 from torch.utils.data.datapipes.iter.utils import IterableWrapperIterDataPipe
 from torch.utils.data.datapipes.utils.common import get_file_pathnames_from_root
+from typing import Iterator, List, Sequence, Type, Union
 
 
 __all__ = ["FileListerIterDataPipe"]
@@ -35,8 +38,8 @@ class FileListerIterDataPipe(IterDataPipe[str]):
 
     def __init__(
         self,
-        root: str | Sequence[str] | IterDataPipe = ".",
-        masks: str | list[str] = "",
+        root: Union[str, Sequence[str], IterDataPipe]= ".",
+        masks: Union[str, List[str]]= "",
         *,
         recursive: bool = False,
         abspath: bool = False,
@@ -49,7 +52,7 @@ class FileListerIterDataPipe(IterDataPipe[str]):
         if not isinstance(root, IterDataPipe):
             root = IterableWrapperIterDataPipe(root)
         self.datapipe: IterDataPipe = root
-        self.masks: str | list[str] = masks
+        self.masks: Union[str, List[str]] = masks
         self.recursive: bool = recursive
         self.abspath: bool = abspath
         self.non_deterministic: bool = non_deterministic

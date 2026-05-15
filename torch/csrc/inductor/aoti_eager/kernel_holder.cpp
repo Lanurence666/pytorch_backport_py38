@@ -15,6 +15,7 @@
 #endif
 
 #include <ATen/core/jit_type.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 namespace torch::inductor {
 

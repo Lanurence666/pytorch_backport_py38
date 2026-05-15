@@ -18,6 +18,7 @@ from torch.utils.backend_registration import (
 )
 from torch.utils.cpp_backtrace import get_cpp_backtrace
 from torch.utils.throughput_benchmark import ThroughputBenchmark
+from typing import Set, Type
 
 
 def set_module(obj, mod):

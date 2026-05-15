@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Test the verification module."""
 
-from __future__ import annotations
 
 import json
 

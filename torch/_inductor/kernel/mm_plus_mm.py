@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import logging
-from typing import TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Union
 
 import torch
 
@@ -157,10 +159,10 @@ def tuned_mm_plus_mm(mat1, mat2, mat3, mat4, *, layout=None):
 
     assert layout1 == layout2
     # options to tune from
-    choices: list[ChoiceCaller] = []
+    choices: List[ChoiceCaller] = []
 
     # Collect all templates for unified call
-    templates_to_use: list[ExternKernelChoice | KernelTemplate] = []
+    templates_to_use: Union[List[ExternKernelChoice, KernelTemplate]]= Union[[]]
     if use_aten_gemm_kernels():
         templates_to_use.append(aten_mm_plus_mm)
 

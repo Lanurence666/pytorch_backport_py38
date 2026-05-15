@@ -1,5 +1,6 @@
 # Owner(s): ["module: pytree"]
 
+from __future__ import annotations
 import copy
 import enum
 import inspect
@@ -1533,7 +1534,6 @@ if "optree" in sys.modules:
 
 class TestCxxPytree(TestCase):
     def setUp(self):
-        super().setUp()
         if IS_FBCODE:
             raise unittest.SkipTest("C++ pytree tests are not supported in fbcode")
 

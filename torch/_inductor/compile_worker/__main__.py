@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import argparse
 import base64
 import functools
@@ -6,7 +8,7 @@ import importlib
 import logging
 import os
 import sys
-from typing import TypeVar
+from typing import Type, TypeVar
 
 from torch._inductor.async_compile import pre_fork_setup
 from torch._inductor.codecache import torch_key
@@ -34,7 +36,7 @@ except ImportError:
     pass
 
 
-def _lookup_and_create_type(base: type[_T], qname: str) -> _T:
+def _lookup_and_create_type(base: Type[_T], qname: str) -> _T:
     """
     Given a base type and qualified name: import & lookup that name, check
     that it's of the given type and then instantiate it.

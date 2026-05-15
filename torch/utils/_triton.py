@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import functools
 import hashlib
 import os
-from typing import Any
+from typing import Any, Tuple
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_triton_package() -> bool:
     try:
         import triton  # noqa: F401
@@ -14,8 +16,8 @@ def has_triton_package() -> bool:
         return False
 
 
-@functools.cache
-def get_triton_version(fallback: tuple[int, int] = (0, 0)) -> tuple[int, int]:
+@functools.lru_cache(maxsize=None)
+def get_triton_version(fallback: Tuple[int, int] = (0, 0)) -> Tuple[int, int]:
     try:
         import triton
 
@@ -25,7 +27,7 @@ def get_triton_version(fallback: tuple[int, int] = (0, 0)) -> tuple[int, int]:
         return fallback
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _device_supports_tma() -> bool:
     import torch
 
@@ -36,7 +38,7 @@ def _device_supports_tma() -> bool:
     )
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_triton_experimental_host_tma() -> bool:
     if has_triton_package():
         if _device_supports_tma():
@@ -58,7 +60,7 @@ def has_triton_experimental_host_tma() -> bool:
     return False
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_triton_tensor_descriptor_host_tma() -> bool:
     if has_triton_package():
         if _device_supports_tma():
@@ -74,12 +76,12 @@ def has_triton_tensor_descriptor_host_tma() -> bool:
     return False
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_triton_tma() -> bool:
     return has_triton_tensor_descriptor_host_tma() or has_triton_experimental_host_tma()
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_triton_tma_device() -> bool:
     if has_triton_package():
         import torch
@@ -111,7 +113,7 @@ def has_triton_tma_device() -> bool:
     return False
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_datacenter_blackwell_tma_device() -> bool:
     import torch
 
@@ -145,7 +147,7 @@ def has_triton_stable_tma_api() -> bool:
     return False
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_triton() -> bool:
     if not has_triton_package():
         return False
@@ -185,7 +187,7 @@ def has_triton() -> bool:
     return is_device_compatible_with_triton()
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def triton_backend() -> Any:
     from triton.compiler.compiler import make_backend
     from triton.runtime.driver import driver
@@ -212,7 +214,7 @@ def _extern_libs_key(backend: Any) -> str:
     return "-".join(parts)
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def triton_hash_with_backend() -> str:
     from torch._inductor.runtime.triton_compat import triton_key
 

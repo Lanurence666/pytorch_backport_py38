@@ -15,6 +15,7 @@
 #include <ATen/cuda/ApplyGridUtils.cuh>
 #include <ATen/cuda/detail/OffsetCalculator.cuh>
 #include <ATen/native/cuda/Loops.cuh>
+#include <ATen/OpMathType.h>
 
 namespace at::native {
 namespace {
@@ -26,7 +27,8 @@ void threshold_kernel_impl(
     scalar_t value) {
   gpu_kernel_with_scalars(
       iter, [=] GPU_LAMBDA(scalar_t x, scalar_t other) -> scalar_t {
-        return x <= threshold ? value : other;
+        using opmath_t = at::opmath_type<scalar_t>;
+        return static_cast<opmath_t>(x) <= static_cast<opmath_t>(threshold) ? value : other;
       });
 }
 

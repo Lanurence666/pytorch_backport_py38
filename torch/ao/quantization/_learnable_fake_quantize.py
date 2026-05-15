@@ -1,10 +1,13 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch.nn.parameter import Parameter
+from typing import List
 
 
-__all__: list[str] = []
+__all__: List[str] = []
 
 
 class _LearnableFakeQuantize(torch.ao.quantization.FakeQuantizeBase):

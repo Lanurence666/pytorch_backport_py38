@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: ignore-errors
 
 """Wrapper to mimic (parts of) np.random API surface.
@@ -8,7 +9,6 @@ Q: default dtype is float64 in numpy
 
 """
 
-from __future__ import annotations
 
 import functools
 from math import sqrt
@@ -17,6 +17,7 @@ import torch
 
 from . import _dtypes_impl, _util
 from ._normalizations import array_or_scalar, ArrayLike, normalizer
+from typing import Optional, cast
 
 
 __all__ = [
@@ -154,7 +155,7 @@ def randint(low, high=None, size=None):
 
 @deco_stream
 @normalizer
-def choice(a: ArrayLike, size=None, replace=True, p: ArrayLike | None = None):
+def choice(a: ArrayLike, size=None, replace=True, p: Optional[ArrayLike] = None):
     # https://stackoverflow.com/questions/59461811/random-choice-with-pytorch
     if a.numel() == 1:
         a = torch.arange(a)

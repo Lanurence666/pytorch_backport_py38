@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Tuple
 
 import torchgen.api.dispatcher as dispatcher
 from torchgen.api.translate import translate
@@ -162,9 +162,9 @@ def returns_multi_tensor(fn: NativeFunction) -> bool:
 #   tuple: (list of getter logic strings, list of setter logic strings, string
 #     with num items expression)
 def generate_state_getter_setter(
-    bindings: list[Binding],
+    bindings: List[Binding],
     state_vec_type: NamedCType,
-) -> tuple[list[str], list[str], str]:
+) -> Tuple[List[str], List[str], str]:
     getter_logic = []
     setter_logic = []
 
@@ -311,7 +311,7 @@ def process_function(fn: NativeFunction, template: CodeTemplate) -> str:
 
 def gen_view_funcs(
     out: str,
-    fns_with_infos: list[NativeFunctionWithDifferentiabilityInfo],
+    fns_with_infos: List[NativeFunctionWithDifferentiabilityInfo],
     template_path: str,
 ) -> None:
     # don't need the info parts, just the function

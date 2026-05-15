@@ -1,3 +1,4 @@
+from __future__ import annotations
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
@@ -18,7 +19,6 @@ There is also a setting in Github repos that can disable all workflows for that
 repo.
 """
 
-from __future__ import annotations
 
 import argparse
 import concurrent.futures
@@ -28,13 +28,13 @@ import os
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Any, NamedTuple, TYPE_CHECKING
+from typing import Any, Dict, List, NamedTuple, TYPE_CHECKING, Union
 
 from yaml import load
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    pass
 
 
 # Safely load fast C Yaml loader/dumper if they are available
@@ -52,15 +52,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 def load_yaml(path: Path) -> Any:
@@ -69,10 +69,10 @@ def load_yaml(path: Path) -> Any:
 
 
 def gen_lint_message(
-    filename: str | None = None,
-    original: str | None = None,
-    replacement: str | None = None,
-    description: str | None = None,
+    filename: Union[str, None] = None,
+    original: Union[str, None] = None,
+    replacement: Union[str, None] = None,
+    description: Union[str, None] = None,
 ) -> LintMessage:
     return LintMessage(
         path=filename,
@@ -87,11 +87,11 @@ def gen_lint_message(
     )
 
 
-def check_file(filename: str) -> list[LintMessage]:
+def check_file(filename: str) -> List[LintMessage]:
     logging.debug("Checking file %s", filename)
 
     workflow = load_yaml(Path(filename))
-    bad_jobs: dict[str, str | None] = {}
+    bad_jobs: Dict[str, Union[str, None]] = {}
     if type(workflow) is not dict:
         return []
 
@@ -116,7 +116,7 @@ def check_file(filename: str) -> list[LintMessage]:
             pass
         else:
             if_statement = str(if_statement)
-            valid_checks: list[Callable[[str], bool]] = [
+            valid_checks: List[Callable[[str], bool]] = [
                 lambda x: "github.repository == 'pytorch/pytorch'" in x
                 and "github.event_name != 'schedule' || github.repository == 'pytorch/pytorch'"
                 not in x,

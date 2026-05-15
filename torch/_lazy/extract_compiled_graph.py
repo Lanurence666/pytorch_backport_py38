@@ -1,10 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
 import dataclasses
 import itertools
 import os
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, Dict, List
 
 import torch
 import torch._lazy as lazy
@@ -29,14 +31,14 @@ class GraphInputMatcher:
     TS/XLA graph inputs.
     """
 
-    tensor_id_to_arg_idx: dict[int, int]
-    graph_input_tensor_ids: list[int]
+    tensor_id_to_arg_idx: Dict[int, int]
+    graph_input_tensor_ids: List[int]
     # there are 2 categories of graph_input_tensors.
     # Category 1: those whose id are not found in tensor_id_to_arg_idx. These are
     # most likely const tensors and we can get its content from graph_input_tensors
     # Category 2: those whose id are found in tensor_id_to_arg_idx. We should get
     #  the tensor from method arguments
-    graph_input_ivalues: list[Any]
+    graph_input_ivalues: List[Any]
 
     # get the real graph input tensors
     def __call__(self, args):
@@ -72,10 +74,10 @@ class ReturnValueHandler:
     """
 
     def __init__(self, lazy_out_list):
-        self.index: list[list[int]] = []
+        self.index: List[List[int]] = []
         self.total_count = len(lazy_out_list)
 
-        tensor_id_to_idx: dict[int, int] = {}
+        tensor_id_to_idx: Dict[int, int] = {}
         for dup_idx, lazy_tensor in enumerate(lazy_out_list):
             uniq_idx = tensor_id_to_idx.get(id(lazy_tensor))
             if uniq_idx is not None:

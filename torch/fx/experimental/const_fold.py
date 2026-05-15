@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import re
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import torch.fx
 from torch.fx.node import map_arg
@@ -28,8 +30,8 @@ class FoldedGraphModule(torch.fx.GraphModule):
         self,
         root: torch.nn.Module,
         graph: torch.fx.Graph,
-        const_subgraph: torch.fx.Graph | None = None,
-        fx_const_folded_attrs_name: str | None = None,
+        const_subgraph: Optional[torch.fx.Graph] = None,
+        fx_const_folded_attrs_name: Optional[str] = None,
         device_for_folded_attrs: str = "cuda",
     ) -> None:
         super().__init__(root, graph)
@@ -65,7 +67,7 @@ class FoldedGraphModule(torch.fx.GraphModule):
         # Tuple[Tensor,].
         folded_attrs = self.const_subgraph_module()
 
-        def _create_param(i: torch.Tensor | int) -> torch.nn.Parameter:
+        def _create_param(i: Union[torch.Tensor, int]) -> torch.nn.Parameter:
             return torch.nn.Parameter(
                 i.detach().clone()
                 if not isinstance(i, int)
@@ -83,7 +85,7 @@ class FoldedGraphModule(torch.fx.GraphModule):
 
 def _inline_module(
     gm: torch.fx.GraphModule, inline_mod_name: str, run_dce: bool = True
-) -> dict[torch.fx.Node, torch.fx.Node]:
+) -> Dict[torch.fx.Node, torch.fx.Node]:
     """
     Given `gm` and some graph module which is called with target name `inline_mod_name`,
     this helper will inline all of the nodes from that called graph module into `gm`.
@@ -107,7 +109,7 @@ def _inline_module(
     call_mod_args = call_mod_node_to_replace.args
     call_mod_kwargs = call_mod_node_to_replace.kwargs
 
-    replacement_mapping: dict[torch.fx.Node, torch.fx.Node] = {}
+    replacement_mapping: Dict[torch.fx.Node, torch.fx.Node] = {}
     ph_count = 0
 
     def replacement_fn(node: torch.fx.Node) -> torch.fx.Node:
@@ -132,7 +134,7 @@ def _inline_module(
 
             # If output is a tuple, we need to handle getitem users specially.
             # Capture users before replace_all_uses_with modifies them.
-            getitem_users: list[torch.fx.Node] = []
+            getitem_users: List[torch.fx.Node] = []
             if isinstance(output_replacements, (list, tuple)):
                 import operator
 
@@ -192,7 +194,7 @@ def get_unique_attr_name_in_module(mod_traced: torch.fx.GraphModule, name: str) 
 
 
 def split_const_subgraphs(
-    module: torch.nn.Module | torch.fx.GraphModule,
+    module: Union[torch.nn.Module, torch.fx.GraphModule],
     skip_folding_node_fn: Callable[[torch.fx.Node], bool] | None = None,
     device_for_folded_attrs: str = "cpu",
 ) -> FoldedGraphModule:
@@ -233,7 +235,7 @@ def split_const_subgraphs(
 
     # Build up a list of const_nodes, defined as nodes that are themselves
     # get_attrs, or have all get_attr or other constant node inputs.
-    const_nodes: set[torch.fx.Node] = set()
+    const_nodes: Set[torch.fx.Node] = set()
     found_const_folding = False
     for node in mod_traced.graph.nodes:
         # Skip over placeholders/outputs because they can't be const folded and
@@ -294,7 +296,7 @@ def split_const_subgraphs(
             f"Expected GraphModule for {const_mod_name}, got {type(const_gm)}"
         )
     non_const_mod = getattr(split, non_const_mod_name, None)
-    non_const_gm: torch.fx.GraphModule | None = None
+    non_const_gm: Optional[torch.fx.GraphModule] = None
     if non_const_mod is not None:
         if not isinstance(non_const_mod, torch.fx.GraphModule):
             raise AssertionError(

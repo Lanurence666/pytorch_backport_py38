@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import warnings
 from collections import namedtuple
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, overload
 
 import torch
 from torch.sparse._semi_structured_conversions import (
@@ -58,19 +60,19 @@ class SparseSemiStructuredTensor(torch.Tensor):
     """
 
     _DEFAULT_ALG_ID: int = 0
-    _DTYPE_SHAPE_CONSTRAINTS: dict[torch.dtype, _SEMI_STRUCTURED_SPARSE_CONFIG]
+    _DTYPE_SHAPE_CONSTRAINTS: Dict[torch.dtype, _SEMI_STRUCTURED_SPARSE_CONFIG]
     _FORCE_CUTLASS: bool = False
     _FUSE_TRANSPOSE: bool = False
     _PROTOTYPE_WARNING_SHOWN: bool = False
 
     BACKEND: str
-    SPARSE_DISPATCH: dict[Callable, Callable]
+    SPARSE_DISPATCH: Dict[Callable, Callable]
 
-    packed: torch.Tensor | None
-    meta: torch.Tensor | None
-    packed_t: torch.Tensor | None
-    meta_t: torch.Tensor | None
-    compressed_swizzled_bitmask: torch.Tensor | None
+    packed: Optional[torch.Tensor]
+    meta: Optional[torch.Tensor]
+    packed_t: Optional[torch.Tensor]
+    meta_t: Optional[torch.Tensor]
+    compressed_swizzled_bitmask: Optional[torch.Tensor]
     fuse_transpose_cusparselt: bool
     alg_id_cusparselt: int
 
@@ -80,11 +82,11 @@ class SparseSemiStructuredTensor(torch.Tensor):
     def __new__(
         cls,
         shape: torch.Size,
-        packed: torch.Tensor | None,
-        meta: torch.Tensor | None,
-        packed_t: torch.Tensor | None,
-        meta_t: torch.Tensor | None,
-        compressed_swizzled_bitmask: torch.Tensor | None,
+        packed: Optional[torch.Tensor],
+        meta: Optional[torch.Tensor],
+        packed_t: Optional[torch.Tensor],
+        meta_t: Optional[torch.Tensor],
+        compressed_swizzled_bitmask: Optional[torch.Tensor],
         fuse_transpose_cusparselt: bool = False,
         alg_id_cusparselt: int = 0,
         requires_grad: bool = False,
@@ -168,7 +170,7 @@ class SparseSemiStructuredTensor(torch.Tensor):
 
     def __tensor_flatten__(
         self,
-    ) -> tuple[list[str], tuple[torch.Size, bool, int, bool]]:
+    ) -> Tuple[List[str], Tuple[torch.Size, bool, int, bool]]:
         inner_tensors = list(
             filter(lambda x: getattr(self, x) is not None, self.__slots__)
         )
@@ -184,7 +186,7 @@ class SparseSemiStructuredTensor(torch.Tensor):
     def __tensor_unflatten__(
         cls,
         inner_tensors,
-        tensor_meta: tuple[torch.Size, bool, int, bool],
+        tensor_meta: Tuple[torch.Size, bool, int, bool],
         outer_size,
         outer_stride,
     ) -> torch.Tensor:
@@ -300,7 +302,7 @@ class SparseSemiStructuredTensor(torch.Tensor):
         self,
         B: torch.Tensor,
         *,
-        bias: torch.Tensor | None = None,
+        bias: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         raise NotImplementedError
@@ -513,7 +515,7 @@ class SparseSemiStructuredTensorCUTLASS(SparseSemiStructuredTensor):
         self,
         B: torch.Tensor,
         *,
-        bias: torch.Tensor | None = None,
+        bias: Optional[torch.Tensor] = None,
         should_transpose_dense: bool = False,
         **kwargs,
     ) -> torch.Tensor:
@@ -548,7 +550,7 @@ class SparseSemiStructuredTensorCUTLASS(SparseSemiStructuredTensor):
 class SparseSemiStructuredTensorCUSPARSELT(SparseSemiStructuredTensor):
     """
     The cuSPARSELt backend expects the specified elements and the metadata to be stored in a single tensor:
-    packed = [ specified elements of original tensor | metadata ]
+    packed = Union[[ specified elements of original tensor, metadata ]]
     For an original tensor of size (m, k) we expect the first m * k // 2 elements to be the kept elements
     The rest of the tensor is metadata. Since there is only one tensor, we only use the packed and packed_t
     attributes respectively.
@@ -654,7 +656,7 @@ class SparseSemiStructuredTensorCUSPARSELT(SparseSemiStructuredTensor):
         self,
         B: torch.Tensor,
         *,
-        bias: torch.Tensor | None = None,
+        bias: Optional[torch.Tensor] = None,
         should_transpose_dense: bool = False,
         **kwargs,
     ) -> torch.Tensor:
@@ -726,7 +728,7 @@ def _ensure_cutlass_mm_registered():
         dense: torch.Tensor,
         packed: torch.Tensor,
         meta: torch.Tensor,
-        bias: torch.Tensor | None,
+        bias: Optional[torch.Tensor],
         out_features: int,
         min_rows: int,
         min_cols: int,
@@ -758,7 +760,7 @@ def _ensure_cutlass_mm_registered():
         dense: torch.Tensor,
         packed: torch.Tensor,
         meta: torch.Tensor,
-        bias: torch.Tensor | None,
+        bias: Optional[torch.Tensor],
         out_features: int,
         min_rows: int,
         min_cols: int,
@@ -789,7 +791,7 @@ def _ensure_cusparselt_mm_registered():
     def cusparselt_mm(
         dense: torch.Tensor,
         packed: torch.Tensor,
-        bias: torch.Tensor | None,
+        bias: Optional[torch.Tensor],
         out_features: int,
         min_rows: int,
         min_cols: int,
@@ -825,7 +827,7 @@ def _ensure_cusparselt_mm_registered():
     def _cusparselt_mm_fake(
         dense: torch.Tensor,
         packed: torch.Tensor,
-        bias: torch.Tensor | None,
+        bias: Optional[torch.Tensor],
         out_features: int,
         min_rows: int,
         min_cols: int,

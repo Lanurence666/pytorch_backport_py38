@@ -1,5 +1,6 @@
 # Owner(s): ["module: dynamo"]
 
+from __future__ import annotations
 import copy
 import functools
 import sys
@@ -783,9 +784,7 @@ def forward(self, tangents_0):
         x = torch.randn(10, requires_grad=True)
         y = torch.randn(10, requires_grad=True)
 
-        with (
-            _testing_capture_invoke_subgraph_inductor_compile_gms() as inner_captured_gms
-        ):
+        with _testing_capture_invoke_subgraph_inductor_compile_gms() as inner_captured_gms:
             # Check that inductor compilation is called 2 times only
             # So there's not double-compilation like when we using fx.annotate.
             result, codes = run_fw_bw_and_get_code(lambda: opt_mod(x, y))
@@ -1714,10 +1713,7 @@ class TestRegionalOutputCode(torch._inductor.test_case.TestCase):
         y = torch.randn(10, requires_grad=True)
 
         # Compile with regional inductor
-        with (
-            torch.fx.traceback.preserve_node_meta(enable=False),
-            torch._functorch.config.patch(force_autograd_cache=True),
-        ):
+        with torch.fx.traceback.preserve_node_meta(enable=False), torch._functorch.config.patch(force_autograd_cache=True):
             from torch._subclasses.fake_tensor import FakeTensorMode
             from torch.fx.experimental.proxy_tensor import make_fx
 
@@ -1779,10 +1775,7 @@ class TestRegionalOutputCode(torch._inductor.test_case.TestCase):
             fake_y = fake_mode.from_tensor(y)
 
             # Create forward graph
-            with (
-                torch.fx.traceback.preserve_node_meta(enable=False),
-                torch._functorch.config.patch(force_autograd_cache=True),
-            ):
+            with torch.fx.traceback.preserve_node_meta(enable=False), torch._functorch.config.patch(force_autograd_cache=True):
                 gm = make_fx(fn)(fake_x, fake_y)
                 fw_code = regional_inductor(gm, fake_x, fake_y)
 
@@ -1824,10 +1817,7 @@ class TestRegionalOutputCode(torch._inductor.test_case.TestCase):
         with fake_mode:
             fake_x = fake_mode.from_tensor(x)
 
-            with (
-                torch.fx.traceback.preserve_node_meta(enable=False),
-                torch._functorch.config.patch(force_autograd_cache=True),
-            ):
+            with torch.fx.traceback.preserve_node_meta(enable=False), torch._functorch.config.patch(force_autograd_cache=True):
                 gm = make_fx(fn)(fake_x)
                 compiled_gm = regional_inductor(gm, fake_x)
 

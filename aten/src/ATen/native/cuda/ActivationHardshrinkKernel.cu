@@ -28,7 +28,9 @@ void hardshrink_kernel(TensorIteratorBase& iter, const Scalar& value) {
       [&]() {
         auto lambd = value.to<scalar_t>();
         gpu_kernel(iter, [lambd] GPU_LAMBDA(scalar_t a) -> scalar_t {
-          return (a >= -lambd && a <= lambd) ? scalar_t(0) : a;
+          auto fa = static_cast<float>(a);
+          auto fl = static_cast<float>(lambd);
+          return (fa >= -fl && fa <= fl) ? scalar_t(0) : a;
         });
       });
 }

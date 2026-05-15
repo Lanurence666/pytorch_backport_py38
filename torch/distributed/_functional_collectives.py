@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import contextlib
 import math
 import sys
 import warnings
-from typing import Any, cast, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, cast
 
 import torch
 import torch.distributed as dist
@@ -92,11 +94,11 @@ Functional collectives can accept any of these types to describe the ranks parti
 The different types will be desugared to a canonical format
 """
 RANK_TYPES = (
-    list[int]
-    | list[list[int]]
+    List[int]
+    | List[List[int]]
     | dist.ProcessGroup
     | DeviceMesh
-    | tuple["dist.tensor.DeviceMesh", int]
+    | Tuple["dist.tensor.DeviceMesh", int]
     | c10d.GroupName
 )
 
@@ -343,8 +345,8 @@ def reduce_scatter_tensor_autograd(
 
 
 def all_reduce_coalesced(
-    self: list[torch.Tensor], reduceOp: str, group: RANK_TYPES, tag: str = ""
-) -> list[torch.Tensor]:
+    self: List[torch.Tensor], reduceOp: str, group: RANK_TYPES, tag: str = ""
+) -> List[torch.Tensor]:
     """
     Reduces a list of tensors across all machines in such a way that all get
     the final result.
@@ -371,8 +373,8 @@ def all_reduce_coalesced(
 
 
 def all_gather_into_tensor_coalesced(
-    self: list[torch.Tensor], group: RANK_TYPES, tag: str = ""
-) -> list[torch.Tensor]:
+    self: List[torch.Tensor], group: RANK_TYPES, tag: str = ""
+) -> List[torch.Tensor]:
     """
     Gather a list of tensors across from all machines.
 
@@ -400,12 +402,12 @@ def all_gather_into_tensor_coalesced(
 
 
 def reduce_scatter_tensor_coalesced(
-    inputs: list[torch.Tensor],
+    inputs: List[torch.Tensor],
     reduceOp: str,
-    scatter_dim: list[int],
+    scatter_dim: List[int],
     group: RANK_TYPES,
     tag: str = "",
-) -> list[torch.Tensor]:
+) -> List[torch.Tensor]:
     """
     Reduces a list of tensors across all machines in such a way that all get
     the final result, then scatter the results to corresponding ranks.
@@ -467,8 +469,8 @@ def _is_view_op(tgt):
 
 def all_to_all_single(
     self: torch.Tensor,
-    output_split_sizes: list[int] | None,
-    input_split_sizes: list[int] | None,
+    output_split_sizes: Optional[List[int]],
+    input_split_sizes: Optional[List[int]],
     group: RANK_TYPES,
     tag: str = "",
 ) -> torch.Tensor:
@@ -520,8 +522,8 @@ def all_to_all_single(
 
 def all_to_all_single_autograd(
     self: torch.Tensor,
-    output_split_sizes: list[int] | None,
-    input_split_sizes: list[int] | None,
+    output_split_sizes: Optional[List[int]],
+    input_split_sizes: Optional[List[int]],
     group: RANK_TYPES,
     tag: str = "",
 ) -> torch.Tensor:
@@ -801,7 +803,7 @@ torch.library.register_autograd(
 )
 
 
-def all_reduce_coalesced_backward(ctx, grad_outputs: list[torch.Tensor]):
+def all_reduce_coalesced_backward(ctx, grad_outputs: List[torch.Tensor]):
     """
     Backward for all_reduce_coalesced: all_reduce each gradient.
 
@@ -853,7 +855,7 @@ torch.library.register_autograd(
 )
 
 
-def all_gather_into_tensor_coalesced_backward(ctx, grad_outputs: list[torch.Tensor]):
+def all_gather_into_tensor_coalesced_backward(ctx, grad_outputs: List[torch.Tensor]):
     """
     Backward for all_gather_into_tensor_coalesced: reduce_scatter each gradient.
 
@@ -902,7 +904,7 @@ torch.library.register_autograd(
 )
 
 
-def reduce_scatter_tensor_coalesced_backward(ctx, grad_outputs: list[torch.Tensor]):
+def reduce_scatter_tensor_coalesced_backward(ctx, grad_outputs: List[torch.Tensor]):
     """
     Backward for reduce_scatter_tensor_coalesced: all_gather each gradient.
 
@@ -960,7 +962,7 @@ torch.library.register_autograd(
 
 def permute_tensor(
     self: torch.Tensor,
-    src_dst: list[int],
+    src_dst: List[int],
     group: RANK_TYPES,
     tag: str = "",
 ) -> torch.Tensor:
@@ -1037,7 +1039,7 @@ class AsyncCollectiveTensor(torch.Tensor):
         return AsyncCollectiveTensor(elem)
 
     def __coerce_same_metadata_as_tangent__(
-        self, expected_metadata: Any, expected_type: type | None = None
+        self, expected_metadata: Any, expected_type: Optional[type] = None
     ):
         if expected_type is not torch.Tensor:
             return None
@@ -1110,7 +1112,7 @@ Utils and infrastructure for tracing support
 """
 
 
-def _expand_group(group: RANK_TYPES, tag: str = "") -> tuple[str, list[int], int]:
+def _expand_group(group: RANK_TYPES, tag: str = "") -> Tuple[str, List[int], int]:
     """
     _expand_group desugars the different RANK_TYPES types into a canonical format that is traceable.
 
@@ -1123,10 +1125,10 @@ def _expand_group(group: RANK_TYPES, tag: str = "") -> tuple[str, list[int], int
     if TYPE_CHECKING:
 
         def cast_listlistint(x):
-            return cast(list[list[int]], x)
+            return cast(List[List[int]], x)
 
         def cast_listint(x):
-            return cast(list[int], x)
+            return cast(List[int], x)
 
     else:
         # fake cast op for use at runtime since dynamo doesn't support real cast
@@ -1138,7 +1140,7 @@ def _expand_group(group: RANK_TYPES, tag: str = "") -> tuple[str, list[int], int
         def cast_listint(x):
             return x
 
-    rankset: list[int]
+    rankset: List[int]
     if isinstance(group, list):
         if isinstance(group[0], list):
             nested_list = cast_listlistint(group)
@@ -1191,7 +1193,7 @@ def _expand_group(group: RANK_TYPES, tag: str = "") -> tuple[str, list[int], int
 
 def _resolve_group(
     group: RANK_TYPES, tag: str = ""
-) -> dist.ProcessGroup | c10d.GroupName:
+) -> Union[dist.ProcessGroup, c10d.GroupName]:
     """
     Given group in RANK_TYPES, return a ProcessGroup or group name.
     """
@@ -1241,7 +1243,7 @@ def _resolve_group(
             )
         return c10d._resolve_group_name_by_ranks_and_tag(
             # pyrefly: ignore [redundant-cast]
-            cast(list[int], group),
+            cast(List[int], group),
             tag,
         )
     else:
@@ -1718,7 +1720,7 @@ def all_to_all_inplace(
 
 
 def all_gather_inplace(
-    tensor_list: list[torch.Tensor],
+    tensor_list: List[torch.Tensor],
     tensor: torch.Tensor,
     group=None,
     async_op=False,
@@ -1758,7 +1760,7 @@ def isend_inplace(
     tensor: torch.Tensor,
     dst: int,
     tag: int = 0,
-    group: dist.ProcessGroup | None = None,
+    group: Optional[dist.ProcessGroup] = None,
     group_dst: int = -1,
 ):
     if group is None:
@@ -1785,7 +1787,7 @@ def irecv_inplace(
     tensor: torch.Tensor,
     src: int,
     tag: int = 0,
-    group: dist.ProcessGroup | None = None,
+    group: Optional[dist.ProcessGroup] = None,
     group_src: int = -1,
 ):
     if group is None:
@@ -1806,10 +1808,10 @@ def irecv_inplace(
 
 
 def batch_p2p_ops_inplace(
-    op_list: list[str],
-    peer_list: list[int],
-    tag_list: list[int],
-    tensors: list[torch.Tensor],
+    op_list: List[str],
+    peer_list: List[int],
+    tag_list: List[int],
+    tensors: List[torch.Tensor],
     group_name: RANK_TYPES,
 ):
     if not dist.is_initialized():
@@ -1830,8 +1832,8 @@ def batch_p2p_ops_inplace(
 
 
 def _group_or_group_name(
-    group: dist.ProcessGroup | c10d.GroupName,
-) -> dist.ProcessGroup | c10d.GroupName:
+    group: Union[dist.ProcessGroup, c10d.GroupName],
+) -> Union[dist.ProcessGroup, c10d.GroupName]:
     if isinstance(group, str):
         return group
     elif dist.config.compile_on_one_rank:

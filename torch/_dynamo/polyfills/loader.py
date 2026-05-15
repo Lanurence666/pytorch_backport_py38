@@ -1,8 +1,10 @@
 # Used to load and initialize polyfill handlers when importing torch._dynamo
 # Please add a new import when adding a new polyfill module.
 
+from __future__ import annotations
+
 import importlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple, Type
 
 import torch.utils._pytree as python_pytree
 
@@ -14,7 +16,7 @@ if TYPE_CHECKING:
 
 
 # See also the TYPE_CHECKING block in torch/_dynamo/polyfills/__init__.py
-POLYFILLED_MODULE_NAMES: tuple[str, ...] = (
+POLYFILLED_MODULE_NAMES: Tuple[str, ...] = (
     "_collections",
     "builtins",
     "copy",
@@ -32,7 +34,7 @@ POLYFILLED_MODULE_NAMES: tuple[str, ...] = (
 if python_pytree._cxx_pytree_dynamo_traceable:
     POLYFILLED_MODULE_NAMES += ("pytree",)
 
-POLYFILLED_MODULES: tuple["ModuleType", ...] = tuple(
+POLYFILLED_MODULES: Tuple["ModuleType", ...] = tuple(
     importlib.import_module(f".{submodule}", package=polyfills.__name__)
     for submodule in POLYFILLED_MODULE_NAMES
 )

@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Dict, Union
 """Operator registry for mapping operation names to operator instances."""
 
 from torchfuzz.operators.arg import ArgOperator
@@ -66,7 +68,7 @@ class OperatorRegistry:
 
     def __init__(self):
         """Initialize the registry with default operators."""
-        self._operators: dict[str, Operator] = {}
+        self._operators: Dict[str, Operator] = {}
         self._register_default_operators()
 
     def _register_default_operators(self):
@@ -143,14 +145,14 @@ class OperatorRegistry:
         """Register an operator in the registry."""
         self._operators[operator.name] = operator
 
-    def get(self, op_name: str) -> Operator | None:
+    def get(self, op_name: str) -> Union[Operator, None]:
         """Get an operator by name."""
         # Handle special arg_ operations by mapping them to the ArgOperator
         if op_name.startswith("arg_"):
             return self._operators.get("arg")
         return self._operators.get(op_name)
 
-    def list_operators(self) -> dict[str, Operator]:
+    def list_operators(self) -> Dict[str, Operator]:
         """List all registered operators."""
         return self._operators.copy()
 
@@ -159,7 +161,7 @@ class OperatorRegistry:
 _global_registry = OperatorRegistry()
 
 
-def get_operator(op_name: str) -> Operator | None:
+def get_operator(op_name: str) -> Union[Operator, None]:
     """Get an operator from the global registry."""
     return _global_registry.get(op_name)
 
@@ -169,7 +171,7 @@ def register_operator(operator: Operator):
     _global_registry.register(operator)
 
 
-def list_operators() -> dict[str, Operator]:
+def list_operators() -> Dict[str, Operator]:
     """List all operators in the global registry."""
     return _global_registry.list_operators()
 
@@ -200,7 +202,7 @@ def set_operator_weight(op_name: str, weight: float) -> None:
     raise KeyError(f"Operator '{op_name}' not found by registry name or torch op name")
 
 
-def set_operator_weights(weights: dict[str, float]) -> None:
+def set_operator_weights(weights: Dict[str, float]) -> None:
     """Bulk-update operator weights from a mapping of name -> weight."""
     for name, w in weights.items():
         set_operator_weight(name, w)
@@ -217,7 +219,7 @@ def set_operator_weight_by_torch_op(torch_op_name: str, weight: float) -> None:
     raise KeyError(f"Torch op '{torch_op_name}' not found in registry")
 
 
-def set_operator_weights_by_torch_op(weights: dict[str, float]) -> None:
+def set_operator_weights_by_torch_op(weights: Dict[str, float]) -> None:
     """Bulk-update weights by fully-qualified torch op names."""
     for name, w in weights.items():
         set_operator_weight_by_torch_op(name, w)

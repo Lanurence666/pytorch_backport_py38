@@ -1,4 +1,6 @@
-from typing import Union
+from __future__ import annotations
+
+from typing import Dict, Union
 
 import torch
 import torch.utils._pytree as pytree
@@ -9,7 +11,7 @@ __all__ = ["move_to_device_pass"]
 
 
 def move_to_device_pass(
-    ep: ExportedProgram, location: torch.device | str | dict[str, str]
+    ep: Union[ExportedProgram, location: torch.device, str, Dict[str, str]]
 ) -> ExportedProgram:
     """
     Move the exported program to the given device.
@@ -27,7 +29,7 @@ def move_to_device_pass(
 
     def _get_new_device(
         curr_device: torch.device,
-        location: torch.device | str | dict[str, str],
+        location: Union[torch.device, str, Dict[str, str],]
     ) -> str:
         if isinstance(location, dict):
             if str(curr_device) in location:

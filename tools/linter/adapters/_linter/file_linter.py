@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import sys
 from abc import abstractmethod
-from functools import cached_property
+from functools import lru_cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Tuple, Union
 
 from . import ParseError
 from .argument_parser import ArgumentParser
@@ -33,7 +33,7 @@ class FileLinter:
     description: str
     linter_name: str
 
-    epilog: str | None = None
+    epilog: Union[str, None] = None
     is_fixer: bool = True
     report_column_numbers: bool = False
 
@@ -41,7 +41,7 @@ class FileLinter:
     def _lint(self, python_file: PythonFile) -> Iterator[LintResult]:
         raise NotImplementedError
 
-    def __init__(self, argv: Sequence[str] | None = None) -> None:
+    def __init__(self, argv: Union[Sequence[str], None] = None) -> None:
         self.argv = argv
         self.parser = ArgumentParser(
             is_fixer=self.is_fixer,
@@ -62,7 +62,7 @@ class FileLinter:
         return success
 
     @classmethod
-    def make_file(cls, pc: Path | str | None = None) -> PythonFile:
+    def make_file(cls, pc: Union[Path, str, None] = None) -> PythonFile:
         return PythonFile.make(cls.linter_name, pc)
 
     @cached_property
@@ -78,7 +78,7 @@ class FileLinter:
         return self.linter_name.upper()
 
     @cached_property
-    def paths(self) -> list[Path]:
+    def paths(self) -> List[Path]:
         files = []
         file_parts = (f for fp in self.args.files for f in fp.split(":"))
         for f in file_parts:
@@ -105,13 +105,13 @@ class FileLinter:
     def _error(self, pf: PythonFile, result: LintResult) -> None:
         """Called on files that are unparsable"""
 
-    def _replace(self, pf: PythonFile) -> tuple[str, list[LintResult]]:
+    def _replace(self, pf: PythonFile) -> Tuple[str, List[LintResult]]:
         # Because of recursive replacements, we need to repeat replacing and reparsing
         # from the inside out until all possible replacements are complete
         previous_result_count = float("inf")
-        first_results: list[LintResult] = []
+        first_results: List[LintResult] = []
         original = replacement = pf.contents
-        results: list[LintResult] = []
+        results: List[LintResult] = []
 
         while True:
             try:
@@ -155,7 +155,7 @@ class FileLinter:
 
         return replacement, first_results
 
-    def _display(self, pf: PythonFile, results: list[LintResult]) -> Iterator[str]:
+    def _display(self, pf: PythonFile, results: List[LintResult]) -> Iterator[str]:
         """Emit a series of human-readable strings representing the results"""
         for r in results:
             if self.args.lintrunner:

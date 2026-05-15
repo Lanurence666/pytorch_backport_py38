@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any
+from typing import Any, Union
 
 import torch
 
@@ -37,7 +37,7 @@ if triton is not None:
 
         def GPUTarget(
             backend: str,
-            arch: int | str,
+            arch: Union[int, str],
             warp_size: int,
         ) -> Any:
             if torch.version.hip:
@@ -148,7 +148,7 @@ else:
     HAS_TRITON = False
 
 
-def cc_warp_size(cc: str | int) -> int:
+def cc_warp_size(cc: Union[str, int]) -> int:
     if torch.version.hip:
         if "gfx9" in str(cc):
             return 64

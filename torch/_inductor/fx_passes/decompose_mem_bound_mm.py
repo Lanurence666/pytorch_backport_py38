@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 
 import torch
@@ -52,7 +54,7 @@ def check_device(a: Tensor, b: Tensor, device="cuda") -> bool:
     return (a.device.type == b.device.type) and (b.device.type == device)
 
 
-def realize_inputs(inputs: list[torch.fx.Node]):
+def realize_inputs(inputs: List[torch.fx.Node]):
     for inp in inputs:
         if isinstance(inp, torch.fx.node.Node):
             inp.meta["inductor_realize_to_strides"] = True
@@ -209,7 +211,7 @@ def should_decompose_mm(mat1, mat2) -> bool:
         )
 
 
-def print_decompose_pattern(match: Match, inputs: list[torch.fx.Node]):
+def print_decompose_pattern(match: Match, inputs: List[torch.fx.Node]):
     node = match.nodes[-1]
     log.debug(
         "Decompose %s with input shape: %s",

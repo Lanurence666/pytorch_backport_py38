@@ -1,7 +1,5 @@
-# In some cases, these basic types are shadowed by corresponding
-# top-level values.  The underscore variants let us refer to these
-# types.  See https://github.com/python/mypy/issues/4146 for why these
-# workarounds is necessary
+from __future__ import annotations
+
 import os
 from builtins import (  # noqa: F401
     bool as _bool,
@@ -11,11 +9,9 @@ from builtins import (  # noqa: F401
     int as _int,
     str as _str,
 )
-from collections.abc import Sequence
-from typing import Any, IO, TYPE_CHECKING, TypeAlias, Union
+from typing import Any, Dict, IO, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type, Union
 from typing_extensions import Self
 
-# `as` imports have better static analysis support than assignment `ExposedType: TypeAlias = HiddenType`
 from torch import (  # noqa: F401
     device as _device,
     DispatchKey,
@@ -36,53 +32,41 @@ if TYPE_CHECKING:
 
 __all__ = ["Number", "Device", "FileLike", "Storage"]
 
-# Convenience aliases for common composite types that we need
-# to talk about in PyTorch
-_TensorOrTensors: TypeAlias = Tensor | Sequence[Tensor]  # noqa: PYI047
-_TensorOrOptionalTensors: TypeAlias = Tensor | Sequence[Tensor | None]  # noqa: PYI047
-_TensorOrTensorsOrGradEdge: TypeAlias = Union[  # noqa: PYI047
+_TensorOrTensors = Union[Tensor, Sequence[Tensor]]
+_TensorOrOptionalTensors = Union[Tensor, Sequence[Optional[Tensor]]]
+_TensorOrTensorsOrGradEdge = Union[
     Tensor,
     Sequence[Tensor],
     "GradientEdge",
     Sequence["GradientEdge"],
 ]
 
-_size: TypeAlias = Size | list[int] | tuple[int, ...]  # noqa: PYI042,PYI047
-_symsize: TypeAlias = Size | Sequence[int | SymInt]  # noqa: PYI042,PYI047
-_dispatchkey: TypeAlias = str | DispatchKey  # noqa: PYI042,PYI047
+_size = Union[Size, List[int], Tuple[int, ...]]
+_symsize = Union[Size, Sequence[Union[int, SymInt]]]
+_dispatchkey = Union[str, DispatchKey]
 
-# int or SymInt
-IntLikeType: TypeAlias = int | SymInt
-# float or SymFloat
-FloatLikeType: TypeAlias = float | SymFloat
-# bool or SymBool
-BoolLikeType: TypeAlias = bool | SymBool
+IntLikeType = Union[int, SymInt]
+FloatLikeType = Union[float, SymFloat]
+BoolLikeType = Union[bool, SymBool]
 
-py_sym_types = (SymInt, SymFloat, SymBool)  # left un-annotated intentionally
-PySymType: TypeAlias = SymInt | SymFloat | SymBool
+py_sym_types = (SymInt, SymFloat, SymBool)
+PySymType = Union[SymInt, SymFloat, SymBool]
 
-# Meta-type for "numeric" things; matches our docs
-Number: TypeAlias = int | float | bool
-# tuple for isinstance(x, Number) checks.
-# FIXME: refactor once python 3.9 support is dropped.
+Number = Union[int, float, bool]
 _Number = (int, float, bool)
 
-FileLike: TypeAlias = str | os.PathLike[str] | IO[bytes]
+FileLike = Union[str, os.PathLike, IO[bytes]]
 
-# Meta-type for "device-like" things.  Not to be confused with 'device' (a
-# literal device object).  This nomenclature is consistent with PythonArgParser.
-# None means use the default device (typically CPU)
-Device: TypeAlias = _device | str | int | None
+Device = Optional[Union[_device, str, int]]
 
 
-# Storage protocol implemented by ${Type}StorageBase classes
 class Storage:
     _cdata: int
     device: _device
     dtype: _dtype
     _torch_load_uninitialized: bool
 
-    def __deepcopy__(self, memo: dict[int, Any]) -> Self:
+    def __deepcopy__(self, memo: Dict[int, Any]) -> Self:
         raise NotImplementedError
 
     def _new_shared(self, size: int) -> Self:

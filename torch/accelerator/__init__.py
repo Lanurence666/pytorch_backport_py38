@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 r"""
 This package introduces support for the current :ref:`accelerator<accelerators>` in python.
 """
 
-from functools import cache
-from typing import Any
+from functools import lru_cache
+from typing import Any, Dict, Optional, Set
 from typing_extensions import deprecated
 
 import torch
@@ -99,7 +101,7 @@ def is_available() -> bool:
     return mod.is_available()
 
 
-def current_accelerator(check_available: bool = False) -> torch.device | None:
+def current_accelerator(check_available: bool = False) -> Optional[torch.device]:
     r"""Return the device of the accelerator available at compilation time.
     If no accelerator were available at compilation time, returns None.
     See :ref:`accelerator<accelerators>` for details.
@@ -158,8 +160,8 @@ current_device_idx.__doc__ = r"""
     """
 
 
-@cache
-def get_device_capability(device: _device_t = None, /) -> dict[str, Any]:
+@lru_cache(maxsize=None)
+def get_device_capability(device: _device_t = None, /) -> Dict[str, Any]:
     r"""Return the capability of the currently selected device.
 
     Args:
@@ -168,7 +170,7 @@ def get_device_capability(device: _device_t = None, /) -> dict[str, Any]:
             use :func:`torch.accelerator.current_device_index` by default.
 
     Returns:
-        dict[str, Any]: A dictionary containing device capability information. The dictionary includes:
+        Dict[str, Any]: A dictionary containing device capability information. The dictionary includes:
             - ``supported_dtypes`` (set(torch.dtype)): Set of PyTorch data types for which
               tensors can be allocated on the accelerator and type conversion across
               supported dtypes are supported. Any operator support outside of that
@@ -294,7 +296,7 @@ class device_index:
         ...     pass
     """
 
-    def __init__(self, device: int | None, /) -> None:
+    def __init__(self, device: Optional[int], /) -> None:
         self.idx = device
         self.prev_idx = -1
 

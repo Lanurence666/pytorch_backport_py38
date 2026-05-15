@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import argparse
 import os
-from typing import cast
+from typing import Dict, Tuple, cast
 
 
-Version = tuple[int, int, int]
+Version = Tuple[int, int, int]
 
 
 def parse_version(version: str) -> Version:
@@ -33,7 +33,7 @@ def parse_version(version: str) -> Version:
     return cast(Version, tuple([int(n) for n in version_number_str.split(".")]))
 
 
-def apply_replacements(replacements: dict[str, str], text: str) -> str:
+def apply_replacements(replacements: Dict[str, str], text: str) -> str:
     """
     Applies the given replacements within the text.
 

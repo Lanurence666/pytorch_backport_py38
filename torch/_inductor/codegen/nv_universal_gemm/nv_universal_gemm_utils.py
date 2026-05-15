@@ -1,16 +1,17 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 Utility functions for NVIDIA Universal GEMM.
 """
 
-from typing import Any
+from typing import Any, Optional, Tuple, Type, Union
 
 from torch.nn.functional import ScalingType, SwizzleType
 
 
 def to_cutlass_scale_mode(
     scale_type: Any, swizzle_type: Any
-) -> tuple[Any | None, Any | None]:
+) -> Union[Tuple[Any, None, Any, None]]:
     """
     Map PyTorch ScalingType/SwizzleType to cutlass_api ScaleMode/ScaleSwizzleMode.
 
@@ -44,10 +45,10 @@ def to_cutlass_scale_mode(
 
 # NOTE: cutlass.torch.dtype() doesn't support Float4E2M1FN (raises TypeError),
 # so we maintain our own mapping that includes FP4.
-_CUTLASS_TO_TORCH_DTYPE: dict | None = None
+_CUTLASS_TO_TORCH_DTYPE: Optional[dict]= None
 
 
-def cutlass_dtype_to_torch(cutlass_dtype: Any) -> "Any | None":
+def cutlass_dtype_to_torch(cutlass_dtype: Any) -> Union["Any, None"]:
     """Map a cutlass dtype to the corresponding torch dtype."""
     import torch
 

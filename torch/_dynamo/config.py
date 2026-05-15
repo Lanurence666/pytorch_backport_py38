@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Configuration module for TorchDynamo compiler and optimization settings.
 
@@ -15,9 +16,11 @@ import os
 import sys
 import sysconfig
 import tempfile
-from collections.abc import Callable
+
 from os.path import abspath, dirname
-from typing import Any, Literal, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, Set, TYPE_CHECKING, Type, Union
+from typing_extensions import Literal
+
 
 from torch._environment import is_fbcode
 from torch.utils._config_module import Config, get_tristate_env, install_config_module
@@ -31,7 +34,7 @@ from torch.utils._config_module import Config, get_tristate_env, install_config_
 # Design doc: https://docs.google.com/document/d/1ZRfTWKa8eaPq1AxaiHrq4ASTPouzzlPiuquSBEJYwS8/edit#
 # the name of a file to write the logs to
 # [@compile_ignored: debug]
-log_file_name: str | None = None
+log_file_name: Optional[str]= None
 
 # [@compile_ignored: debug] Verbose will print full stack traces on warnings and errors
 verbose = os.environ.get("TORCHDYNAMO_VERBOSE", "0") == "1"
@@ -98,11 +101,6 @@ dead_code_elimination = None
 # if your code depends on these mutations being visible. This should probably
 # never be False by default. At the moment, only export will need it.
 replay_side_effects = True
-
-# Generate Python code strings for compiled graph calls.
-# When enabled, the generated Python code will be stored in output_pycode.
-# [@compile_ignored: debug]
-generate_pycode = False
 
 # Configure side effect warning level
 # If `info` (default): allow side effects and log to TORCH_LOGS="side_effects" and tlparse
@@ -252,14 +250,14 @@ guard_nn_modules_using_dict_tags = True
 prepare_freezing = os.environ.get("TORCHDYNAMO_PREPARE_FREEZING", "0") == "1"
 
 # NOTE this has been deprecated, it does nothing now.
-traceable_tensor_subclasses: set[type[Any]] = set()
+traceable_tensor_subclasses: Set[Type[Any]] = set()
 
 # If a tensor subclass is put into this set, Dynamo will model its instasnces in
 # a very conservative and limited way (most likely causing lots of graph breaks
 # if one apply tensor ops on these instances). This is useful if you encounter
 # internal compiler errors from Dynamo which are caused by tensor subclasses,
 # and you are willing to tolerate potential graph breaks rather than hard error.
-nontraceable_tensor_subclasses: set[type[Any]] = set()
+nontraceable_tensor_subclasses: Set[Type[Any]] = set()
 
 # Suppress errors in torch._dynamo.optimize, instead forcing a fallback to eager.
 # This is a good way to get your model to work one way or another, but you may
@@ -286,16 +284,16 @@ cprofile = os.environ.get("TORCH_COMPILE_CPROFILE", False)
 # time spent tracing each user function. Set to True to enable, or set to a
 # file path to save the .prof file for snakeviz.
 # [@compile_ignored: runtime_behaviour]
-dynamo_profiler: bool | str = os.environ.get("TORCH_COMPILE_DYNAMO_PROFILER", False)
+dynamo_profiler: Union[bool, str]= os.environ.get("TORCH_COMPILE_DYNAMO_PROFILER", False)
 
 # Legacy config, does nothing now!
-skipfiles_inline_module_allowlist: dict[Any, Any] = {}
+skipfiles_inline_module_allowlist: Dict[Any, Any] = {}
 """Allowlist of inline modules to skip during compilation.
 
 Legacy configuration that previously controlled which modules could be
 inlined during tracing. This configuration is deprecated and no longer used.
 
-:type: dict[Any, Any]
+:type: Dict[Any, Any]
 :default: {}
 
 .. deprecated::
@@ -558,9 +556,6 @@ enable_trace_contextlib = True
 # Enable tracing through unittest
 enable_trace_unittest = False
 
-# Enable tracing LOAD_BUILD_CLASS bytecode
-enable_trace_load_build_class = False
-
 # Enable tracing generator functions lazily. If False, Dynamo will exhaust
 # generators upon first execution. And if True, the generator will be accessed lazily
 enable_faithful_generator_behavior = True
@@ -692,7 +687,7 @@ log_compilation_metrics = True
 # allowing dynamo to construct large graph. Note that there are some
 # limitations to this, such as how it does not correctly print objects that were
 # mutated after the print statement.
-reorderable_logging_functions: set[Callable[[Any], None]] = set()
+reorderable_logging_functions: Set[Callable[[Any], None]] = set()
 
 # A set of functions that will be ignored during Dynamo tracing.
 # These functions will NOT run, will NOT be reordered, and will NOT
@@ -703,11 +698,11 @@ reorderable_logging_functions: set[Callable[[Any], None]] = set()
 # or `logger_obj.<method>` (ignores method only for logger_obj logging.Logger instance).
 # Other functions may or may not be ignored due to implementation details. If you want to ignore a function
 # that `ignore_logging_functions` is failing to ignore, please submit an issue.
-ignore_logging_functions: set[Callable[..., Any]] = set()
+ignore_logging_functions: Set[Callable[..., Any]] = set()
 
 # Backwards compat: `ignore_logger_methods` now aliases `ignore_logging_functions`.
 # Existing code that used `ignore_logger_methods` will continue to work.
-ignore_logger_methods: set[Callable[..., Any]] = Config(
+ignore_logger_methods: Set[Callable[..., Any]] = Config(
     alias="torch._dynamo.config.ignore_logging_functions"
 )
 
@@ -791,13 +786,13 @@ skip_fwd_side_effects_in_bwd_under_checkpoint = False
 
 
 # Overrides torch.compile() kwargs for Compiled Autograd:
-compiled_autograd_kwargs_override: dict[str, Any] = {}
+compiled_autograd_kwargs_override: Dict[str, Any] = {}
 """Overrides torch.compile() kwargs for Compiled Autograd.
 
 This dictionary allows overriding specific torch.compile() keyword arguments
 when using Compiled Autograd. Only certain overrides are currently supported.
 
-:type: dict[str, Any]
+:type: Dict[str, Any]
 :default: {}
 
 Example::
@@ -856,7 +851,7 @@ automatic_dynamic_local_pgo: bool = Config(
 )
 
 # Like above, but using remote cache
-automatic_dynamic_remote_pgo: bool | None = get_tristate_env(
+automatic_dynamic_remote_pgo: Optional[bool]= get_tristate_env(
     "TORCH_DYNAMO_AUTOMATIC_DYNAMIC_REMOTE_PGO"
 )
 
@@ -866,7 +861,7 @@ _unsafe_skip_fsdp_module_guards = (
 )
 
 # Common prefix to append to the id of each compile run to filter out data
-pt2_compile_id_prefix: str | None = os.environ.get("PT2_COMPILE_ID_PREFIX", None)
+pt2_compile_id_prefix: Optional[str]= os.environ.get("PT2_COMPILE_ID_PREFIX", None)
 
 # Run GC at the end of compilation
 run_gc_after_compile = Config(  # type: ignore[var-annotated]
@@ -893,7 +888,7 @@ record_runtime_overhead = True
 enable_aot_compile = True
 
 # HACK: this is for testing custom ops profiling only
-_custom_ops_profile: Any | None = None
+_custom_ops_profile: Optional[Any]= None
 
 # Experimental flag to enable regional compile on invoke_subgraph HOP.
 # For testing only!
@@ -916,7 +911,7 @@ inline_single_use_invoke_subgraph: bool = True
 #   don't clear for custom backends (to support standalone_compile, etc.)
 # - True: always clear regardless of backend
 # - False: never clear regardless of backend
-invalidate_compile_context_weakrefs: bool | None = None
+invalidate_compile_context_weakrefs: Optional[bool]= None
 
 if TYPE_CHECKING:
     from torch.utils._config_typing import *  # noqa: F403

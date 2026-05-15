@@ -1,8 +1,9 @@
 import os
-from collections.abc import Generator
+
 from contextlib import contextmanager, ExitStack
 
 from torch.distributed.elastic.multiprocessing.errors import record
+from typing import Generator
 
 
 __all__ = [

@@ -1,14 +1,16 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import functools
 import inspect
 import itertools
 import warnings
 import weakref
 from collections import namedtuple, OrderedDict
-from collections.abc import Callable, Iterator, Mapping
-from typing import Any, Optional, overload, TypeVar, Union
-from typing_extensions import Self
+
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Set, Tuple, Type, TypeVar, Union, cast, overload
+from typing_extensions import NamedTuple, Self
 
 import torch
 from torch import device, dtype, Tensor
@@ -30,7 +32,7 @@ __all__ = [
     "Module",
 ]
 
-_grad_t = tuple[Tensor, ...] | Tensor
+_grad_t = Union[Tuple[Tensor, ...], Tensor]
 # See https://mypy.readthedocs.io/en/latest/generics.html#generic-methods-and-generic-self for the use
 # of `T` to annotate `self`. Many methods of `Module` return `self` and we want those return values to be
 # the type of the subclass, not the looser type of `Module`.
@@ -66,9 +68,9 @@ def _addindent(s_, numSpaces):
 
 r"""This tracks hooks common to all modules that are executed immediately before
 .registering the buffer/module/parameter"""
-_global_buffer_registration_hooks: dict[int, Callable] = OrderedDict()
-_global_module_registration_hooks: dict[int, Callable] = OrderedDict()
-_global_parameter_registration_hooks: dict[int, Callable] = OrderedDict()
+_global_buffer_registration_hooks: Dict[int, Callable] = OrderedDict()
+_global_module_registration_hooks: Dict[int, Callable] = OrderedDict()
+_global_parameter_registration_hooks: Dict[int, Callable] = OrderedDict()
 
 
 class _WrappedHook:
@@ -113,13 +115,13 @@ class _WrappedHook:
 r"""This tracks hooks common to all modules that are executed before/after
 calling forward and backward. This is global state used for debugging/profiling
 purposes"""
-_global_backward_pre_hooks: dict[int, Callable] = OrderedDict()
-_global_backward_hooks: dict[int, Callable] = OrderedDict()
-_global_is_full_backward_hook: bool | None = None
-_global_forward_pre_hooks: dict[int, Callable] = OrderedDict()
-_global_forward_hooks: dict[int, Callable] = OrderedDict()
-_global_forward_hooks_always_called: dict[int, bool] = OrderedDict()
-_global_forward_hooks_with_kwargs: dict[int, bool] = OrderedDict()
+_global_backward_pre_hooks: Dict[int, Callable] = OrderedDict()
+_global_backward_hooks: Dict[int, Callable] = OrderedDict()
+_global_is_full_backward_hook: Optional[bool] = None
+_global_forward_pre_hooks: Dict[int, Callable] = OrderedDict()
+_global_forward_hooks: Dict[int, Callable] = OrderedDict()
+_global_forward_hooks_always_called: Dict[int, bool] = OrderedDict()
+_global_forward_hooks_with_kwargs: Dict[int, bool] = OrderedDict()
 
 
 def _has_any_global_hook():
@@ -294,7 +296,7 @@ def register_module_forward_hook(
 
 
 def register_module_backward_hook(
-    hook: Callable[["Module", _grad_t, _grad_t], _grad_t | None],
+    hook: Callable[["Module", _grad_t, _grad_t], Optional[_grad_t]],
 ) -> RemovableHandle:
     r"""Register a backward hook common to all the modules.
 
@@ -323,7 +325,7 @@ def register_module_backward_hook(
 
 
 def register_module_full_backward_pre_hook(
-    hook: Callable[["Module", _grad_t], _grad_t | None],
+    hook: Callable[["Module", _grad_t], Optional[_grad_t]],
 ) -> RemovableHandle:
     r"""Register a backward pre-hook common to all the modules.
 
@@ -350,7 +352,7 @@ def register_module_full_backward_pre_hook(
 
 
 def register_module_full_backward_hook(
-    hook: Callable[["Module", _grad_t, _grad_t], _grad_t | None],
+    hook: Callable[["Module", _grad_t, _grad_t], Optional[_grad_t]],
 ) -> RemovableHandle:
     r"""Register a backward hook common to all the modules.
 
@@ -453,31 +455,31 @@ class Module:
     the change."""
 
     training: bool
-    _parameters: dict[str, Parameter | None]
-    _buffers: dict[str, Tensor | None]
-    _non_persistent_buffers_set: set[str]
-    _backward_pre_hooks: dict[int, Callable]
-    _backward_hooks: dict[int, Callable]
-    _is_full_backward_hook: bool | None
-    _forward_hooks: dict[int, Callable]
+    _parameters: Dict[str, Optional[Parameter]]
+    _buffers: Dict[str, Optional[Tensor]]
+    _non_persistent_buffers_set: Set[str]
+    _backward_pre_hooks: Dict[int, Callable]
+    _backward_hooks: Dict[int, Callable]
+    _is_full_backward_hook: Optional[bool]
+    _forward_hooks: Dict[int, Callable]
     # Marks whether the corresponding _forward_hooks accept kwargs or not.
-    # As JIT does not support set[int], this dict is used as a set, where all
+    # As JIT does not support Set[int], this dict is used as a set, where all
     # hooks represented in this dict accept kwargs.
-    _forward_hooks_with_kwargs: dict[int, bool]
+    _forward_hooks_with_kwargs: Dict[int, bool]
     # forward hooks that should always be called even if an exception is raised
-    _forward_hooks_always_called: dict[int, bool]
-    _forward_pre_hooks: dict[int, Callable]
+    _forward_hooks_always_called: Dict[int, bool]
+    _forward_pre_hooks: Dict[int, Callable]
     # Marks whether the corresponding _forward_hooks accept kwargs or not.
-    # As JIT does not support set[int], this dict is used as a set, where all
+    # As JIT does not support Set[int], this dict is used as a set, where all
     # hooks represented in this dict accept kwargs.
-    _forward_pre_hooks_with_kwargs: dict[int, bool]
-    _state_dict_hooks: dict[int, Callable]
-    _load_state_dict_pre_hooks: dict[int, Callable]
-    _state_dict_pre_hooks: dict[int, Callable]
-    _load_state_dict_post_hooks: dict[int, Callable]
-    _modules: dict[str, Optional["Module"]]
+    _forward_pre_hooks_with_kwargs: Dict[int, bool]
+    _state_dict_hooks: Dict[int, Callable]
+    _load_state_dict_pre_hooks: Dict[int, Callable]
+    _state_dict_pre_hooks: Dict[int, Callable]
+    _load_state_dict_post_hooks: Dict[int, Callable]
+    _modules: Dict[str, Optional["Module"]]
     call_super_init: bool = False
-    _compiled_call_impl: Callable | None = None
+    _compiled_call_impl: Optional[Callable] = None
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize internal Module state, shared by both nn.Module and ScriptModule."""
@@ -526,7 +528,7 @@ class Module:
     forward: Callable[..., Any] = _forward_unimplemented
 
     def register_buffer(
-        self, name: str, tensor: Tensor | None, persistent: bool = True
+        self, name: str, tensor: Optional[Tensor], persistent: bool = True
     ) -> None:
         r"""Add a buffer to the module.
 
@@ -589,7 +591,7 @@ class Module:
             else:
                 self._non_persistent_buffers_set.add(name)
 
-    def register_parameter(self, name: str, param: Parameter | None) -> None:
+    def register_parameter(self, name: str, param: Optional[Parameter]) -> None:
         r"""Add a parameter to the module.
 
         The parameter can be accessed as an attribute using given name.
@@ -720,7 +722,7 @@ class Module:
         if target == "":
             return self
 
-        atoms: list[str] = target.split(".")
+        atoms: List[str] = target.split(".")
         mod: torch.nn.Module = self
 
         for item in atoms:
@@ -796,7 +798,7 @@ class Module:
         if target == "":
             raise ValueError("Cannot set the submodule without a target name!")
 
-        atoms: list[str] = target.split(".")
+        atoms: List[str] = target.split(".")
         if not isinstance(module, torch.nn.Module):
             raise ValueError(
                 "`" + "module" + f"` is not an nn.Module, found {type(module)}"
@@ -1076,7 +1078,7 @@ class Module:
         fn(self)
         return self
 
-    def cuda(self, device: int | device | None = None) -> Self:
+    def cuda(self, device: Optional[Union[int, device]] = None) -> Self:
         r"""Move all model parameters and buffers to the GPU.
 
         This also makes associated parameters and buffers different objects. So
@@ -1095,7 +1097,7 @@ class Module:
         """
         return self._apply(lambda t: t.cuda(device))
 
-    def ipu(self, device: int | device | None = None) -> Self:
+    def ipu(self, device: Optional[Union[int, device]] = None) -> Self:
         r"""Move all model parameters and buffers to the IPU.
 
         This also makes associated parameters and buffers different objects. So
@@ -1114,7 +1116,7 @@ class Module:
         """
         return self._apply(lambda t: t.ipu(device))
 
-    def xpu(self, device: int | device | None = None) -> Self:
+    def xpu(self, device: Optional[Union[int, device]] = None) -> Self:
         r"""Move all model parameters and buffers to the XPU.
 
         This also makes associated parameters and buffers different objects. So
@@ -1133,7 +1135,7 @@ class Module:
         """
         return self._apply(lambda t: t.xpu(device))
 
-    def mtia(self, device: int | device | None = None) -> Self:
+    def mtia(self, device: Optional[Union[int, device]] = None) -> Self:
         r"""Move all model parameters and buffers to the MTIA.
 
         This also makes associated parameters and buffers different objects. So
@@ -1163,7 +1165,7 @@ class Module:
         """
         return self._apply(lambda t: t.cpu())
 
-    def type(self, dst_type: dtype | str) -> Self:
+    def type(self, dst_type: Union[dtype, str]) -> Self:
         r"""Casts all parameters and buffers to :attr:`dst_type`.
 
         .. note::
@@ -1221,7 +1223,7 @@ class Module:
         """
         return self._apply(lambda t: t.bfloat16() if t.is_floating_point() else t)
 
-    def to_empty(self, *, device: DeviceLikeType | None, recurse: bool = True) -> Self:
+    def to_empty(self, *, device: Optional[DeviceLikeType], recurse: bool = True) -> Self:
         r"""Move the parameters and buffers to the specified device without copying storage.
 
         Args:
@@ -1240,8 +1242,8 @@ class Module:
     @overload
     def to(
         self,
-        device: DeviceLikeType | None = ...,
-        dtype: dtype | None = ...,
+        device: Optional[DeviceLikeType] = ...,
+        dtype: Optional[dtype] = ...,
         non_blocking: bool = ...,
     ) -> Self: ...
 
@@ -1384,7 +1386,7 @@ class Module:
 
     def register_full_backward_pre_hook(
         self,
-        hook: Callable[["Module", _grad_t], _grad_t | None],
+        hook: Callable[["Module", _grad_t], Optional[_grad_t]],
         prepend: bool = False,
     ) -> RemovableHandle:
         r"""Register a backward pre-hook on the module.
@@ -1392,7 +1394,7 @@ class Module:
         The hook will be called every time the gradients for the module are computed.
         The hook should have the following signature::
 
-            hook(module, grad_output) -> tuple[Tensor, ...], Tensor or None
+            hook(module, grad_output) -> Tuple[Tensor, ...], Tensor or None
 
         The :attr:`grad_output` is a tuple. The hook should
         not modify its arguments, but it can optionally return a new gradient with
@@ -1432,7 +1434,7 @@ class Module:
         return handle
 
     def register_backward_hook(
-        self, hook: Callable[["Module", _grad_t, _grad_t], _grad_t | None]
+        self, hook: Callable[["Module", _grad_t, _grad_t], Optional[_grad_t]]
     ) -> RemovableHandle:
         r"""Register a backward hook on the module.
 
@@ -1459,7 +1461,7 @@ class Module:
 
     def register_full_backward_hook(
         self,
-        hook: Callable[["Module", _grad_t, _grad_t], _grad_t | None],
+        hook: Callable[["Module", _grad_t, _grad_t], Optional[_grad_t]],
         prepend: bool = False,
     ) -> RemovableHandle:
         r"""Register a backward hook on the module.
@@ -1529,13 +1531,13 @@ class Module:
         It returns two lists, one with the full backward hooks and one with the non-full
         backward hooks.
         """
-        full_backward_hooks: list[Callable] = []
+        full_backward_hooks: List[Callable] = []
         if _global_is_full_backward_hook is True:
             full_backward_hooks += _global_backward_hooks.values()
         if self._is_full_backward_hook is True:
             full_backward_hooks += self._backward_hooks.values()
 
-        non_full_backward_hooks: list[Callable] = []
+        non_full_backward_hooks: List[Callable] = []
         if _global_is_full_backward_hook is False:
             non_full_backward_hooks += _global_backward_hooks.values()
         if self._is_full_backward_hook is False:
@@ -1544,7 +1546,7 @@ class Module:
         return full_backward_hooks, non_full_backward_hooks
 
     def _get_backward_pre_hooks(self):
-        backward_pre_hooks: list[Callable] = []
+        backward_pre_hooks: List[Callable] = []
         backward_pre_hooks += _global_backward_pre_hooks.values()
         backward_pre_hooks += self._backward_pre_hooks.values()
 
@@ -1623,9 +1625,9 @@ class Module:
 
     def register_forward_pre_hook(
         self,
-        hook: Callable[[T, tuple[Any, ...]], Any | None]
+        hook: Callable[[T, Tuple[Any, ...]], Optional[Any]]
         | Callable[
-            [T, tuple[Any, ...], dict[str, Any]], tuple[Any, dict[str, Any]] | None
+            [T, Tuple[Any, ...], Dict[str, Any]], Tuple[Any, Dict[str, Any]] | None
         ],
         *,
         prepend: bool = False,
@@ -1686,8 +1688,8 @@ class Module:
 
     def register_forward_hook(
         self,
-        hook: Callable[[T, tuple[Any, ...], Any], Any | None]
-        | Callable[[T, tuple[Any, ...], dict[str, Any], Any], Any | None],
+        hook: Callable[[T, Tuple[Any, ...], Any], Optional[Any]]
+        | Callable[[T, Tuple[Any, ...], Dict[str, Any], Any], Optional[Any]],
         *,
         prepend: bool = False,
         with_kwargs: bool = False,
@@ -2170,7 +2172,7 @@ class Module:
 
     # The user can pass an optional arbitrary mappable object to `state_dict`, in which case `state_dict` returns
     # back that same object. But if they pass nothing, an `OrderedDict` is created and returned.
-    T_destination = TypeVar("T_destination", bound=dict[str, Any])
+    T_destination = TypeVar("T_destination", bound=Dict[str, Any])
 
     @overload
     def state_dict(
@@ -2187,7 +2189,7 @@ class Module:
         *,
         prefix: str = ...,
         keep_vars: bool = ...,
-    ) -> dict[str, Any]: ...
+    ) -> Dict[str, Any]: ...
 
     # TODO: Change `*args` to `*` and remove the corresponding warning in docs when BC allows.
     # Also remove the logic for arg parsing together.
@@ -2510,7 +2512,7 @@ class Module:
             is not Module.set_extra_state
         ):
             if extra_state_key in state_dict:
-                self.set_extra_state(state_dict[extra_state_key])
+                self.set_extra_state(state_Dict[extra_state_key])
             elif strict:
                 missing_keys.append(extra_state_key)
         elif strict and (extra_state_key in state_dict):
@@ -2570,9 +2572,9 @@ class Module:
                 f"Expected state_dict to be dict-like, got {type(state_dict)}."
             )
 
-        missing_keys: list[str] = []
-        unexpected_keys: list[str] = []
-        error_msgs: list[str] = []
+        missing_keys: List[str] = []
+        unexpected_keys: List[str] = []
+        error_msgs: List[str] = []
 
         # copy state_dict so _load_from_state_dict can modify it
         metadata = getattr(state_dict, "_metadata", None)
@@ -2689,7 +2691,7 @@ class Module:
 
     def named_parameters(
         self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
-    ) -> Iterator[tuple[str, Parameter]]:
+    ) -> Iterator[Tuple[str, Parameter]]:
         r"""Return an iterator over module parameters, yielding both the name of the parameter as well as the parameter itself.
 
         Args:
@@ -2744,7 +2746,7 @@ class Module:
 
     def named_buffers(
         self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
-    ) -> Iterator[tuple[str, Tensor]]:
+    ) -> Iterator[Tuple[str, Tensor]]:
         r"""Return an iterator over module buffers, yielding both the name of the buffer as well as the buffer itself.
 
         Args:
@@ -2782,7 +2784,7 @@ class Module:
         for _name, module in self.named_children():
             yield module
 
-    def named_children(self) -> Iterator[tuple[str, "Module"]]:
+    def named_children(self) -> Iterator[Tuple[str, "Module"]]:
         r"""Return an iterator over immediate children modules, yielding both the name of the module as well as the module itself.
 
         Yields:
@@ -2835,7 +2837,7 @@ class Module:
 
     def named_modules(
         self,
-        memo: set["Module"] | None = None,
+        memo: Optional[Set["Module"]] = None,
         prefix: str = "",
         remove_duplicate: bool = True,
     ):

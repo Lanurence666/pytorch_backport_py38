@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import inspect
-from collections.abc import Callable
+
 from functools import wraps
-from typing import Any, get_type_hints
+from typing import Any, Callable, Optional, Type, Union, get_type_hints
 
 from torch.utils.data.datapipes._typing import _DataPipeMeta
 from torch.utils.data.datapipes.datapipe import IterDataPipe, MapDataPipe
@@ -73,11 +75,11 @@ class guaranteed_datapipes_determinism:
 
 
 class non_deterministic:
-    cls: type[IterDataPipe] | None = None
+    cls: Optional[Type[IterDataPipe]]= None
     # TODO: Lambda for picking
     deterministic_fn: Callable[..., bool]
 
-    def __init__(self, arg: type[IterDataPipe] | Callable[..., bool]) -> None:
+    def __init__(self, arg: Union[Type[IterDataPipe], Callable[..., bool]]) -> None:
         # 1. Decorator doesn't have any argument
         if isinstance(arg, type):  # type: ignore[arg-type]
             if not issubclass(arg, IterDataPipe):  # type: ignore[arg-type]

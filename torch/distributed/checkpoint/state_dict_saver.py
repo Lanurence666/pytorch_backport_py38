@@ -1,12 +1,14 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import inspect
 import os
 import warnings
 from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import Enum
-from typing import cast, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Type, Union, cast
 from typing_extensions import deprecated
 
 import torch
@@ -63,10 +65,10 @@ class AsyncCheckpointerType(Enum):
 def save_state_dict(
     state_dict: STATE_DICT_TYPE,
     storage_writer: StorageWriter,
-    process_group: dist.ProcessGroup | None = None,
+    process_group: Optional[dist.ProcessGroup]= None,
     coordinator_rank: int = 0,
     no_dist: bool = False,
-    planner: SavePlanner | None = None,
+    planner: Optional[SavePlanner]= None,
 ) -> Metadata:
     """This method is deprecated. Please switch to 'save'."""
     storage_writer.reset()
@@ -88,10 +90,10 @@ def save_state_dict(
 def save(
     state_dict: STATE_DICT_TYPE,
     *,
-    checkpoint_id: str | os.PathLike | None = None,
-    storage_writer: StorageWriter | None = None,
-    planner: SavePlanner | None = None,
-    process_group: dist.ProcessGroup | None = None,
+    checkpoint_id: Optional[Union[str, os.PathLike]]= None,
+    storage_writer: Optional[StorageWriter]= None,
+    planner: Optional[SavePlanner]= None,
+    process_group: Optional[dist.ProcessGroup]= None,
     no_dist: bool = False,
     use_collectives: bool = True,
 ) -> Metadata:
@@ -220,15 +222,15 @@ class AsyncSaveResponse:
 def async_save(
     state_dict: STATE_DICT_TYPE,
     *,
-    checkpoint_id: str | os.PathLike | None = None,
-    storage_writer: StorageWriter | None = None,
-    planner: SavePlanner | None = None,
-    process_group: dist.ProcessGroup | None = None,
+    checkpoint_id: Optional[Union[str, os.PathLike]]= None,
+    storage_writer: Optional[StorageWriter]= None,
+    planner: Optional[SavePlanner]= None,
+    process_group: Optional[dist.ProcessGroup]= None,
     async_checkpointer_type: AsyncCheckpointerType = AsyncCheckpointerType.THREAD,
-    async_stager: AsyncStager | None = None,
+    async_stager: Optional[AsyncStager]= None,
     no_dist: bool = False,
     use_collectives: bool = True,
-) -> Future | AsyncSaveResponse:
+) -> Union[Future, AsyncSaveResponse]:
     """Asynchronous version of ``save``. This code first de-stages the state_dict on to the
     staging storage (defaults to CPU memory), and then calls the `save` in a separate thread.
 
@@ -316,7 +318,7 @@ def async_save(
     state_dict = _stateful_to_state_dict(state_dict)
 
     @_dcp_method_logger(log_exceptions=True)
-    def stage_state_dict() -> Future[STATE_DICT_TYPE] | STATE_DICT_TYPE:
+    def stage_state_dict() -> Union[Future[STATE_DICT_TYPE], STATE_DICT_TYPE]:
         return async_stager.stage(state_dict)
 
     staging_future_or_state_dict = stage_state_dict()
@@ -391,10 +393,10 @@ def _stateful_to_state_dict(state_dict: STATE_DICT_TYPE) -> STATE_DICT_TYPE:
 def _save_state_dict(
     state_dict: STATE_DICT_TYPE,
     storage_writer: StorageWriter,
-    process_group: dist.ProcessGroup | None = None,
+    process_group: Optional[dist.ProcessGroup]= None,
     coordinator_rank: int = 0,
     no_dist: bool = False,
-    planner: SavePlanner | None = None,
+    planner: Optional[SavePlanner]= None,
     use_collectives: bool = True,
 ) -> Metadata:
     torch._C._log_api_usage_once("torch.distributed.checkpoint.save_state_dict")
@@ -458,12 +460,12 @@ def _save_state_dict(
         all_local_plans = storage_writer.prepare_global_plan(all_local_plans)
         return all_local_plans
 
-    central_plan: SavePlan | None = None
+    central_plan: Optional[SavePlan]= None
     if use_collectives:
         central_plan = distW.reduce_scatter("plan", local_step, global_step)
     else:
         local_plan: SavePlan = local_step()
-        global_plan: list[SavePlan] = global_step([local_plan])
+        global_plan: List[SavePlan] = global_step([local_plan])
         central_plan = global_plan[0]
 
     @_dcp_method_logger(**ckpt_kwargs)
@@ -488,7 +490,7 @@ def _save_state_dict(
     if use_collectives:
         metadata = distW.all_reduce("write", write_data, finish_checkpoint)
     else:
-        write_results: list[WriteResult] = write_data()
+        write_results: List[WriteResult] = write_data()
         metadata = finish_checkpoint([write_results])
         distW.barrier()
 

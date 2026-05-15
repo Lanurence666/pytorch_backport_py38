@@ -1,12 +1,20 @@
+from __future__ import annotations
+
 import importlib
-import importlib.metadata
+try:
+    from importlib.metadata import version as _metadata_version
+    from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+except ImportError:
+    from importlib_metadata import version as _metadata_version
+    from importlib_metadata import PackageNotFoundError as _PackageNotFoundError
 import os
-from functools import cache
+from functools import lru_cache
 
 from torch._vendor.packaging import version as _packaging_version
+from typing import List, Optional, Tuple
 
 
-@cache
+@lru_cache(maxsize=None)
 def check_native_jit_disabled() -> bool:
     """
     Single point to check if native DSL ops are disabled globally,
@@ -16,7 +24,7 @@ def check_native_jit_disabled() -> bool:
     return int(os.getenv("TORCH_DISABLE_NATIVE_JIT", 0)) == 1
 
 
-def _unavailable_reason(deps: list[tuple[str, str]]) -> None | str:
+def _unavailable_reason(deps: List[Tuple[str, str]]) -> Optional[str]:
     """
     Check availability of required packages - cuteDSL & deps,
     informing user what (if anything) is missing
@@ -33,7 +41,7 @@ def _unavailable_reason(deps: list[tuple[str, str]]) -> None | str:
     return None
 
 
-def _available_version(package: str) -> _packaging_version.Version | None:
+def _available_version(package: str) -> Optional[_packaging_version.Version]:
     """
     Get the installed version of a package as (major, minor, patch).
 
@@ -42,8 +50,8 @@ def _available_version(package: str) -> _packaging_version.Version | None:
     parse failure.
     """
     try:
-        version = importlib.metadata.version(package)
-    except importlib.metadata.PackageNotFoundError:
+        version = _metadata_version(package)
+    except _PackageNotFoundError:
         return None
 
     try:
@@ -54,7 +62,7 @@ def _available_version(package: str) -> _packaging_version.Version | None:
     return v
 
 
-@cache
+@lru_cache(maxsize=None)
 def check_native_version_skip() -> bool:
     """
     Single point to check if native DSL version gating should be skipped,

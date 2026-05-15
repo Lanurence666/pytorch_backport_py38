@@ -1,13 +1,16 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 import torch
 import torch.distributed as dist
+from typing import Optional, Sequence, Set, Tuple, Type, Union, cast
 
 
-_ReduceOp = dist.ReduceOp | dist.ReduceOp.RedOpType
+_ReduceOp = Union[dist.ReduceOp, dist.ReduceOp.RedOpType]
 
 
 @dataclass(frozen=True)
@@ -48,9 +51,9 @@ class MixedPrecisionPolicy:
             module, before each module's forward.
     """
 
-    param_dtype: torch.dtype | None = None
-    reduce_dtype: torch.dtype | None = None
-    output_dtype: torch.dtype | None = None
+    param_dtype: Optional[torch.dtype] = None
+    reduce_dtype: Optional[torch.dtype] = None
+    output_dtype: Optional[torch.dtype] = None
     cast_forward_inputs: bool = True
 
 
@@ -75,7 +78,7 @@ class Comm(ABC):
     @abstractmethod
     def allocate(
         self,
-        size: Sequence[int | torch.SymInt],
+        size: Sequence[Union[int, torch.SymInt]],
         *,
         dtype: torch.dtype,
         device: torch.device,
@@ -109,7 +112,7 @@ class AllGather(Comm):
         input_tensor: torch.Tensor,
         group: dist.ProcessGroup,
         async_op: bool = False,
-    ) -> dist.Work | None: ...
+    ) -> Optional[dist.Work]: ...
 
 
 class ReduceScatter(Comm):
@@ -125,7 +128,7 @@ class ReduceScatter(Comm):
         group: dist.ProcessGroup,
         op: _ReduceOp,
         async_op: bool = False,
-    ) -> dist.Work | None: ...
+    ) -> Optional[dist.Work]: ...
 
 
 @dataclass
@@ -136,17 +139,17 @@ class DataParallelMeshDims:
     DTensors on that mesh.
 
     Attributes:
-        shard (Optional[Union[str, tuple[str, ...]]]): Mesh dimension name(s)
+        shard (Optional[Union[str, Tuple[str, ...]]]): Mesh dimension name(s)
             that FSDP shards parameters on. If a tuple of names, those dims
             are flattened into a single shard dimension. At least one of
             ``shard`` and ``replicate`` must be set.
-        replicate (Optional[Union[str, tuple[str, ...]]]): Mesh dimension
+        replicate (Optional[Union[str, Tuple[str, ...]]]): Mesh dimension
             name(s) for HSDP or DDP replication. If a tuple of names, those
             dims are flattened into a single replicate dimension.
     """
 
-    shard: str | tuple[str, ...] | None = None
-    replicate: str | tuple[str, ...] | None = None
+    shard: Union[str, Optional[Tuple[str, ...]]] = None
+    replicate: Union[str, Optional[Tuple[str, ...]]] = None
 
     def __post_init__(self):
         if self.shard is None and self.replicate is None:
@@ -155,7 +158,7 @@ class DataParallelMeshDims:
             )
 
     @property
-    def shard_names(self) -> tuple[str, ...]:
+    def shard_names(self) -> Tuple[str, ...]:
         if self.shard is None:
             return ()
         if isinstance(self.shard, str):
@@ -163,7 +166,7 @@ class DataParallelMeshDims:
         return tuple(self.shard)
 
     @property
-    def replicate_names(self) -> tuple[str, ...]:
+    def replicate_names(self) -> Tuple[str, ...]:
         if self.replicate is None:
             return ()
         if isinstance(self.replicate, str):

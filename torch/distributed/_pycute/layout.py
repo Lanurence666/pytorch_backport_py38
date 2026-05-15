@@ -18,6 +18,8 @@
 # this software without specific prior written permission.
 #
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+from __future__ import annotations
+
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
 # DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
@@ -36,8 +38,12 @@ of lexicographic instead of co-lexicographic as implemented in the original layo
 """
 
 from itertools import chain
-from typing import TypeAlias
-from typing_extensions import Self, TypeIs
+
+try:
+    from typing import Optional, Tuple, Type, Union
+except ImportError:
+    TypeAlias = None
+from typing_extensions import Self, TypeAlias, TypeIs
 
 from .int_tuple import (
     crd2idx,
@@ -54,7 +60,7 @@ from .int_tuple import (
 
 # Type aliases
 CoordinateType: TypeAlias = (
-    int | IntTuple | tuple[object, ...] | None
+    Union[Union[int, IntTuple], Optional[Tuple[object, ...]]]
 )  # Input for slice_ and crd2idx functions
 
 
@@ -67,7 +73,7 @@ def is_layout(x: object) -> TypeIs["Layout"]:
 
 
 class Layout(LayoutBase):
-    def __init__(self, _shape: IntTuple, _stride: IntTuple | None = None) -> None:
+    def __init__(self, _shape: IntTuple, _stride: Optional[IntTuple] = None) -> None:
         self.shape = _shape
         if _stride is None:
             self.stride = suffix_product(self.shape)
@@ -88,7 +94,7 @@ class Layout(LayoutBase):
             return 1
 
     # operator ()    (map coord to idx)
-    def __call__(self, *args: CoordinateType) -> Self | int:
+    def __call__(self, *args: CoordinateType) -> Union[Self, int]:
         """
         Map a logical coordinate to a linear index (Coord has no Underscore slice operators)
         OR
@@ -134,13 +140,13 @@ class Layout(LayoutBase):
 
 
 # Type aliases
-LayoutOrIntTuple: TypeAlias = Layout | IntTuple
-LayoutProfile: TypeAlias = tuple[object, ...] | Layout | None
-LayoutInput: TypeAlias = Layout | IntTuple | tuple[object, ...] | None
+LayoutOrIntTuple: TypeAlias = Union[Layout, IntTuple]
+LayoutProfile: TypeAlias = Optional[Union[Tuple[object, ...], Layout]]
+LayoutInput: TypeAlias = Optional[Union[Layout, IntTuple, Tuple[object, ...]]]
 
 
 # Make Layout from a list of layouts (each layout its own mode in the result)
-def make_layout(*layouts: Layout | tuple[Layout, ...]) -> Layout:
+def make_layout(*layouts: Union[Layout, Tuple[Layout, ...]]) -> Layout:
     if len(layouts) == 1 and not is_layout(layouts[0]):
         layouts = layouts[0]
 
@@ -333,7 +339,7 @@ def complement(layout: LayoutOrIntTuple, max_idx: int = 1) -> Layout:
 
 
 # Layout right inverse
-def right_inverse(layout: LayoutOrIntTuple | None) -> Layout | None:
+def right_inverse(layout: Optional[LayoutOrIntTuple]) -> Optional[Layout]:
     if layout is None:
         return None
     elif is_int(layout):
@@ -362,7 +368,7 @@ def right_inverse(layout: LayoutOrIntTuple | None) -> Layout | None:
 
 
 # Layout left inverse
-def left_inverse(layout: LayoutOrIntTuple | None) -> Layout | None:
+def left_inverse(layout: Optional[LayoutOrIntTuple]) -> Optional[Layout]:
     if layout is None:
         return None
     elif is_int(layout):
@@ -477,7 +483,7 @@ def tiled_product(layoutA: Layout, layoutB: LayoutInput) -> Layout:
     return make_layout([result[0]] + [result[1][i] for i in range(len(result[1]))])  # type: ignore[arg-type]
 
 
-def slice_and_offset(crd: tuple[object, ...], layout: Layout) -> tuple[Layout, int]:
+def slice_and_offset(crd: Tuple[object, ...], layout: Layout) -> Tuple[Layout, int]:
     return (
         Layout(slice_(crd, layout.shape), slice_(crd, layout.stride)),
         crd2idx(crd, layout.shape, layout.stride),  # type: ignore[arg-type]

@@ -1,3 +1,19 @@
+
+#if PY_VERSION_HEX < 0x030900A0
+static inline void* PyType_GetSlot(PyTypeObject *type, int slot)
+{
+    PyErr_SetString(PyExc_RuntimeError, "PyType_GetSlot is not available in Python 3.8");
+    return NULL;
+}
+#endif
+
+#if PY_VERSION_HEX < 0x030900A0
+static inline void* PyType_GetSlot(PyTypeObject *type, int slot)
+{
+    PyErr_SetString(PyExc_RuntimeError, "PyType_GetSlot is not available in Python 3.8");
+    return NULL;
+}
+#endif
 #include <c10/util/Exception.h>
 #include <torch/csrc/dynamo/init.h>
 #include <torch/csrc/dynamo/utils.h>
@@ -14,6 +30,7 @@
 #include <torch/csrc/utils/python_numbers.h>
 
 #include <Python.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 static struct PyModuleDef _module =
     {PyModuleDef_HEAD_INIT, "torch._C._dynamo", "", -1, nullptr};

@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
 
 import torch.nn as nn
@@ -10,6 +12,7 @@ from torch.ao.quantization.fuser_method_mappings import (  # noqa: F401  # noqa:
     get_fuser_method,
 )
 from torch.nn.utils.parametrize import type_before_parametrizations
+from typing import List, Union
 
 
 __all__ = [
@@ -58,7 +61,7 @@ def fuse_known_modules(mod_list, is_qat, additional_fuser_method_mapping=None):
     fuser_method = get_fuser_method(types, additional_fuser_method_mapping)
     if fuser_method is None:
         raise NotImplementedError(f"Cannot fuse modules: {types}")
-    new_mod: list[nn.Module | None] = [None] * len(mod_list)
+    new_mod: Union[List[nn.Module, None]]= [None] * len(mod_list)
     fused = fuser_method(is_qat, *mod_list)
     # NOTE: forward hooks not processed in the two following for loops will be lost after the fusion
     # Move pre forward hooks of the base module to resulting fused module

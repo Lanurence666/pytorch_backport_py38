@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import itertools
 import random
 from itertools import chain
@@ -1160,12 +1161,6 @@ class TestOpSpecMesh(TestCase):
         op_spec = OpSpec(output_specs=None, input_specs=(None, None))
         with self.assertRaisesRegex(AssertionError, "Cannot determine mesh"):
             _ = op_spec.mesh
-
-    def test_op_strategy_str_handles_all_specs_none(self):
-        """Regression test for https://github.com/pytorch/pytorch/issues/182370."""
-        op_strategy = OpStrategy([OpSpec(output_specs=None, input_specs=(None,))])
-
-        self.assertEqual(str(op_strategy), "OpStrategy[(None) -> None]")
 
 
 class TestExpandToFullMeshOpStrategy(TestCase):

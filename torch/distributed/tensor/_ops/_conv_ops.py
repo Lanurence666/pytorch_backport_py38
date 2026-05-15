@@ -1,7 +1,9 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 # implement matrix related ops for distributed tensor
 
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Dict, List, Tuple, Union
 
 import torch
 from torch.distributed.tensor._dtensor_spec import DTensorSpec, TensorMeta
@@ -163,12 +165,12 @@ def convolution_backward_rules(op_schema: OpSchema) -> OutputSharding:
 )
 def convolution_single_dim_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     bias_meta = args_schema[2]
     # [output, input, weight, (bias)]
-    rule: list[Placement | _ShardingPlaceholder] = [
+    rule: Union[List[Placement, _ShardingPlaceholder]]= [
         _ShardingPlaceholder(0),  # output
         _ShardingPlaceholder(0),  # input
         Replicate(),  # weight
@@ -184,14 +186,14 @@ def convolution_single_dim_strategy(
 )
 def convolution_backward_single_dim_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder | None]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder, None]]]:
     bias_sizes = args_schema[3]
     has_bias = bias_sizes is not None
     # outputs: [grad_input, grad_weight, grad_bias]
     # inputs: [grad_output, input, weight]
-    rule: list[Placement | _ShardingPlaceholder | None] = [
+    rule: Union[List[Placement, _ShardingPlaceholder, None]]= [
         _ShardingPlaceholder(0),  # grad_input
         Partial("sum"),  # grad_weight
         Partial("sum") if has_bias else None,  # grad_bias

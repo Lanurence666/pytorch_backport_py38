@@ -1,10 +1,11 @@
 import contextlib
-from collections.abc import Generator
+
 
 import torch
 from torch._decomp import global_decomposition_table
 from torch._decomp.decompositions import _rnn_helper, gather_params, gru_cell, lstm_cell
 from torch._higher_order_ops.while_loop import while_loop
+from typing import Generator, List, Tuple
 
 
 def one_layer_while_loop_lstm(inp, hidden, params, has_biases, reverse=False):

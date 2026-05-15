@@ -4,6 +4,7 @@ from enum import Enum
 
 import torch
 import torch.distributed as dist
+from typing import Callable, Type
 
 
 TORCH_HALF_MIN = torch.finfo(torch.float16).min

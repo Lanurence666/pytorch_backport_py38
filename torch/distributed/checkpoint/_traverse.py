@@ -1,8 +1,10 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 # ruff: noqa: F821
 # flake8: noqa: F821
-from collections.abc import Callable, Collection, Mapping, MutableMapping
-from typing import cast, TypeVar
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Callable, Collection, List, Mapping, MutableMapping, Optional, Set, Tuple, Type, TypeVar, Union, cast
 from typing_extensions import TypeIs
 
 import torch
@@ -11,8 +13,8 @@ from torch.distributed.checkpoint.metadata import STATE_DICT_TYPE
 from torch.distributed.tensor import DTensor
 
 
-PATH_ITEM = str | int
-OBJ_PATH = tuple[PATH_ITEM, ...]
+PATH_ITEM = Union[str, int]
+OBJ_PATH = Tuple[PATH_ITEM, ...]
 T = TypeVar("T")
 
 STATE_DICT_ITEM = object
@@ -123,7 +125,7 @@ def set_element(
     """Set ``value`` in ``root_dict`` along the ``path`` object path."""
     cur_container = cast(CONTAINER_TYPE, root_dict)
 
-    def extend_list(lst: list[STATE_DICT_ITEM], idx: int) -> None:
+    def extend_list(lst: List[STATE_DICT_ITEM], idx: int) -> None:
         while len(lst) <= idx:
             lst.append(None)
 
@@ -145,7 +147,7 @@ def set_element(
 
     key = path[-1]
     if type(key) is int:
-        extend_list(cast(list[STATE_DICT_ITEM], cur_container), key)
+        extend_list(cast(List[STATE_DICT_ITEM], cur_container), key)
 
     cur_container[key] = value
 
@@ -153,8 +155,8 @@ def set_element(
 def get_element(
     root_dict: STATE_DICT_TYPE,
     path: OBJ_PATH,
-    default_value: T | None = None,
-) -> T | None:
+    default_value: Optional[T] = None
+) -> Optional[T]:
     """Retrieve the value at ``path``from ``root_dict``, returning ``default_value`` if not found."""
     cur_value = cast(CONTAINER_TYPE, root_dict)
     for part in path:
@@ -165,7 +167,7 @@ def get_element(
             return default_value
 
         cur_value = cast(CONTAINER_TYPE, cur_value[part])
-    return cast(T | None, cur_value)
+    return cast(Optional[T], cur_value)
 
 
 def _print_nested(

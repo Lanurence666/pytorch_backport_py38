@@ -10,7 +10,7 @@ import sys
 import time
 from enum import Enum
 from pathlib import Path
-from typing import NamedTuple
+from typing import Dict, List, NamedTuple, Union
 
 
 class LintSeverity(str, Enum):
@@ -21,15 +21,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 # tools/linter/flake8_linter.py:15:13: error: Incompatibl...int")  [assignment]
@@ -60,9 +60,9 @@ INTERNAL_ERROR_RE: re.Pattern[str] = re.compile(
 
 
 def run_command(
-    args: list[str],
+    args: List[str],
     *,
-    extra_env: dict[str, str] | None,
+    extra_env: Union[Dict[str, str], None],
     retries: int,
 ) -> subprocess.CompletedProcess[bytes]:
     logging.debug("$ %s", " ".join(args))
@@ -85,7 +85,7 @@ severities = {
 }
 
 
-def check_mypy_installed(code: str) -> list[LintMessage]:
+def check_mypy_installed(code: str) -> List[LintMessage]:
     cmd = [sys.executable, "-mmypy", "-V"]
     try:
         subprocess.run(cmd, check=True, capture_output=True)
@@ -112,11 +112,11 @@ def in_github_actions() -> bool:
 
 
 def check_files(
-    filenames: list[str],
+    filenames: List[str],
     config: str,
     retries: int,
     code: str,
-) -> list[LintMessage]:
+) -> List[LintMessage]:
     # dmypy has a bug where it won't pick up changes if you pass it absolute
     # file names, see https://github.com/python/mypy/issues/16768
     filenames = [os.path.relpath(f) for f in filenames]
@@ -237,7 +237,7 @@ def main() -> None:
 
     # Use a dictionary here to preserve order. mypy cares about order,
     # tragically, e.g. https://github.com/python/mypy/issues/2015
-    filenames: dict[str, bool] = {}
+    filenames: Dict[str, bool] = {}
 
     # If a stub file exists, have mypy check it instead of the original file, in
     # accordance with PEP-484 (see https://www.python.org/dev/peps/pep-0484/#stub-files)

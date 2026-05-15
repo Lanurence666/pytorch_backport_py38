@@ -5,7 +5,11 @@ import inspect
 import itertools
 import logging
 from dataclasses import dataclass
-from typing import Any, ParamSpec, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Tuple, Type, TypeVar, Union
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec
 
 
 _P = ParamSpec("_P")
@@ -16,7 +20,7 @@ import torch.utils._pytree as pytree
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
 
     from torch.fx.experimental.symbolic_shapes import ShapeEnv, TrackedFake
 
@@ -94,18 +98,18 @@ class ShapeEnvEvent:
     f: Callable[..., Any]
 
     # Arguments and keyword arguments called with.
-    args: list[object] | None = None
-    kwargs: dict[str, Any] | None = None
+    args: Optional[List[object]]= None
+    kwargs: Optional[Dict[str, Any]]= None
 
     # List of tracked_fakes at the time the method was called.
-    tracked_fakes: list[TrackedFake] | None = None
+    tracked_fakes: Optional[List[TrackedFake]]= None
 
     # Name of the captured event.
     # Used for special handling of particular methods.
-    name: str | None = None
+    name: Optional[str]= None
 
     # Replay itself, but using shape_env as self.
-    def run(self, shape_env: ShapeEnv | None = None) -> Any:
+    def run(self, shape_env: Optional[ShapeEnv] = None) -> Any:
         from torch.fx.experimental.symbolic_shapes import (
             is_symbolic,
             ShapeEnv,
@@ -207,11 +211,11 @@ NEST = 0
 # If we find more than one object of any of the above types, we
 # also check that the ShapeEnv instance is the same for all of them.
 def _extract_shape_env_and_assert_equal(
-    args: tuple[object, ...] | list[object], kwargs: dict[str, object]
-) -> ShapeEnv | None:
+    args: Union[Tuple[object, ...], List[object], kwargs: Dict[str, object]]
+) -> Optional[ShapeEnv]:
     from torch.fx.experimental.symbolic_shapes import is_symbolic, ShapeEnv, SymTypes
 
-    def assert_equal(old: ShapeEnv | None, new: ShapeEnv) -> ShapeEnv:
+    def assert_equal(old: Optional[ShapeEnv], new: ShapeEnv) -> ShapeEnv:
         if old is not None:
             if old is not new:
                 raise AssertionError("call with different ShapeEnv")
@@ -252,7 +256,7 @@ def _extract_shape_env_and_assert_equal(
 #   - ShapeEnv.evaluate_expr
 #   - ShapeEnv.guard_or_defer_runtime_assert
 def record_shapeenv_event(
-    *, save_tracked_fakes: bool = False, name: str | None = None
+    *, save_tracked_fakes: bool = False, name: Optional[str] = None
 ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     def decorator(fn: Callable[_P, _R]) -> Callable[_P, _R]:
         if not callable(fn):
@@ -358,7 +362,7 @@ def record_shapeenv_event(
 # It assumes the first event is the constructor call.
 #
 # fn: transforms an old FX node into one corresponding to the newly created ShapeEnv.
-def replay_shape_env_events(events: list[ShapeEnvEvent]) -> ShapeEnv:
+def replay_shape_env_events(events: List[ShapeEnvEvent]) -> ShapeEnv:
     from torch.fx.experimental.symbolic_shapes import ShapeEnv
 
     constructor_event = events[0]
@@ -388,18 +392,18 @@ def replay_shape_env_events(events: list[ShapeEnvEvent]) -> ShapeEnv:
 # ShapeEnv.produce_guards.
 @dataclass
 class FakeTensorMeta:
-    tensor_size: tuple[int | torch.SymInt, ...]
-    tensor_stride: tuple[int | torch.SymInt, ...]
-    tensor_storage_offset: int | torch.SymInt
+    tensor_size: Union[Tuple[int, torch.SymInt, ...]]
+    tensor_stride: Union[Tuple[int, torch.SymInt, ...]]
+    tensor_storage_offset: Union[int, torch.SymInt]
     is_nested: bool
 
-    def size(self) -> tuple[int | torch.SymInt, ...]:
+    def size(self) -> Union[Tuple[int, torch.SymInt, ...]]:
         return self.tensor_size
 
-    def stride(self) -> tuple[int | torch.SymInt, ...]:
+    def stride(self) -> Union[Tuple[int, torch.SymInt, ...]]:
         return self.tensor_stride
 
-    def storage_offset(self) -> int | torch.SymInt:
+    def storage_offset(self) -> Union[int, torch.SymInt]:
         return self.tensor_storage_offset
 
     def dim(self) -> int:
@@ -461,7 +465,7 @@ class FakeTensorMeta:
 def shape_env_check_state_equal(
     env1: ShapeEnv,
     env2: ShapeEnv,
-    non_state_variable_names: tuple[str, ...],
+    non_state_variable_names: Tuple[str, ...],
     map_value: Callable[[str, object], object],
 ) -> None:
     # Collect and remove variables that don't necessarily represent the state
@@ -494,7 +498,7 @@ def shape_env_check_state_equal(
     # compare the two values.
     def compare_vars(
         map_value: Callable[[str, object], object],
-    ) -> list[tuple[str, str, str]]:
+    ) -> List[Tuple[str, str, str]]:
         env1_set, env2_set = set(env1_vars), set(env2_vars)
 
         # First, compare the set of keys in each vars dictionary.
@@ -538,7 +542,7 @@ class NotEqualError(Exception):
     def __init__(
         self,
         msg: str,
-        mismatched: list[tuple[str, str, str]],
+        mismatched: List[Tuple[str, str, str]],
     ) -> None:
         details = "\n".join(
             [

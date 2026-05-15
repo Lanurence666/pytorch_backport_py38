@@ -1,6 +1,6 @@
+from __future__ import annotations
 """GitHub Label Utilities."""
 
-from __future__ import annotations
 
 import json
 from functools import lru_cache

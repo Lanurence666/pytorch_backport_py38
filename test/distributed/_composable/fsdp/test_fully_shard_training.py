@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import contextlib
 import copy
 import functools
@@ -2549,10 +2550,7 @@ class TestFullyShardShareCommContext(FSDPTest):
                 force_sum_reduction_for_comms,
             )
 
-        with (
-            patch_foreach_all_gather(foreach_all_gather_with_assert),
-            patch_foreach_reduce(foreach_reduce_with_assert),
-        ):
+        with patch_foreach_all_gather(foreach_all_gather_with_assert), patch_foreach_reduce(foreach_reduce_with_assert):
             loss = model(inp).sum()
             self.assertEqual(ref_loss, loss)
             ref_loss.backward()

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import heapq
 
@@ -8,6 +10,7 @@ from torch.fx.graph_module import GraphModule
 from torch.fx.node import Node
 from torch.fx.passes.tools_common import legalize_graph, NodeList, NodeSet  # noqa: F401
 from torch.fx.passes.utils import lift_subgraph_as_module  # type: ignore[attr-defined]
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 
 @compatibility(is_backward_compatible=False)
@@ -17,7 +20,7 @@ def topo_sort(nodes: NodeList) -> NodeList:
     # keyed by original position instead of a FIFO queue.
     indegree_map = dict.fromkeys(nodes, 0)
     position = {node: i for i, node in enumerate(nodes)}
-    candidates: list[tuple[int, Node]] = []
+    candidates: List[Tuple[int, Node]] = []
 
     for node in nodes:
         for n in node.all_input_nodes:
@@ -99,10 +102,10 @@ def fuse_as_graphmodule(
     gm: GraphModule,
     nodes: NodeList,
     module_name: str,
-    partition_lookup_table: dict[Node, int | None] | None = None,
+    partition_lookup_table: Union[Dict[Node, int, None], None] = None,
     *,
     always_return_tuple: bool = False,
-) -> tuple[GraphModule, tuple[Node, ...], tuple[Node, ...]]:
+) -> Tuple[GraphModule, Tuple[Node, ...], Tuple[Node, ...]]:
     """
     Fuse nodes in graph_module into a GraphModule.
 
@@ -150,10 +153,10 @@ def fuse_as_graphmodule(
 
     subgraph = Graph()
 
-    node_to_placeholder: dict[
+    node_to_placeholder: Dict[
         Node, Node
     ] = {}  # mapping of nodes from old graph to placeholder in new graph
-    node_map: dict[Node, Node] = {}  # mapping of nodes from old graph to new graph
+    node_map: Dict[Node, Node] = {}  # mapping of nodes from old graph to new graph
 
     # handles inputs through graph.node_copy's arg_transform functions
     def remap_inputs(x: Node) -> Node:
@@ -182,7 +185,7 @@ def fuse_as_graphmodule(
         node_map[node] = new_node
 
     # handles outputs
-    output_mapping: dict[Node, Node] = {}  # mapping from old output to new outputs
+    output_mapping: Dict[Node, Node] = {}  # mapping from old output to new outputs
 
     for node in nodes:
         for user_node in node.users:
@@ -208,10 +211,10 @@ def fuse_as_graphmodule(
     )
 
     # sub_gm's input nodes in the original module
-    original_inputs: tuple[Node, ...] = tuple(node_to_placeholder.keys())
+    original_inputs: Tuple[Node, ...] = tuple(node_to_placeholder.keys())
 
     # sub_gm's outputs node in the original module
-    original_outputs: tuple[Node, ...] = tuple(output_mapping.keys())
+    original_outputs: Tuple[Node, ...] = tuple(output_mapping.keys())
 
     return fused_gm, original_inputs, original_outputs
 
@@ -220,9 +223,9 @@ def fuse_as_graphmodule(
 def insert_subgm(
     gm: GraphModule,
     sub_gm: GraphModule,
-    orig_inputs: tuple[Node, ...],
-    orig_outputs: tuple[Node, ...],
-    insertion_point: Node | None = None,
+    orig_inputs: Tuple[Node, ...],
+    orig_outputs: Tuple[Node, ...],
+    insertion_point: Optional[Node] = None,
 ) -> GraphModule:
     # add sub_gm into gm
     submodule_name = sub_gm.__class__.__name__
@@ -277,7 +280,7 @@ def erase_nodes(gm: GraphModule, nodes: NodeList) -> None:
 @compatibility(is_backward_compatible=False)
 def fuse_by_partitions(
     gm: GraphModule,
-    partitions: list[dict[Node, int | None]],
+    partitions: List[Dict[Node, Optional[int]]],
     prefix: str = "fused_",
     always_return_tuple: bool = False,
 ) -> GraphModule:

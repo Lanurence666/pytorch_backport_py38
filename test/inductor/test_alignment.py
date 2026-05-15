@@ -39,11 +39,7 @@ class CommonTemplate:
 
         x = torch.randn(1024 + 16, device=self.device)[1:-15]
         # TODO (malfet): Investigate failures on MacOS-14
-        with (
-            contextlib.nullcontext()
-            if self.device != "mps" or MACOS_VERSION >= 15.0
-            else self.assertRaises(AssertionError)
-        ):
+        with contextlib.nullcontext() if self.device != "mps" or MACOS_VERSION >= 15.0 else self.assertRaises(AssertionError):
             self.common(fn, (x,), check_lowp=False)
 
     def test_unaligned_input_2d(self):

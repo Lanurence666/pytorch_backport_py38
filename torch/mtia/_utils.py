@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Optional
 
 import torch
 
@@ -30,7 +32,7 @@ def _get_device_index(
             return device.idx
     if isinstance(device, str):
         device = torch.device(device)
-    device_idx: int | None = None
+    device_idx: Optional[int]= None
     if isinstance(device, torch.device):
         if not allow_cpu and device.type == "cpu":
             raise ValueError(f"Expected a non cpu device, but got: {device}")

@@ -66,10 +66,7 @@ class TestCodeCompatibleWithDevice(TestCase):
 @patch("torch.version.cuda", "12.6")
 class TestCheckCapability(TestCase):
     def test_rocm_skips_check(self, *args):
-        with (
-            patch("torch.version.cuda", None),
-            warnings.catch_warnings(),
-        ):
+        with patch("torch.version.cuda", None), warnings.catch_warnings():
             warnings.simplefilter("error")
             self.assertIsNone(torch.version.cuda)
             torch.cuda._check_capability()
@@ -100,11 +97,7 @@ class TestCheckCapability(TestCase):
     @patch("torch.cuda.get_arch_list", return_value=["sm_80", "sm_90"])
     def test_multiple_devices_mixed_compatibility(self, *args):
         caps = [(8, 0), (7, 5), (8, 6)]
-        with (
-            patch("torch.cuda.device_count", return_value=len(caps)),
-            patch("torch.cuda.get_device_capability", side_effect=caps),
-            warnings.catch_warnings(record=True) as w,
-        ):
+        with patch("torch.cuda.device_count", return_value=len(caps)), patch("torch.cuda.get_device_capability", side_effect=caps), warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             torch.cuda._check_capability()
             self.assertEqual(len(w), 1)
@@ -126,14 +119,9 @@ class TestCheckCapability(TestCase):
 
     @patch("torch.cuda.get_arch_list", return_value=["sm_60"])
     @patch("torch.cuda.get_device_capability", return_value=(7, 0))
-    @patch("torch.cuda._host_arch_key", return_value="x86_64")
     @patch(
         "torch.cuda.PYTORCH_RELEASES_CODE_CC",
-        {
-            "12.6": {"x86_64": {50, 60, 70}, "aarch64": {50, 60, 70}},
-            "12.8": {"x86_64": {70}, "aarch64": {70}},
-            "13.2": {"x86_64": {75}, "aarch64": {75}},
-        },
+        {"12.6": {50, 60, 70}, "12.8": {70}, "13.0": {75}},
     )
     def test_warning_suggests_compatible_pytorch_release(self, *args):
         with warnings.catch_warnings(record=True) as w:
@@ -143,7 +131,7 @@ class TestCheckCapability(TestCase):
             msg = str(w[0].message)
             self.assertIn("12.6", msg)
             self.assertIn("12.8", msg)
-            self.assertNotIn("13.2", msg)
+            self.assertNotIn("13.0", msg)
 
     @patch("torch.cuda.get_arch_list", return_value=["sm_80"])
     @patch("torch.cuda.get_device_capability", return_value=(5, 3))
@@ -153,9 +141,10 @@ class TestCheckCapability(TestCase):
             torch.cuda._check_capability()
             self.assertEqual(len(w), 1)
             msg = str(w[0].message)
-            self.assertNotIn("pip install torch==", msg)
-            self.assertIn("No published PyTorch CUDA builds for release", msg)
-            self.assertIn("https://pytorch.org/get-started/locally/", msg)
+            self.assertNotIn(
+                "install a PyTorch release that supports one of these CUDA versions",
+                msg,
+            )
 
 
 if __name__ == "__main__":

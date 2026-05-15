@@ -1,3 +1,5 @@
+import sys
+
 import torch
 
 
@@ -5,11 +7,13 @@ import torch
 # CALL_INTRINSIC_2 7. The problem is those intrinsics only exists on Python
 # 3.12+ and the Python code to produce them is not backwards compatible with
 # previous versions.
+if sys.version_info >= (3, 12):
+    exec("""
 class Foo:
     @classmethod
     def _default_update(cls):
         def f[T](a: "This is a new annotation"):  # noqa: F722
-            """This is a test"""
+            \"""This is a test\"""
 
         f.attr = "This is also a test"
         f.__wrapped__ = "This is a bald faced lie"
@@ -27,3 +31,4 @@ class Foo:
 
         x = torch.randn(2)
         fn(x)
+""")

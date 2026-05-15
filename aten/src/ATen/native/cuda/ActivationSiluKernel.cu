@@ -16,6 +16,7 @@
 #include <ATen/cuda/detail/OffsetCalculator.cuh>
 #include <ATen/native/cuda/Loops.cuh>
 #include <c10/util/complex.h>
+#include <ATen/OpMathType.h>
 
 namespace at::native {
 namespace {

@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 
 import torch
@@ -7,13 +9,14 @@ from torch._ops import OpOverload, OpOverloadPacket
 from torch.utils._ordered_set import OrderedSet
 
 from ..pattern_matcher import fwd_only, register_replacement
+from typing import Dict, Optional, Set, Tuple
 
 
 aten = torch.ops.aten
 
 
-@functools.cache
-def _misc_patterns_init(input_device: torch.device | None = None):
+@functools.lru_cache(maxsize=None)
+def _misc_patterns_init(input_device: Optional[torch.device] = None):
     from .joint_graph import patterns as joint_graph_patterns
     from .post_grad import pass_patterns as post_grad_patterns_all
 
@@ -191,14 +194,14 @@ def _misc_patterns_init(input_device: torch.device | None = None):
 
 
 class NumpyCompatNormalization:
-    numpy_compat: dict[str, tuple[str, ...]] = {
+    numpy_compat: Dict[str, Tuple[str, ...]] = {
         "dim": ("axis",),
         "keepdim": ("keepdims",),
         "input": ("x", "a", "x1"),
         "other": ("x2",),
     }
-    inverse_mapping: dict[str, str]
-    cache: dict["torch.fx.graph.Target", OrderedSet[str]]
+    inverse_mapping: Dict[str, str]
+    cache: Dict["torch.fx.graph.Target", OrderedSet[str]]
 
     def __init__(self) -> None:
         self.cache = {}  # callable -> tuple of replaceable args e.g. ["axis"]

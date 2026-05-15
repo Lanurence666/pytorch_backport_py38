@@ -1,4 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 
 
-_derived_version: str | None = None
+from __future__ import annotations
+from typing import Optional
+
+_derived_version: Optional[str]= None

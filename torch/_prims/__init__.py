@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import operator
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from enum import Enum
 from functools import partial, reduce
-from typing import Optional, Union
+from typing import Callable, Generator, List, Optional, Sequence, Tuple, Type, Union, cast, overload
 
 import torch
 import torch._prims_common as utils
@@ -222,12 +224,12 @@ __all__ = [
 
 
 def TensorMeta(
-    tensorlike: NumberType | torch.Tensor | None = None,
+    tensorlike: Optional[Union[NumberType, torch.Tensor]] = None,
     *,
-    shape: ShapeType | None = None,
-    strides: StrideType | None = None,
-    dtype: torch.dtype | None = None,
-    device: torch.device | str | None = None,
+    shape: Optional[ShapeType] = None,
+    strides: Optional[StrideType] = None,
+    dtype: Optional[torch.dtype] = None,
+    device: Optional[Union[torch.device, str]] = None,
 ):
     if isinstance(tensorlike, Number):
         if shape and not isinstance(shape, Sequence):
@@ -238,8 +240,8 @@ def TensorMeta(
             raise AssertionError(
                 f"strides must be None or a Sequence for Number input, got {type(strides)}"
             )
-        inferred_shape: tuple[int, ...] = ()
-        inferred_strides: tuple[int, ...] = ()
+        inferred_shape: Tuple[int, ...] = ()
+        inferred_strides: Tuple[int, ...] = ()
         inferred_dtype = type_to_dtype(type(tensorlike))
         inferred_device = torch.device("cpu")
         # TODO: This looks wrong, a number that is wrapped into a tensor
@@ -280,11 +282,11 @@ def TensorMeta(
 def _make_prim(
     *,
     schema: str,
-    return_type: RETURN_TYPE | tuple[RETURN_TYPE, ...],
+    return_type: Union[RETURN_TYPE, Tuple[RETURN_TYPE, ...]],
     meta: Callable,
     impl_aten: Callable,
     doc: str,
-    tags: Sequence[torch.Tag] | None = None,
+    tags: Optional[Sequence[torch.Tag]] = None,
     use_old_custom_ops_api: bool = False,
     register_conj_neg_fallthrough: bool = False,
 ):
@@ -399,7 +401,7 @@ class ELEMENTWISE_PRIM_TYPE_PROMOTION_KIND(Enum):
 def _prim_elementwise_meta(
     *args,
     type_promotion: ELEMENTWISE_PRIM_TYPE_PROMOTION_KIND,
-    args_with_fixed_dtypes: tuple[TensorLikeType, ...] | None = None,
+    args_with_fixed_dtypes: Optional[Tuple[TensorLikeType, ...]] = None,
 ) -> FakeTensor:
     """
     Meta function for elementwise operations that produce outputs in the same dtype
@@ -1128,7 +1130,7 @@ lt = _make_elementwise_binary_prim(
 
 # Note: the following impls are because torch.maximum and torch.minimum do not support scalar inputs
 def _maximum_aten(
-    a: TensorLikeType | NumberType, b: TensorLikeType | NumberType
+    a: Union[TensorLikeType, NumberType], b: Union[TensorLikeType, NumberType]
 ) -> TensorLikeType:
     if isinstance(a, TensorLike) and isinstance(b, Number):
         b = scalar_tensor(b, dtype=a.dtype, device=a.device)
@@ -1147,7 +1149,7 @@ maximum = _make_elementwise_binary_prim(
 
 
 def _minimum_aten(
-    a: TensorLikeType | NumberType, b: TensorLikeType | NumberType
+    a: Union[TensorLikeType, NumberType], b: Union[TensorLikeType, NumberType]
 ) -> TensorLikeType:
     if isinstance(a, TensorLike) and isinstance(b, Number):
         b = scalar_tensor(b, dtype=a.dtype, device=a.device)
@@ -1409,7 +1411,7 @@ def _validate_collapse_args(a: Tensor, start: int, end: int) -> None:
     )
 
 
-def _collapsed_shape(shape: ShapeType, start: int, end: int) -> tuple[int, ...]:
+def _collapsed_shape(shape: ShapeType, start: int, end: int) -> Tuple[int, ...]:
     """
     Returns the shape of a with dims in [start, end) merged into a single dimension.
     """
@@ -1429,8 +1431,8 @@ def _collapsed_shape(shape: ShapeType, start: int, end: int) -> tuple[int, ...]:
 #   str: Do a torch._check() to ensure the collapse is valid and if it isn't
 #   then fail with the provided string.
 def _collapse_view_helper(
-    a: TensorLikeType, start: int, end: int, must_be_valid: str | None
-) -> tuple[ShapeType | None, StrideType | None]:
+    a: TensorLikeType, start: int, end: int, must_be_valid: Optional[str]
+) -> Tuple[Optional[ShapeType], Optional[StrideType]]:
     if not isinstance(a, TensorLike):
         raise AssertionError(f"a must be TensorLike, got {type(a)}")  # mypy
 
@@ -1618,8 +1620,8 @@ def _split_dim_meta(a: TensorLikeType, dim: int, outer_length: int) -> TensorLik
         )
         raise ValueError(msg)
 
-    new_shape: list[int] = []
-    new_strides: list[int] = []
+    new_shape: List[int] = []
+    new_strides: List[int] = []
     for idx in range(a.ndim):
         if idx == dim:
             new_shape.extend((outer_length, inner_length))
@@ -1890,7 +1892,7 @@ def _cat_meta(tensors: Sequence[TensorLikeType], dim: int) -> TensorLikeType:
     )
 
 
-def _cat_aten(tensors: tuple[Tensor, ...] | list[Tensor], dim: int) -> Tensor:
+def _cat_aten(tensors: Union[Tuple[Tensor, ...], List[Tensor]], dim: int) -> Tensor:
     return torch.cat(tensors, dim)
 
 
@@ -2042,7 +2044,7 @@ convert_element_type = _make_prim(
 
 
 def _device_put_meta(
-    a: TensorLikeType, device: str | torch.device, non_blocking=False
+    a: TensorLikeType, device: Union[str, torch.device], non_blocking=False
 ) -> TensorLikeType:
     if not isinstance(a, TensorLike):
         raise AssertionError(f"a must be TensorLike, got {type(a)}")  # mypy
@@ -2055,7 +2057,7 @@ def _device_put_meta(
 
 
 def _device_put_aten(
-    a: Tensor, device: str | torch.device, non_blocking=False
+    a: Tensor, device: Union[str, torch.device], non_blocking=False
 ) -> Tensor:
     return a.to(device, non_blocking=non_blocking)
 
@@ -2359,9 +2361,9 @@ sum = _make_reduction_prim(
 
 def _xor_sum_aten(
     inp: TensorLikeType,
-    dims: DimsSequenceType | None,
+    dims: Optional[DimsSequenceType],
     *,
-    dtype: torch.dtype | None = None,
+    dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
     raise NotImplementedError("xor_sum only implemented with inductor")
 
@@ -2375,9 +2377,9 @@ xor_sum = _make_reduction_prim(
 
 def _prod_aten(
     inp: TensorLikeType,
-    dims: DimsSequenceType | None,
+    dims: Optional[DimsSequenceType],
     *,
-    dtype: torch.dtype | None = None,
+    dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
     if dims is not None:
         if len(dims) == 0:
@@ -2721,7 +2723,7 @@ scalar_tensor = _make_prim(
 
 def _svd_meta(
     A: TensorLikeType, *, full_matrices: bool
-) -> tuple[TensorLikeType, TensorLikeType, TensorLikeType]:
+) -> Tuple[TensorLikeType, TensorLikeType, TensorLikeType]:
     utils.check_is_matrix(A, "linalg.svd")
     utils.check_fp_or_complex(A.dtype, "linalg.svd", allow_low_precision_dtypes=False)
 
@@ -2758,7 +2760,7 @@ def _svd_meta(
 
 def _svd_aten(
     A: TensorLikeType, *, full_matrices: bool
-) -> tuple[Tensor, Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor, Tensor]:
     return torch.linalg.svd(A, full_matrices=full_matrices)
 
 
@@ -2785,12 +2787,12 @@ svd = _make_prim(
 def _normal_meta(
     shape: ShapeType,
     *,
-    mean: float | complex,
+    mean: Union[float, complex],
     std: float,
     dtype: torch.dtype,
     device: torch.device,
     requires_grad: bool,
-    generator: torch.Generator | None = None,
+    generator: Optional[torch.Generator] = None,
 ) -> TensorLikeType:
     torch._check(
         std >= 0.0,
@@ -2809,12 +2811,12 @@ def _normal_meta(
 def _normal_aten(
     shape: ShapeType,
     *,
-    mean: float | complex,
+    mean: Union[float, complex],
     std: float,
     dtype: torch.dtype,
     device: torch.device,
     requires_grad: bool,
-    generator: torch.Generator | None = None,
+    generator: Optional[torch.Generator] = None,
 ) -> Tensor:
     a = torch.empty(shape, dtype=dtype, device=device, requires_grad=requires_grad)
     with torch.no_grad():
@@ -2849,7 +2851,7 @@ def _uniform_meta(
     dtype: torch.dtype,
     device: torch.device,
     stride: ShapeType,
-    generator: torch.Generator | None = None,
+    generator: Optional[torch.Generator] = None,
 ) -> TensorLikeType:
     return TensorMeta(shape=shape, strides=stride, dtype=dtype, device=device)
 
@@ -2862,7 +2864,7 @@ def _uniform_aten(
     dtype: torch.dtype,
     device: torch.device,
     stride: ShapeType,
-    generator: torch.Generator | None = None,
+    generator: Optional[torch.Generator] = None,
 ) -> Tensor:
     a = torch.empty_strided(shape, stride=stride, dtype=dtype, device=device)
     a.uniform_(low, high, generator=generator)
@@ -3013,7 +3015,7 @@ fft_c2r = _make_prim(
 )
 
 
-def _frexp_meta(self: TensorLikeType) -> tuple[TensorLikeType, TensorLikeType]:
+def _frexp_meta(self: TensorLikeType) -> Tuple[TensorLikeType, TensorLikeType]:
     torch._check(
         self.dtype.is_floating_point,
         lambda: "torch.frexp() only supports floating-point dtypes",

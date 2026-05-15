@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import copy
 import os
 import pickle
@@ -2403,7 +2404,7 @@ _SAFE_TLS_TYPE_RE = re.compile(
         | float
         | double
         | char
-        | (?:unsigned|signed)\s+(?:int|long(?:\s+long)?|short|char)
+        | (?:{**unsigned, **signed})\s+(?:int|long(?:\s+long)?|short|char)
         | unsigned
         | signed
         | long(?:\s+long)?

@@ -1,5 +1,6 @@
 # Owner(s): ["module: cuda"]
 
+from __future__ import annotations
 import collections
 import contextlib
 import ctypes

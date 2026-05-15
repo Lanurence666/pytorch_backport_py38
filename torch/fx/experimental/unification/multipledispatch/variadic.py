@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .utils import typename
+from typing import Tuple, Type, Union
 
 
 __all__ = ["VariadicSignatureType", "isvariadic", "VariadicSignatureMeta", "Variadic"]
@@ -61,7 +62,7 @@ class VariadicSignatureMeta(type):
     """
 
     def __getitem__(
-        cls, variadic_type: type | tuple[type, ...]
+        cls, variadic_type: Union[type, Tuple[type, ...]]
     ) -> VariadicSignatureType:
         if not (isinstance(variadic_type, (type, tuple)) or type(variadic_type)):
             raise ValueError(

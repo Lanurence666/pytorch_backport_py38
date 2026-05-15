@@ -86,20 +86,7 @@ class TestCKBackend(TestCase):
         if "rocm" not in dir(config):
             raise AssertionError("'rocm' not found in dir(config)")
 
-        with (
-            config.patch(
-                {
-                    "max_autotune": True,
-                    "autotune_in_subproc": autotune_in_subproc,
-                    "max_autotune_gemm_backends": max_autotune_gemm_backends,
-                    "compile_threads": 16,
-                    "rocm.ck_max_profiling_configs": 8,
-                    "rocm.ck_tile_max_profiling_configs": 8,
-                    "rocm.ck_dir": self.ck_dir,
-                }
-            ),
-            tf32_off(),
-        ):
+        with config.patch( { "max_autotune": True, "autotune_in_subproc": autotune_in_subproc, "max_autotune_gemm_backends": max_autotune_gemm_backends, "compile_threads": 16, "rocm.ck_max_profiling_configs": 8, "rocm.ck_tile_max_profiling_configs": 8, "rocm.ck_dir": self.ck_dir, } ), tf32_off():
             if use_aoti:
                 Y_compiled = AOTIRunnerUtil.run(
                     model=mm,
@@ -137,20 +124,7 @@ class TestCKBackend(TestCase):
         if "rocm" not in dir(config):
             raise AssertionError("'rocm' not found in dir(config)")
 
-        with (
-            config.patch(
-                {
-                    "max_autotune": True,
-                    "autotune_in_subproc": autotune_in_subproc,
-                    "max_autotune_gemm_backends": max_autotune_gemm_backends,
-                    "compile_threads": 16,
-                    "rocm.ck_max_profiling_configs": 8,
-                    "rocm.ck_tile_max_profiling_configs": 8,
-                    "rocm.ck_dir": self.ck_dir,
-                }
-            ),
-            tf32_off(),
-        ):
+        with config.patch( { "max_autotune": True, "autotune_in_subproc": autotune_in_subproc, "max_autotune_gemm_backends": max_autotune_gemm_backends, "compile_threads": 16, "rocm.ck_max_profiling_configs": 8, "rocm.ck_tile_max_profiling_configs": 8, "rocm.ck_dir": self.ck_dir, } ), tf32_off():
 
             @torch.compile(dynamic=True)
             def compiled_mm(a, b):
@@ -184,19 +158,7 @@ class TestCKBackend(TestCase):
         if "rocm" not in dir(config):
             raise AssertionError("'rocm' not found in dir(config)")
 
-        with (
-            config.patch(
-                {
-                    "max_autotune": True,
-                    "autotune_in_subproc": True,
-                    "max_autotune_gemm_backends": max_autotune_gemm_backends,
-                    "compile_threads": 12,
-                    "rocm.ck_dir": self.ck_dir,
-                    "rocm.use_preselected_instances": True,
-                }
-            ),
-            tf32_off(),
-        ):
+        with config.patch( { "max_autotune": True, "autotune_in_subproc": True, "max_autotune_gemm_backends": max_autotune_gemm_backends, "compile_threads": 12, "rocm.ck_dir": self.ck_dir, "rocm.use_preselected_instances": True, } ), tf32_off():
             Y_compiled = torch.compile(mm, dynamic=False)(a, b)
             Y = mm(a, b)
             torch.testing.assert_close(Y_compiled, Y)
@@ -217,20 +179,7 @@ class TestCKBackend(TestCase):
         if "rocm" not in dir(config):
             raise AssertionError("'rocm' not found in dir(config)")
 
-        with (
-            config.patch(
-                {
-                    "max_autotune": True,
-                    "autotune_in_subproc": True,
-                    "max_autotune_gemm_backends": max_autotune_gemm_backends,
-                    "compile_threads": 16,
-                    "rocm.ck_dir": self.ck_dir,
-                    "rocm.ck_max_profiling_configs": 8,
-                    "rocm.ck_tile_max_profiling_configs": 8,
-                }
-            ),
-            tf32_off(),
-        ):
+        with config.patch( { "max_autotune": True, "autotune_in_subproc": True, "max_autotune_gemm_backends": max_autotune_gemm_backends, "compile_threads": 16, "rocm.ck_dir": self.ck_dir, "rocm.ck_max_profiling_configs": 8, "rocm.ck_tile_max_profiling_configs": 8, } ), tf32_off():
 
             @torch.compile(dynamic=False)
             def mm(a, b):
@@ -259,19 +208,7 @@ class TestCKBackend(TestCase):
         if "rocm" not in dir(config):
             raise AssertionError("'rocm' not found in dir(config)")
 
-        with (
-            config.patch(
-                {
-                    "max_autotune": True,
-                    "autotune_in_subproc": True,
-                    "max_autotune_gemm_backends": max_autotune_gemm_backends,
-                    "compile_threads": 2,
-                    "rocm.ck_dir": self.ck_dir,
-                    "rocm.ck_max_profiling_configs": 2,
-                }
-            ),
-            tf32_off(),
-        ):
+        with config.patch( { "max_autotune": True, "autotune_in_subproc": True, "max_autotune_gemm_backends": max_autotune_gemm_backends, "compile_threads": 2, "rocm.ck_dir": self.ck_dir, "rocm.ck_max_profiling_configs": 2, } ), tf32_off():
 
             @torch.compile(dynamic=False)
             def addmm(x, a, b, alpha, beta):
@@ -392,19 +329,7 @@ class TestCKBackend(TestCase):
         if "rocm" not in dir(config):
             raise AssertionError("'rocm' not found in dir(config)")
 
-        with (
-            config.patch(
-                {
-                    "max_autotune": True,
-                    "autotune_in_subproc": False,
-                    "max_autotune_conv_backends": max_autotune_conv_backends,
-                    "compile_threads": 4,
-                    "rocm.ck_dir": self.ck_dir,
-                    "rocm.ck_max_profiling_configs": 4,
-                }
-            ),
-            tf32_off(),
-        ):
+        with config.patch( { "max_autotune": True, "autotune_in_subproc": False, "max_autotune_conv_backends": max_autotune_conv_backends, "compile_threads": 4, "rocm.ck_dir": self.ck_dir, "rocm.ck_max_profiling_configs": 4, } ), tf32_off():
 
             @torch.compile(dynamic=False)
             def conv2d(x, w):
@@ -437,18 +362,7 @@ class TestCKBackend(TestCase):
         if "rocm" not in dir(config):
             raise AssertionError("'rocm' not found in dir(config)")
 
-        with (
-            config.patch(
-                {
-                    "max_autotune": True,
-                    "max_autotune_gemm_backends": max_autotune_gemm_backends,
-                    "compile_threads": 2,
-                    "rocm.ck_max_profiling_configs": 2,
-                    "rocm.ck_dir": self.ck_dir,
-                }
-            ),
-            tf32_off(),
-        ):
+        with config.patch( { "max_autotune": True, "max_autotune_gemm_backends": max_autotune_gemm_backends, "compile_threads": 2, "rocm.ck_max_profiling_configs": 2, "rocm.ck_dir": self.ck_dir, } ), tf32_off():
 
             @torch.compile(dynamic=False)
             def compiled_bmm(x, w):

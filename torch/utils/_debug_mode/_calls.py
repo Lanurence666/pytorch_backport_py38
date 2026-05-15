@@ -1,9 +1,10 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 Call record classes for DebugMode: _DebugCall and its subclasses.
 """
 
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import torch
 
@@ -30,8 +31,8 @@ class _DebugCall:
     def __init__(
         self,
         call_depth: int,
-        record: dict[str, Any] | None = None,
-        log: dict[str, Any] | None = None,
+        record: Optional[Dict[str, Any]]= None,
+        log: Optional[Dict[str, Any]]= None,
         stack: bool = False,
     ) -> None:
         self.call_depth = call_depth
@@ -42,10 +43,10 @@ class _DebugCall:
         # results from dispatch hooks
         self.record = record
         self.log = log
-        self.output_str: str | None = None
+        self.output_str: Optional[str] = None
 
     def stringify_args(
-        self, attributes: list[str], tensor_memo: TensorIdTracker | None = None
+        self, attributes: List[str], tensor_memo: Optional[TensorIdTracker] = None
     ) -> None:
         """
         To reduce memory consumption, this method stringifies args/kwargs, stores the result, and deletes original args/kwargs.
@@ -57,8 +58,8 @@ class _DebugCall:
     def stringify_output(
         self,
         output: Any,
-        attributes: list[str],
-        tensor_memo: TensorIdTracker | None = None,
+        attributes: List[str],
+        tensor_memo: Optional[TensorIdTracker]= None,
     ) -> None:
         """Store stringified version of call output in self.output_str"""
         if tree_all(lambda x: x is None, output):
@@ -66,7 +67,7 @@ class _DebugCall:
         output_str = tree_map(lambda x: _arg_to_str(x, attributes, tensor_memo), output)
         self.output_str = f"  ->  {str(output_str)}"
 
-    def render(self, attributes: list[str]) -> str:
+    def render(self, attributes: List[str]) -> str:
         raise NotImplementedError("Subclasses must implement string render()")
 
     def __repr__(self) -> str:
@@ -89,11 +90,11 @@ class _OpCall(_DebugCall):
         self.args = args
         self.kwargs = kwargs
 
-        self.args_str: str | None = None
-        self.kwargs_str: str | None = None
+        self.args_str: Optional[str] = None
+        self.kwargs_str: Optional[str] = None
 
     def stringify_args(
-        self, attributes: list[str], tensor_memo: TensorIdTracker | None = None
+        self, attributes: List[str], tensor_memo: Optional[TensorIdTracker] = None
     ) -> None:
         self.args_str = ", ".join(
             _arg_to_str(arg, attributes, tensor_memo) for arg in self.args
@@ -108,7 +109,7 @@ class _OpCall(_DebugCall):
         del self.args
         del self.kwargs
 
-    def render(self, attributes: list[str]) -> str:
+    def render(self, attributes: List[str]) -> str:
         if self.args_str is not None:
             args_str = self.args_str
         else:
@@ -166,15 +167,15 @@ class _RedistributeCall(_DebugCall):
         self.is_explicit = is_explicit
         self.is_outer_call = isinstance(arg, int)
 
-        self.arg_str: str | None = None
+        self.arg_str: Optional[str] = None
 
     def stringify_args(
-        self, attributes: list[str], tensor_memo: TensorIdTracker | None = None
+        self, attributes: List[str], tensor_memo: Optional[TensorIdTracker] = None
     ) -> None:
         self.arg_str = f"{_arg_to_str(self.arg, attributes, tensor_memo)}"
         del self.arg
 
-    def render(self, attributes: list[str]) -> str:
+    def render(self, attributes: List[str]) -> str:
         if self.arg_str is not None:
             arg_str = self.arg_str
         else:
@@ -226,11 +227,11 @@ class _OutputPlacementCall(_DebugCall):
         self.placements_str = placements_str
 
     def stringify_args(
-        self, attributes: list[str], tensor_memo: TensorIdTracker | None = None
+        self, attributes: List[str], tensor_memo: Optional[TensorIdTracker] = None
     ) -> None:
         pass  # Already stringified
 
-    def render(self, attributes: list[str]) -> str:
+    def render(self, attributes: List[str]) -> str:
         return f"-> output: {self.placements_str}"
 
 
@@ -240,19 +241,19 @@ class _TritonKernelCall(_DebugCall):
     def __init__(
         self,
         kernel_name: str,
-        kwargs: dict[str, Any],
+        kwargs: Dict[str, Any],
         call_depth: int,
     ):
         super().__init__(call_depth)
         self.kernel_name = kernel_name
         self.kwargs = kwargs
-        self.kwargs_str: str | None = None
+        self.kwargs_str: Optional[str] = None
 
-        self.pre_hashes: dict[str, Any] | None = None
-        self.post_hashes: dict[str, Any] | None = None
+        self.pre_hashes: Optional[Dict[str, Any]] = None
+        self.post_hashes: Optional[Dict[str, Any]] = None
 
     def stringify_args(
-        self, attributes: list[str], tensor_memo: TensorIdTracker | None = None
+        self, attributes: List[str], tensor_memo: Optional[TensorIdTracker] = None
     ) -> None:
         # Optionally hash kernel inputs before launch
         if hash_fn := _utils._TRITON_INPUT_HASH_FN:
@@ -270,7 +271,7 @@ class _TritonKernelCall(_DebugCall):
         else:
             self.kwargs_str = ""
 
-    def render(self, attributes: list[str]) -> str:
+    def render(self, attributes: List[str]) -> str:
         base_str = f"[triton] {self.kernel_name}({self.kwargs_str})"
         if self.pre_hashes:
             pre_hashes_str = ", ".join(f"{k}: {v}" for k, v in self.pre_hashes.items())
@@ -328,7 +329,7 @@ class _AnnotateCall(_DebugCall):
         self.tag = tag
         self.header = header
 
-    def render(self, attributes: list[str]) -> str:
+    def render(self, attributes: List[str]) -> str:
         return f"[{self.header}] {self.tag}"
 
     def __iter__(self):

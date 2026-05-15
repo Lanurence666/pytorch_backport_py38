@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module provides TVM backend integration for TorchDynamo.
 
@@ -26,10 +27,10 @@ import logging
 import os
 import sys
 import tempfile
-from collections.abc import Callable
+
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Callable, List, Optional, Type
 
 import torch
 from torch import fx
@@ -45,14 +46,13 @@ log = logging.getLogger(__name__)
 @fake_tensor_unsupported  # type: ignore[arg-type]
 def tvm(
     gm: fx.GraphModule,
-    example_inputs: list[torch.Tensor],
+    example_inputs: List[torch.Tensor],
     *,
-    options: MappingProxyType[str, Any] | None = None,
+    options: Optional[MappingProxyType[str, Any]] = None
 ) -> Callable[..., Any]:
     if options is None:
         options = MappingProxyType({"scheduler": None, "trials": 20000, "opt_level": 3})
-    if options is None:
-        raise AssertionError("options must not be None")
+    assert options is not None
     import tvm  # type: ignore[import]
     from tvm import relay  # type: ignore[import]
     from tvm.contrib import graph_executor  # type: ignore[import]
@@ -83,13 +83,7 @@ def tvm(
         # pyrefly: ignore [missing-import]
         from tvm import auto_scheduler
 
-        with (
-            tempfile.NamedTemporaryFile() as log_file,
-            auto_scheduler.ApplyHistoryBest(log_file),
-            tvm.transform.PassContext(
-                opt_level=opt_level, config={"relay.backend.use_auto_scheduler": True}
-            ),
-        ):
+        with tempfile.NamedTemporaryFile() as log_file, auto_scheduler.ApplyHistoryBest(log_file), tvm.transform.PassContext( opt_level=opt_level, config={"relay.backend.use_auto_scheduler": True} ):
             lib = relay.build(mod, target=target, params=params)
     elif scheduler == "meta_schedule":
         # pyrefly: ignore [missing-import]
@@ -104,8 +98,7 @@ def tvm(
                 )
             # TODO(shingjan): This could be replaced by tvm.contrib.torch.optimize_torch
             # once USE_PT_TVMDSOOP is updated and turned on by default in TVM.
-            if trials <= 0:
-                raise AssertionError(f"trials must be positive, got {trials}")
+            assert trials > 0
             database = ms.relay_integration.tune_relay(
                 mod=mod,
                 target=target,
@@ -151,10 +144,10 @@ def tvm(
             return tvm.nd.array(torch_tensor.cpu().numpy())
         return tvm.nd.from_dlpack(torch_tensor)
 
-    def exec_tvm(*i_args: torch.Tensor) -> list[torch.Tensor]:
+    def exec_tvm(*i_args: torch.Tensor) -> List[torch.Tensor]:
         args = [a.contiguous() for a in i_args]
         shape_info, _ = m.get_input_info()
-        active_inputs = set(shape_info.keys())
+        active_inputs = {name for name, _ in shape_info.items()}
         for idx, arg in enumerate(args, 0):
             if arg.dim() != 0:
                 if arg.requires_grad:
@@ -188,7 +181,7 @@ def has_tvm() -> bool:
         return False
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def llvm_target() -> str:
     if sys.platform == "linux":
         cpuinfo = Path("/proc/cpuinfo").read_text()

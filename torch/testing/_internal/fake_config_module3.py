@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import sys
-from typing import Callable  # noqa: UP035
+from typing import Callable, Callable  # noqa: UP035, Optional
 
 from torch.utils._config_module import install_config_module
 
 
 e_list = [1]
 e_set = {1}
-e_func: Callable | None = None
+e_func: Optional[Callable]= None
 
 install_config_module(sys.modules[__name__])

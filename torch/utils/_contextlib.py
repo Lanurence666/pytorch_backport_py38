@@ -2,12 +2,14 @@
 # Extra utilities for working with context managers that should have been
 # in the standard library but are not
 
+from __future__ import annotations
+
 import functools
 import inspect
 import sys
 import warnings
-from collections.abc import Callable
-from typing import Any, cast, overload, TypeVar
+
+from typing import Any, Callable, Optional, Type, TypeVar, Union, cast, overload
 from typing_extensions import Self
 
 
@@ -164,7 +166,7 @@ class _NoParamDecoratorContextManager(_DecoratorContextManager):
     @overload
     def __new__(cls, orig_func: None = None) -> Self: ...
 
-    def __new__(cls, orig_func: F | None = None) -> Self | F:  # type: ignore[misc]
+    def __new__(cls, orig_func: Optional[F] = None) -> Union[Self, F]:  # type: ignore[misc]
         if orig_func is None:
             return super().__new__(cls)
         return cls()(orig_func)

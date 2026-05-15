@@ -1,7 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 
 import copy
-from typing import TYPE_CHECKING
+from typing import Dict, TYPE_CHECKING, Type
 
 import torch.distributed as dist
 from torch.distributed._shard.sharded_tensor import Shard, ShardedTensor, ShardMetadata

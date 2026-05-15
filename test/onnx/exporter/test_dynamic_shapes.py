@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Unit tests for the _dynamic_shapes module."""
 
-from __future__ import annotations
 
 import os
 import tempfile

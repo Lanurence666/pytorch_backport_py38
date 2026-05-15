@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <memory>
 #include <unordered_map>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 namespace torch {
 

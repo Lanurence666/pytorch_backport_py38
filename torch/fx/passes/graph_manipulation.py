@@ -1,4 +1,8 @@
-from typing import NamedTuple
+from __future__ import annotations
+
+from typing import Dict, List, Optional, Tuple
+from typing_extensions import NamedTuple
+
 
 import torch
 from torch.fx._compatibility import compatibility
@@ -30,7 +34,7 @@ def replace_target_nodes_with(
     and target, and updates them to match the new op code and target.
     """
     new_graph = Graph()
-    val_map: dict[Node, Node] = {}
+    val_map: Dict[Node, Node] = {}
     for node in fx_module.graph.nodes:
         if node.op == old_op and node.target == old_target:
             args = map_arg(node.args, lambda n: val_map[n])
@@ -55,7 +59,7 @@ class size_bytes(NamedTuple):
 
 @compatibility(is_backward_compatible=False)
 def get_size_of_all_nodes(
-    fx_module: GraphModule, args: list[torch.Tensor] | None = None
+    fx_module: Optional[GraphModule, args: List[torch.Tensor]]= None
 ) -> None:
     """Given a fx graph module, update each node with its total size (weights + bias + output)
     and its output_size(output). For a non-module node, the total size is the output size.

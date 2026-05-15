@@ -1,9 +1,11 @@
+from __future__ import annotations
 """Timer class based on the timeit.Timer class, but torch aware."""
+
 import enum
 import timeit
 import textwrap
-from typing import overload, Any, NoReturn
-from collections.abc import Callable
+from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple, Type, Union, overload
+
 
 import torch
 from torch.utils.benchmark.utils import common, cpp_jit
@@ -32,7 +34,7 @@ class CPPTimer:
         setup: str,
         global_setup: str,
         timer: Callable[[], float],
-        globals: dict[str, Any],
+        globals: Dict[str, Any],
     ) -> None:
         if timer is not timeit.default_timer and torch.accelerator.is_available():
             raise NotImplementedError(
@@ -50,7 +52,7 @@ class CPPTimer:
         self._stmt: str = textwrap.dedent(stmt)
         self._setup: str = textwrap.dedent(setup)
         self._global_setup: str = textwrap.dedent(global_setup)
-        self._timeit_module: TimeitModuleType | None = None
+        self._timeit_module: Optional[TimeitModuleType] = None
 
     def timeit(self, number: int) -> float:
         if self._timeit_module is None:
@@ -148,7 +150,7 @@ class Timer:
             `Compare` the columns of data. For instance one might set it
             based on the input size  to create a table of the form: ::
 
-                                        | n=1 | n=4 | ...
+                                        | n=Union[1, n]=4 | ...
                                         ------------- ...
                 ReLU(x + 1): (float)    | ... | ... | ...
                 ReLU(x + 1): (int)      | ... | ... | ...
@@ -171,7 +173,7 @@ class Timer:
             threadpool size which tries to utilize all cores.
     """
 
-    _timer_cls: type[TimerClass] = timeit.Timer
+    _timer_cls: Type[TimerClass] = timeit.Timer
 
     def __init__(
         self,
@@ -179,13 +181,13 @@ class Timer:
         setup: str = "pass",
         global_setup: str = "",
         timer: Callable[[], float] = timer,
-        globals: dict[str, Any] | None = None,
-        label: str | None = None,
-        sub_label: str | None = None,
-        description: str | None = None,
-        env: str | None = None,
+        globals: Optional[Dict[str, Any]]= None,
+        label: Optional[str]= None,
+        sub_label: Optional[str]= None,
+        description: Optional[str]= None,
+        env: Optional[str]= None,
         num_threads: int = 1,
-        language: Language | str = Language.PYTHON,
+        language: Union[Language, str]= Language.PYTHON,
     ) -> None:
         if not isinstance(stmt, str):
             raise ValueError("Currently only a `str` stmt is supported.")
@@ -282,14 +284,14 @@ class Timer:
         self,
         number: int,
         time_hook: Callable[[], float],
-        stop_hook: Callable[[list[float]], bool],
+        stop_hook: Callable[[List[float]], bool],
         min_run_time: float,
-        max_run_time: float | None = None,
-        callback: Callable[[int, float], NoReturn] | None = None
-    ) -> list[float]:
+        max_run_time: Optional[float]= None,
+        callback: Optional[Callable[[int, float], NoReturn]]= None
+    ) -> List[float]:
         total_time = 0.0
         can_stop = False
-        times: list[float] = []
+        times: List[float] = []
         with common.set_torch_threads(self._task_spec.num_threads):
             while (total_time < min_run_time) or (not can_stop):
                 time_spent = time_hook()
@@ -323,7 +325,7 @@ class Timer:
 
     def blocked_autorange(
         self,
-        callback: Callable[[int, float], NoReturn] | None = None,
+        callback: Optional[Callable[[int, float], NoReturn]]= None,
         min_run_time: float = 0.2,
     ) -> common.Measurement:
         """Measure many replicates while keeping timer overhead to a minimum.
@@ -367,7 +369,7 @@ class Timer:
         def time_hook() -> float:
             return self._timeit(number)
 
-        def stop_hook(times: list[float]) -> bool:
+        def stop_hook(times: List[float]) -> bool:
             return True
 
         times = self._threaded_measurement_loop(
@@ -387,7 +389,7 @@ class Timer:
             *,
             min_run_time: float = 0.01,
             max_run_time: float = 10.0,
-            callback: Callable[[int, float], NoReturn] | None = None,
+            callback: Optional[Callable[[int, float], NoReturn]]= None,
     ) -> common.Measurement:
         """Similar to `blocked_autorange` but also checks for variablility in measurements
         and repeats until iqr/median is smaller than `threshold` or `max_run_time` is reached.
@@ -427,7 +429,7 @@ class Timer:
         def time_hook() -> float:
             return self._timeit(number)
 
-        def stop_hook(times: list[float]) -> bool:
+        def stop_hook(times: List[float]) -> bool:
             if len(times) > 3:
                 return common.Measurement(
                     number_per_run=number,
@@ -463,14 +465,14 @@ class Timer:
         repeats: int,
         collect_baseline: bool,
         retain_out_file: bool,
-    ) -> tuple[valgrind_timer_interface.CallgrindStats, ...]:
+    ) -> Tuple[valgrind_timer_interface.CallgrindStats, ...]:
         ...
 
     def collect_callgrind(
         self,
         number: int = 100,
         *,
-        repeats: int | None = None,
+        repeats: Optional[int]= None,
         collect_baseline: bool = True,
         retain_out_file: bool = False,
     ) -> Any:

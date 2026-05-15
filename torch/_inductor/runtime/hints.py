@@ -8,6 +8,7 @@ from enum import auto, Enum
 
 import torch
 from torch.utils._triton import has_triton_package
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 
 # The following maximums only apply to runtime autotuning, when using FixedTritonConfig one may see larger values
@@ -144,14 +145,14 @@ class DeviceProperties(typing.NamedTuple):
     index: int  # type: ignore[assignment]
     multi_processor_count: int
     cc: int
-    major: int | None = None
-    regs_per_multiprocessor: int | None = None
-    max_threads_per_multi_processor: int | None = None
-    max_threads_per_block: int | None = None
-    warp_size: int | None = None
+    major: Optional[int]= None
+    regs_per_multiprocessor: Optional[int]= None
+    max_threads_per_multi_processor: Optional[int]= None
+    max_threads_per_block: Optional[int]= None
+    warp_size: Optional[int]= None
 
     @classmethod
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def create(cls, device) -> DeviceProperties:
         import torch
         from torch._dynamo.device_interface import get_interface_for_device
@@ -190,10 +191,10 @@ class DeviceProperties(typing.NamedTuple):
 class HalideInputSpec(typing.NamedTuple):
     ctype: str
     name: str
-    shape: list[str] | None = None
-    stride: list[str] | None = None
-    offset: str | None = None
-    alias_of: str | None = None
+    shape: Optional[List[str]]= None
+    stride: Optional[List[str]]= None
+    offset: Optional[str]= None
+    alias_of: Optional[str]= None
 
     def bindings_type(self) -> str:
         if self.ctype in ("at::Half*", "at::BFloat16*"):
@@ -215,13 +216,13 @@ class HalideInputSpec(typing.NamedTuple):
 
 
 class HalideMeta(typing.NamedTuple):
-    argtypes: list[HalideInputSpec]
+    argtypes: List[HalideInputSpec]
     target: str
-    scheduler: str | None = None
-    scheduler_flags: dict[str, int | str] | None = None
-    cuda_device: int | None = None
+    scheduler: Optional[str]= None
+    scheduler_flags: Optional[Union[Dict[str, int, str]]]= None
+    cuda_device: Optional[int]= None
 
-    def args(self) -> list[str]:
+    def args(self) -> List[str]:
         """Command line args to pass to halide generator"""
         args = [f"target={self.target}"]
         if self.scheduler:

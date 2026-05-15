@@ -1,9 +1,13 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import dataclasses
 import inspect
 import sys
-from collections.abc import Callable, Iterable, Iterator
-from typing import Any, Literal, overload
+from collections.abc import Callable
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Type, overload
+from typing_extensions import Literal
+
 
 import torch
 import torch.utils._pytree as pytree
@@ -47,7 +51,7 @@ def get_source(stacklevel: int) -> str:
     return source
 
 
-def parse_namespace(qualname: str) -> tuple[str, str]:
+def parse_namespace(qualname: str) -> Tuple[str, str]:
     splits = qualname.split("::")
     if len(splits) != 2:
         raise ValueError(
@@ -221,8 +225,8 @@ def fill_defaults(schema, args, kwargs):
 
 
 def zip_schema(
-    schema: _C.FunctionSchema, args: tuple[Any, ...], kwargs: dict[str, Any]
-) -> Iterable[tuple[_C.Argument, Any]]:
+    schema: _C.FunctionSchema, args: Tuple[Any, ...], kwargs: Dict[str, Any]
+) -> Iterable[Tuple[_C.Argument, Any]]:
     """zips schema.arguments and (args, kwargs) together.
 
     Assumes that (args, kwargs) were the inputs to some torch._ops.OpOverload:
@@ -381,7 +385,7 @@ def has_tensor_arg(schema: _C.FunctionSchema) -> bool:
     )
 
 
-def get_device_arg_index(schema: _C.FunctionSchema) -> int | None:
+def get_device_arg_index(schema: _C.FunctionSchema) -> Optional[int]:
     """
     Given a schema, returns the id of the `device: torch.device` argument.
     If it does not exist, returns None.
@@ -393,7 +397,7 @@ def get_device_arg_index(schema: _C.FunctionSchema) -> int | None:
 
 
 def iter_tensors(
-    args: tuple[Any], kwargs: dict[str, Any], allowed_nesting: int = 1
+    args: Tuple[Any], kwargs: Dict[str, Any], allowed_nesting: int = 1
 ) -> Iterator[torch.Tensor]:
     def check(arg):
         if isinstance(arg, torch.Tensor):
@@ -551,7 +555,7 @@ def has_fake_kernel(op: torch._ops.OpOverload) -> bool:
     return False
 
 
-def mutated_args_kwargs(schema: _C.FunctionSchema) -> tuple[list[int], list[str]]:
+def mutated_args_kwargs(schema: _C.FunctionSchema) -> Tuple[List[int], List[str]]:
     idxs = []
     keys = []
     for i, info in enumerate(schema.arguments):
@@ -582,7 +586,7 @@ def get_layout_constraint_tag(
 @overload
 def get_layout_constraint_tag(
     fn: Any, *, with_default: Literal[False]
-) -> _C.Tag | None: ...
+) -> Optional[_C.Tag]: ...
 
 
 def get_layout_constraint_tag(fn, *, with_default=True):
@@ -618,8 +622,8 @@ _RANDOM_FUNCTIONS = {
 def is_impure(
     op: Callable,
     *,
-    args: tuple[Any, ...] | None = None,
-    kwargs: dict[str, Any] | None = None,
+    args: Optional[Tuple[Any, ...]] = None,
+    kwargs: Optional[Dict[str, Any]] = None,
     impure_random: bool = True,
 ) -> bool:
     """

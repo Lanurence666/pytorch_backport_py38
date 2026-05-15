@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
-from typing import TYPE_CHECKING
+from typing import List, Optional, Set, TYPE_CHECKING
 
 from torch.onnx._internal.exporter import _analysis, _registration, _verification
 
@@ -19,24 +19,24 @@ if TYPE_CHECKING:
 @dataclasses.dataclass
 class ExportStatus:
     # Whether torch.export.export(..., strict=True) succeeds
-    torch_export_strict: bool | None = None
+    torch_export_strict: Optional[bool] = None
     # Whether torch.export.export(..., strict=False) succeeds
-    torch_export_non_strict: bool | None = None
+    torch_export_non_strict: Optional[bool] = None
     # Whether torch.export.draft_export() succeeds
-    torch_export_draft_export: bool | None = None
+    torch_export_draft_export: Optional[bool] = None
     # Whether decomposition succeeds
-    decomposition: bool | None = None
+    decomposition: Optional[bool] = None
     # Whether ONNX translation succeeds
-    onnx_translation: bool | None = None
+    onnx_translation: Optional[bool] = None
     # Whether ONNX model passes onnx.checker.check_model
-    onnx_checker: bool | None = None
+    onnx_checker: Optional[bool] = None
     # Whether ONNX model runs successfully with ONNX Runtime
-    onnx_runtime: bool | None = None
+    onnx_runtime: Optional[bool] = None
     # Whether the output of the ONNX model is accurate
-    output_accuracy: bool | None = None
+    output_accuracy: Optional[bool] = None
 
 
-def _status_emoji(status: bool | None) -> str:
+def _status_emoji(status: Optional[bool]) -> str:
     if status is None:
         return "⚪"
     return "✅" if status else "❌"
@@ -107,8 +107,8 @@ def construct_report_file_name(timestamp: str, status: ExportStatus) -> str:
 
 
 def format_decomp_comparison(
-    pre_decomp_unique_ops: set[str],
-    post_decomp_unique_ops: set[str],
+    pre_decomp_unique_ops: Set[str],
+    post_decomp_unique_ops: Set[str],
 ) -> str:
     """Format the decomposition comparison result.
 
@@ -126,7 +126,7 @@ def format_decomp_comparison(
 
 
 def format_verification_infos(
-    verification_infos: list[_verification.VerificationInfo],
+    verification_infos: List[_verification.VerificationInfo],
 ) -> str:
     """Format the verification result.
 
@@ -148,7 +148,7 @@ def create_torch_export_error_report(
     formatted_traceback: str,
     *,
     export_status: ExportStatus,
-    profile_result: str | None,
+    profile_result: Optional[str],
 ) -> None:
     with open(filename, "w", encoding="utf-8") as f:
         f.write("# PyTorch ONNX Conversion Error Report\n\n")
@@ -169,12 +169,12 @@ def create_onnx_export_report(
     formatted_traceback: str,
     program: torch.export.ExportedProgram,
     *,
-    decomp_comparison: str | None = None,
+    decomp_comparison: Optional[str] = None,
     export_status: ExportStatus,
-    profile_result: str | None,
-    model: ir.Model | None = None,
-    registry: _registration.ONNXRegistry | None = None,
-    verification_result: str | None = None,
+    profile_result: Optional[str],
+    model: Optional[ir.Model] = None,
+    registry: Optional[_registration.ONNXRegistry] = None,
+    verification_result: Optional[str] = None,
 ) -> None:
     with open(filename, "w", encoding="utf-8") as f:
         f.write("# PyTorch ONNX Conversion Report\n\n")

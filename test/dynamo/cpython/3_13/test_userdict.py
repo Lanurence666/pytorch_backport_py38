@@ -36,7 +36,7 @@ class RedirectImportFinder(importlib.abc.MetaPathFinder):
         if fullname in redirect_imports:
             try:
                 # Attempt to import the standalone module
-                name = fullname.removeprefix("test.")
+                name = (fullname[len("test."):] if fullname.startswith("test.") else fullname)
                 r = importlib.import_module(name)
                 # Redirect the module in sys.modules
                 sys.modules[fullname] = r
@@ -206,8 +206,9 @@ class UserDictTest(mapping_tests.TestHashMappingProtocol):
         self.assertEqual(list(collections.UserDict(dict={'a': 42}).items()),
                          [('dict', {'a': 42})])
         self.assertRaises(TypeError, collections.UserDict, 42)
-        self.assertRaises(TypeError, collections.UserDict, (), ())
-        self.assertRaises(TypeError, collections.UserDict.__init__)
+        with torch._dynamo.error_on_graph_break(False):
+            self.assertRaises(TypeError, collections.UserDict, (), ())
+            self.assertRaises(TypeError, collections.UserDict.__init__)
 
     def test_update(self):
         for kw in 'self', 'dict', 'other', 'iterable':

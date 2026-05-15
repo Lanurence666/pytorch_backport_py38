@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import sys
 import threading
 import weakref
@@ -23,6 +25,7 @@ from torch._C._distributed_c10d import (
 from torch.distributed.distributed_c10d import _CollOp, _store_based_barrier, P2POp
 from torch.futures import Future
 from torch.utils import _pytree as pytree
+from typing import Dict, List, Optional, Tuple, Union
 
 
 """
@@ -97,8 +100,8 @@ class AllToAll:
             for src_rank in range(world_size):
                 _, input_tensor_list = data[src_rank]
                 # See Note [Hide collectives mutation from autograd]
-                output_tensor_list[src_rank].detach().copy_(
-                    input_tensor_list[dest_rank]
+                output_tensor_List[src_rank].detach().copy_(
+                    input_tensor_List[dest_rank]
                 )
 
 
@@ -131,7 +134,7 @@ class AllToAllBase:
     def _size_cumsum(
         self,
         buf_size: int,
-        sizes: torch.Tensor | list[int] | None,
+        sizes: Union[torch.Tensor, Optional[List[int]]],
         world_size: int,
     ) -> torch.Tensor:
         if sizes is None or len(sizes) == 0:
@@ -190,7 +193,7 @@ class AllGather:
                 raise AssertionError(
                     f"Can't handle all_gather with multiple tensors, got {len(in_tensor_list)}"
                 )
-            src_tensor = in_tensor_list[0]
+            src_tensor = in_tensor_List[0]
 
             for dest in data:
                 dest_tensor = dest[0][0][src_rank]
@@ -210,7 +213,7 @@ class Scatter:
             raise AssertionError(
                 f"Can't handle scatter with multiple input tensor list, got {len(src_in_tensor_list)}"
             )
-        src_in_tensors = src_in_tensor_list[0]
+        src_in_tensors = src_in_tensor_List[0]
 
         for rank, each_rank_data in enumerate(data):
             out_tensor_list = each_rank_data[0]
@@ -219,7 +222,7 @@ class Scatter:
                 raise AssertionError(
                     f"Can't handle scatter with multiple output tensor, got {len(out_tensor_list)}"
                 )
-            dest_tensor = out_tensor_list[0]
+            dest_tensor = out_tensor_List[0]
             # See Note [Hide collectives mutation from autograd]
             dest_tensor.detach().copy_(src_in_tensors[rank])
 
@@ -243,9 +246,9 @@ class Gather:
                 raise AssertionError(
                     f"Can't handle gather with multiple tensor lists, got {len(src_in_tensor_list)}"
                 )
-            dest_tensor = out_tensor_list[rank]
+            dest_tensor = out_tensor_List[rank]
             # See Note [Hide collectives mutation from autograd]
-            dest_tensor.detach().copy_(src_in_tensor_list[0])
+            dest_tensor.detach().copy_(src_in_tensor_List[0])
 
 
 class ReduceScatter:
@@ -303,7 +306,7 @@ class Broadcast:
             out_tensor_list = flatten_list(data[i])
             for j in range(len(in_tensor_list)):
                 # See Note [Hide collectives mutation from autograd]
-                out_tensor_list[j].detach().copy_(in_tensor_list[j])
+                out_tensor_List[j].detach().copy_(in_tensor_List[j])
 
 
 class Collective:
@@ -402,8 +405,8 @@ class ProcessLocalGroup(dist.ProcessGroup):
         self,
         output_buffer: torch.Tensor,
         input_buffer: torch.Tensor,
-        output_split_sizes: list[int] | None,
-        input_split_sizes: list[int] | None,
+        output_split_sizes: Optional[List[int]],
+        input_split_sizes: Optional[List[int]],
         opts=AllToAllOptions(),
     ) -> torch.Tensor:
         coll = ProcessLocalGroup._start_coll(AllToAllBase(), self)
@@ -480,9 +483,8 @@ class ProcessLocalGroup(dist.ProcessGroup):
     ):
         works = [
             self._reduce_scatter_base(output_tensor, input_tensor, opts)
-            for output_tensor, input_tensor in zip(
-                output_tensors, input_tensors, strict=True
-            )
+            for output_tensor, input_tensor in _zip_strict(
+                output_tensors, input_tensors)
         ]
         for work in works[:-1]:
             work.wait()
@@ -492,7 +494,7 @@ class ProcessLocalGroup(dist.ProcessGroup):
         self, output_tensor_list, input_tensor_list, opts=AllgatherOptions()
     ):
         res = None
-        for o_t, i_t in zip(output_tensor_list, input_tensor_list, strict=True):
+        for o_t, i_t in _zip_strict(output_tensor_list, input_tensor_list):
             res = self._allgather_base(o_t, i_t)
         return res
 
@@ -551,14 +553,14 @@ dist.Backend.register_backend("threaded", _create_threaded_pg, devices=["cpu", "
 @dataclass
 class WorldData:
     default_pg: dist.ProcessGroup
-    pg_map: dict[dist.ProcessGroup, tuple[str, Store | None]]
-    pg_names: dict[dist.ProcessGroup, str]
-    pg_group_ranks: dict[dist.ProcessGroup, dict[int, int]]
-    pg_backend_config: dict[dist.ProcessGroup, str]
+    pg_map: Dict[dist.ProcessGroup, Tuple[str, Optional[Store]]]
+    pg_names: Dict[dist.ProcessGroup, str]
+    pg_group_ranks: Dict[dist.ProcessGroup, Dict[int, int]]
+    pg_backend_config: Dict[dist.ProcessGroup, str]
     group_count: int
-    tags_to_pg: dict[str, list[dist.ProcessGroup]]
-    pg_to_tag: dict[dist.ProcessGroup, str]
-    pg_coalesce_state: dict[dist.ProcessGroup, list[_CollOp | P2POp]]
+    tags_to_pg: Dict[str, List[dist.ProcessGroup]]
+    pg_to_tag: Dict[dist.ProcessGroup, str]
+    pg_coalesce_state: Dict[dist.ProcessGroup, List[Union[_CollOp, P2POp]]]
     comms: list
 
 
@@ -613,7 +615,7 @@ class ThreadLocalWorld:
         return self._get_world().pg_to_tag
 
     @property
-    def pg_coalesce_state(self) -> dict[dist.ProcessGroup, list[_CollOp | P2POp]]:
+    def pg_coalesce_state(self) -> Dict[dist.ProcessGroup, List[Union[_CollOp, P2POp]]]:
         return self._get_world().pg_coalesce_state
 
     @property

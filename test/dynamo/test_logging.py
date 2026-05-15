@@ -1,4 +1,5 @@
 # Owner(s): ["module: dynamo"]
+from __future__ import annotations
 import contextlib
 import functools
 import logging
@@ -1153,7 +1154,7 @@ print("arf")
         fn_opt = torch.compile(fn, backend="eager")
         fn_opt(torch.randn(10, 20), torch.randn(20, 30))
 
-        msg0 = munge_exc(records[0].getMessage(), strip_carets=False)
+        msg0 = munge_exc(records[0].getMessage())
         self.assertExpectedInline(
             msg0,
             """\
@@ -1552,7 +1553,6 @@ exclusions = {
     "loop_tiling",
     "auto_chunker",
     "autotuning",
-    "incremental",
     "graph_region_expansion",
     "hierarchical_compile",
     "compute_dependencies",

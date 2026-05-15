@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
 
+from __future__ import annotations
+
 import dataclasses
 import io
 import logging
@@ -8,7 +10,7 @@ import math
 import sys
 from bisect import bisect_right, insort
 from collections import ChainMap
-from typing import Any, cast
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union, cast
 
 import torch
 from torch.distributed._shard._utils import narrow_tensor_by_index
@@ -74,7 +76,7 @@ class DefaultSavePlanner(SavePlanner):
         self,
         flatten_state_dict: bool = True,
         flatten_sharded_tensors: bool = True,
-        dedup_replicated_tensors: bool | None = None,
+        dedup_replicated_tensors: Optional[bool]= None,
         dedup_save_to_lowest_rank: bool = False,
         enable_plan_caching: bool = False,
     ) -> None:
@@ -94,7 +96,7 @@ class DefaultSavePlanner(SavePlanner):
     def set_up_planner(
         self,
         state_dict: STATE_DICT_TYPE,
-        storage_meta: StorageMeta | None = None,
+        storage_meta: Optional[StorageMeta]= None,
         is_coordinator: bool = False,
     ) -> None:
         if self.flatten_state_dict:
@@ -132,12 +134,12 @@ class DefaultSavePlanner(SavePlanner):
 
         return self.plan
 
-    def _dedup_save_plans(self, all_plans: list[SavePlan]) -> list[SavePlan]:
+    def _dedup_save_plans(self, all_plans: List[SavePlan]) -> List[SavePlan]:
         return dedup_save_plans(all_plans, self.dedup_save_to_lowest_rank)
 
     def _create_global_plan(
-        self, all_plans: list[SavePlan]
-    ) -> tuple[list[SavePlan], Metadata]:
+        self, all_plans: List[SavePlan]
+    ) -> Tuple[List[SavePlan], Metadata]:
         deduped_plans = self._dedup_save_plans(all_plans)
 
         global_plan, metadata = create_default_global_save_plan(deduped_plans)
@@ -145,7 +147,7 @@ class DefaultSavePlanner(SavePlanner):
         if self.flatten_state_dict:
             # | does not work for Python 3.8 or older version.
             # merged_mappings = reduce(
-            #     lambda x, y: x | y, (p.planner_data for p in global_plan)
+            #     lambda x, y: Union[x, y], (p.planner_data for p in global_plan)
             # )
             planner_data_dict = [p.planner_data for p in global_plan]
             merged_mappings = dict(ChainMap(*planner_data_dict))
@@ -161,13 +163,13 @@ class DefaultSavePlanner(SavePlanner):
         return global_plan, metadata
 
     def _create_global_plan_with_caching(
-        self, all_plans: list[SavePlan]
-    ) -> tuple[list[SavePlan], list[SavePlan], Metadata]:
+        self, all_plans: List[SavePlan]
+    ) -> Tuple[List[SavePlan], List[SavePlan], Metadata]:
         """
         Create global plan with caching.
         Returns a tuple of global_plan_delta, global_plan, metadata.
         """
-        global_plan_delta: list[SavePlan] = []
+        global_plan_delta: List[SavePlan] = []
 
         if self._cached_plans_key not in SavePlanner._cached_all_plans:
             # Case 1: If the plans are not cached, the cache will be hydrated with the
@@ -221,9 +223,9 @@ class DefaultSavePlanner(SavePlanner):
         return global_plan_delta, global_plan, metadata
 
     def create_global_plan(
-        self, all_plans: list[SavePlan]
-    ) -> tuple[list[SavePlan], Metadata]:
-        global_plan_delta: list[SavePlan] = []
+        self, all_plans: List[SavePlan]
+    ) -> Tuple[List[SavePlan], Metadata]:
+        global_plan_delta: List[SavePlan] = []
         if self._enable_plan_caching:
             # If the plans are cached, we only need to send the global plan delta to be scattered
             # across ranks. Ranks will use the cached final plans instead.
@@ -271,7 +273,7 @@ class DefaultSavePlanner(SavePlanner):
         self.plan = finished_plan
         return self.plan
 
-    def resolve_data(self, write_item: WriteItem) -> torch.Tensor | io.BytesIO:
+    def resolve_data(self, write_item: WriteItem) -> Union[torch.Tensor, io.BytesIO]:
         object = self.lookup_object(write_item.index)
         return self.transform_object(write_item, object)
 
@@ -317,7 +319,7 @@ class DefaultLoadPlanner(LoadPlanner):
     def set_up_planner(
         self,
         state_dict: STATE_DICT_TYPE,
-        metadata: Metadata | None = None,
+        metadata: Optional[Metadata]= None,
         is_coordinator: bool = False,
     ) -> None:
         _init_state_dict(state_dict)
@@ -373,7 +375,7 @@ class DefaultLoadPlanner(LoadPlanner):
             self.state_dict, self.metadata, not self.allow_partial_load
         )
 
-    def create_global_plan(self, global_plan: list[LoadPlan]) -> list[LoadPlan]:
+    def create_global_plan(self, global_plan: List[LoadPlan]) -> List[LoadPlan]:
         return create_default_global_load_plan(global_plan)
 
     def finish_plan(self, new_plan: LoadPlan) -> LoadPlan:
@@ -432,7 +434,7 @@ class _EmptyStateDictLoadPlanner(DefaultLoadPlanner):
         if key in self.keys:
             return True
 
-        unflattened_keys: list[str] = []
+        unflattened_keys: List[str] = []
         planner_data = metadata.planner_data.get(key)
         for unflattened_key in planner_data:
             if unflattened_keys:
@@ -451,7 +453,7 @@ class _EmptyStateDictLoadPlanner(DefaultLoadPlanner):
     def set_up_planner(
         self,
         state_dict: STATE_DICT_TYPE,
-        metadata: Metadata | None = None,
+        metadata: Optional[Metadata]= None,
         is_coordinator: bool = False,
     ) -> None:
         if state_dict:
@@ -475,7 +477,7 @@ class _EmptyStateDictLoadPlanner(DefaultLoadPlanner):
 
 
 def create_default_local_load_plan(
-    state_dict: dict[str, Any], metadata: Metadata, strict: bool = True
+    state_dict: Dict[str, Any], metadata: Metadata, strict: bool = True
 ) -> LoadPlan:
     requests = []
     """
@@ -517,8 +519,8 @@ def create_default_local_load_plan(
 
 
 def create_default_global_load_plan(
-    all_plans: list[LoadPlan],
-) -> list[LoadPlan]:
+    all_plans: List[LoadPlan],
+) -> List[LoadPlan]:
     """
     Create global load plan used by DefaultLoadPlanner.
 
@@ -529,7 +531,7 @@ def create_default_global_load_plan(
 
 
 def create_default_local_save_plan(
-    state_dict: dict[str, Any], is_coordinator: bool
+    state_dict: Dict[str, Any], is_coordinator: bool
 ) -> SavePlan:
     """
     Create the ``SavePlan`` used by DefaultSavePlanner.
@@ -556,9 +558,9 @@ def create_default_local_save_plan(
 
 
 def create_default_global_save_plan(
-    all_plans: list[SavePlan],
+    all_plans: List[SavePlan],
     rewrite_index_hints: bool = True,
-) -> tuple[list[SavePlan], Metadata]:
+) -> Tuple[List[SavePlan], Metadata]:
     """
     Create the global plan and metadata used by DefaultSavePlanner.
 
@@ -567,7 +569,7 @@ def create_default_global_save_plan(
     The only global planning change is to update index hints in all ``MetadataIndex`` objects if
     ``rewrite_index_hints`` is True.
     """
-    md: dict[str, STORAGE_TYPES] = {}
+    md: Dict[str, STORAGE_TYPES] = {}
     new_plans = []
     for plan in all_plans:
         new_items = []
@@ -648,9 +650,9 @@ def _check_box_bounds(
     return True
 
 
-def _validate_global_plan(global_plan: list[SavePlan], metadata: Metadata) -> list[str]:
+def _validate_global_plan(global_plan: List[SavePlan], metadata: Metadata) -> List[str]:
     """Validate the global plan and return a list of error messages (empty if valid)."""
-    errors: list[str] = []
+    errors: List[str] = []
     for key, value in metadata.state_dict_metadata.items():
         if isinstance(value, BytesStorageMetadata):
             continue
@@ -679,7 +681,7 @@ def _validate_global_plan(global_plan: list[SavePlan], metadata: Metadata) -> li
                     *(chunks[idx].offsets[d] for d in range(dims)),
                 ),
             )
-            active: list[tuple[int, int]] = []
+            active: List[Tuple[int, int]] = []
             for idx in sorted_indices:
                 current = chunks[idx]
                 start = current.offsets[sweep_dim]

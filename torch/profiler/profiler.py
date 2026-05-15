@@ -9,7 +9,7 @@ import tempfile
 from abc import ABC, abstractmethod
 from enum import Enum
 from functools import partial
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, overload
 from typing_extensions import deprecated, Self
 from warnings import warn
 
@@ -106,16 +106,16 @@ class _ITraceObserver(ABC):
 
 
 def _parse_activities(
-    activities: Iterable[ProfilerActivity | dict[ProfilerActivity, list[str]]],
-) -> tuple[set[ProfilerActivity], dict[ProfilerActivity, set[str]]]:
+    activities: Iterable[Union[ProfilerActivity, Dict[ProfilerActivity, List[str]]]],
+) -> Tuple[Set[ProfilerActivity], Dict[ProfilerActivity, Set[str]]]:
     """Parse a mixed activities list into a set of activities and a filter dict.
 
     Each item is either a bare ``ProfilerActivity`` (collect all defaults) or a
-    ``dict[ProfilerActivity, list[str]]`` (collect only the named subset).
+    ``Dict[ProfilerActivity, List[str]]`` (collect only the named subset).
     An empty list value (e.g. ``{CUDA: []}``) means collect nothing for that group.
     """
-    parsed_activities: set[ProfilerActivity] = set()
-    activity_filters: dict[ProfilerActivity, set[str]] = {}
+    parsed_activities: Set[ProfilerActivity] = set()
+    activity_filters: Dict[ProfilerActivity, Set[str]] = {}
     for item in activities:
         if isinstance(item, ProfilerActivity):
             if item in parsed_activities:
@@ -187,24 +187,24 @@ class _KinetoProfile:
     def __init__(
         self,
         *,
-        activities: Iterable[ProfilerActivity | dict[ProfilerActivity, list[str]]]
+        activities: Iterable[Union[ProfilerActivity, Dict[ProfilerActivity, List[str]]]]
         | None = None,
         record_shapes: bool = False,
         profile_memory: bool = False,
         with_stack: bool = False,
         with_flops: bool = False,
         with_modules: bool = False,
-        experimental_config: _ExperimentalConfig | None = None,
-        execution_trace_observer: _ITraceObserver | None = None,
+        experimental_config: Optional[_ExperimentalConfig] = None,
+        execution_trace_observer: Optional[_ITraceObserver] = None,
         acc_events: bool = False,
         custom_trace_id_callback: Callable[[], str] | None = None,
-        post_processing_timeout_s: float | None = None,
+        post_processing_timeout_s: Optional[float] = None,
     ) -> None:
         if activities is not None:
             self.activities, self.activity_filters = _parse_activities(activities)
         else:
             self.activities = supported_activities()
-            self.activity_filters: dict[ProfilerActivity, set[str]] = {}
+            self.activity_filters: Dict[ProfilerActivity, Set[str]] = {}
         self.record_shapes = record_shapes
         self.with_flops = with_flops
         self.profile_memory = profile_memory
@@ -215,9 +215,9 @@ class _KinetoProfile:
         self.acc_events = acc_events
         self.custom_trace_id_callback = custom_trace_id_callback
         self.post_processing_timeout_s = post_processing_timeout_s
-        self.profiler: prof.profile | None = None
+        self.profiler: Optional[prof.profile] = None
         self.has_cudagraphs = False
-        self.mem_tl: MemoryProfileTimeline | None = None
+        self.mem_tl: Optional[MemoryProfileTimeline] = None
         self.use_device = None
         if ProfilerActivity.CUDA in self.activities:
             # pyrefly: ignore [bad-assignment]
@@ -236,7 +236,7 @@ class _KinetoProfile:
             self.use_device = _get_privateuse1_backend_name()
 
         # user-defined metadata to be amended to the trace
-        self.preset_metadata: dict[str, str] = {}
+        self.preset_metadata: Dict[str, str] = {}
 
     def start(self) -> None:
         self.prepare_trace()
@@ -484,7 +484,7 @@ class _KinetoProfile:
         "Please use `torch.cuda.memory._record_memory_history` and `torch.cuda.memory._export_memory_snapshot` instead.",
         category=FutureWarning,
     )
-    def export_memory_timeline(self, path: str, device: str | None = None) -> None:
+    def export_memory_timeline(self, path: str, device: Optional[str] = None) -> None:
         """Export memory event information from the profiler collected
         tree for a given device, and export a timeline plot. There are 3
         exportable files using ``export_memory_timeline``, each controlled by the
@@ -631,7 +631,7 @@ def _default_schedule_fn(_: int) -> ProfilerAction:
 
 
 def tensorboard_trace_handler(
-    dir_name: str, worker_name: str | None = None, use_gzip: bool = False
+    dir_name: str, worker_name: Optional[str] = None, use_gzip: bool = False
 ):
     """
     Outputs tracing files to directory of ``dir_name``, then that directory can be
@@ -810,26 +810,26 @@ class profile(_KinetoProfile):
     def __init__(
         self,
         *,
-        activities: Iterable[ProfilerActivity | dict[ProfilerActivity, list[str]]]
+        activities: Iterable[Union[ProfilerActivity, Dict[ProfilerActivity, List[str]]]]
         | None = None,
         schedule: Callable[[int], ProfilerAction] | None = None,
-        on_trace_ready: Callable[..., Any] | None = None,
+        on_trace_ready: Optional[Callable[..., Any]] = None,
         record_shapes: bool = False,
         profile_memory: bool = False,
         with_stack: bool = False,
         with_flops: bool = False,
         with_modules: bool = False,
-        experimental_config: _ExperimentalConfig | None = None,
-        execution_trace_observer: _ITraceObserver | None = None,
+        experimental_config: Optional[_ExperimentalConfig] = None,
+        execution_trace_observer: Optional[_ITraceObserver] = None,
         acc_events: bool = False,
         # deprecated:
-        use_cuda: bool | None = None,
+        use_cuda: Optional[bool] = None,
         custom_trace_id_callback: Callable[[], str] | None = None,
-        post_processing_timeout_s: float | None = None,
+        post_processing_timeout_s: Optional[float] = None,
     ) -> None:
         # Extract activities for the use_cuda deprecation check.
         if activities is not None:
-            activities_set: set[ProfilerActivity] = set()
+            activities_set: Set[ProfilerActivity] = set()
             for item in activities:
                 if isinstance(item, ProfilerActivity):
                     activities_set.add(item)
@@ -874,7 +874,7 @@ class profile(_KinetoProfile):
             self.record_steps = False
         self.on_trace_ready = on_trace_ready
         self.step_num = 0
-        self.step_rec_fn: prof.record_function | None = None
+        self.step_rec_fn: Optional[prof.record_function] = None
 
         schedule_action = self.schedule(self.step_num)
         if schedule_action == ProfilerAction.DEVICE_STOPPED:
@@ -889,8 +889,8 @@ class profile(_KinetoProfile):
         # so DEVICE_STOPPED can exit and resume profiling on the new cycle.
         self._prev_schedule_action = schedule_action
 
-        self.action_map: dict[
-            tuple[ProfilerAction, ProfilerAction | None], list[Any]
+        self.action_map: Dict[
+            Tuple[ProfilerAction, Optional[ProfilerAction]], List[Any]
         ] = {
             # key is (prev_action, current_action), value is action list corresponding to the state pair.
             (ProfilerAction.NONE, ProfilerAction.NONE): [],
@@ -1151,7 +1151,7 @@ class profile(_KinetoProfile):
             for action in action_list:
                 action()
 
-    def _stats(self) -> prof._ProfilerStats | None:
+    def _stats(self) -> Optional[prof._ProfilerStats]:
         if self.profiler is None:
             return None
         return self.profiler._stats
@@ -1190,7 +1190,7 @@ class ExecutionTraceObserver(_ITraceObserver):
         self.unregister_callback()
 
     @staticmethod
-    def build_execution_trace_obs_from_env() -> ExecutionTraceObserver | None:
+    def build_execution_trace_obs_from_env() -> Optional[ExecutionTraceObserver]:
         """
         Returns an ExecutionTraceObserver instance if the environment variable
         ENABLE_PYTORCH_EXECUTION_TRACE is set to 1, otherwise returns None.
@@ -1252,7 +1252,7 @@ class ExecutionTraceObserver(_ITraceObserver):
             self._registered = _add_execution_trace_observer(output_file_path)
         return self
 
-    def get_resources_dir(self, can_create=False) -> str | None:
+    def get_resources_dir(self, can_create=False) -> Optional[str]:
         """
         Generates the resources directory for the generated kernels,
         or index tensor data or any other metadata that is required
@@ -1281,7 +1281,7 @@ class ExecutionTraceObserver(_ITraceObserver):
     @staticmethod
     def get_resources_dir_for_et_path(
         trace_path, create_dir: bool = False
-    ) -> str | None:
+    ) -> Optional[str]:
         work_dir, file_name = os.path.split(trace_path)
         resource_dir = os.path.join(
             work_dir, os.path.splitext(file_name)[0] + "_resources"
@@ -1390,7 +1390,7 @@ class ExecutionTraceObserver(_ITraceObserver):
         """
         self.unregister_callback()
 
-    def get_output_file_path(self) -> str | None:
+    def get_output_file_path(self) -> Optional[str]:
         """
         Returns the output file name or None.
         """

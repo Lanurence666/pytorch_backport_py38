@@ -1,9 +1,9 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Utilities for converting and operating on ONNX and torch types."""
 
-from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, Optional, Type, Union
 from typing_extensions import TypeIs
 
 import torch
@@ -11,11 +11,11 @@ import torch
 
 def is_torch_symbolic_type(
     value: Any,
-) -> TypeIs[torch.SymBool | torch.SymInt | torch.SymFloat]:
+) -> Union[TypeIs[torch.SymBool, torch.SymInt, torch.SymFloat]]:
     return isinstance(value, (torch.SymBool, torch.SymInt, torch.SymFloat))
 
 
-def from_scalar_type_to_torch_dtype(scalar_type: type) -> torch.dtype | None:
+def from_scalar_type_to_torch_dtype(scalar_type: type) -> Optional[torch.dtype]:
     return _SCALAR_TYPE_TO_TORCH_DTYPE.get(scalar_type)
 
 
@@ -32,7 +32,7 @@ _SYM_TYPE_TO_TORCH_DTYPE = {
     torch.SymBool: torch.bool,
 }
 
-_SCALAR_TYPE_TO_TORCH_DTYPE: dict[type, torch.dtype] = {
+_SCALAR_TYPE_TO_TORCH_DTYPE: Dict[type, torch.dtype] = {
     **_PYTHON_TYPE_TO_TORCH_DTYPE,
     **_SYM_TYPE_TO_TORCH_DTYPE,  # type: ignore[dict-item]
 }

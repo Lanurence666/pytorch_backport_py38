@@ -1,4 +1,5 @@
 # Owner(s): ["module: dynamo"]
+from __future__ import annotations
 import dataclasses
 import importlib
 import inspect
@@ -399,16 +400,7 @@ class TraceRuleTests(torch._dynamo.test_case.TestCase):
         )
         self.assertTrue("torch._dynamo" not in torch._dynamo.trace_rules.MOD_INLINELIST)
 
-        with (
-            unittest.mock.patch(
-                "torch._dynamo.trace_rules.torch_name_rule_map",
-                _torch_name_rule_map,
-            ),
-            unittest.mock.patch(
-                "torch._dynamo.trace_rules.get_torch_obj_rule_map",
-                torch._dynamo.trace_rules.get_torch_obj_rule_map.__wrapped__,  # bypass functools.lru_cache
-            ),
-        ):
+        with unittest.mock.patch("torch._dynamo.trace_rules.torch_name_rule_map", _torch_name_rule_map), unittest.mock.patch("torch._dynamo.trace_rules.get_torch_obj_rule_map", torch._dynamo.trace_rules.get_torch_obj_rule_map.__wrapped__):  # bypass functools.lru_cache
             x = torch.rand(3)
             opt_fn = torch.compile(backend="eager", fullgraph=True)(fn)
             ref = fn(x)
@@ -433,16 +425,7 @@ class TraceRuleTests(torch._dynamo.test_case.TestCase):
             torch_non_c_binding_in_graph_functions,
         ]
 
-        with (
-            unittest.mock.patch(
-                "torch._dynamo.trace_rules.torch_name_rule_map",
-                _torch_name_rule_map,
-            ),
-            unittest.mock.patch(
-                "torch._dynamo.trace_rules.get_torch_obj_rule_map",
-                torch._dynamo.trace_rules.get_torch_obj_rule_map.__wrapped__,
-            ),
-        ):
+        with unittest.mock.patch("torch._dynamo.trace_rules.torch_name_rule_map", _torch_name_rule_map), unittest.mock.patch("torch._dynamo.trace_rules.get_torch_obj_rule_map", torch._dynamo.trace_rules.get_torch_obj_rule_map.__wrapped__):
             # First adding the module to SKIP_DIRS so that it will be skipped by default.
             skip_dirs_backup = torch._dynamo.trace_rules.SKIP_DIRS.copy()
             skip_dirs_re_backup = torch._dynamo.trace_rules.SKIP_DIRS_RE

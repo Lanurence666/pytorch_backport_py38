@@ -1,10 +1,10 @@
+from __future__ import annotations
 """
 Python polyfills for copy
 """
 
-from __future__ import annotations
 
-from typing import TypeVar
+from typing import Type, TypeVar
 
 from ..decorators import substitute_in_graph
 

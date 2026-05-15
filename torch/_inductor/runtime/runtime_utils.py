@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import math
 import operator
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Tuple
 
 import sympy
 
@@ -194,8 +194,8 @@ def compile_mps_shader(source: str) -> Any:
 
 
 def compile_mps_shaders(
-    kernels: list[tuple[str, str, list[str]]],
-) -> dict[str, Any]:
+    kernels: List[Tuple[str, str, List[str]]],
+) -> Dict[str, Any]:
     """Compile a batch of Metal kernels into one library.
 
     Args:
@@ -268,7 +268,7 @@ def torch_dtype_to_jax(dtype: torch.dtype) -> str:
     return f"jnp.{dtype_name}"
 
 
-def pallas_gpu_pad_inputs(inputs: list[Any], alignment: int = 128) -> list[Any]:
+def pallas_gpu_pad_inputs(inputs: List[Any], alignment: int = 128) -> List[Any]:
     """Flatten and pad each input JAX array to a multiple of alignment."""
     import jax.numpy as jnp  # pyrefly: ignore [import-error, missing-import]
 
@@ -285,10 +285,10 @@ def pallas_gpu_pad_inputs(inputs: list[Any], alignment: int = 128) -> list[Any]:
 
 
 def pallas_gpu_align_output_specs(
-    out_shapes: tuple[Any, ...],
-    out_dtypes: tuple[Any, ...],
+    out_shapes: Tuple[Any, ...],
+    out_dtypes: Tuple[Any, ...],
     alignment: int = 128,
-) -> tuple[tuple[Any, ...], list[bool]]:
+) -> Tuple[Tuple[Any, ...], List[bool]]:
     """Build aligned output ShapeDtypeStruct specs for GPU kernels.
 
     Returns (aligned_specs, is_scalar_output) where is_scalar_output[i] is True
@@ -312,8 +312,8 @@ def pallas_gpu_align_output_specs(
 
 def pallas_gpu_unpad_results(
     results: Any,
-    orig_shapes: tuple[Any, ...],
-    is_scalar_output: list[bool] | None = None,
+    orig_shapes: Tuple[Any, ...],
+    is_scalar_output: Optional[List[bool]]= None,
 ) -> Any:
     """Remove padding from GPU kernel results and reshape to original shapes.
 
@@ -408,7 +408,7 @@ def pallas_permute(x, perm):
     slices = []
     # pyrefly: ignore [bad-argument-type]
     for i in range(loop_size):
-        idx: list[Any] = [slice(None)] * ndim
+        idx: List[Any] = [slice(None)] * ndim
         idx[loop_in_dim] = i
         slc = x[tuple(idx)]  # static index, removes loop_in_dim
         slc_p = pallas_permute(slc, sub_perm)
@@ -424,14 +424,14 @@ _PERMUTE_MAX_TILE_ELEMS = 1 << 18  # ~256K elements
 
 
 def pallas_compute_tiling(
-    ref_shape: tuple[int, ...],
+    ref_shape: Tuple[int, ...],
     transpose: bool = False,  # constrain tile size for pallas_permute VMEM
     skip_last_n: int = 0,
     exact_only: bool = False,
     is_tpu: bool = False,
-    permutations: list[tuple[int, ...]] | None = None,
-    max_grid_product: int | None = None,
-) -> tuple[tuple[int, ...], tuple[int, ...], dict[int, int]]:
+    permutations: Optional[List[Tuple[int, ...]]]= None,
+    max_grid_product: Optional[int]= None,
+) -> Tuple[Tuple[int, ...], Tuple[int, ...], Dict[int, int]]:
     """Compute tile shape, grid and axis→grid-dim mapping for CPU/TPU.
 
     Always uses TPU-compatible alignment (last dim multiple of 128,
@@ -463,8 +463,8 @@ def pallas_compute_tiling(
     tileable_nd = nd - skip_last_n
 
     tile = list(ref_shape)
-    grid_parts: list[int] = []
-    axis_to_grid: dict[int, int] = {}  # ref axis → grid dim
+    grid_parts: List[int] = []
+    axis_to_grid: Dict[int, int] = {}  # ref axis → grid dim
 
     # Pick alignment based on the physical position of the axis in the
     # tensor, not its position in the tileable subset.  The TPU requires
@@ -685,12 +685,12 @@ def pallas_compute_tiling(
 
 
 def pallas_make_block_spec(
-    buf_shape: tuple[int, ...],
-    ref_shape: tuple[int, ...],
-    tile_shape: tuple[int, ...],
-    axis_to_grid: dict[int, int],
+    buf_shape: Tuple[int, ...],
+    ref_shape: Tuple[int, ...],
+    tile_shape: Tuple[int, ...],
+    axis_to_grid: Dict[int, int],
     n_grid: int,
-    permutation: tuple[int, ...] | None = None,
+    permutation: Optional[Tuple[int, ...]]= None,
     is_output: bool = False,
 ) -> Any:
     """Build a ``pl.BlockSpec`` for *buf_shape* given tiling of *ref_shape*.
@@ -722,7 +722,7 @@ def pallas_make_block_spec(
         return pl.BlockSpec((1,), _make_index_map([], 1, n_grid))
 
     bs = list(buf_shape)
-    tiled_pairs: list[tuple[int, int]] = []
+    tiled_pairs: List[Tuple[int, int]] = []
 
     if buf_nd > ref_nd:
         # Reduction input: find alignment offset k where ref dims map into buf.
@@ -779,7 +779,7 @@ def pallas_make_block_spec(
 
 
 def _make_index_map(
-    tiled_pairs: list[tuple[int, int]],
+    tiled_pairs: List[Tuple[int, int]],
     buf_nd: int,
     n_grid: int,
 ) -> Any:
@@ -816,7 +816,7 @@ def pallas_ensure_nonzero_rank(x: torch.Tensor) -> torch.Tensor:
     return x
 
 
-def pallas_make_block_spec_non_tiled(shape: tuple[int, ...]) -> Any:
+def pallas_make_block_spec_non_tiled(shape: Tuple[int, ...]) -> Any:
     import jax.numpy as jnp  # pyrefly: ignore [import-error, missing-import]
     from jax.experimental import (  # pyrefly: ignore [import-error, missing-import]
         pallas as pl,

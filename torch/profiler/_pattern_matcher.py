@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import json
 import math
 import os
@@ -15,6 +17,7 @@ from torch._C._profiler import (
 )
 from torch.profiler import profile
 from torch.profiler._utils import index_of_first_match, traverse_bfs, traverse_dfs
+from typing import Dict, List, Optional, Set, Type, Union
 
 
 class Pattern:
@@ -34,7 +37,7 @@ class Pattern:
         if prof.profiler is None or prof.profiler.kineto_results is None:
             raise AssertionError("profiler and kineto_results must not be None")
         self.event_tree = prof.profiler.kineto_results.experimental_event_tree()
-        self.tid_root: dict[int, list[_ProfilerEvent]] = {}
+        self.tid_root: Dict[int, List[_ProfilerEvent]] = {}
         for event in self.event_tree:
             self.tid_root.setdefault(event.start_tid, []).append(event)
 
@@ -55,7 +58,7 @@ class Pattern:
         """
         yield from traverse_dfs(self.event_tree)
 
-    def summary(self, events: list[_ProfilerEvent]):
+    def summary(self, events: List[_ProfilerEvent]):
         default_summary = f"{self.name}: {len(events)} events matched."
         if self.should_benchmark:
             # If benchmark summary is not empty, use it.
@@ -66,7 +69,7 @@ class Pattern:
             )
         return default_summary
 
-    def benchmark_summary(self, events: list[_ProfilerEvent]) -> str:
+    def benchmark_summary(self, events: List[_ProfilerEvent]) -> str:
         def format_time(time_ns: int) -> str:
             unit_lst = ["ns", "us", "ms"]
             for unit in unit_lst:
@@ -155,7 +158,7 @@ class ExtraCUDACopyPattern(Pattern):
     Pattern:
     built-in method                 |built-in method
         ...                         |    aten::to
-            aten::fill_/aten::zero_ |        aten::_to_copy
+            aten: Union[:fill_/aten::zero_, aten::_to_copy]
 
     Algorithm:
     We start at node aten::to, go parent events' previous events,
@@ -218,7 +221,7 @@ class ExtraCUDACopyPattern(Pattern):
         return event.name in self.init_ops
         # TODO: Check if tensor is reused
 
-    def benchmark(self, events: list[_ProfilerEvent]):
+    def benchmark(self, events: List[_ProfilerEvent]):
         shapes_factor_map = {input_shapes(event): 0.0 for event in events}
         for shape in shapes_factor_map:
             size = shape[0]
@@ -244,7 +247,7 @@ class ForLoopIndexingPattern(Pattern):
         tensor[i] = i
 
     Pattern:
-    aten::select | ... | aten::select | ... (Repeat)
+    aten: Union[:select, ..., aten::select, ... (Repeat)]
 
     Algorithm:
     We start at node aten::select, and we check if we can find this alternating patterns.
@@ -255,7 +258,7 @@ class ForLoopIndexingPattern(Pattern):
         super().__init__(prof, should_benchmark)
         self.name = "For Loop Indexing Pattern"
         self.description = "For loop indexing detected. Vectorization recommended."
-        self.visited: set[int] = set()
+        self.visited: Set[int] = set()
 
     def eventTreeTraversal(self):
         """
@@ -277,7 +280,7 @@ class ForLoopIndexingPattern(Pattern):
         def same_ops(list1, list2) -> bool:
             if len(list1) != len(list2):
                 return False
-            for op1, op2 in zip(list1, list2, strict=True):
+            for op1, op2 in _zip_strict(list1, list2):
                 if op1.name != op2.name:
                     return False
             return True
@@ -335,7 +338,7 @@ class FP32MatMulPattern(Pattern):
     def report(self, event: _ProfilerEvent):
         return self.description
 
-    def benchmark(self, events: list[_ProfilerEvent]):
+    def benchmark(self, events: List[_ProfilerEvent]):
         shapes_factor_map = {input_shapes(event): 0.0 for event in events}
         for shape in shapes_factor_map:
             matrixA = torch.randn(shape[0], device="cuda", dtype=torch.float32)
@@ -498,7 +501,7 @@ class Conv2dBiasFollowedByBatchNorm2dPattern(Pattern):
     This pattern identifies if we are enabling bias in Conv2d which is followed by BatchNorm2d.
     Bias doesn't do anything when followed by batchnorm.
     Pattern:
-    nn.Module: Conv2d            | nn.Module: BatchNorm2d
+    nn.Module: Union[Conv2d, nn.Module]: BatchNorm2d
         ...
             aten::conv2d AND dtype of third argument is not null
     The third argument is the bias
@@ -562,7 +565,7 @@ class MatMulDimInFP16Pattern(Pattern):
             return True
         return False
 
-    def benchmark(self, events: list[_ProfilerEvent]):
+    def benchmark(self, events: List[_ProfilerEvent]):
         def closest_multiple(shapes, multiple):
             return [multiple * math.ceil(shape / multiple) for shape in shapes]
 
@@ -590,7 +593,7 @@ class MatMulDimInFP16Pattern(Pattern):
         return shapes_factor_map
 
 
-def source_code_location(event: _ProfilerEvent | None) -> str:
+def source_code_location(event: Optional[_ProfilerEvent]) -> str:
     while event:
         if event.tag == _EventType.PyCall or event.tag == _EventType.PyCCall:
             if not isinstance(
@@ -626,7 +629,7 @@ def report_all_anti_patterns(
     prof,
     should_benchmark: bool = False,
     print_enable: bool = True,
-    json_report_dir: str | None = None,
+    json_report_dir: Optional[str] = None
 ) -> None:
     report_dict: dict = {}
     anti_patterns = [

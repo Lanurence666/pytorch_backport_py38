@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import contextlib
 from functools import partial, wraps
-from typing import Any, overload, TYPE_CHECKING
+from typing import Any, Callable, Dict, Generator, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type, Union, overload
 from typing_extensions import ParamSpec, TypeVar
 
 import torch
@@ -82,8 +82,8 @@ def _set_tensor_requires_grad(x: torch.Tensor) -> torch.Tensor:
     return x.requires_grad_()
 
 
-def _create_differentiable(inps: Any, level: int | None = None) -> Any:
-    def create_differentiable(x: torch.Tensor | Any) -> torch.Tensor:
+def _create_differentiable(inps: Any, level: Optional[int] = None) -> Any:
+    def create_differentiable(x: Union[torch.Tensor, Any]) -> torch.Tensor:
         if isinstance(x, torch.Tensor):
             with enable_inplace_requires_grad(True):
                 return _set_tensor_requires_grad(x)
@@ -92,12 +92,12 @@ def _create_differentiable(inps: Any, level: int | None = None) -> Any:
     return tree_map(create_differentiable, inps)
 
 
-_Tensors = torch.Tensor | tuple[torch.Tensor, ...]
+_Tensors = Union[torch.Tensor, Tuple[torch.Tensor, ...]]
 _TensorsT = TypeVar("_TensorsT", bound=_Tensors)
 _TensorsU = TypeVar("_TensorsU", bound=_Tensors)
 
 
-def _undo_create_differentiable(inps: _TensorsT, level: int | None = None) -> _TensorsT:
+def _undo_create_differentiable(inps: _TensorsT, level: Optional[int] = None) -> _TensorsT:
     def unwrap_tensors(x: _TensorsU) -> _TensorsU:
         if isinstance(x, torch.Tensor):
             if level is None:
@@ -140,11 +140,11 @@ def _wrap_all_tensors(tensor_pytree: _T, level: int) -> _T:
 # TODO: this is more accurate - enable in 3.11
 # _Ts = TypeVarTuple("_Ts")
 # @overload
-# def _as_tuple(val: tuple[*_Ts]) -> tuple[*_Ts]: ...
+# def _as_tuple(val: Tuple[*_Ts]) -> Tuple[*_Ts]: ...
 @overload
-def _as_tuple(val: tuple[_R, ...]) -> tuple[_R]: ...
+def _as_tuple(val: Tuple[_R, ...]) -> Tuple[_R]: ...
 @overload
-def _as_tuple(val: _R) -> tuple[_R]: ...
+def _as_tuple(val: _R) -> Tuple[_R]: ...
 def _as_tuple(val: object) -> object:
     if isinstance(val, tuple):
         return val
@@ -157,10 +157,10 @@ def _as_tuple(val: object) -> object:
 def _autograd_grad(
     outputs: Sequence[torch.Tensor],
     inputs: Sequence[torch.Tensor],
-    grad_outputs: Sequence[torch.Tensor] | None = None,
+    grad_outputs: Optional[Sequence[torch.Tensor]] = None,
     retain_graph: bool = False,
     create_graph: bool = True,
-) -> tuple[torch.Tensor, ...]:
+) -> Tuple[torch.Tensor, ...]:
     if grad_outputs is None:
         diff_outputs = tuple(out for out in outputs if out.requires_grad)
     else:
@@ -238,7 +238,7 @@ def _autograd_grad(
 @exposed_in("torch.func")
 def vjp(
     func: Callable[..., Any], *primals: Any, has_aux: bool = False
-) -> tuple[Any, Callable[..., Any]] | tuple[Any, Callable[..., Any], Any]:
+) -> Tuple[Any, Callable[..., Any]] | Tuple[Any, Callable[..., Any], Any]:
     """
     Standing for the vector-Jacobian product, returns a tuple containing the
     results of ``func`` applied to ``primals`` and a function that, when
@@ -388,12 +388,12 @@ def jvp_increment_nesting() -> Generator[int, None, None]:
 def _vjp_with_argnums(
     func: Callable[..., Any],
     *primals: Any,
-    argnums: argnums_t | None = None,
+    argnums: Optional[argnums_t] = None,
     has_aux: bool = False,
-) -> tuple[Any, Callable[..., Any]] | tuple[Any, Callable[..., Any], Any]:
+) -> Tuple[Any, Callable[..., Any]] | Tuple[Any, Callable[..., Any], Any]:
     # This is the same function as vjp but also accepts an argnums argument
     # All args are the same as vjp except for the added argument
-    # argnums (int or tuple[int,...] | None): Optional, specifies the argument(s) to compute gradients with respect to.
+    # argnums (int or Optional[Tuple[int,...]]): Optional, specifies the argument(s) to compute gradients with respect to.
     #         If None, computes the gradients with respect to all inputs (used for vjp). Default: None
     #
     # WARN: Users should NOT call this function directly and should just be calling vjp.
@@ -445,7 +445,7 @@ def _vjp_with_argnums(
         def wrapper(
             cotangents: Any,
             retain_graph: bool = True,
-            create_graph: bool | None = None,
+            create_graph: Optional[bool] = None,
         ) -> Any:
             if create_graph is None:
                 create_graph = torch.is_grad_enabled()
@@ -482,7 +482,7 @@ def _vjp_with_argnums(
         return results, wrapper
 
 
-def _safe_zero_index(x: tuple[_R, ...]) -> _R:
+def _safe_zero_index(x: Tuple[_R, ...]) -> _R:
     if len(x) != 1:
         raise AssertionError(f"expected tuple of length 1, got length {len(x)}")
     return x[0]
@@ -505,10 +505,10 @@ def error_if_complex(func_name: str, args: Any, is_input: bool) -> None:
 @exposed_in("torch.func")
 def jacrev(
     func: Callable[..., Any],
-    argnums: int | tuple[int, ...] = 0,
+    argnums: Union[int, Tuple[int, ...]] = 0,
     *,
     has_aux: bool = False,
-    chunk_size: int | None = None,
+    chunk_size: Optional[int] = None,
     _preallocate_and_copy: bool = False,
 ) -> Callable[..., Any]:
     """
@@ -523,7 +523,7 @@ def jacrev(
     Args:
         func (function): A Python function that takes one or more arguments,
             one of which must be a Tensor, and returns one or more Tensors
-        argnums (int or tuple[int, ...]): Optional, integer or tuple of integers,
+        argnums (int or Tuple[int, ...]): Optional, integer or tuple of integers,
             saying which arguments to get the Jacobian with respect to.
             Default: 0.
         has_aux (bool): Flag indicating that ``func`` returns a
@@ -664,11 +664,11 @@ def jacrev(
         primals = _slice_argnums(args, argnums)
         flat_primals, primals_spec = tree_flatten(primals)
 
-        def compute_jacobian_stacked() -> list[Any]:
+        def compute_jacobian_stacked() -> List[Any]:
             # Helper function to compute chunked Jacobian
             # The intermediate chunked calculation are only
             # scoped at this function level.
-            chunked_results: list[list[Any]] = []
+            chunked_results: List[List[Any]] = []
             for flat_basis_chunk in _chunked_standard_basis_for_(
                 flat_output, flat_output_numels, chunk_size=chunk_size
             ):
@@ -716,14 +716,14 @@ def jacrev(
 
             return flat_results
 
-        def compute_jacobian_preallocate_and_copy() -> list[Any]:
+        def compute_jacobian_preallocate_and_copy() -> List[Any]:
             # Helper function to compute chunked Jacobian
             # The intermediate chunked calculation are only
             # scoped at this function level.
             out_vec_size = sum(flat_output_numels)
 
             # Don't pre-allocate if we have a single chunk.
-            stacked_results: list[torch.Tensor] = []
+            stacked_results: List[torch.Tensor] = []
             if not (chunk_size is None or chunk_size >= out_vec_size):
                 stacked_results = [
                     primal.new_zeros(out_vec_size, *primal.shape)
@@ -860,8 +860,8 @@ def jacrev(
 def _chunked_standard_basis_for_(
     tensors: Sequence[torch.Tensor],
     tensor_numels: Sequence[int],
-    chunk_size: int | None = None,
-) -> Generator[tuple[torch.Tensor, ...], None, None]:
+    chunk_size: Optional[int] = None,
+) -> Generator[Tuple[torch.Tensor, ...], None, None]:
     # This function:
     # - constructs a N=sum(tensor_numels) standard basis. i.e. an NxN identity matrix.
     # - Splits the identity matrix into chunks with each chunk size determined by `tensor_numels`.
@@ -920,7 +920,7 @@ def _chunked_standard_basis_for_(
 
 def _construct_standard_basis_for(
     tensors: Sequence[torch.Tensor], tensor_numels: Sequence[int]
-) -> tuple[torch.Tensor, ...] | None:
+) -> Optional[Tuple[torch.Tensor, ...]]:
     for basis in _chunked_standard_basis_for_(tensors, tensor_numels, chunk_size=None):
         return basis
     return None
@@ -945,8 +945,8 @@ def _check_unique_non_empty(argnums: argnums_t) -> None:
 
 
 def _replace_args(
-    old_args: tuple[Any, ...], new_args: tuple[Any, ...], argnums: argnums_t
-) -> tuple[Any, ...]:
+    old_args: Tuple[Any, ...], new_args: Tuple[Any, ...], argnums: argnums_t
+) -> Tuple[Any, ...]:
     if isinstance(argnums, int):
         if len(new_args) != 1:
             raise RuntimeError(
@@ -982,7 +982,7 @@ def _validate_and_wrap_argnums(argnums: argnums_t, num_args: int) -> argnums_t:
 
 
 def _slice_argnums(
-    args: tuple[Any, ...], argnums: argnums_t, as_tuple: bool = True
+    args: Tuple[Any, ...], argnums: argnums_t, as_tuple: bool = True
 ) -> Any:
     if not isinstance(argnums, int) and not isinstance(argnums, tuple):
         raise RuntimeError(
@@ -1019,7 +1019,7 @@ def assert_flat_tuple_of_tensors(elts: Any, api: str, argname: str) -> None:
         )
 
 
-def assert_non_empty_tensor_output(output: list[Any], api: str) -> None:
+def assert_non_empty_tensor_output(output: List[Any], api: str) -> None:
     if (len(output) == 1 and output[0] is None) or len(output) < 1:
         raise RuntimeError(
             f"{api}: Expected f to be a function that has non-empty output (got output = {output})"
@@ -1053,7 +1053,7 @@ def assert_output_is_tensor_or_tensors(output: Any, api: str) -> None:
 
 
 def assert_non_empty_list_of_tensors(
-    output: list[torch.Tensor], api: str, argname: str
+    output: List[torch.Tensor], api: str, argname: str
 ) -> None:
     if len(output) == 0:
         raise RuntimeError(f"{api}: Expected {argname} to contain at least one Tensor.")
@@ -1070,7 +1070,7 @@ jvp_str = "jvp(f, primals, tangents)"
 
 def safe_unpack_dual(
     dual: torch.Tensor, strict: bool
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     if not isinstance(dual, torch.Tensor):
         raise RuntimeError(
             f"{jvp_str}: expected f(*args) to return only tensors"
@@ -1097,7 +1097,7 @@ def jvp(
     *,
     strict: bool = False,
     has_aux: bool = False,
-) -> tuple[Any, Any] | tuple[Any, Any, Any]:
+) -> Union[Tuple[Any, Any], Tuple[Any, Any, Any]]:
     """
     Standing for the Jacobian-vector product, returns a tuple containing
     the output of `func(*primals)` and the "Jacobian of ``func`` evaluated at
@@ -1157,14 +1157,14 @@ def _jvp_with_argnums(
     func: Callable[..., Any],
     primals: Any,
     tangents: Any,
-    argnums: argnums_t | None,
+    argnums: Optional[argnums_t],
     *,
     strict: bool = False,
     has_aux: bool,
-) -> tuple[Any, Any] | tuple[Any, Any, Any]:
+) -> Union[Tuple[Any, Any], Tuple[Any, Any, Any]]:
     # This is the same function as jvp but also accepts an argnums argument
     # Most args are the same as jvp except for the added argument
-    # argnums (int or tuple[int, ...]): Optional, specifies the argument(s) to compute gradients with respect to.
+    # argnums (int or Tuple[int, ...]): Optional, specifies the argument(s) to compute gradients with respect to.
     #         If None, computes the gradients with respect to all inputs (used for jvp). Default: None
     # Because of this, tangents must be of length argnums and matches up to the corresponding primal whose index is
     # given by argnums
@@ -1264,7 +1264,7 @@ def jacfwd(
     Args:
         func (function): A Python function that takes one or more arguments,
             one of which must be a Tensor, and returns one or more Tensors
-        argnums (int or tuple[int, ...]): Optional, integer or tuple of integers,
+        argnums (int or Tuple[int, ...]): Optional, integer or tuple of integers,
             saying which arguments to get the Jacobian with respect to.
             Default: 0.
         has_aux (bool): Flag indicating that ``func`` returns a
@@ -1437,7 +1437,7 @@ def hessian(func: Callable[..., Any], argnums: argnums_t = 0) -> Callable[..., A
     Args:
         func (function): A Python function that takes one or more arguments,
             one of which must be a Tensor, and returns one or more Tensors
-        argnums (int or tuple[int, ...]): Optional, integer or tuple of integers,
+        argnums (int or Tuple[int, ...]): Optional, integer or tuple of integers,
             saying which arguments to get the Hessian with respect to.
             Default: 0.
 
@@ -1471,9 +1471,9 @@ def grad_and_value_impl(
     func: Callable[..., Any],
     argnums: argnums_t,
     has_aux: bool,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-) -> tuple[Any, Any]:
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
+) -> Tuple[Any, Any]:
     with grad_increment_nesting() as level:
         output, aux, grad_input = None, None, None
         # See NOTE [grad and vjp interaction with no_grad]
@@ -1529,8 +1529,8 @@ def grad_impl(
     func: Callable[..., Any],
     argnums: argnums_t,
     has_aux: bool,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
 ) -> Any:
     results = grad_and_value_impl(func, argnums, has_aux, args, kwargs)
     if has_aux:
@@ -1813,7 +1813,7 @@ def functionalize(
 @exposed_in("torch.func")
 def linearize(
     func: Callable[..., Any], *primals: Any
-) -> tuple[Any, Callable[..., Any]]:
+) -> Tuple[Any, Callable[..., Any]]:
     """
     Returns the value of ``func`` at ``primals`` and linear approximation
     at ``primals``.
@@ -1867,7 +1867,7 @@ def linearize(
     flat_tangents = tuple(p.new_empty(()).expand_as(p) for p in flat_primals)
 
     # function to trace
-    def trace_fn(flat_tangents: tuple[torch.Tensor, ...]) -> Any:
+    def trace_fn(flat_tangents: Tuple[torch.Tensor, ...]) -> Any:
         with fwAD.dual_level():
             flat_duals = tuple(
                 fwAD.make_dual(p, t) for p, t in zip(flat_primals, flat_tangents)

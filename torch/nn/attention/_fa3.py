@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 PROTOTYPE!
 Flash Attention 3 implementation.
@@ -6,18 +7,17 @@ For fp16/bf16: supports forward and backward pass.
 """
 # mypy: allow-untyped-defs
 
-from __future__ import annotations
 
 import importlib
 import warnings
-from typing import TYPE_CHECKING
+from typing import Callable, Optional, TYPE_CHECKING, Tuple, Type
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 from dataclasses import dataclass
-from functools import cache
+from functools import lru_cache
 from typing_extensions import TypeVarTuple, Unpack
 
 import torch
@@ -31,13 +31,13 @@ __all__ = [
 ]
 
 
-_FA3_CUDA_FWD: Callable | None = None  # Cache for torch.ops.flash_attn_3.fwd
-_FA3_CUDA_BWD: Callable | None = None  # Cache for torch.ops.flash_attn_3.bwd
+_FA3_CUDA_FWD: Optional[Callable] = None  # Cache for torch.ops.flash_attn_3.fwd
+_FA3_CUDA_BWD: Optional[Callable] = None  # Cache for torch.ops.flash_attn_3.bwd
 
 
 @dataclass
 class _FA3Handle:
-    library: Library | None
+    library: Optional[Library]
 
     def remove(self) -> None:
         self.library = None
@@ -45,7 +45,7 @@ class _FA3Handle:
         torch._C._set_sdp_use_fa3(False)
 
 
-@cache
+@lru_cache(maxsize=None)
 def _get_device_major(device: torch.device) -> int:
     major, _ = torch.cuda.get_device_capability(device)
     return major
@@ -86,7 +86,7 @@ def _fa3_import_module(module_path: str) -> None:
 
 
 def _fa3_register_kernels() -> Library:
-    lib = Library("aten", "IMPL", "CUDA")
+    lib = Library("aten", "IMPL", "CUDA")  # noqa: TOR901
     lib.impl(
         "_flash_attention_forward.quantized", _fa3_flash_attention_forward_impl, "CUDA"
     )
@@ -120,13 +120,13 @@ def _fa3_register_kernels() -> Library:
 
 def _fa3_common_support_error(
     query: torch.Tensor,
-    tensors: tuple[torch.Tensor, ...],
+    tensors: Tuple[torch.Tensor, ...],
     dropout_p: float,
-    cum_seq_q: torch.Tensor | None,
-    q_descale: torch.Tensor | None,
-    k_descale: torch.Tensor | None,
-    v_descale: torch.Tensor | None,
-) -> str | None:
+    cum_seq_q: Optional[torch.Tensor],
+    q_descale: Optional[torch.Tensor],
+    k_descale: Optional[torch.Tensor],
+    v_descale: Optional[torch.Tensor],
+) -> Optional[str]:
     if dropout_p != 0.0:
         return "dropout_p must be 0"
 
@@ -161,13 +161,13 @@ def _fa3_forward_support_error(
     value: torch.Tensor,
     dropout_p: float,
     return_debug_mask: bool,
-    alibi_slopes: torch.Tensor | None,
-    seqused_k: torch.Tensor | None,
-    cum_seq_q: torch.Tensor | None,
-    q_descale: torch.Tensor | None,
-    k_descale: torch.Tensor | None,
-    v_descale: torch.Tensor | None,
-) -> str | None:
+    alibi_slopes: Optional[torch.Tensor],
+    seqused_k: Optional[torch.Tensor],
+    cum_seq_q: Optional[torch.Tensor],
+    q_descale: Optional[torch.Tensor],
+    k_descale: Optional[torch.Tensor],
+    v_descale: Optional[torch.Tensor],
+) -> Optional[str]:
     if return_debug_mask:
         return "return_debug_mask must be False"
     if alibi_slopes is not None:
@@ -206,10 +206,10 @@ def _fa3_backward_support_error(
     out: torch.Tensor,
     logsumexp: torch.Tensor,
     dropout_p: float,
-    cum_seq_q: torch.Tensor | None,
-    window_size_left: int | None,
-    window_size_right: int | None,
-) -> str | None:
+    cum_seq_q: Optional[torch.Tensor],
+    window_size_left: Optional[int],
+    window_size_right: Optional[int],
+) -> Optional[str]:
     # FA3 backward ONLY supports fp16/bf16, NOT fp8
     if query.dtype == torch.float8_e4m3fn:
         return (
@@ -239,11 +239,11 @@ def _fa3_backward_support_error(
 Ts = TypeVarTuple("Ts")
 
 
-def _transpose_dense(*tensors: Unpack[Ts]) -> tuple[Unpack[Ts]]:
+def _transpose_dense(*tensors: Unpack[Ts]) -> Tuple[Unpack[Ts]]:
     return tuple(t.transpose(1, 2) for t in tensors)  # type: ignore[attr-defined]
 
 
-def _maybe_contiguous(x: torch.Tensor | None) -> torch.Tensor | None:
+def _maybe_contiguous(x: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
     """Ensure tensor is contiguous in the last dimension."""
     return x.contiguous() if x is not None and x.stride(-1) != 1 else x
 
@@ -252,22 +252,22 @@ def _fa3_run_forward(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    cu_seq_q: torch.Tensor | None,
-    cu_seq_k: torch.Tensor | None,
+    cu_seq_q: Optional[torch.Tensor],
+    cu_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
-    scale: float | None,
+    scale: Optional[float],
     is_causal: bool,
-    window_size_left: int | None,
-    window_size_right: int | None,
-    seqused_k: torch.Tensor | None,
-    out: torch.Tensor | None = None,
-    q_descale: torch.Tensor | None = None,
-    k_descale: torch.Tensor | None = None,
-    v_descale: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
-    num_splits: int | None = None,
-) -> tuple[torch.Tensor, torch.Tensor]:
+    window_size_left: Optional[int],
+    window_size_right: Optional[int],
+    seqused_k: Optional[torch.Tensor],
+    out: Optional[torch.Tensor] = None,
+    q_descale: Optional[torch.Tensor] = None,
+    k_descale: Optional[torch.Tensor] = None,
+    v_descale: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
+    num_splits: Optional[int] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Run the FA3 forward pass by calling the C++ kernel directly.
     """
@@ -336,16 +336,16 @@ def _fa3_run_backward(
     value: torch.Tensor,
     out: torch.Tensor,
     logsumexp: torch.Tensor,
-    cu_seq_q: torch.Tensor | None,
-    cu_seq_k: torch.Tensor | None,
-    max_seqlen_q: int | None,
-    max_seqlen_k: int | None,
-    scale: float | None,
+    cu_seq_q: Optional[torch.Tensor],
+    cu_seq_k: Optional[torch.Tensor],
+    max_seqlen_q: Optional[int],
+    max_seqlen_k: Optional[int],
+    scale: Optional[float],
     is_causal: bool,
     window_size_left: int,
     window_size_right: int,
     deterministic: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if _FA3_CUDA_BWD is None:
         raise RuntimeError("FA3 not registered")
 
@@ -392,26 +392,26 @@ def _fa3_flash_attention_forward_impl(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    cum_seq_q: torch.Tensor | None,
-    cum_seq_k: torch.Tensor | None,
+    cum_seq_q: Optional[torch.Tensor],
+    cum_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     dropout_p: float,
     is_causal: bool,
     return_debug_mask: bool,
-    q_descale: torch.Tensor | None = None,
-    k_descale: torch.Tensor | None = None,
-    v_descale: torch.Tensor | None = None,
+    q_descale: Optional[torch.Tensor] = None,
+    k_descale: Optional[torch.Tensor] = None,
+    v_descale: Optional[torch.Tensor] = None,
     *,
-    scale: float | None = None,
+    scale: Optional[float] = None,
     window_size_left: int = -1,
     window_size_right: int = -1,
-    seqused_k: torch.Tensor | None = None,
-    alibi_slopes: torch.Tensor | None = None,
-    out: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
+    seqused_k: Optional[torch.Tensor] = None,
+    alibi_slopes: Optional[torch.Tensor] = None,
+    out: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
     compute_auxiliary: bool = True,
-    num_splits: int | None = None,
+    num_splits: Optional[int] = None,
 ):
     error = _fa3_forward_support_error(
         query,
@@ -464,21 +464,21 @@ def _fa3_flash_attention_forward_no_dropout_inplace_impl(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    cum_seq_q: torch.Tensor | None,
-    cum_seq_k: torch.Tensor | None,
+    cum_seq_q: Optional[torch.Tensor],
+    cum_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     dropout_p: float,
     is_causal: bool,
     return_debug_mask: bool,
     *,
-    scale: float | None = None,
+    scale: Optional[float] = None,
     window_size_left: int = -1,
     window_size_right: int = -1,
-    seqused_k: torch.Tensor | None = None,
-    alibi_slopes: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
-    num_splits: int | None = None,
+    seqused_k: Optional[torch.Tensor] = None,
+    alibi_slopes: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
+    num_splits: Optional[int] = None,
 ):
     _, lse, _, _, _ = _fa3_flash_attention_forward_impl(
         query,
@@ -511,22 +511,22 @@ def _fa3_flash_attention_forward_impl_default(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    cum_seq_q: torch.Tensor | None,
-    cum_seq_k: torch.Tensor | None,
+    cum_seq_q: Optional[torch.Tensor],
+    cum_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     dropout_p: float,
     is_causal: bool,
     return_debug_mask: bool,
     *,
-    scale: float | None = None,
+    scale: Optional[float] = None,
     window_size_left: int = -1,
     window_size_right: int = -1,
-    seqused_k: torch.Tensor | None = None,
-    alibi_slopes: torch.Tensor | None = None,
-    block_table: torch.Tensor | None = None,
-    out: torch.Tensor | None = None,
-    num_splits: int | None = None,
+    seqused_k: Optional[torch.Tensor] = None,
+    alibi_slopes: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
+    out: Optional[torch.Tensor] = None,
+    num_splits: Optional[int] = None,
 ):
     return _fa3_flash_attention_forward_impl(
         query,
@@ -560,8 +560,8 @@ def _fa3_flash_attention_backward_impl(
     value: torch.Tensor,
     out: torch.Tensor,
     logsumexp: torch.Tensor,
-    cum_seq_q: torch.Tensor | None,
-    cum_seq_k: torch.Tensor | None,
+    cum_seq_q: Optional[torch.Tensor],
+    cum_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     dropout_p: float,
@@ -569,9 +569,9 @@ def _fa3_flash_attention_backward_impl(
     rng_state: torch.Tensor,
     unused: torch.Tensor,
     *,
-    scale: float | None = None,
-    window_size_left: int | None = None,
-    window_size_right: int | None = None,
+    scale: Optional[float] = None,
+    window_size_left: Optional[int] = None,
+    window_size_right: Optional[int] = None,
 ):
     """FA3 implementation of _flash_attention_backward."""
     error = _fa3_backward_support_error(
@@ -616,14 +616,14 @@ def _fa3_scaled_dot_product_flash_attention_forward_impl(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    q_descale: torch.Tensor | None = None,
-    k_descale: torch.Tensor | None = None,
-    v_descale: torch.Tensor | None = None,
+    q_descale: Optional[torch.Tensor] = None,
+    k_descale: Optional[torch.Tensor] = None,
+    v_descale: Optional[torch.Tensor] = None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
     return_debug_mask: bool = False,
     *,
-    scale: float | None = None,
+    scale: Optional[float] = None,
 ):
     error = _fa3_forward_support_error(
         query,
@@ -691,7 +691,7 @@ def _fa3_scaled_dot_product_flash_attention_forward_impl_default(
     is_causal: bool = False,
     return_debug_mask: bool = False,
     *,
-    scale: float | None = None,
+    scale: Optional[float] = None,
 ):
     return _fa3_scaled_dot_product_flash_attention_forward_impl(
         query,
@@ -714,8 +714,8 @@ def _fa3_scaled_dot_product_flash_attention_backward_impl(
     value: torch.Tensor,
     out: torch.Tensor,
     logsumexp: torch.Tensor,
-    cum_seq_q: torch.Tensor | None,
-    cum_seq_k: torch.Tensor | None,
+    cum_seq_q: Optional[torch.Tensor],
+    cum_seq_k: Optional[torch.Tensor],
     max_q: int,
     max_k: int,
     dropout_p: float,
@@ -723,7 +723,7 @@ def _fa3_scaled_dot_product_flash_attention_backward_impl(
     philox_seed: torch.Tensor,
     philox_offset: torch.Tensor,
     *,
-    scale: float | None = None,
+    scale: Optional[float] = None,
 ):
     """FA3 implementation of _scaled_dot_product_flash_attention_backward."""
     error = _fa3_backward_support_error(

@@ -1,27 +1,27 @@
+from __future__ import annotations
 """GitHub Utilities"""
 
-from __future__ import annotations
 
 import json
 import os
-from typing import Any, cast, TYPE_CHECKING
+from typing import Any, Dict, TYPE_CHECKING, Tuple, Union, cast
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    pass
 
 
 def gh_fetch_url_and_headers(
     url: str,
     *,
-    headers: dict[str, str] | None = None,
-    data: dict[str, Any] | None = None,
-    method: str | None = None,
+    headers: Union[Dict[str, str], None] = None,
+    data: Union[Dict[str, Any], None] = None,
+    method: Union[str, None] = None,
     reader: Callable[[Any], Any] = lambda x: x.read(),
-) -> tuple[Any, Any]:
+) -> Tuple[Any, Any]:
     if headers is None:
         headers = {}
     token = os.environ.get("GITHUB_TOKEN")
@@ -48,9 +48,9 @@ def gh_fetch_url_and_headers(
 def gh_fetch_url(
     url: str,
     *,
-    headers: dict[str, str] | None = None,
-    data: dict[str, Any] | None = None,
-    method: str | None = None,
+    headers: Union[Dict[str, str], None] = None,
+    data: Union[Dict[str, Any], None] = None,
+    method: Union[str, None] = None,
     reader: Callable[[Any], Any] = lambda x: x.read(),
 ) -> Any:
     return gh_fetch_url_and_headers(
@@ -60,8 +60,8 @@ def gh_fetch_url(
 
 def _gh_fetch_json_any(
     url: str,
-    params: dict[str, Any] | None = None,
-    data: dict[str, Any] | None = None,
+    params: Union[Dict[str, Any], None] = None,
+    data: Union[Dict[str, Any], None] = None,
 ) -> Any:
     headers = {"Accept": "application/vnd.github.v3+json"}
     if params is not None and len(params) > 0:
@@ -73,13 +73,13 @@ def _gh_fetch_json_any(
 
 def gh_fetch_json_dict(
     url: str,
-    params: dict[str, Any] | None = None,
-    data: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    return cast(dict[str, Any], _gh_fetch_json_any(url, params, data))
+    params: Union[Dict[str, Any], None] = None,
+    data: Union[Dict[str, Any], None] = None,
+) -> Dict[str, Any]:
+    return cast(Dict[str, Any], _gh_fetch_json_any(url, params, data))
 
 
-def gh_fetch_commit(org: str, repo: str, sha: str) -> dict[str, Any]:
+def gh_fetch_commit(org: str, repo: str, sha: str) -> Dict[str, Any]:
     return gh_fetch_json_dict(
         f"https://api.github.com/repos/{org}/{repo}/commits/{sha}"
     )

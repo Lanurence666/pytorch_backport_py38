@@ -1,9 +1,15 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import uuid
 from collections import OrderedDict
-from collections.abc import Callable
+
 from functools import wraps
-from typing import Concatenate, Generic, Protocol
+from typing import Callable, Dict, Generic, List, Optional, Type, TypeVar, overload
+try:
+    from typing import Concatenate
+except ImportError:
+    from typing_extensions import Concatenate, Protocol
 from typing_extensions import ParamSpec, TypeVar
 
 import torch
@@ -33,7 +39,7 @@ class RegistryItem:
 
 
 _TState = TypeVar("_TState", bound="_State", covariant=True)
-_M = TypeVar("_M", nn.Module, list[nn.Module])
+_M = TypeVar("_M", nn.Module, List[nn.Module])
 
 
 class _ContractFn(Protocol, Generic[_P, _T, _TState]):
@@ -43,7 +49,7 @@ class _ContractFn(Protocol, Generic[_P, _T, _TState]):
 
 
 def contract(
-    state_cls: type[_TState] = _State,  # type: ignore[assignment]
+    state_cls: Type[_TState] = _State,  # type: ignore[assignment]
 ) -> Callable[
     [Callable[Concatenate[_M, _P], _M]],
     _ContractFn[Concatenate[_M, _P], _M, _TState],
@@ -100,7 +106,7 @@ def contract(
             **kwargs: _P.kwargs,
         ) -> _M:
             inp_module = module
-            modules: list[nn.Module]
+            modules: List[nn.Module]
             if isinstance(module, nn.Module):
                 modules = [module]
             else:
@@ -115,21 +121,21 @@ def contract(
             # `func` is allowed to return different module instances than the
             # input modules as long as FQNs are preserved following the input
             # module order
-            all_orig_named_params: list[dict[str, nn.Parameter]] = []
-            all_orig_named_buffers: list[dict[str, torch.Tensor]] = []
-            all_orig_named_modules: list[dict[str, nn.Module]] = []
+            all_orig_named_params: List[Dict[str, nn.Parameter]] = []
+            all_orig_named_buffers: List[Dict[str, torch.Tensor]] = []
+            all_orig_named_modules: List[Dict[str, nn.Module]] = []
 
             for module in modules:
-                default_all_state: dict[Callable, _State] = OrderedDict()
-                default_registry: dict[str, RegistryItem] = OrderedDict()
-                all_state: dict[Callable, _State] = module.__dict__.setdefault(  # type: ignore[call-overload]
+                default_all_state: Dict[Callable, _State] = OrderedDict()
+                default_registry: Dict[str, RegistryItem] = OrderedDict()
+                all_state: Dict[Callable, _State] = module.__dict__.setdefault(  # type: ignore[call-overload]
                     STATE_KEY, default_all_state
                 )
                 if not isinstance(all_state, dict):
                     raise AssertionError(
                         f"Distributed composable API states corrupted: {all_state}"
                     )
-                registry: dict[str, RegistryItem] = module.__dict__.setdefault(  # type: ignore[call-overload]
+                registry: Dict[str, RegistryItem] = module.__dict__.setdefault(  # type: ignore[call-overload]
                     REGISTRY_KEY, default_registry
                 )
                 if not isinstance(registry, dict):
@@ -152,15 +158,15 @@ def contract(
             updated = func(inp_module, *args, **kwargs)
             if updated is None:
                 updated = inp_module  # type: ignore[assignment]
-            updated_modules: list[nn.Module]
+            updated_modules: List[nn.Module]
             if isinstance(updated, nn.Module):
                 updated_modules = [updated]
             else:
                 updated_modules = _get_root_modules(list(inp_module))  # type: ignore[arg-type, call-overload]
 
-            all_new_named_params: list[dict[str, nn.Parameter]] = []
-            all_new_named_buffers: list[dict[str, torch.Tensor]] = []
-            all_new_named_modules: list[dict[str, nn.Module]] = []
+            all_new_named_params: List[Dict[str, nn.Parameter]] = []
+            all_new_named_buffers: List[Dict[str, torch.Tensor]] = []
+            all_new_named_modules: List[Dict[str, nn.Module]] = []
             for module in updated_modules:
                 all_new_named_params.append(OrderedDict(module.named_parameters()))
                 all_new_named_buffers.append(OrderedDict(module.named_buffers()))
@@ -175,7 +181,7 @@ def contract(
                     f"Outputs: {num_new_modules} modules"
                 )
 
-            def check_fqn(orig_fqns: list[str], new_fqns: list[str], check_key: str):
+            def check_fqn(orig_fqns: List[str], new_fqns: List[str], check_key: str):
                 if orig_fqns == new_fqns:
                     return
 
@@ -241,7 +247,7 @@ def contract(
     return inner  # type: ignore[return-value]
 
 
-def _get_registry(module: nn.Module) -> dict[str, RegistryItem] | None:
+def _get_registry(module: nn.Module) -> Optional[Dict[str, RegistryItem]]:
     r"""
     Get an ``OrderedDict`` of composable APIs that have been applied to the
     ``module``, indexed by the API name. If no API has been applied, then this

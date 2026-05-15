@@ -1,4 +1,5 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
 r"""
 This package introduces support for the XPU backend, specifically tailored for
 Intel GPU optimization.
@@ -7,7 +8,6 @@ This package is lazily initialized, so you can always import it, and use
 :func:`is_available()` to determine if your system supports XPU.
 """
 
-from __future__ import annotations
 
 import dataclasses
 import os
@@ -16,7 +16,9 @@ import traceback
 import warnings
 from ctypes import byref, c_double, c_uint32, c_void_p, cast, pointer
 from functools import lru_cache
-from typing import Any, NewType, TYPE_CHECKING
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, cast
+from typing_extensions import NewType
+
 
 import torch
 import torch._C
@@ -24,7 +26,7 @@ from torch._utils import _dummy_type, _LazySeedTracker
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
 
     from torch.types import Device
 
@@ -42,24 +44,24 @@ from .streams import Event, Stream
 _initialized = False
 _tls = threading.local()
 _initialization_lock = threading.Lock()
-_queued_calls: list[
-    tuple[Callable[[], None], list[str]]
+_queued_calls: List[
+    Tuple[Callable[[], None], List[str]]
 ] = []  # don't invoke these until initialization occurs
 _is_in_bad_fork = getattr(torch._C, "_xpu_isInBadFork", lambda: False)
 _lazy_seed_tracker = _LazySeedTracker()
-default_generators: tuple[torch._C.Generator] = ()  # type: ignore[assignment]
-_cached_device_count: int | None = None
+default_generators: Tuple[torch._C.Generator] = ()  # type: ignore[assignment]
+_cached_device_count: Optional[int]= None
 
 
 @dataclasses.dataclass
 class _ZesDeviceInfo:
     device_handle: c_void_p
-    subdevice_id: int | None = None
+    subdevice_id: Optional[int]= None
     is_integrated: bool = False
-    temperature_handle: c_void_p | None = None
+    temperature_handle: Optional[c_void_p]= None
 
 
-_cached_zes_device_infos: list[_ZesDeviceInfo] = []
+_cached_zes_device_infos: List[_ZesDeviceInfo] = []
 
 
 def _is_compiled() -> bool:
@@ -82,7 +84,7 @@ else:
         raise NotImplementedError("PyTorch was compiled without XPU support")
 
 
-def _parse_visible_devices(strict=False) -> list[int]:
+def _parse_visible_devices(strict=False) -> List[int]:
     r"""Parse ``ZE_AFFINITY_MASK`` and return visible device ordinals.
 
     Returns a list of non-negative device ordinals specified by the mask.
@@ -101,7 +103,7 @@ def _parse_visible_devices(strict=False) -> list[int]:
         # (up to 128 devices). Return the full range when no mask is set.
         return list(range(128))
 
-    visible_devices: list[int] = []
+    visible_devices: List[int] = []
     for elem in var.split(","):
         try:
             x = int(elem.strip())
@@ -119,7 +121,7 @@ def _parse_visible_devices(strict=False) -> list[int]:
     return visible_devices
 
 
-def _enum_zes_device_infos(visible_mask: list[int]) -> int:
+def _enum_zes_device_infos(visible_mask: List[int]) -> int:
     r"""Enumerate visible XPU devices via Level Zero Sysman and cache their info.
 
     Enumerates devices from the first Level Zero Sysman driver and counts those
@@ -240,7 +242,7 @@ def _enum_zes_device_infos(visible_mask: list[int]) -> int:
     return num_dgpu or num_igpu
 
 
-def _raw_device_count_zes(visible_mask: list[int]) -> int:
+def _raw_device_count_zes(visible_mask: List[int]) -> int:
     r"""Return the visible XPU device count via Level Zero Sysman, or negative on failure."""
     return _enum_zes_device_infos(visible_mask)
 
@@ -450,7 +452,7 @@ def get_device_name(device: Device = None) -> str:
 
 
 @lru_cache(None)
-def get_device_capability(device: Device = None) -> dict[str, Any]:
+def get_device_capability(device: Device = None) -> Dict[str, Any]:
     r"""Get the xpu capability of a device.
 
     Args:
@@ -461,7 +463,7 @@ def get_device_capability(device: Device = None) -> dict[str, Any]:
             (default).
 
     Returns:
-        dict[str, Any]: the xpu capability dictionary of the device
+        Dict[str, Any]: the xpu capability dictionary of the device
     """
     props = get_device_properties(device)
     # Only keep attributes that are safe for dictionary serialization.
@@ -491,7 +493,7 @@ def get_device_properties(
     - ``max_num_sub_groups`` (int): maximum number of sub-groups supported in a work-group.
     - ``memory_clock_rate`` (int) maximum clock rate of device's global memory in MHz.
     - ``memory_bus_width`` (int) maximum bus width between device and memory in bits.
-    - ``sub_group_sizes``: (list[int]): a list of supported sub-group sizes.
+    - ``sub_group_sizes``: (List[int]): a list of supported sub-group sizes.
     - ``local_mem_size`` (int): device local memory capacity that can be allocated per work-group in bytes.
     - ``has_fp16`` (bool): whether float16 dtype is supported.
     - ``has_fp64`` (bool): whether float64 dtype is supported.
@@ -524,7 +526,7 @@ def current_device() -> int:
     return torch._C._xpu_getDevice()
 
 
-def _get_device(device: int | str | torch.device) -> torch.device:
+def _get_device(device: Union[Union[int, str], torch.device]) -> torch.device:
     r"""Return the torch.device type object from the passed in device.
 
     Args:
@@ -565,9 +567,9 @@ class StreamContext:
     .. note:: Streams are per-device.
     """
 
-    cur_stream: torch.xpu.Stream | None
+    cur_stream: Optional[torch.xpu.Stream]
 
-    def __init__(self, stream: torch.xpu.Stream | None) -> None:
+    def __init__(self, stream: Optional[torch.xpu.Stream]) -> None:
         self.stream = stream
         self.idx = _get_device_index(None, True)
         if self.idx is None:
@@ -596,7 +598,7 @@ class StreamContext:
         torch.xpu.set_stream(self.src_prev_stream)
 
 
-def stream(stream: torch.xpu.Stream | None) -> StreamContext:
+def stream(stream: Optional[torch.xpu.Stream]) -> StreamContext:
     r"""Wrap around the Context-manager StreamContext that selects a given stream.
 
     Arguments:
@@ -694,7 +696,7 @@ def synchronize(device: Device = None) -> None:
     return torch._C._xpu_synchronize(device)
 
 
-def get_arch_list() -> list[str]:
+def get_arch_list() -> List[str]:
     r"""Return list XPU architectures this library was compiled for."""
     if not _is_compiled():
         return []
@@ -725,7 +727,7 @@ def _get_generator(device: torch.device) -> torch._C.Generator:
 
 
 def _set_rng_state_offset(
-    offset: int, device: int | str | torch.device = "xpu"
+    offset: Union[int, device: int, str, torch.device]= "xpu"
 ) -> None:
     r"""Set the random number generator state offset of the specified GPU.
 
@@ -743,7 +745,7 @@ def _set_rng_state_offset(
     _lazy_call(cb)
 
 
-def _get_rng_state_offset(device: int | str | torch.device = "xpu") -> int:
+def _get_rng_state_offset(device: Union[Union[int, str], torch.device] = "xpu") -> int:
     r"""Return the random number generator state offset of the specified GPU.
 
     Args:
@@ -912,7 +914,7 @@ from .random import (
 )
 
 
-_POOL_HANDLE = NewType("_POOL_HANDLE", tuple[int, int])
+_POOL_HANDLE = NewType("_POOL_HANDLE", Tuple[int, int])
 __all__ = [
     "Event",
     "Stream",

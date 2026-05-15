@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator
+
 from enum import auto, Enum
 from functools import partial
-from typing import Any
+from typing import Any, Callable, Dict, Iterator, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -59,7 +61,7 @@ class ActivationWrapper(torch.nn.Module, ABC):
         self,
         *args,
         **kwargs,
-    ) -> Iterator[tuple[str, torch.nn.Parameter]]:
+    ) -> Iterator[Tuple[str, torch.nn.Parameter]]:
         """
         Override :meth:`named_parameters()` to intercept parameter names.
 
@@ -71,10 +73,10 @@ class ActivationWrapper(torch.nn.Module, ABC):
     @staticmethod
     def _post_state_dict_hook(
         module: nn.Module,
-        state_dict: dict[str, Any],
+        state_dict: Dict[str, Any],
         prefix: str,
         *args: Any,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """
         _post_state_dict_hook() is called after the state_dict() of this FSDP module is executed.
 
@@ -89,7 +91,7 @@ class ActivationWrapper(torch.nn.Module, ABC):
     @staticmethod
     def _pre_load_state_dict_hook(
         module: nn.Module,
-        state_dict: dict[str, Any],
+        state_dict: Dict[str, Any],
         prefix: str,
         *args: Any,
     ) -> None:
@@ -240,7 +242,7 @@ def apply_activation_checkpointing(
     model,
     checkpoint_wrapper_fn=checkpoint_wrapper,
     check_fn=lambda _: True,
-    auto_wrap_policy: Callable[[nn.Module, bool, int], bool] | None = None,
+    auto_wrap_policy: Callable[[nn.Optional[Module, bool, int], bool]] = None
 ):
     """
     Apply :func:`checkpoint_wrapper` to modules within `model` based on a user-defined configuration.

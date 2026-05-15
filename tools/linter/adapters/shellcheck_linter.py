@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 from enum import Enum
-from typing import NamedTuple
+from typing import List, NamedTuple, Union
 
 
 LINTER_CODE = "SHELLCHECK"
@@ -29,19 +29,19 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 def run_command(
-    args: list[str],
+    args: List[str],
 ) -> subprocess.CompletedProcess[bytes]:
     logging.debug("$ %s", " ".join(args))
     start_time = time.monotonic()
@@ -59,9 +59,9 @@ def _is_x86_64() -> bool:
     return platform.machine() == "x86_64"
 
 
-def _shellcheck_candidates() -> list[str]:
+def _shellcheck_candidates() -> List[str]:
     path_env = os.environ.get("PATH", "")
-    candidates: list[str] = []
+    candidates: List[str] = []
     for directory in path_env.split(os.pathsep):
         if not directory:
             continue
@@ -72,12 +72,12 @@ def _shellcheck_candidates() -> list[str]:
 
 
 def check_files(
-    files: list[str],
-) -> list[LintMessage]:
+    files: List[str],
+) -> List[LintMessage]:
     args = ["--external-sources", "--format=json1"] + files
 
-    proc: subprocess.CompletedProcess[bytes] | None = None
-    last_error: OSError | None = None
+    proc: Union[subprocess.CompletedProcess[bytes], None] = None
+    last_error: Union[OSError, None] = None
 
     for shellcheck in _shellcheck_candidates():
         try:

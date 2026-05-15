@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Handle the details of subprocess calls and retries for a given benchmark run."""
 
 # mypy: ignore-errors

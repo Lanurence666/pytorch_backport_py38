@@ -1,6 +1,6 @@
+from __future__ import annotations
 """Error classes for the ONNX exporter."""
 
-from __future__ import annotations
 
 import torch.onnx.errors
 

@@ -364,12 +364,7 @@ class TestPythonRegistration(TestCase):
                 with self.assertRaisesRegex(
                     RuntimeError, "already a kernel registered from python"
                 ):
-                    my_lib2.impl(
-                        torch.ops.aten.mul.Tensor,
-                        my_mul,
-                        "ZeroTensor",
-                        allow_override=False,
-                    )
+                    my_lib2.impl(torch.ops.aten.mul.Tensor, my_mul, "ZeroTensor")
 
             # Validate that lib2 is not affected by removing lib1
             self.assertFalse(torch.mul(x, y)._is_zerotensor())
@@ -387,7 +382,7 @@ class TestPythonRegistration(TestCase):
 
     def test_finalizer(self):
         impls_refcnt = sys.getrefcount(torch.library._impls)
-        lib = Library(self.test_ns, "FRAGMENT")  # noqa: SCOPED_LIBRARY
+        lib = Library(self.test_ns, "FRAGMENT")  # noqa: TOR901
         lib.define("foo123(Tensor x) -> Tensor")
 
         # 1 for `lib`, 1 for sys.getrefcount' for previous python version (<=3.12)
@@ -438,7 +433,7 @@ class TestPythonRegistration(TestCase):
         # `del lib` (running the finalizer) must clear the cached
         # OpOverloadPacket on torch.ops.<ns>, otherwise iterating ops in that
         # namespace later raises AttributeError.
-        lib = Library(self.test_ns, "DEF")  # noqa: SCOPED_LIBRARY
+        lib = Library(self.test_ns, "DEF")  # noqa: TOR901
         lib.define("my_func() -> None")
 
         @impl(lib, "my_func", "")
@@ -702,7 +697,7 @@ class TestPythonRegistration(TestCase):
     @unittest.skipIf(IS_WINDOWS, "Skipped under Windows")
     def test_alias_analysis(self):
         def test_helper(alias_analysis=""):
-            my_lib1 = Library(self.test_ns, "DEF")  # noqa: SCOPED_LIBRARY
+            my_lib1 = Library(self.test_ns, "DEF")  # noqa: TOR901
 
             called = [0]
 
@@ -728,11 +723,11 @@ class TestPythonRegistration(TestCase):
 
     def test_error_for_unsupported_ns_or_kind(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unsupported kind"):
-            my_lib1 = Library("myns", "BLA")  # noqa: SCOPED_LIBRARY
+            my_lib1 = Library("myns", "BLA")  # noqa: TOR901
 
         for kind in ("DEF", "FRAGMENT"):
             with self.assertRaisesRegex(ValueError, "reserved namespace"):
-                my_lib1 = Library("prim", kind)  # noqa: SCOPED_LIBRARY
+                my_lib1 = Library("prim", kind)  # noqa: TOR901
 
     def test_dispatcher_error_filenames(self) -> None:
         # Test that dispatcher errors report correct Python filenames and line numbers
@@ -744,15 +739,13 @@ class TestPythonRegistration(TestCase):
         # NOTE: Using Library directly instead of _scoped_library because this test
         # specifically verifies filename tracking in error messages, and _scoped_library
         # would report library.py locations instead of the actual test file locations
-        lib1 = Library(self.test_ns, "DEF")  # FIRST_LIB_MARKER  # noqa: SCOPED_LIBRARY
+        lib1 = Library(self.test_ns, "DEF")  # FIRST_LIB_MARKER  # noqa: TOR901
         try:
             lib1.define("duplicate_op(Tensor x) -> Tensor")
 
             # Try to create another library with same namespace - this should trigger error
             with self.assertRaises(RuntimeError) as cm:
-                lib2 = Library(  # SECOND_LIB_MARKER  # noqa: SCOPED_LIBRARY
-                    self.test_ns, "DEF"
-                )
+                lib2 = Library(self.test_ns, "DEF")  # SECOND_LIB_MARKER  # noqa: TOR901
         finally:
             lib1._destroy()
 

@@ -30,6 +30,7 @@
 
 #include <c10/core/Layout.h>
 #include <fmt/format.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 using namespace at;
 using namespace torch::autograd::utils;

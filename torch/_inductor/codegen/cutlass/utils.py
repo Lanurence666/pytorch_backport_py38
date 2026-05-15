@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import atexit
 import functools
 import logging
@@ -8,7 +10,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Type, Union
 from typing_extensions import TypeIs
 
 import sympy
@@ -60,7 +62,7 @@ def move_cutlass_compiled_cache() -> None:
         log.warning("Failed to move CUTLASS compiled cache file", exc_info=True)
 
 
-def _rename_cutlass_import(content: str, cutlass_modules: list[str]) -> str:
+def _rename_cutlass_import(content: str, cutlass_modules: List[str]) -> str:
     for cutlass_module in cutlass_modules:
         content = content.replace(
             f"from {cutlass_module} import ",
@@ -69,7 +71,7 @@ def _rename_cutlass_import(content: str, cutlass_modules: list[str]) -> str:
     return content
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def try_import_cutlass() -> bool:
     """
     We want to support three ways of passing in CUTLASS:
@@ -245,10 +247,10 @@ class CUTLASSArgs:
     CUTLASS args used to initialize a CUTLASS Manifest.
     """
 
-    architectures: str | None = None
-    toolkit_version: str | None = None
-    instantiation_level: str | None = None
-    operations: str | None = None
+    architectures: Optional[str] = None
+    toolkit_version: Optional[str] = None
+    instantiation_level: Optional[str] = None
+    operations: Optional[str] = None
 
     build_dir = ""
     curr_build_dir = ""
@@ -272,8 +274,8 @@ class CUTLASSArgs:
 
 
 @clear_on_fresh_cache
-@functools.cache
-def _gen_ops_cached(arch: str, version: str, device_type: str) -> dict[Any, Any]:
+@functools.lru_cache(maxsize=None)
+def _gen_ops_cached(arch: str, version: str, device_type: str) -> Dict[Any, Any]:
     # Note: Cache needs to be specific for cuda architecture and version
 
     # Import cutlass python scripts.
@@ -336,7 +338,7 @@ def _gen_ops_cached(arch: str, version: str, device_type: str) -> dict[Any, Any]
     return manifest.operations
 
 
-def gen_ops(device_type: str) -> dict[Any, Any]:
+def gen_ops(device_type: str) -> Dict[Any, Any]:
     """
     Generates all supported CUTLASS operations.
     """
@@ -391,7 +393,7 @@ def torch_dtype_to_cutlass_type(
 
 @functools.lru_cache(32)
 def dtype_match(
-    torch_dtype: torch.dtype | None,
+    torch_dtype: Optional[torch.dtype],
     cutlass_dtype: "cutlass_library.library.DataType",  # type: ignore[name-defined]  # noqa: F821
 ) -> bool:
     # Import cutlass python scripts.
@@ -422,8 +424,8 @@ def dtype_match(
 
 
 def get_accumulator_dtype(
-    input_torch_dtypes: list[torch.dtype],
-) -> torch.dtype | None:
+    input_torch_dtypes: List[torch.dtype],
+) -> Optional[torch.dtype]:
     """
     Given a pair of input torch dtypes, returns the inferred accumulator torch dtype.
     """
@@ -476,7 +478,7 @@ def get_accumulator_dtype(
 
 
 @functools.lru_cache(32)
-def get_alignments(torch_dtype: torch.dtype) -> list[int]:
+def get_alignments(torch_dtype: torch.dtype) -> List[int]:
     """
     Returns all possible valid CUTLASS alignments in terms of the number of elements for a given dtype.
     CUTLASS gemm / conv SM80 APIs support 16 bytes max alignment, and 2 bytes min alignment.
@@ -508,8 +510,8 @@ def get_max_alignment(inductor_layout: Layout) -> int:
     size = inductor_layout.size
     offset = inductor_layout.offset
 
-    def is_static_int(number: object) -> TypeIs[int | sympy.Integer]:
-        return isinstance(number, (int | sympy.Integer))
+    def is_static_int(number: object) -> TypeIs[Union[int, sympy.Integer]]:
+        return isinstance(number, ((int , sympy.Integer)))
 
     def a_factor_of(x, alignment):
         if is_static_int(x) and is_static_int(alignment):
@@ -558,7 +560,7 @@ class CUTLASSCompileSourceCapturingContext:
         )
         _compile_method_orig = codecache_cls.compile
 
-        def my_compile(source_code, dst_file_ext, extra_args: list[str] | None = None):
+        def my_compile(source_code, dst_file_ext, extra_args: Optional[List[str]] = None):
             self.sources.append(source_code)
             return _compile_method_orig(source_code, dst_file_ext)
 

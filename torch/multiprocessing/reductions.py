@@ -1,4 +1,5 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
 import multiprocessing
 import os
 import threading
@@ -7,6 +8,7 @@ from multiprocessing.util import register_after_fork
 
 import torch
 from torch._namedtensor_internals import check_serializing_named_tensor
+from typing import Dict, Type, Union
 
 
 try:
@@ -550,7 +552,7 @@ def rebuild_storage_fd(cls, df, size):
 
 
 def rebuild_storage_filename(cls, manager, handle, size, dtype=None):
-    storage: torch.TypedStorage | torch.UntypedStorage = storage_from_cache(cls, handle)
+    storage: Union[torch.TypedStorage, torch.UntypedStorage]= storage_from_cache(cls, handle)
     if storage is not None:
         return storage._shared_decref()
     if dtype is None:

@@ -1,7 +1,7 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
 r"""Learning Rate Scheduler."""
 
-from __future__ import annotations
 
 import math
 import types
@@ -9,13 +9,21 @@ import warnings
 from bisect import bisect_right
 from collections import Counter
 from functools import partial, wraps
-from typing import Any, cast, Literal, SupportsFloat, TYPE_CHECKING, TypedDict
-from typing_extensions import override, Self
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, SupportsFloat, TYPE_CHECKING, Type, TypedDict, Union, cast
+from typing_extensions import Literal, Self, override
 from weakref import ref
 
 from torch import inf, Tensor
 
 from .optimizer import _to_scalar, Optimizer
+
+
+def _zip_strict(*iterables):
+    iterables = [list(it) for it in iterables]
+    lengths = [len(it) for it in iterables]
+    if len(set(lengths)) > 1:
+        raise ValueError(f"Iterables have different lengths: {lengths}")
+    return zip(*iterables)
 
 
 if TYPE_CHECKING:
@@ -69,7 +77,7 @@ def _format_param(name: str, optimizer: Optimizer, param):
     return list(map(_copy, param))
 
 
-def _param_groups_val_list(optimizer: Optimizer, key: str) -> list[Any]:
+def _param_groups_val_list(optimizer: Optimizer, key: str) -> List[Any]:
     """Create a list containing group[key] for each optimizer param_group.
     Prevents aliasing when group[key] could be a Tensor.
     Raises a KeyError when group[key] does not exist.
@@ -81,7 +89,7 @@ def _param_groups_val_list(optimizer: Optimizer, key: str) -> list[Any]:
 
 
 def _update_param_group_val(
-    param_group: dict[str, Any], key: str, val: float | Tensor
+    param_group: Dict[str, Any], key: str, val: Union[float, Tensor]
 ) -> None:
     """Set param_group[key] to val without aliasing or assignment when they're
     both tensors. Raises a KeyError if param_group[key] does not exist.
@@ -142,7 +150,7 @@ class LRScheduler:
                         "1. You're trying to resume training from a checkpoint but haven't properly loaded the optimizer state\n"
                         "2. You're using last_epoch >= 0 for a fresh training run (not recommended)"
                     )
-        self.base_lrs: list[float | Tensor] = _param_groups_val_list(
+        self.base_lrs: List[Union[float, Tensor]] = _param_groups_val_list(
             optimizer, "initial_lr"
         )
         self.last_epoch = last_epoch
@@ -179,7 +187,7 @@ class LRScheduler:
         with _initial_mode(self):
             self.step()
 
-    def state_dict(self) -> dict[str, Any]:
+    def state_dict(self) -> Dict[str, Any]:
         """Return the state of the scheduler as a :class:`dict`.
 
         It contains an entry for every variable in ``self.__dict__`` which
@@ -189,7 +197,7 @@ class LRScheduler:
             key: value for key, value in self.__dict__.items() if key != "optimizer"
         }
 
-    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         """Load the scheduler's state.
 
         Args:
@@ -198,11 +206,11 @@ class LRScheduler:
         """
         self.__dict__.update(state_dict)
 
-    def get_last_lr(self) -> list[float | Tensor]:
+    def get_last_lr(self) -> List[Union[float, Tensor]]:
         r"""Get the most recent learning rates computed by this scheduler.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates with entries
+            List[Union[float, Tensor]]: A :class:`list` of learning rates with entries
             for each of the optimizer's
             :attr:`~torch.optim.Optimizer.param_groups`, with the same types as
             their ``group["lr"]``\s.
@@ -216,12 +224,12 @@ class LRScheduler:
         # corrupt their learning rates by modifying the outputs in place.
         return self._last_lr
 
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 
@@ -235,7 +243,7 @@ class LRScheduler:
         """
         raise NotImplementedError
 
-    def step(self, epoch: int | None = None) -> None:
+    def step(self, epoch: Optional[int] = None) -> None:
         """Step the scheduler.
 
         Args:
@@ -281,7 +289,7 @@ class LRScheduler:
             warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning, stacklevel=2)
         self._update_lr(epoch)
 
-    def _update_lr(self, epoch: int | None = None) -> None:
+    def _update_lr(self, epoch: Optional[int] = None) -> None:
         with _enable_get_lr_call(self):
             if epoch is None:
                 self.last_epoch += 1
@@ -289,14 +297,14 @@ class LRScheduler:
             else:
                 self.last_epoch = epoch
                 if hasattr(self, "_get_closed_form_lr"):
-                    values = cast(list[float | Tensor], self._get_closed_form_lr())
+                    values = cast(List[Union[float, Tensor]], self._get_closed_form_lr())
                 else:
                     values = self.get_lr()
 
-        for param_group, lr in zip(self.optimizer.param_groups, values, strict=True):
+        for param_group, lr in _zip_strict(self.optimizer.param_groups, values):
             _update_param_group_val(param_group, "lr", lr)
 
-        self._last_lr: list[float | Tensor] = _param_groups_val_list(
+        self._last_lr: List[Union[float, Tensor]] = _param_groups_val_list(
             self.optimizer, "lr"
         )
 
@@ -378,12 +386,12 @@ class LambdaLR(LRScheduler):
     def __init__(
         self,
         optimizer: Optimizer,
-        lr_lambda: Callable[[int], float] | list[Callable[[int], float]],
+        lr_lambda: Callable[[int], float] | List[Callable[[int], float]],
         last_epoch: int = -1,
     ) -> None:
         self.optimizer = optimizer
 
-        self.lr_lambdas: list[Callable[[int], float]]
+        self.lr_lambdas: List[Callable[[int], float]]
         if not isinstance(lr_lambda, list) and not isinstance(lr_lambda, tuple):
             self.lr_lambdas = [lr_lambda] * len(optimizer.param_groups)
         else:
@@ -395,7 +403,7 @@ class LambdaLR(LRScheduler):
         super().__init__(optimizer, last_epoch)
 
     @override
-    def state_dict(self) -> dict[str, Any]:
+    def state_dict(self) -> Dict[str, Any]:
         """Return the state of the scheduler as a :class:`dict`.
 
         It contains an entry for every variable in ``self.__dict__`` which is not the optimizer.
@@ -418,7 +426,7 @@ class LambdaLR(LRScheduler):
         return state_dict
 
     @override
-    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         """Load the scheduler's state.
 
         When saving or loading the scheduler, please make sure to also save or load the state of the optimizer.
@@ -438,7 +446,7 @@ class LambdaLR(LRScheduler):
                 self.lr_lambdas[idx].__dict__.update(fn)
 
     @override
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
@@ -446,7 +454,7 @@ class LambdaLR(LRScheduler):
         :attr:`last_epoch`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 
@@ -462,7 +470,7 @@ class LambdaLR(LRScheduler):
 
         return [
             base_lr * lmbda(self.last_epoch)
-            for lmbda, base_lr in zip(self.lr_lambdas, self.base_lrs, strict=True)
+            for lmbda, base_lr in _zip_strict(self.lr_lambdas, self.base_lrs)
         ]
 
 
@@ -493,12 +501,12 @@ class MultiplicativeLR(LRScheduler):
     def __init__(
         self,
         optimizer: Optimizer,
-        lr_lambda: Callable[[int], float] | list[Callable[[int], float]],
+        lr_lambda: Callable[[int], float] | List[Callable[[int], float]],
         last_epoch: int = -1,
     ) -> None:
         self.optimizer = optimizer
 
-        self.lr_lambdas: list[Callable[[int], float]]
+        self.lr_lambdas: List[Callable[[int], float]]
         if not isinstance(lr_lambda, list) and not isinstance(lr_lambda, tuple):
             self.lr_lambdas = [lr_lambda] * len(optimizer.param_groups)
         else:
@@ -515,7 +523,7 @@ class MultiplicativeLR(LRScheduler):
         super().__init__(optimizer, last_epoch)
 
     @override
-    def state_dict(self) -> dict[str, Any]:
+    def state_dict(self) -> Dict[str, Any]:
         """Return the state of the scheduler as a :class:`dict`.
 
         It contains an entry for every variable in ``self.__dict__`` which
@@ -537,7 +545,7 @@ class MultiplicativeLR(LRScheduler):
         return state_dict
 
     @override
-    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         """Load the scheduler's state.
 
         Args:
@@ -555,7 +563,7 @@ class MultiplicativeLR(LRScheduler):
                 self.lr_lambdas[idx].__dict__.update(fn)
 
     @override
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
@@ -564,7 +572,7 @@ class MultiplicativeLR(LRScheduler):
         :attr:`lr_lambdas` at :attr:`last_epoch`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 
@@ -581,9 +589,8 @@ class MultiplicativeLR(LRScheduler):
         if not self._is_initial:
             return [
                 group["lr"] * lmbda(self.last_epoch)
-                for lmbda, group in zip(
-                    self.lr_lambdas, self.optimizer.param_groups, strict=True
-                )
+                for lmbda, group in _zip_strict(
+                    self.lr_lambdas, self.optimizer.param_groups)
             ]
         else:
             return _param_groups_val_list(self.optimizer, "lr")
@@ -630,7 +637,7 @@ class StepLR(LRScheduler):
         super().__init__(optimizer, last_epoch)
 
     @override
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
@@ -639,7 +646,7 @@ class StepLR(LRScheduler):
         :attr:`~torch.optim.Optimizer.param_groups` by :attr:`gamma`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 
@@ -657,7 +664,7 @@ class StepLR(LRScheduler):
             return _param_groups_val_list(self.optimizer, "lr")
         return [group["lr"] * self.gamma for group in self.optimizer.param_groups]
 
-    def _get_closed_form_lr(self) -> list[float | Tensor]:
+    def _get_closed_form_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute learning rates for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups` at :attr:`last_epoch` using
         a closed-form formula.
@@ -666,7 +673,7 @@ class StepLR(LRScheduler):
         when an epoch is passed to :meth:`step`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
         """
@@ -716,7 +723,7 @@ class MultiStepLR(LRScheduler):
         super().__init__(optimizer, last_epoch)
 
     @override
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
@@ -725,7 +732,7 @@ class MultiStepLR(LRScheduler):
         :attr:`~torch.optim.Optimizer.param_groups` by :attr:`gamma`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 
@@ -759,7 +766,7 @@ class MultiStepLR(LRScheduler):
         when an epoch is passed to :meth:`step`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
         """
@@ -820,7 +827,7 @@ class ConstantLR(LRScheduler):
         super().__init__(optimizer, last_epoch)
 
     @override
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
@@ -830,7 +837,7 @@ class ConstantLR(LRScheduler):
         scaling by ``1 / factor``.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 
@@ -863,7 +870,7 @@ class ConstantLR(LRScheduler):
         when an epoch is passed to :meth:`step`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
         """
@@ -934,7 +941,7 @@ class LinearLR(LRScheduler):
         super().__init__(optimizer, last_epoch)
 
     @override
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
@@ -944,7 +951,7 @@ class LinearLR(LRScheduler):
         across :attr:`total_iters` steps.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 
@@ -988,7 +995,7 @@ class LinearLR(LRScheduler):
         when an epoch is passed to :meth:`step`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
         """
@@ -1035,7 +1042,7 @@ class ExponentialLR(LRScheduler):
         super().__init__(optimizer, last_epoch)
 
     @override
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
@@ -1043,7 +1050,7 @@ class ExponentialLR(LRScheduler):
         :attr:`~torch.optim.Optimizer.param_groups` by :attr:`gamma`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 
@@ -1072,7 +1079,7 @@ class ExponentialLR(LRScheduler):
         when an epoch is passed to :meth:`step`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
         """
@@ -1119,8 +1126,8 @@ class SequentialLR(LRScheduler):
     def __init__(
         self,
         optimizer: Optimizer,
-        schedulers: list[LRScheduler],
-        milestones: list[int],
+        schedulers: List[LRScheduler],
+        milestones: List[int],
         last_epoch: int = -1,
     ) -> None:
         if len(schedulers) < 1:
@@ -1195,7 +1202,7 @@ class SequentialLR(LRScheduler):
         self._last_lr = scheduler.get_last_lr()
 
     @override
-    def state_dict(self) -> dict[str, Any]:
+    def state_dict(self) -> Dict[str, Any]:
         """Return the state of the scheduler as a :class:`dict`.
 
         It contains an entry for every variable in ``self.__dict__`` which
@@ -1216,7 +1223,7 @@ class SequentialLR(LRScheduler):
         return state_dict
 
     @override
-    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         """Load the scheduler's state.
 
         Args:
@@ -1272,7 +1279,7 @@ class PolynomialLR(LRScheduler):
         super().__init__(optimizer, last_epoch)
 
     @override
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
@@ -1288,7 +1295,7 @@ class PolynomialLR(LRScheduler):
         is reached.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 
@@ -1311,7 +1318,7 @@ class PolynomialLR(LRScheduler):
         ) ** self.power
         return [group["lr"] * decay_factor for group in self.optimizer.param_groups]
 
-    def _get_closed_form_lr(self) -> list[float | Tensor]:
+    def _get_closed_form_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute learning rates for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups` at :attr:`last_epoch` using
         a closed-form formula.
@@ -1320,7 +1327,7 @@ class PolynomialLR(LRScheduler):
         when an epoch is passed to :meth:`step`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
         """
@@ -1396,7 +1403,7 @@ class CosineAnnealingLR(LRScheduler):
         super().__init__(optimizer, last_epoch)
 
     @override
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
@@ -1410,7 +1417,7 @@ class CosineAnnealingLR(LRScheduler):
             \frac{\texttt{last\_epoch}}{\texttt{T\_max}}\right) \right)
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 
@@ -1432,17 +1439,15 @@ class CosineAnnealingLR(LRScheduler):
                 + (base_lr - self.eta_min)
                 * (1 + math.cos((self.last_epoch) * math.pi / self.T_max))
                 / 2
-                for base_lr, group in zip(
-                    self.base_lrs, self.optimizer.param_groups, strict=True
-                )
+                for base_lr, group in _zip_strict(
+                    self.base_lrs, self.optimizer.param_groups)
             ]
         elif (self.last_epoch - 1 - self.T_max) % (2 * self.T_max) == 0:
             return [
                 group["lr"]
                 + (base_lr - self.eta_min) * (1 - math.cos(math.pi / self.T_max)) / 2
-                for base_lr, group in zip(
-                    self.base_lrs, self.optimizer.param_groups, strict=True
-                )
+                for base_lr, group in _zip_strict(
+                    self.base_lrs, self.optimizer.param_groups)
             ]
         return [
             (1 + math.cos(math.pi * self.last_epoch / self.T_max))
@@ -1452,7 +1457,7 @@ class CosineAnnealingLR(LRScheduler):
             for group in self.optimizer.param_groups
         ]
 
-    def _get_closed_form_lr(self) -> list[float | Tensor]:
+    def _get_closed_form_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute learning rates for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups` at :attr:`last_epoch` using
         a closed-form formula.
@@ -1461,7 +1466,7 @@ class CosineAnnealingLR(LRScheduler):
         when an epoch is passed to :meth:`step`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
         """
@@ -1506,7 +1511,7 @@ class ChainedScheduler(LRScheduler):
     """
 
     def __init__(
-        self, schedulers: Sequence[LRScheduler], optimizer: Optimizer | None = None
+        self, schedulers: Sequence[LRScheduler], optimizer: Optional[Optimizer] = None
     ) -> None:
         if len(schedulers) < 1:
             raise ValueError(
@@ -1542,7 +1547,7 @@ class ChainedScheduler(LRScheduler):
         self._last_lr = _param_groups_val_list(self._schedulers[-1].optimizer, "lr")
 
     @override
-    def state_dict(self) -> dict[str, Any]:
+    def state_dict(self) -> Dict[str, Any]:
         """Return the state of the scheduler as a :class:`dict`.
 
         It contains an entry for every variable in ``self.__dict__`` which
@@ -1563,7 +1568,7 @@ class ChainedScheduler(LRScheduler):
         return state_dict
 
     @override
-    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         """Load the scheduler's state.
 
         Args:
@@ -1653,7 +1658,7 @@ class ReduceLROnPlateau(LRScheduler):
         threshold: float = 1e-4,
         threshold_mode: Literal["rel", "abs"] = "rel",
         cooldown: int = 0,
-        min_lr: list[float] | float = 0,
+        min_lr: Union[List[float], float] = 0,
         eps: float = 1e-8,
     ) -> None:
         if factor >= 1.0:
@@ -1776,7 +1781,7 @@ class ReduceLROnPlateau(LRScheduler):
         self.threshold_mode = threshold_mode
 
     @override
-    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         """Load the scheduler's state."""
         self.__dict__.update(state_dict)
         self._init_is_better(
@@ -1886,10 +1891,10 @@ class CyclicLR(LRScheduler):
     def __init__(
         self,
         optimizer: Optimizer,
-        base_lr: float | list[float],
-        max_lr: float | list[float],
+        base_lr: Union[float, List[float]],
+        max_lr: Union[float, List[float]],
         step_size_up: int = 2000,
-        step_size_down: int | None = None,
+        step_size_down: Optional[int] = None,
         mode: Literal["triangular", "triangular2", "exp_range"] = "triangular",
         gamma: float = 1.0,
         scale_fn: Callable[[float], float] | None = None,
@@ -1906,7 +1911,7 @@ class CyclicLR(LRScheduler):
 
         base_lrs = _format_param("base_lr", optimizer, base_lr)
         if last_epoch == -1:
-            for lr, group in zip(base_lrs, optimizer.param_groups, strict=True):
+            for lr, group in _zip_strict(base_lrs, optimizer.param_groups):
                 _update_param_group_val(group, "lr", lr)
 
         self.max_lrs = _format_param("max_lr", optimizer, max_lr)
@@ -1948,12 +1953,10 @@ class CyclicLR(LRScheduler):
             )
             self.max_momentums = _format_param("max_momentum", optimizer, max_momentum)
             if last_epoch == -1:
-                for m_momentum, b_momentum, group in zip(
+                for m_momentum, b_momentum, group in _zip_strict(
                     self.max_momentums,
                     self.base_momentums,
-                    optimizer.param_groups,
-                    strict=True,
-                ):
+                    optimizer.param_groups):
                     if self.use_beta1:
                         group["betas"] = (m_momentum, *group["betas"][1:])
                     else:
@@ -1997,7 +2000,7 @@ class CyclicLR(LRScheduler):
         return gamma**x
 
     @override
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
@@ -2006,7 +2009,7 @@ class CyclicLR(LRScheduler):
         group's ``base_lr`` and ``max_lr`` using :meth:`scale_fn`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 
@@ -2036,7 +2039,7 @@ class CyclicLR(LRScheduler):
             scale_factor = (x - 1) / (self.step_ratio - 1)
 
         lrs = []
-        for base_lr, max_lr in zip(self.base_lrs, self.max_lrs, strict=True):
+        for base_lr, max_lr in _zip_strict(self.base_lrs, self.max_lrs):
             base_height = (max_lr - base_lr) * scale_factor
             if self.scale_mode == "cycle":
                 lr = base_lr + base_height * self.scale_fn(cycle)
@@ -2046,9 +2049,8 @@ class CyclicLR(LRScheduler):
 
         if self.cycle_momentum:
             momentums = []
-            for base_momentum, max_momentum in zip(
-                self.base_momentums, self.max_momentums, strict=True
-            ):
+            for base_momentum, max_momentum in _zip_strict(
+                self.base_momentums, self.max_momentums):
                 base_height = (max_momentum - base_momentum) * scale_factor
                 if self.scale_mode == "cycle":
                     momentum = max_momentum - base_height * self.scale_fn(cycle)
@@ -2057,9 +2059,8 @@ class CyclicLR(LRScheduler):
                         self.last_epoch
                     )
                 momentums.append(momentum)
-            for param_group, momentum in zip(
-                self.optimizer.param_groups, momentums, strict=True
-            ):
+            for param_group, momentum in _zip_strict(
+                self.optimizer.param_groups, momentums):
                 if self.use_beta1:
                     param_group["betas"] = (momentum, *param_group["betas"][1:])
                 else:
@@ -2068,7 +2069,7 @@ class CyclicLR(LRScheduler):
         return lrs
 
     @override
-    def state_dict(self) -> dict[str, Any]:
+    def state_dict(self) -> Dict[str, Any]:
         """Return the state of the scheduler as a :class:`dict`.
 
         It contains an entry for every variable in ``self.__dict__`` which
@@ -2092,7 +2093,7 @@ class CyclicLR(LRScheduler):
         return state
 
     @override
-    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         """Load the scheduler's state."""
         fn = state_dict.pop("_scale_fn_custom")
         super().load_state_dict(state_dict)
@@ -2166,7 +2167,7 @@ class CosineAnnealingWarmRestarts(LRScheduler):
         super().__init__(optimizer, last_epoch)
 
     @override
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
@@ -2184,7 +2185,7 @@ class CosineAnnealingWarmRestarts(LRScheduler):
         :attr:`T_i` becomes :attr:`T_mult` times larger after each restart.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 
@@ -2388,15 +2389,15 @@ class OneCycleLR(LRScheduler):
     def __init__(
         self,
         optimizer: Optimizer,
-        max_lr: float | list[float],
-        total_steps: int | None = None,
-        epochs: int | None = None,
-        steps_per_epoch: int | None = None,
+        max_lr: Union[float, List[float]],
+        total_steps: Optional[int] = None,
+        epochs: Optional[int] = None,
+        steps_per_epoch: Optional[int] = None,
         pct_start: float = 0.3,
         anneal_strategy: Literal["cos", "linear"] = "cos",
         cycle_momentum: bool = True,
-        base_momentum: float | list[float] = 0.85,
-        max_momentum: float | list[float] = 0.95,
+        base_momentum: Union[float, List[float]] = 0.85,
+        max_momentum: Union[float, List[float]] = 0.95,
         div_factor: float = 25.0,
         final_div_factor: float = 1e4,
         three_phase: bool = False,
@@ -2427,7 +2428,7 @@ class OneCycleLR(LRScheduler):
                 "You must define either total_steps OR (epochs AND steps_per_epoch)"
             )
 
-        self._schedule_phases: list[_SchedulePhase]
+        self._schedule_phases: List[_SchedulePhase]
         if three_phase:
             self._schedule_phases = [
                 {
@@ -2506,9 +2507,8 @@ class OneCycleLR(LRScheduler):
             max_momentums = _format_param("max_momentum", optimizer, max_momentum)
             base_momentums = _format_param("base_momentum", optimizer, base_momentum)
             if last_epoch == -1:
-                for m_momentum, b_momentum, group in zip(
-                    max_momentums, base_momentums, optimizer.param_groups, strict=True
-                ):
+                for m_momentum, b_momentum, group in _zip_strict(
+                    max_momentums, base_momentums, optimizer.param_groups):
                     if self.use_beta1:
                         group["betas"] = (m_momentum, *group["betas"][1:])
                     else:
@@ -2542,7 +2542,7 @@ class OneCycleLR(LRScheduler):
         return (end - start) * pct + start
 
     @override
-    def get_lr(self) -> list[float | Tensor]:
+    def get_lr(self) -> List[Union[float, Tensor]]:
         r"""Compute the next learning rate for each of the optimizer's
         :attr:`~torch.optim.Optimizer.param_groups`.
 
@@ -2551,7 +2551,7 @@ class OneCycleLR(LRScheduler):
         :meth:`_anneal_func`.
 
         Returns:
-            list[float | Tensor]: A :class:`list` of learning rates for each of
+            List[Union[float, Tensor]]: A :class:`list` of learning rates for each of
             the optimizer's :attr:`~torch.optim.Optimizer.param_groups` with the
             same types as their current ``group["lr"]``\s.
 

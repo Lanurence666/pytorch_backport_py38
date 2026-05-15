@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -15,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 from jinja2 import DictLoader, Environment
 
 from torch.distributed.debug._store import get_world_size, tcpstore_client
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -27,7 +30,7 @@ _DEFAULT_FETCH_TIMEOUT: float = 60.0
 # ---------------------------------------------------------------------------
 
 
-@dataclass(slots=True)
+@dataclass
 class Response:
     status_code: int
     text: str
@@ -40,13 +43,13 @@ class Response:
         return json.loads(self.text)
 
 
-@dataclass(slots=True)
+@dataclass
 class NavLink:
     path: str
     label: str
 
 
-@dataclass(slots=True)
+@dataclass
 class Route:
     path: str
     handler: Callable[["HTTPRequestHandler"], bytes]
@@ -56,15 +59,15 @@ class DebugHandler(ABC):
     fetch_timeout: float = _DEFAULT_FETCH_TIMEOUT
 
     @abstractmethod
-    def routes(self) -> list[Route]: ...
+    def routes(self) -> List[Route]: ...
 
     @abstractmethod
-    def nav_links(self) -> list[NavLink]: ...
+    def nav_links(self) -> List[NavLink]: ...
 
-    def templates(self) -> dict[str, str]:
+    def templates(self) -> Dict[str, str]:
         return {}
 
-    def dump(self) -> str | None:
+    def dump(self) -> Optional[str]:
         return None
 
     def dump_filename(self) -> str:
@@ -76,7 +79,7 @@ class DebugHandler(ABC):
 # ---------------------------------------------------------------------------
 
 
-def fetch_thread_pool(urls: list[str], timeout: float) -> list[Response]:
+def fetch_thread_pool(urls: List[str], timeout: float) -> List[Response]:
     # late import for optional dependency
     import requests
 
@@ -99,7 +102,7 @@ def fetch_thread_pool(urls: list[str], timeout: float) -> list[Response]:
     return resps
 
 
-def fetch_aiohttp(urls: list[str], timeout: float) -> list[Response]:
+def fetch_aiohttp(urls: List[str], timeout: float) -> List[Response]:
     # late import for optional dependency
     # pyrefly: ignore [missing-import]
     import aiohttp
@@ -116,7 +119,7 @@ def fetch_aiohttp(urls: list[str], timeout: float) -> list[Response]:
         except Exception as e:
             return Response(502, f"{type(e).__name__}: {e}")
 
-    async def gather(urls: list[str]) -> list[Response]:
+    async def gather(urls: List[str]) -> List[Response]:
         client_timeout = aiohttp.ClientTimeout(total=timeout)
         async with aiohttp.ClientSession(timeout=client_timeout) as session:
             return list(await asyncio.gather(*[fetch(session, url) for url in urls]))
@@ -126,7 +129,7 @@ def fetch_aiohttp(urls: list[str], timeout: float) -> list[Response]:
 
 def fetch_all(
     endpoint: str, args: str = "", *, timeout: float
-) -> tuple[list[str], list[Response]]:
+) -> Tuple[List[str], List[Response]]:
     store = tcpstore_client()
     keys = [f"rank{r}" for r in range(get_world_size())]
     addrs = store.multi_get(keys)
@@ -145,7 +148,7 @@ def format_json(blob: str):
     return json.dumps(parsed, indent=2)
 
 
-def format_fetch_summary(addrs: list[str], resps: list[Response]) -> str | None:
+def format_fetch_summary(addrs: List[str], resps: List[Response]) -> Optional[str]:
     """Return a summary string if any workers failed, or None if all succeeded."""
     failed = [(i, r) for i, r in enumerate(resps) if r.status_code != 200]
     if not failed:
@@ -218,7 +221,7 @@ BASE_TEMPLATE = """
 <nav>
     <h1>Torch Distributed Debug Server</h1>
 
-    {{ nav_links | safe }}
+    {{ Union[nav_links, safe] }}
 </nav>
 
 <section class="content">
@@ -272,7 +275,7 @@ JSON_RESP_TEMPLATE = """
 class PeriodicDumper:
     def __init__(
         self,
-        handlers: list[DebugHandler],
+        handlers: List[DebugHandler],
         output_dir: str,
         interval_seconds: float = 60.0,
     ) -> None:
@@ -280,7 +283,7 @@ class PeriodicDumper:
         self._output_dir = output_dir
         self._interval_seconds = interval_seconds
         self._stop_event = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
         os.makedirs(self._output_dir, exist_ok=True)
@@ -343,7 +346,7 @@ class HTTPRequestHandler(BaseHTTPRequestHandler):
     def get_path(self) -> str:
         return urlparse(self.path).path
 
-    def get_query(self) -> dict[str, list[str]]:
+    def get_query(self) -> Dict[str, List[str]]:
         return parse_qs(self.get_raw_query())
 
     def get_raw_query(self) -> str:
@@ -362,7 +365,7 @@ class FrontendServer:
     def __init__(
         self,
         port: int,
-        handlers: list[DebugHandler] | None = None,
+        handlers: Optional[List[DebugHandler]] = None,
     ):
         if handlers is None:
             from torch.distributed.debug._debug_handlers import default_handlers
@@ -377,7 +380,7 @@ class FrontendServer:
         )
 
         # Merge all handler templates + shared templates
-        all_templates: dict[str, str] = {
+        all_templates: Dict[str, str] = {
             "base.html": BASE_TEMPLATE,
             "raw_resp.html": RAW_RESP_TEMPLATE,
             "json_resp.html": JSON_RESP_TEMPLATE,
@@ -395,7 +398,7 @@ class FrontendServer:
         )
 
         # Build route table from handlers
-        self._routes: dict[str, Callable[[HTTPRequestHandler], bytes]] = {}
+        self._routes: Dict[str, Callable[[HTTPRequestHandler], bytes]] = {}
         for handler in handlers:
             for route in handler.routes():
                 self._routes[route.path] = route.handler
@@ -458,10 +461,10 @@ class FrontendServer:
 
 def main(
     port: int,
-    dump_dir: str | None,
+    dump_dir: Optional[str],
     dump_interval: float,
-    handlers: list[DebugHandler],
-    enabled_dumps: set[str],
+    handlers: List[DebugHandler],
+    enabled_dumps: Set[str],
     fetch_timeout: float = 60.0,
 ) -> None:
     for handler in handlers:
@@ -472,7 +475,7 @@ def main(
     server = FrontendServer(port=port, handlers=handlers)
     logger.info("Frontend server started on port %d", server._server.server_port)
 
-    dumper: PeriodicDumper | None = None
+    dumper: Optional[PeriodicDumper] = None
     if dump_dir is not None:
         dumper = PeriodicDumper(
             [

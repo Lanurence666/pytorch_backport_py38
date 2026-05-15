@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: functorch"]
 
 """Adapted from https://github.com/arogozhnikov/einops/blob/230ac1526c1f42c9e1f7373912c7f8047496df11/tests/test_parsing.py.

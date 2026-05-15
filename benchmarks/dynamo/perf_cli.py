@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 CLI tool for launching, summarizing, and reproducing inductor perf regression runs.
 
@@ -10,7 +11,6 @@ Usage:
 Requires: gh CLI (authenticated), internet access to S3 (gha-artifacts bucket).
 """
 
-from __future__ import annotations
 
 import argparse
 import csv
@@ -169,7 +169,7 @@ def _short_config(config: str, device: str = "") -> str:
         if s in c:
             backend = c.split(s)[0]
             break
-    backend = backend.removeprefix("inductor_")
+    backend = (backend[len("inductor_"):] if backend.startswith("inductor_") else backend)
     mode = "training" if "training" in c else "inference" if "inference" in c else ""
     suite = ""
     for s in ("huggingface", "timm_models", "torchbench"):

@@ -1,10 +1,13 @@
 # mypy: allow-untyped-defs
 # need to fix prim_hop_base type annotations first
 
+from __future__ import annotations
+
 import dataclasses
 
 import torch
 from torch._higher_order_ops.base_hop import BaseHOP, FunctionWithNoFreeVars
+from typing import Optional
 
 
 class InvokeQuantTracer(BaseHOP):
@@ -49,7 +52,7 @@ class InvokeQuant:
     def __call__(
         self,
         *args,
-        scheme: str | None = None,
+        scheme: Optional[str]= None,
         **kwargs,
     ):
         if not torch.compiler.is_compiling():

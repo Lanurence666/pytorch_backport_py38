@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 from collections.abc import Callable
 from typing_extensions import deprecated
@@ -9,6 +11,7 @@ from torch.nn import _reduction as _Reduction, functional as F
 from .distance import PairwiseDistance
 from .linear import Linear
 from .module import Module
+from typing import Callable, Optional, Sequence, Tuple, Union
 
 
 __all__ = [
@@ -52,14 +55,14 @@ class _Loss(Module):
 class _WeightedLoss(_Loss):
     def __init__(
         self,
-        weight: Tensor | None = None,
+        weight: Optional[Tensor]= None,
         size_average=None,
         reduce=None,
         reduction: str = "mean",
     ) -> None:
         super().__init__(size_average, reduce, reduction)
         self.register_buffer("weight", weight)
-        self.weight: Tensor | None
+        self.weight: Optional[Tensor]
 
 
 class L1Loss(_Loss):
@@ -243,7 +246,7 @@ class NLLLoss(_WeightedLoss):
 
     def __init__(
         self,
-        weight: Tensor | None = None,
+        weight: Optional[Tensor]= None,
         size_average=None,
         ignore_index: int = -100,
         reduce=None,
@@ -274,7 +277,7 @@ class NLLLoss(_WeightedLoss):
 class NLLLoss2d(NLLLoss):
     def __init__(
         self,
-        weight: Tensor | None = None,
+        weight: Optional[Tensor]= None,
         size_average=None,
         ignore_index: int = -100,
         reduce=None,
@@ -397,7 +400,7 @@ class GaussianNLLLoss(_Loss):
         eps (float, optional): value used to clamp ``var`` (see note below), for
             stability. Default: 1e-6.
         reduction (str, optional): specifies the reduction to apply to the
-            output:``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+            output: Union[``'none'``, ``'mean'``, ``'sum'``. ``'none'``: no reduction]
             will be applied, ``'mean'``: the output is the average of all batch
             member losses, ``'sum'``: the output is the sum of all batch member
             losses. Default: ``'mean'``.
@@ -451,7 +454,7 @@ class GaussianNLLLoss(_Loss):
         self.full = full
         self.eps = eps
 
-    def forward(self, input: Tensor, target: Tensor, var: Tensor | float) -> Tensor:
+    def forward(self, input: Tensor, target: Tensor, var: Union[Tensor, float]) -> Tensor:
         """
         Runs the forward pass.
         """
@@ -820,17 +823,17 @@ class BCEWithLogitsLoss(_Loss):
 
     def __init__(
         self,
-        weight: Tensor | None = None,
+        weight: Optional[Tensor]= None,
         size_average=None,
         reduce=None,
         reduction: str = "mean",
-        pos_weight: Tensor | None = None,
+        pos_weight: Optional[Tensor]= None,
     ) -> None:
         super().__init__(size_average, reduce, reduction)
         self.register_buffer("weight", weight)
         self.register_buffer("pos_weight", pos_weight)
-        self.weight: Tensor | None
-        self.pos_weight: Tensor | None
+        self.weight: Optional[Tensor]
+        self.pos_weight: Optional[Tensor]
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         """Runs the forward pass."""
@@ -1381,7 +1384,7 @@ class CrossEntropyLoss(_WeightedLoss):
 
     def __init__(
         self,
-        weight: Tensor | None = None,
+        weight: Optional[Tensor]= None,
         size_average=None,
         ignore_index: int = -100,
         reduce=None,
@@ -1413,7 +1416,7 @@ class LinearCrossEntropyLoss(_WeightedLoss):
     Args:
         in_features (int): Size of each input sample.
         num_classes (int): Number of classes, :math:`C`.
-        out_features (tuple[int], optional): specifies dimensions
+        out_features (Tuple[int], optional): specifies dimensions
             :math:`(d_1, d_2, ..., d_K)` for K-dimensional loss.
             Default: ``()``.
         device (:class:`torch.device`, optional): the desired device
@@ -1491,9 +1494,9 @@ class LinearCrossEntropyLoss(_WeightedLoss):
         "label_smoothing",
     ]
     num_classes: int
-    out_features: tuple[int, ...]
+    out_features: Tuple[int, ...]
     reduction: str
-    ignore_index: int | None
+    ignore_index: Optional[int]
     label_smoothing: float
 
     def __init__(
@@ -1501,12 +1504,12 @@ class LinearCrossEntropyLoss(_WeightedLoss):
         in_features: int,
         num_classes: int,
         *,
-        out_features: tuple[int, ...] = (),
+        out_features: Tuple[int, ...] = (),
         device=None,
         dtype=None,
         reduction: str = "mean",
-        weight: Tensor | None = None,
-        ignore_index: int | None = None,
+        weight: Optional[Tensor]= None,
+        ignore_index: Optional[int]= None,
         label_smoothing: float = 0.0,
     ) -> None:
         if weight is not None and weight.shape != (num_classes,):
@@ -1827,7 +1830,7 @@ class MultiMarginLoss(_WeightedLoss):
         self,
         p: int = 1,
         margin: float = 1.0,
-        weight: Tensor | None = None,
+        weight: Optional[Tensor]= None,
         size_average=None,
         reduce=None,
         reduction: str = "mean",
@@ -2070,7 +2073,7 @@ class TripletMarginWithDistanceLoss(_Loss):
     def __init__(
         self,
         *,
-        distance_function: Callable[[Tensor, Tensor], Tensor] | None = None,
+        distance_function: Optional[Callable[[Tensor, Tensor], Tensor]]= None,
         margin: float = 1.0,
         swap: bool = False,
         reduction: str = "mean",

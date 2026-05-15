@@ -1,5 +1,6 @@
 # Owner(s): ["module: dynamo"]
 
+from __future__ import annotations
 """Tests for | and or operators in PyTorch Dynamo."""
 
 import collections
@@ -327,7 +328,7 @@ class TestNbOr(torch._dynamo.test_case.TestCase):
         d1 = left_fn({"a": 1})
         d2 = right_fn({"b": 2})
         d3 = left_fn({"c": 3})
-        self.assertEqual(d1 | d2 | d3, {"a": 1, "b": 2, "c": 3})
+        self.assertEqual(d1 | {**d2, **d3}, {"a": 1, "b": 2, "c": 3})
 
     # --- Inplace |= ---
 
@@ -367,7 +368,7 @@ class TestNbOr(torch._dynamo.test_case.TestCase):
     def test_dict_ror_valid(self):
         d = {"a": 1}
         myd = MyDict({"a": 2})
-        result = myd | d
+        result = {**myd, **d}
         self.assertEqual(result, {"a": 1})
 
     @make_dynamo_test

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Generator, TYPE_CHECKING
 
 import torch
 
@@ -45,7 +45,7 @@ class ContiguousMMHeuristics(GemmMaxAutotuneTemplateConfigHeuristics):
         self,
         kernel_inputs: KernelInputs,
         op_name: str,
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         """
         Get all the valid k_splits for the given m, n, k.
         """

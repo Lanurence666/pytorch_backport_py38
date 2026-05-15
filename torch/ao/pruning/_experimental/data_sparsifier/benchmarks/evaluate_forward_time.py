@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import argparse
 import time
 
@@ -56,7 +58,7 @@ def measure_forward_pass(sparse_model_metadata, device, sparse_dlrm, **batch):
     available in sparse_model_metadata file.
     If sparse_dlrm=True, then the SparseDLRM model is loaded, otherwise the standard one is.
     """
-    time_taken_dict: dict[str, list] = {
+    time_taken_dict: Dict[str, list] = {
         "norm": [],
         "sparse_block_shape": [],
         "sparsity_level": [],

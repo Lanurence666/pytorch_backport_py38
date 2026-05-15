@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import dataclasses
 import hashlib
 import inspect
@@ -6,7 +8,11 @@ import re
 import types
 import typing
 from enum import IntEnum
-from typing import Annotated, Any, ForwardRef, Union
+from typing import Any, Dict, ForwardRef, List, Optional, Set, Tuple, Type, Union
+try:
+    from typing import Annotated
+except ImportError:
+    from typing_extensions import Annotated
 
 from torch._export.serde import schema
 from torch._export.serde.union import _Union
@@ -37,17 +43,17 @@ _THRIFT_TYPE_MAP = {
 
 
 def _staged_schema():
-    yaml_ret: dict[str, Any] = {}
+    yaml_ret: Dict[str, Any] = {}
     defs = {}
-    cpp_enum_defs: dict[str, str] = {}
-    cpp_class_defs: dict[str, str] = {}
-    cpp_type_decls: list[str] = []
-    cpp_json_defs: list[str] = []
-    thrift_enum_defs: list[str] = []
-    thrift_type_defs: dict[str, str] = {}
+    cpp_enum_defs: Dict[str, str] = {}
+    cpp_class_defs: Dict[str, str] = {}
+    cpp_type_decls: List[str] = []
+    cpp_json_defs: List[str] = []
+    thrift_enum_defs: List[str] = []
+    thrift_type_defs: Dict[str, str] = {}
 
-    def _handle_aggregate(ty) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-        def dump_type(t, level: int) -> tuple[str, str, str]:
+    def _handle_aggregate(ty) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        def dump_type(t, level: int) -> Tuple[str, str, str]:
             if getattr(t, "__name__", None) in cpp_enum_defs:
                 return t.__name__, "int64_t", t.__name__
             elif t in _CPP_TYPE_MAP:
@@ -135,10 +141,10 @@ def _staged_schema():
                     f"Default value {v} is not supported yet in export schema."
                 )
 
-        def dump_field(f) -> tuple[dict[str, Any], str, str | None, str, int]:
+        def dump_field(f) -> Union[Tuple[Dict[str, Any], str, str, None, str, int]]:
             t, cpp_type, thrift_type = dump_type(f.type, 0)
             ret = {"type": t}
-            cpp_default: str | None = None
+            cpp_default: Optional[str]= None
             if typing.get_origin(f.type) is not Annotated:
                 raise AssertionError(
                     f"Field {f.name} must be annotated with an integer id."
@@ -243,7 +249,7 @@ enum {name} {{
 
         to_json_decl = f"void to_json(nlohmann::json& nlohmann_json_j, const {name}& nlohmann_json_t)"
         to_json_def = f"""{{
-{chr(10).join([f'  nlohmann_json_j["{name}"] = nlohmann_json_t.{name};' for name in cpp_fields])}
+{chr(10).join([f'  nlohmann_json_j["{name}"] = nlohmann_json_t.{name};' for name, f in cpp_fields.items()])}
 }}
 """
         from_json_decl = f"void from_json(const nlohmann::json& nlohmann_json_j, {name}& nlohmann_json_t)"
@@ -254,7 +260,7 @@ enum {name} {{
             chr(10).join(
                 [
                     f'  nlohmann_json_t.{name} = nlohmann_json_j.value("{name}", nlohmann_json_default_obj.{name});'
-                    for name in cpp_fields
+                    for name, f in cpp_fields.items()
                 ]
             )
         }
@@ -635,10 +641,10 @@ def _generate_enum_converters() -> str:
     """Generate C++ converter functions from serialized enum values to c10 enums."""
 
     def validate_mapping(
-        enum_class: type[IntEnum],
-        mapping: dict[int, str],
+        enum_class: Type[IntEnum],
+        mapping: Dict[int, str],
         enum_name: str,
-        skip_values: set[int],
+        skip_values: Set[int],
     ) -> None:
         """Validate that all enum values have corresponding c10 mappings."""
         for member in enum_class:
@@ -674,10 +680,10 @@ def _generate_enum_converters() -> str:
     def generate_converter(
         name: str,
         c10_type: str,
-        mapping: dict[int, str],
+        mapping: Dict[int, str],
         max_value: int,
     ) -> str:
-        lines: list[str] = []
+        lines: List[str] = []
         for i in range(max_value + 1):
             if i in mapping:
                 lines.append(
@@ -747,19 +753,19 @@ namespace torch::aot_inductor {{
 
 @dataclasses.dataclass
 class _Commit:
-    result: dict[str, Any]
+    result: Dict[str, Any]
     checksum_next: str
     yaml_path: str
-    additions: dict[str, Any]
-    subtractions: dict[str, Any]
-    base: dict[str, Any]
-    checksum_head: str | None
+    additions: Dict[str, Any]
+    subtractions: Dict[str, Any]
+    base: Dict[str, Any]
+    checksum_head: Optional[str]
     cpp_header: str
     cpp_header_path: str
     enum_converter_header: str
     enum_converter_header_path: str
-    thrift_checksum_head: str | None
-    thrift_checksum_real: str | None
+    thrift_checksum_head: Optional[str]
+    thrift_checksum_real: Optional[str]
     thrift_checksum_next: str
     thrift_schema: str
     thrift_schema_path: str

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import json
 import os
-from collections.abc import Callable
+
 from functools import partial
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional
 
 import torch
 from torch._inductor.autoheuristic.autoheuristic_utils import (
@@ -51,16 +53,16 @@ class AutoHeuristic:
     a heuristic (see torchgen/autoheuristic/).
     """
 
-    collected_feedback: dict[Choice, Feedback]
+    collected_feedback: Dict[Choice, Feedback]
 
     def __init__(
         self,
         fallback: Callable[[], Choice],
-        choices: list[Choice],
-        feedback: LocalFeedback | None,
+        choices: List[Choice],
+        feedback: Optional[LocalFeedback],
         context: AHContext,
         name: str,
-        augment_context: list[AHOperation] | None = None,
+        augment_context: Optional[List[AHOperation]] = None,
         precondition: Callable[[AHMetadata, AHContext], bool] | None = None,
     ) -> None:
         """
@@ -136,8 +138,8 @@ class AutoHeuristic:
         return self.fallback()
 
     def get_top_k_choices(
-        self, top_k: int, always_included: list[str] | None = None
-    ) -> list[Choice] | None:
+        self, top_k: int, always_included: Optional[List[str]] = None
+    ) -> Optional[List[Choice]]:
         if not self.satisfies_precondition():
             return None
         if torch._inductor.config.use_autoheuristic(self.name):
@@ -166,10 +168,8 @@ class AutoHeuristic:
         # we store the collected data per GPU model and learn a heuristic per GPU model
 
         # TODO(AlnisM): just using the device name for now, but the same GPU model can have different names
-        if torch.cuda.is_available():
-            device_name = torch.cuda.get_device_name().replace(" ", "_")
-            return device_name
-        return "non_cuda_device"
+        device_name = torch.cuda.get_device_name().replace(" ", "_")
+        return device_name
 
     def get_default_log_path(self) -> str:
         device_name = self.get_device_identifier()
@@ -225,12 +225,12 @@ class AutoHeuristicSelectAlgorithm(AutoHeuristic):
 
     def __init__(
         self,
-        fallback: Callable[[], ChoiceCaller | None],
-        choices: list[ChoiceCaller],
-        input_nodes: list[Any],
+        fallback: Callable[[], Optional[ChoiceCaller]],
+        choices: List[ChoiceCaller],
+        input_nodes: List[Any],
         context: AHContext,
         name: str,
-        augment_context: list[AHOperation] | None = None,
+        augment_context: Optional[List[AHOperation]] = None,
         precondition: Callable[[AHMetadata, AHContext], bool] | None = None,
     ) -> None:
         """
@@ -240,7 +240,7 @@ class AutoHeuristicSelectAlgorithm(AutoHeuristic):
         have to be used here.
         """
         self.input_nodes = input_nodes
-        self.choicestr2choice: dict[str, ChoiceCaller] = {}
+        self.choicestr2choice: Dict[str, ChoiceCaller] = {}
         for choice in choices:
             self.choicestr2choice[choice.autoheuristic_id()] = choice
         choices_str = list(self.choicestr2choice.keys())
@@ -269,7 +269,7 @@ class AutoHeuristicSelectAlgorithm(AutoHeuristic):
             self.register_global_feedback(input_nodes, choices)
 
     def register_global_feedback(
-        self, input_nodes: list[Any], choices: list[ChoiceCaller]
+        self, input_nodes: List[Any], choices: List[ChoiceCaller]
     ) -> None:
         """
         Registers a callback in select_algorithm, which is called with the timing of each choice.
@@ -284,12 +284,12 @@ class AutoHeuristicSelectAlgorithm(AutoHeuristic):
         def store_global_feedback(
             ah_inputs_key: str,
             ah_precompile_key: str,
-            timings: dict[ChoiceCaller, float],
+            timings: Dict[ChoiceCaller, float],
             name: str,
-            input_nodes: list[Any],
-            choices: list[ChoiceCaller],
-            profiled_time: Callable[[], dict[ChoiceCaller, float]],
-            precompile_times: dict[ChoiceCaller, float],
+            input_nodes: List[Any],
+            choices: List[ChoiceCaller],
+            profiled_time: Callable[[], Dict[ChoiceCaller, float]],
+            precompile_times: Dict[ChoiceCaller, float],
         ) -> None:
             current_inputs_key = create_inputs_key(input_nodes)
             if current_inputs_key != ah_inputs_key:
@@ -307,13 +307,13 @@ class AutoHeuristicSelectAlgorithm(AutoHeuristic):
         feedback_saver = partial(store_global_feedback, inputs_key, precompile_key)
         add_feedback_saver(feedback_saver)
 
-    def get_choice_caller(self) -> ChoiceCaller | None:
+    def get_choice_caller(self) -> Optional[ChoiceCaller]:
         choice = self.get_choice()
         return self.choicestr2choice.get(choice, None)
 
     def get_top_k_choices_caller(
-        self, top_k: int, always_included: list[str] | None = None
-    ) -> list[ChoiceCaller] | None:
+        self, top_k: int, always_included: Optional[List[str]] = None
+    ) -> Optional[List[ChoiceCaller]]:
         choices = self.get_top_k_choices(top_k, always_included)
         if choices is None:
             return None

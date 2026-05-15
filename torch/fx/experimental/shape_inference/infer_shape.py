@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 from collections import defaultdict
 
@@ -11,6 +13,7 @@ from torch.fx.experimental.shape_inference.infer_symbol_values import (
 from torch.fx.experimental.symbolic_shapes import DimDynamic, ShapeEnv
 from torch.types import IntLikeType
 from torch.utils import _pytree
+from typing import List, Tuple, Type
 
 
 """
@@ -19,9 +22,9 @@ This is the function that runs shape inference. It will modify the input graph m
 
 
 def infer_shape(
-    gm: torch.fx.GraphModule, input_tensors: list[torch.Tensor]
+    gm: torch.fx.GraphModule, input_tensors: List[torch.Tensor]
 ) -> (
-    tuple[torch.fx.GraphModule, list[torch.Tensor], FakeTensorMode, IntLikeType] | None
+    Tuple[torch.fx.GraphModule, List[torch.Tensor], FakeTensorMode, IntLikeType] | None
 ):
     # Prepare environments
     shape_env = ShapeEnv()
@@ -33,11 +36,11 @@ def infer_shape(
         dim_count += input_tensor.dim() - 1
 
     sample = {f"s{i}": 2 for i in range(dim_count)}
-    init_symints: list[IntLikeType] = [
+    init_symints: List[IntLikeType] = [
         mksym(shape_env, v, LocalSource(k), DimDynamic.DYNAMIC)
         for k, v in sample.items()
     ]
-    symints: list[IntLikeType] = copy.deepcopy(init_symints)
+    symints: List[IntLikeType] = copy.deepcopy(init_symints)
     symbol_to_idx_dict = {f"s{i}": i for i in range(dim_count)}
     padding_constraints = defaultdict(list)  # type: ignore[var-annotated]
 

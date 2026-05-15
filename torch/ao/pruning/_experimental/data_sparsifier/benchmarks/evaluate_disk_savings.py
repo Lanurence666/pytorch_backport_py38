@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import argparse
 import copy
 import os
@@ -11,6 +13,7 @@ from dlrm_utils import get_dlrm_model, get_valid_name  # type: ignore[import]
 
 import torch
 from torch.ao.pruning._experimental.data_sparsifier import DataNormSparsifier
+from typing import Dict, List, Tuple
 
 
 def create_attach_sparsifier(model, **sparse_config):
@@ -118,7 +121,7 @@ def sparsify_model(path_to_model, sparsified_model_dump_path):
     orig_model = orig_model.to(device)
     step_time_dict = {}
 
-    stat_dict: dict[str, list] = {
+    stat_dict: Dict[str, list] = {
         "norm": [],
         "sparse_block_shape": [],
         "sparsity_level": [],

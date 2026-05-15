@@ -1,5 +1,6 @@
 # Owner(s): ["module: inductor"]
 # ruff: noqa: F841
+from __future__ import annotations
 import contextlib
 import functools
 import gc

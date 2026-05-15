@@ -13,7 +13,11 @@ between the __future__ import, Annotated, and Required.
 
 from __future__ import annotations
 
-from typing import Annotated, Generic, Optional, Required, TypedDict, TypeVar
+from typing import Generic, Optional, TypedDict, TypeVar
+try:
+    from typing import Annotated
+except ImportError:
+    from typing_extensions import Annotated
 
 
 OptionalIntType = Optional[int]

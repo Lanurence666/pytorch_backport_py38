@@ -5,6 +5,7 @@
 #include <ATen/native/cuda/Pow.cuh>
 #include <type_traits>
 #include <utility>
+#include <ATen/OpMathType.h>
 
 namespace at::native {
 

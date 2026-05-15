@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import itertools
 
 import torch
@@ -14,7 +16,7 @@ from . import (
 )
 
 
-__all__: list[str] = []
+__all__: List[str] = []
 
 
 class _server_process_global_profile(profile):

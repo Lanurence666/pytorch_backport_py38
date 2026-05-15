@@ -1,6 +1,7 @@
 # Owner(s): ["module: typing"]
 # based on NumPy numpy/typing/tests/test_typing.py
 
+from __future__ import annotations
 import itertools
 import os
 import re

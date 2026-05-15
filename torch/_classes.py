@@ -1,5 +1,5 @@
 import types
-from typing import Any
+from typing import Any, Type
 
 import torch._C
 

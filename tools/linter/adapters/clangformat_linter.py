@@ -10,7 +10,7 @@ import sys
 import time
 from enum import Enum
 from pathlib import Path
-from typing import NamedTuple
+from typing import List, NamedTuple, Union
 
 
 IS_WINDOWS: bool = os.name == "nt"
@@ -24,15 +24,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 def as_posix(name: str) -> str:
@@ -40,7 +40,7 @@ def as_posix(name: str) -> str:
 
 
 def _run_command(
-    args: list[str],
+    args: List[str],
     *,
     timeout: int,
 ) -> subprocess.CompletedProcess[bytes]:
@@ -60,7 +60,7 @@ def _run_command(
 
 
 def run_command(
-    args: list[str],
+    args: List[str],
     *,
     retries: int,
     timeout: int,
@@ -87,7 +87,7 @@ def check_file(
     binary: str,
     retries: int,
     timeout: int,
-) -> list[LintMessage]:
+) -> List[LintMessage]:
     try:
         with open(filename, "rb") as f:
             original = f.read()

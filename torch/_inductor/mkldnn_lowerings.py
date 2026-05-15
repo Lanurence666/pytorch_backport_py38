@@ -1,4 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+from typing import Optional, Union
+
+
 import functools
 
 import torch
@@ -34,12 +38,12 @@ def create_int8_compensation(
     x_scale: ir.TensorBox,
     x_zp: ir.TensorBox,
     w_scale: ir.TensorBox,
-) -> tuple[
+) -> Tuple[
     bool,
     ir.TensorBox,
-    ir.TensorBox | None,
+    Optional[ir.TensorBox],
 ]:
-    x_w_scale: ir.TensorBox | None = None
+    x_w_scale: Optional[ir.TensorBox] = None
     use_int8_fast_compensation_path = all(
         isinstance(item, ir.TensorBox)
         and item.get_name() in V.graph.constants
@@ -80,10 +84,10 @@ def codegen_int8_gemm_template_compensation(
     use_int8_fast_compensation_path: bool,
     input: OpsValue,
     _weight_compo: OpsValue,
-    _x_scale: OpsValue | None,
-    _x_zp: OpsValue | None,
-    _w_scale: OpsValue | None,
-    _x_w_scale: OpsValue | None,
+    _x_scale: Optional[OpsValue],
+    _x_zp: Optional[OpsValue],
+    _w_scale: Optional[OpsValue],
+    _x_w_scale: Optional[OpsValue],
 ) -> OpsValue:
     if use_int8_fast_compensation_path:
         temp = ops.sub(
@@ -127,8 +131,8 @@ def codegen_int8_gemm_template_compensation(
 
 def grouped_gemm_lowering(
     x: TensorBox,
-    w: list[TensorBox],
-    b: list[TensorBox],
+    w: List[TensorBox],
+    b: List[TensorBox],
     attr=None,
     scalars=None,
     algorithm=None,
@@ -144,7 +148,7 @@ def grouped_gemm_lowering(
     # pyrefly: ignore [bad-assignment]
     b = [bias if bias is None else ir.ExternKernel.realize_input(bias) for bias in b]
 
-    choices: list[ChoiceCaller] = []
+    choices: List[ChoiceCaller] = []
     *_, layout, x, _ = mm_args(x, permute(w[0], [1, 0]), layout=layout)
 
     kwargs = {
@@ -222,8 +226,8 @@ def register_onednn_fusion_ops():
             has_out_variant=False,
             kernel_creator=mkldnn_ir.QLinearPointwiseBinaryPT2E.create,
         )
-        cpu_needs_realized_inputs: list[
-            torch._ops.OpOverload | torch._ops.OpOverloadPacket
+        cpu_needs_realized_inputs: List[
+            Union[torch._ops.OpOverload, torch._ops.OpOverloadPacket]
         ] = [
             torch.ops.mkldnn._convolution_pointwise,
             torch.ops.mkldnn._convolution_pointwise_,
@@ -345,7 +349,7 @@ def register_onednn_fusion_ops():
                 x = view(x, [-1, x_size[-1]])
             if b is not None:
                 b = ir.ExternKernel.realize_input(b)  # type: ignore[assignment]
-            choices: list[ChoiceCaller] = []
+            choices: List[ChoiceCaller] = []
             if config.max_autotune or config.max_autotune_gemm:
                 transposed_w = permute(w, [1, 0])
                 *_, layout, x, transposed_w = mm_args(x, transposed_w, layout=layout)
@@ -410,7 +414,7 @@ def register_onednn_fusion_ops():
                 y = view(y, [-1, y_size[-1]])
             if b is not None:
                 b = ir.ExternKernel.realize_input(b)  # type: ignore[assignment]
-            choices: list[ChoiceCaller] = []
+            choices: List[ChoiceCaller] = []
             if config.max_autotune or config.max_autotune_gemm:
                 transposed_w = permute(w, [1, 0])
                 *_, layout, x, transposed_w, y = mm_args(
@@ -501,7 +505,7 @@ def register_onednn_fusion_ops():
             hx: TensorBox,
             cx: TensorBox,
             reverse: bool,
-            batch_sizes: list[int],
+            batch_sizes: List[int],
             mode: int,
             hidden_size: int,
             num_layers: int,
@@ -764,7 +768,7 @@ def register_onednn_fusion_ops():
                 )
 
             bias_dtype = None if bias is None else bias.get_dtype()
-            choices: list[ChoiceCaller] = []
+            choices: List[ChoiceCaller] = []
 
             if config.max_autotune or config.max_autotune_gemm:
                 *_, layout, x, packed_weight = mm_args(
@@ -1083,7 +1087,7 @@ def register_onednn_fusion_ops():
                     )
             x2_dtype = x2.get_dtype()
             bias_dtype = bias.get_dtype() if bias is not None else None
-            choices: list[ChoiceCaller] = []
+            choices: List[ChoiceCaller] = []
             if (config.max_autotune or config.max_autotune_gemm) and binary_attr in [
                 "add",
                 "sum",
@@ -1349,12 +1353,12 @@ def register_onednn_fusion_ops():
                 x: TensorBox,
                 packed_w: TensorBox,
                 orig_w: TensorBox,
-                b: TensorBox | None,
+                b: Optional[TensorBox],
                 batch_size,
                 *,
                 layout=None,
             ):
-                choices: list[ChoiceCaller] = []
+                choices: List[ChoiceCaller] = []
                 if config.max_autotune or config.max_autotune_gemm:
                     transposed_w = permute(orig_w, [1, 0])
                     *_, layout, x, transposed_w = mm_args(
@@ -1397,6 +1401,3 @@ def register_onednn_fusion_ops():
                 return result
 
         add_needs_realized_inputs(cpu_needs_realized_inputs)
-
-
-register_onednn_fusion_ops()

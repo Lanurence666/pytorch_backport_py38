@@ -37,7 +37,7 @@ import subprocess
 import sys
 import time
 from enum import Enum
-from typing import NamedTuple
+from typing import Dict, List, NamedTuple, Union
 
 
 class LintSeverity(str, Enum):
@@ -48,15 +48,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 # Note: This regex pattern is kept for reference but not used for pyrefly JSON parsing
@@ -87,9 +87,9 @@ INTERNAL_ERROR_RE: re.Pattern[str] = re.compile(
 
 
 def run_command(
-    args: list[str],
+    args: List[str],
     *,
-    extra_env: dict[str, str] | None,
+    extra_env: Union[Dict[str, str], None],
     retries: int,
 ) -> subprocess.CompletedProcess[bytes]:
     logging.debug("$ %s", " ".join(args))
@@ -112,7 +112,7 @@ severities = {
 }
 
 
-def check_pyrefly_installed(code: str) -> list[LintMessage]:
+def check_pyrefly_installed(code: str) -> List[LintMessage]:
     cmd = ["pyrefly", "--version"]
     try:
         subprocess.run(cmd, check=True, capture_output=True)
@@ -140,7 +140,7 @@ def in_github_actions() -> bool:
 
 def check_files(
     code: str, config: str, remove_unused_ignores: bool, suppress: bool
-) -> list[LintMessage]:
+) -> List[LintMessage]:
     try:
         pyrefly_commands = [
             "pyrefly",

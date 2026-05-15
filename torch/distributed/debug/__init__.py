@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import logging
 import multiprocessing
 import socket
-from typing import Literal, TYPE_CHECKING
+from typing import List, Optional, Set, TYPE_CHECKING
+from typing_extensions import Literal
+
 
 # import for registration side effect
 import torch.distributed.debug._handlers
@@ -20,18 +24,18 @@ __all__ = [
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-_WORKER_SERVER: _WorkerServer | None = None
-_DEBUG_SERVER_PROC: multiprocessing.Process | None = None
+_WORKER_SERVER: Optional[_WorkerServer]= None
+_DEBUG_SERVER_PROC: Optional[multiprocessing.Process]= None
 
 
 def start_debug_server(
     port: int = 25999,
     worker_port: int = 0,
-    start_method: Literal["fork", "spawn", "forkserver"] | None = None,
-    dump_dir: str | None = None,
+    start_method: Optional[Literal["fork", "spawn", "forkserver"]]= None,
+    dump_dir: Optional[str]= None,
     dump_interval: float = 60.0,
-    enabled_dumps: set[str] | None = None,
-    handlers: list["DebugHandler"] | None = None,
+    enabled_dumps: Optional[Set[str]]= None,
+    handlers: Optional[List["DebugHandler"]]= None,
     fetch_timeout: float = 60.0,
 ) -> None:
     """
@@ -59,17 +63,17 @@ def start_debug_server(
         port (int): The port to start the frontend debug server on.
         worker_port (int): The port to start the worker server on. Defaults to 0, which
             will cause the worker server to bind to an ephemeral port.
-        start_method (str | None): The multiprocessing start method to use for the
+        start_method (Optional[str]): The multiprocessing start method to use for the
             frontend server process. One of "fork", "spawn", or "forkserver".
             If None, uses the default start method. Using "spawn" is recommended
             when using CUDA or when fork safety is a concern.
-        dump_dir (str | None): Directory to write periodic debug dumps to. If None,
+        dump_dir (Optional[str]): Directory to write periodic debug dumps to. If None,
             periodic dumping is disabled.
         dump_interval (float): Seconds between periodic dumps. Defaults to 60.
-        enabled_dumps (set[str] | None): Set of handler dump filenames to enable
+        enabled_dumps (Optional[Set[str]]): Set of handler dump filenames to enable
             (e.g. {"stacks", "fr_trace", "tcpstore"}). If None, all handlers that
             implement dump() are enabled.
-        handlers (list[DebugHandler] | None): List of debug handlers to use. If None,
+        handlers (Optional[List[DebugHandler]]): List of debug handlers to use. If None,
             uses the default handlers. See torch.distributed.debug._handlers for
             the default handlers.
         fetch_timeout (float): Timeout in seconds for fetching data from individual

@@ -1,5 +1,7 @@
-from collections.abc import Iterable
-from typing import Any, NoReturn, TypeVar
+from __future__ import annotations
+
+
+from typing import Any, Dict, Iterable, List, NoReturn, Tuple, Type, TypeVar
 from typing_extensions import Self
 
 from torch.utils._pytree import (
@@ -40,7 +42,7 @@ def _no_mutation(self: Any, *args: Any, **kwargs: Any) -> NoReturn:
 
 
 @compatibility(is_backward_compatible=True)
-class immutable_list(list[_T]):
+class immutable_list(List[_T]):
     """An immutable version of :class:`list`."""
 
     __delitem__ = _no_mutation
@@ -59,12 +61,12 @@ class immutable_list(list[_T]):
     def __hash__(self) -> int:  # type: ignore[override]
         return hash(tuple(self))
 
-    def __reduce__(self) -> tuple[type[Self], tuple[tuple[_T, ...]]]:
+    def __reduce__(self) -> Tuple[Type[Self], Tuple[Tuple[_T, ...]]]:
         return (type(self), (tuple(self),))
 
 
 @compatibility(is_backward_compatible=True)
-class immutable_dict(dict[_KT, _VT]):
+class immutable_dict(Dict[_KT, _VT]):
     """An immutable version of :class:`dict`."""
 
     __delitem__ = _no_mutation
@@ -79,12 +81,12 @@ class immutable_dict(dict[_KT, _VT]):
     def __hash__(self) -> int:  # type: ignore[override]
         return hash(frozenset(self.items()))
 
-    def __reduce__(self) -> tuple[type[Self], tuple[tuple[tuple[_KT, _VT], ...]]]:
+    def __reduce__(self) -> Tuple[Type[Self], Tuple[Tuple[Tuple[_KT, _VT], ...]]]:
         return (type(self), (tuple(self.items()),))
 
 
 # Register immutable collections for PyTree operations
-def _immutable_list_flatten(d: immutable_list[_T]) -> tuple[list[_T], Context]:
+def _immutable_list_flatten(d: immutable_list[_T]) -> Tuple[List[_T], Context]:
     return _list_flatten(d)
 
 
@@ -95,7 +97,7 @@ def _immutable_list_unflatten(
     return immutable_list(_list_unflatten(values, context))
 
 
-def _immutable_dict_flatten(d: immutable_dict[Any, _VT]) -> tuple[list[_VT], Context]:
+def _immutable_dict_flatten(d: immutable_dict[Any, _VT]) -> Tuple[List[_VT], Context]:
     return _dict_flatten(d)
 
 

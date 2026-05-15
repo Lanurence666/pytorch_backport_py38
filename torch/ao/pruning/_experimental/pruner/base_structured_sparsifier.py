@@ -1,4 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+from typing import Optional, Union
+
+
 from collections.abc import Callable
 from itertools import chain
 from operator import getitem
@@ -90,15 +94,15 @@ def _get_supported_activation_modules():
     return SUPPORTED_ACTIVATION_MODULES
 
 
-def _get_default_structured_pruning_patterns() -> dict[
-    tuple[type[nn.Module] | Callable | MatchAllNode | str, ...],
+def _get_default_structured_pruning_patterns() -> Dict[
+    Union[Tuple[Type[nn.Module], Callable] | Union[MatchAllNode, str], ...],
     Callable[..., None],
 ]:
     """
     Returns the patterns for conv2d / linear conversion for each element in the activation functions/modules defined above.
     """
-    patterns: dict[
-        tuple[type[nn.Module] | Callable | MatchAllNode | str, ...],
+    patterns: Dict[
+        Union[Tuple[Type[nn.Module], Callable] | Union[MatchAllNode, str], ...],
         Callable[..., None],
     ] = {
         # linear -> linear
@@ -227,7 +231,7 @@ class BaseStructuredSparsifier(BaseSparsifier):
     def make_config_from_model(
         self,
         model: nn.Module,
-        SUPPORTED_MODULES: set[type] | None = None,
+        SUPPORTED_MODULES: Optional[Set[type]]= None,
     ) -> None:
         if SUPPORTED_MODULES is None:
             SUPPORTED_MODULES = _get_supported_structured_pruning_modules()

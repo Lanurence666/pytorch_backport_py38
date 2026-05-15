@@ -1,10 +1,12 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 import math
-from collections.abc import Sequence
+
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, cast
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 
 import torch
 from torch.distributed.device_mesh import DeviceMesh
@@ -57,10 +59,10 @@ class Reduction(Enum):
 
 @dataclass(frozen=True)
 class NormReduction:
-    norm_type: int | float
+    norm_type: Union[int, float]
 
 
-ReductionOpType = NormReduction | str
+ReductionOpType = Union[NormReduction, str]
 
 
 @dataclass(frozen=True)
@@ -70,17 +72,17 @@ class _NormPartial(Partial):
 
     For p-norms, the p-norm over n elements computes (sum_i x_i^p)^(1/p).
     For example, consider 2 ranks, a (4,) tensor sharded on dim-0, and 2-norm:
-        Rank 0: [t1, t2] | Rank 1: [t3, t4]
+        Rank 0: Union[[t1, t2], Rank] 1: [t3, t4]
     After computing 2-norm per gradient (partial placement):
-        Rank 0: [sqrt(t1^2 + t2^2)] | Rank 1: [sqrt(t3^2 + t4^2)]
+        Rank 0: Union[[sqrt(t1^2 + t2^2)], Rank] 1: [sqrt(t3^2 + t4^2)]
     Converting from partial to replicate wants to ultimately get:
         Rank 0/1: [sqrt(t1^2 + t2^2 + t3^2 + t4^2)]
     This is achieved by: x^p -> allreduce sum -> x^(1/p).
     """
 
-    norm_type: int | float = 2
+    norm_type: Union[int, float]= Union[2]
 
-    def __init__(self, norm_type: int | float = 2):
+    def __init__(self, norm_type: Union[int, float] = 2):
         super().__init__("sum")
         object.__setattr__(self, "norm_type", norm_type)
 
@@ -130,11 +132,11 @@ class _NormPartial(Partial):
         return f"_NormP({self.norm_type})"
 
 
-def _infer_reduction_dims(dims_arg: object, ndim: int) -> list[int] | None:
+def _infer_reduction_dims(dims_arg: object, ndim: int) -> Optional[List[int]]:
     if dims_arg is None:
         return None
-    dims = cast(list[int], as_list(dims_arg))
-    dims = cast(list[int], normalize_dims(dims, ndim))
+    dims = cast(List[int], as_list(dims_arg))
+    dims = cast(List[int], normalize_dims(dims, ndim))
     empty_dims = [[0], [-1], []]
     if ndim == 0 and dims_arg in empty_dims:
         return None
@@ -142,8 +144,8 @@ def _infer_reduction_dims(dims_arg: object, ndim: int) -> list[int] | None:
 
 
 def _infer_reduce_dims_map(
-    reduction_dims: list[int], input_ndim: int, keep_dim=False
-) -> list[int]:
+    reduction_dims: List[int], input_ndim: int, keep_dim=False
+) -> List[int]:
     reduction_dims_map = []
     new_dim_count = 0
     for input_dim in range(input_ndim):
@@ -160,8 +162,8 @@ def _infer_reduce_dims_map(
 
 def _replicate_dims_start_at(
     placements: Sequence[Placement], start_dim: int = 0
-) -> tuple[Placement, ...]:
-    new_placements: list[Placement] = []
+) -> Tuple[Placement, ...]:
+    new_placements: List[Placement] = []
     for p in placements:
         if p.is_partial() or (_is_shard_like(p) and p.dim >= start_dim):
             new_placements.append(Replicate())  # make it replicate
@@ -174,9 +176,9 @@ def _replicate_dims_start_at(
 # Precondition: no shard-like placement on skipped_dim (callers must
 # replicate it first via replicate_reduction_dims).
 def _skip_dim(
-    placements: tuple[Placement, ...], skipped_dim: int
-) -> tuple[Placement, ...]:
-    new_placements: list[Placement] = []
+    placements: Tuple[Placement, ...], skipped_dim: int
+) -> Tuple[Placement, ...]:
+    new_placements: List[Placement] = []
     for p in placements:
         if isinstance(p, _StridedShard) and p.dim >= skipped_dim:
             new_placements.append(_StridedShard(p.dim - 1, split_factor=p.split_factor))
@@ -188,10 +190,10 @@ def _skip_dim(
 
 
 def replicate_reduction_dims(
-    placements: tuple[Placement, ...], reduction_dims: list[int]
-) -> tuple[Placement, ...]:
+    placements: Tuple[Placement, ...], reduction_dims: List[int]
+) -> Tuple[Placement, ...]:
     # replicate the reduction dims if not reduction_linear
-    new_placements: list[Placement] = []
+    new_placements: List[Placement] = []
 
     for p in placements:
         if p.is_partial():
@@ -205,15 +207,15 @@ def replicate_reduction_dims(
 
 
 def map_placements_after_reduction(
-    placements: tuple[Placement, ...],
-    reduction_dims: list[int],
-    reduction_dims_map: list[int],
+    placements: Tuple[Placement, ...],
+    reduction_dims: List[int],
+    reduction_dims_map: List[int],
     reduction_op: ReductionOpType,
-) -> tuple[Placement, ...]:
+) -> Tuple[Placement, ...]:
     """
     Map each placement based on the output shape after reduction.
     """
-    new_placements: list[Placement] = []
+    new_placements: List[Placement] = []
     for placement in placements:
         if isinstance(placement, (Replicate, Partial)):
             new_placements.append(placement)
@@ -251,7 +253,7 @@ def get_placement_from_reduction_op(reduction_op: ReductionOpType) -> Placement:
 
 def common_reduction_strategy(
     input_strategy: OpStrategy,
-    reduce_dims: list[int],
+    reduce_dims: List[int],
     keep_dim: bool = False,
     reduction_linear: bool = True,
     reduction_op: ReductionOpType = "sum",
@@ -388,9 +390,9 @@ def linear_reduction_strategy(op_schema: OpSchema) -> OpStrategy:
 )
 def max_min_dim_single_dim_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     input_meta = args_schema[0]
     if not isinstance(input_meta, TensorMeta):
         raise AssertionError(f"Expected TensorMeta, got {type(input_meta)}")
@@ -399,7 +401,7 @@ def max_min_dim_single_dim_strategy(
     dim = normalize_dim(cast(int, args_schema[1]), ndim)
     keep_dim = len(args_schema) > 2 and bool(args_schema[2])
 
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: Union[List[List[Placement, _ShardingPlaceholder]]]= Union[[]]
     for d in range(ndim):
         if d == dim:
             continue
@@ -483,9 +485,9 @@ def global_median_strategy(op_schema: OpSchema) -> OpStrategy:
 )
 def dim_reduction_with_indices_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     input_meta = args_schema[0]
     if not isinstance(input_meta, TensorMeta):
         raise AssertionError(f"Expected TensorMeta, got {type(input_meta)}")
@@ -494,7 +496,7 @@ def dim_reduction_with_indices_strategy(
     dim = normalize_dim(cast(int, args_schema[1]) if len(args_schema) > 1 else -1, ndim)
     keep_dim = len(args_schema) > 2 and bool(args_schema[2])
 
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: Union[List[List[Placement, _ShardingPlaceholder]]]= Union[[]]
     for d in range(ndim):
         if d == dim:
             continue
@@ -515,9 +517,9 @@ def dim_reduction_with_indices_strategy(
 )
 def kthvalue_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     input_meta = args_schema[0]
     if not isinstance(input_meta, TensorMeta):
         raise AssertionError(f"Expected TensorMeta, got {type(input_meta)}")
@@ -526,7 +528,7 @@ def kthvalue_strategy(
     dim = normalize_dim(cast(int, args_schema[2]) if len(args_schema) > 2 else -1, ndim)
     keep_dim = len(args_schema) > 3 and bool(args_schema[3])
 
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: Union[List[List[Placement, _ShardingPlaceholder]]]= Union[[]]
     for d in range(ndim):
         if d == dim:
             continue
@@ -579,7 +581,7 @@ def std_var_reduction_strategy(op_schema: OpSchema) -> OpStrategy:
     )
 
 
-def _get_norm_reduction_op(norm_type: int | float | str) -> ReductionOpType:
+def _get_norm_reduction_op(norm_type: Union[Union[int, float], str]) -> ReductionOpType:
     """Get the reduction op for vector/foreach norm based on norm_type.
 
     For inf/-inf norms, returns simple reduction ops ("max", "min").
@@ -634,7 +636,7 @@ def foreach_norm_strategy(op_schema: OpSchema) -> TupleStrategy:
     norm_type = args_schema[1] if len(args_schema) > 1 else 2
     if not isinstance(norm_type, (int, float, str)):
         raise AssertionError(f"Expected int, float, or str, got {type(norm_type)}")
-    output_tuple_strategy_children: list[OpStrategy] = []
+    output_tuple_strategy_children: List[OpStrategy] = []
     for op_strategy in input_tuple_strategy.children:
         if not isinstance(op_strategy, OpStrategy):
             raise AssertionError(f"Expected OpStrategy, got {type(op_strategy)}")
@@ -686,7 +688,7 @@ def foreach_powsum_strategy(op_schema: OpSchema) -> TupleStrategy:
         raise AssertionError(
             f"Expected TupleStrategy, got {type(input_tuple_strategy)}"
         )
-    output_tuple_strategy_children: list[OpStrategy] = []
+    output_tuple_strategy_children: List[OpStrategy] = []
     for op_strategy in input_tuple_strategy.children:
         if not isinstance(op_strategy, OpStrategy):
             raise AssertionError(f"Expected OpStrategy, got {type(op_strategy)}")
@@ -714,7 +716,7 @@ def foreach_max_strategy(op_schema: OpSchema) -> TupleStrategy:
         raise AssertionError(
             f"Expected TupleStrategy, got {type(input_tuple_strategy)}"
         )
-    output_tuple_strategy_children: list[OpStrategy] = []
+    output_tuple_strategy_children: List[OpStrategy] = []
     for op_strategy in input_tuple_strategy.children:
         if not isinstance(op_strategy, OpStrategy):
             raise AssertionError(f"Expected OpStrategy, got {type(op_strategy)}")
@@ -757,7 +759,7 @@ def linalg_replicate_strategy(op_schema: OpSchema) -> OpStrategy:
         raise AssertionError(f"Expected OpStrategy, got {type(input_strategy)}")
     mesh = input_strategy.mesh
 
-    output_strategies: list[OpSpec] = []
+    output_strategies: List[OpSpec] = []
     for placement_strategy in input_strategy.strategies:
         replicate_placements = tuple(Replicate() for _ in range(mesh.ndim))
         replicate_spec = DTensorSpec(
@@ -780,7 +782,7 @@ def linalg_replicate_strategy(op_schema: OpSchema) -> OpStrategy:
 # Maps each pooling op to its spatial rank (number of spatial dimensions).
 # Batched inputs have layout (N, C, *spatial) with ndim = spatial_rank + 2;
 # unbatched inputs drop the batch dim giving ndim = spatial_rank + 1.
-POOL_SPATIAL_RANK: dict[torch._ops.OpOverload, int] = {
+POOL_SPATIAL_RANK: Dict[torch._ops.OpOverload, int] = {
     aten.avg_pool1d.default: 1,
     aten.avg_pool2d.default: 2,
     aten.avg_pool3d.default: 3,
@@ -828,7 +830,7 @@ def pooling_strategy(op_schema: OpSchema) -> OpStrategy:
     num_outputs = 2 if op_schema.op in MAX_POOL_OPS else 1
     num_inputs = len(op_schema.args_strategy) + len(op_schema.kwargs_strategy)
     n = num_outputs + num_inputs
-    single_mesh_dim_strategies: list[PlacementList] = [
+    single_mesh_dim_strategies: List[PlacementList] = [
         [Replicate()] * n,
         [Shard(0)] * n,
     ]
@@ -1198,9 +1200,9 @@ def nll_loss_backward_strategy(op_schema: OpSchema) -> OpStrategy:
 )
 def layer_norm_single_dim_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     input_meta = args_schema[0]
     normalized_shape = args_schema[1]
     weight_meta = args_schema[2]
@@ -1208,10 +1210,10 @@ def layer_norm_single_dim_strategy(
 
     axis = len(input_meta.shape) - len(normalize_to_torch_size(normalized_shape))
 
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: Union[List[List[Placement, _ShardingPlaceholder]]]= Union[[]]
     for dim in range(axis):
         # [out, mean, rstd, input, weight?, bias?]
-        rule: list[Placement | _ShardingPlaceholder] = [
+        rule: Union[List[Placement, _ShardingPlaceholder]]= [
             _ShardingPlaceholder(dim),  # out
             _ShardingPlaceholder(dim),  # mean
             _ShardingPlaceholder(dim),  # rstd
@@ -1231,19 +1233,19 @@ def layer_norm_single_dim_strategy(
 )
 def rms_norm_single_dim_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     input_meta = args_schema[0]
     normalized_shape = args_schema[1]
     weight_meta = args_schema[2]
 
     axis = len(input_meta.shape) - len(normalize_to_torch_size(normalized_shape))
 
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: Union[List[List[Placement, _ShardingPlaceholder]]]= Union[[]]
     for dim in range(axis):
         # [out, rrms, input, weight?]
-        rule: list[Placement | _ShardingPlaceholder] = [
+        rule: Union[List[Placement, _ShardingPlaceholder]]= [
             _ShardingPlaceholder(dim),  # out
             _ShardingPlaceholder(dim),  # rrms
             _ShardingPlaceholder(dim),  # input
@@ -1260,9 +1262,9 @@ def rms_norm_single_dim_strategy(
 )
 def layer_norm_bwd_single_dim_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder | None]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder, None]]]:
     input_meta = args_schema[1]
     normalized_shape = args_schema[2]
     # mean = args_schema[3], rstd = args_schema[4]
@@ -1271,11 +1273,11 @@ def layer_norm_bwd_single_dim_strategy(
 
     axis = len(input_meta.shape) - len(normalize_to_torch_size(normalized_shape))
 
-    strategies: list[list[Placement | _ShardingPlaceholder | None]] = []
+    strategies: Union[List[List[Placement, _ShardingPlaceholder, None]]]= Union[[]]
     for dim in range(axis):
         # outputs: [d_input, d_weight, d_bias] — always 3 per schema
         # d_weight/d_bias use None when weight/bias are None
-        rule: list[Placement | _ShardingPlaceholder | None] = [
+        rule: Union[List[Placement, _ShardingPlaceholder, None]]= [
             _ShardingPlaceholder(dim),  # d_input
             Partial("sum") if weight_meta is not None else None,  # d_weight
             Partial("sum") if bias_meta is not None else None,  # d_bias
@@ -1304,9 +1306,9 @@ def layer_norm_bwd_single_dim_strategy(
 )
 def rms_norm_bwd_single_dim_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder | None]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder, None]]]:
     input_meta = args_schema[1]
     normalized_shape = args_schema[2]
     # rstd = args_schema[3]
@@ -1314,12 +1316,12 @@ def rms_norm_bwd_single_dim_strategy(
 
     axis = len(input_meta.shape) - len(normalize_to_torch_size(normalized_shape))
 
-    strategies: list[list[Placement | _ShardingPlaceholder | None]] = []
+    strategies: Union[List[List[Placement, _ShardingPlaceholder, None]]]= Union[[]]
     for dim in range(axis):
         # outputs: [d_input, d_weight] — always 2 per schema
         # d_weight uses None when weight is None
         # inputs: [grad_out, input, rstd, weight?]
-        rule: list[Placement | _ShardingPlaceholder | None] = [
+        rule: Union[List[Placement, _ShardingPlaceholder, None]]= [
             _ShardingPlaceholder(dim),  # d_input
             Partial("sum") if weight_meta is not None else None,  # d_weight
             _ShardingPlaceholder(dim),  # grad_out
@@ -1401,7 +1403,7 @@ def sort_stable_strategy(op_schema: OpSchema) -> OpStrategy:
 )
 def histc_strategy(op_schema: OpSchema) -> OpStrategy:
     input_strategy = cast(OpStrategy, op_schema.args_schema[0])
-    single_mesh_dim_strategies: list[PlacementList] = []
+    single_mesh_dim_strategies: List[PlacementList] = []
     single_mesh_dim_strategies.append([Replicate(), Replicate()])
 
     # histc can support sharded input and partial output on any input dim, provided the min and max
@@ -1494,13 +1496,13 @@ _LINALG_NUM_PLACEMENTS = {
 
 def _linalg_batch_dim_strategies(
     ndim: int, n_placements: int
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     """Build single-dim strategies for linalg ops that operate on the last 1-2 dims.
 
     Returns sharding on each batch dim (all dims except the last 2), with all
     outputs and inputs sharded on the same dim.
     """
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: Union[List[List[Placement, _ShardingPlaceholder]]]= Union[[]]
     for dim in range(ndim - 2):
         strategies.append([_ShardingPlaceholder(dim)] * n_placements)
     return strategies
@@ -1541,9 +1543,9 @@ def _get_ndim(tensor_meta: Any) -> int:
 )
 def linalg_batch_dim_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     ndim = _get_ndim(args_schema[0])
     if op not in _LINALG_NUM_PLACEMENTS:
         raise AssertionError(f"Expected op in _LINALG_NUM_PLACEMENTS, got {op}")
@@ -1591,17 +1593,17 @@ def linalg_batch_dim_strategy(
 )
 def linalg_pinv_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     ndim = _get_ndim(args_schema[0])
     # Count optional tensor kwargs that are actually present
     extra_tensors = sum(
         isinstance(kwargs_schema.get(k), TensorMeta) for k in ("atol", "rtol")
     )
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: Union[List[List[Placement, _ShardingPlaceholder]]]= Union[[]]
     for dim in range(ndim - 2):
-        s: list[Placement | _ShardingPlaceholder] = [
+        s: Union[List[Placement, _ShardingPlaceholder]]= [
             _ShardingPlaceholder(dim),
             _ShardingPlaceholder(dim),
         ]
@@ -1619,12 +1621,12 @@ def linalg_pinv_strategy(
 )
 def linalg_cross_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     ndim = _get_ndim(args_schema[0])
     cross_dim = kwargs_schema.get("dim", -1) % ndim
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: Union[List[List[Placement, _ShardingPlaceholder]]]= Union[[]]
     for dim in range(ndim):
         if dim == cross_dim:
             continue
@@ -1672,9 +1674,9 @@ def linalg_cross_strategy(
 )
 def interp_upsample_1out_1in_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     # 1 output + 1 input = 2 placements; shard on batch (0) and channel (1)
     # Upsample is a linear transformation so Partial(sum/avg) is valid.
     return [
@@ -1695,9 +1697,9 @@ def interp_upsample_1out_1in_strategy(
 )
 def interp_pool_1out_2in_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     # 1 output + 2 inputs = 3 placements; shard on batch (0) and channel (1)
     return [
         [_ShardingPlaceholder(0)] * 3,
@@ -1711,14 +1713,14 @@ def interp_pool_1out_2in_strategy(
 )
 def pool_backward_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     # max_pool2d_with_indices_backward(grad_output, self, ..., indices) -> grad_input
     # 1 output + 3 tensor inputs = 4 placements
     # Order: [output, grad_output, self, indices]
     input_meta = cast(TensorMeta, args_schema[0])
-    strategies: list[list[Placement | _ShardingPlaceholder]] = [
+    strategies: Union[List[List[Placement, _ShardingPlaceholder]]]= Union[[]
         [_ShardingPlaceholder(0)] * 4,
     ]
     if len(input_meta.shape) >= 4:  # batched: (N, C, H, W)
@@ -1739,9 +1741,9 @@ def pool_backward_strategy(
 )
 def grid_sampler_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     # grid_sampler_{2,3}d(input[N,C,...], grid[N,...,{2,3}]) -> output[N,C,...]
     # grid has no channel dim, so only batch sharding applies to both inputs.
     # Linear in input: P(sum/avg) on input with replicated grid is valid.
@@ -1758,15 +1760,15 @@ def grid_sampler_strategy(
 )
 def grid_sampler_backward_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     # grid_sampler_{2,3}d_backward: 2 outputs (grad_input, grad_grid) + 3 inputs = 5 placements, batch-only
     return [[_ShardingPlaceholder(0)] * 5]
 
 
 def _adjust_group_norm_scalars(
-    input_specs: list[DTensorSpec], schema: OpSchema
+    input_specs: List[DTensorSpec], schema: OpSchema
 ) -> OpSchema:
     """Adjust N, C, HxW scalar args in native_group_norm to local values.
 
@@ -1803,8 +1805,8 @@ def _adjust_group_norm_scalars(
 # Normalization ops
 #
 # Batch norm reduces over batch (dim 0) + spatial dims (2+), keeping only
-# channel (dim 1).  Channel-dim sharding is valid for both forward and
-# backward: each shard processes independent channels.
+# channel (dim 1).  Neither batch nor channel sharding is safe, so we fall
+# back to replicate-only.
 #
 # Group norm reduces over (C/groups, spatial) within each group per sample.
 # Batch dim (0) is safe to shard — each sample is independent.
@@ -1828,16 +1830,16 @@ BATCH_NORM_4OUT_OPS = [
 )
 def batch_norm_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     # Batch norm normalizes per-channel (reduces over batch + spatial dims),
     # so channel-dim sharding is valid: each shard processes independent channels.
     # Unlike group_norm, batch_norm infers shapes from tensors (no scalar N/C/HxW).
     num_outputs = 4 if op in BATCH_NORM_4OUT_OPS else 3
     num_tensor_inputs = sum(isinstance(a, TensorMeta) for a in args_schema)
     # output [N,C,*] shards on dim 1; save_mean, save_invstd [C] shard on dim 0
-    rule: list[Placement | _ShardingPlaceholder] = [_ShardingPlaceholder(1)]
+    rule: Union[List[Placement, _ShardingPlaceholder]]= [_ShardingPlaceholder(1)]
     rule.extend([_ShardingPlaceholder(0)] * 2)  # save_mean, save_invstd
     if num_outputs == 4:
         rule.append(Replicate())  # reserve: opaque cuDNN workspace
@@ -1848,44 +1850,20 @@ def batch_norm_strategy(
 
 
 @register_single_dim_strategy(
-    [aten.native_batch_norm_backward.default],
-    schema_info=RuntimeSchemaInfo(1),
-)
-def batch_norm_backward_strategy(
-    op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
-    # Backward reduces over batch + spatial dims, orthogonal to the channel dim,
-    # so channel sharding commutes with the op (same principle as forward).
-    # Tensors are [N,C,*] -> Shard(1) or [C] -> Shard(0).
-    num_tensor_inputs = sum(isinstance(a, TensorMeta) for a in args_schema)
-    rule: list[Placement | _ShardingPlaceholder] = [
-        _ShardingPlaceholder(1),  # grad_input [N,C,*]
-        _ShardingPlaceholder(0),  # grad_weight [C]
-        _ShardingPlaceholder(0),  # grad_bias [C]
-        _ShardingPlaceholder(1),  # grad_out [N,C,*]
-        _ShardingPlaceholder(1),  # input [N,C,*]
-    ]
-    rule.extend([_ShardingPlaceholder(0)] * (num_tensor_inputs - 2))
-    return [rule]
-
-
-@register_single_dim_strategy(
     [aten.native_group_norm.default],
     schema_info=RuntimeSchemaInfo(1),
 )
 def group_norm_strategy(
     op: torch._ops.OpOverload,
-    args_schema: tuple[Any, ...],
-    kwargs_schema: dict[str, Any],
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    args_schema: Tuple[Any, ...],
+    kwargs_schema: Dict[str, Any],
+) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
     # native_group_norm(input, weight?, bias?, N, C, HxW, group, eps) -> (out, mean, rstd)
     # Batch dim (0) is independent. The scalar N/C/HxW args are adjusted to local
     # values by _adjust_group_norm_scalars in the sharding propagation layer.
     num_tensor_inputs = sum(isinstance(a, TensorMeta) for a in args_schema)
     # 3 outputs + input all shard on batch dim
-    placements: list[Placement | _ShardingPlaceholder] = [_ShardingPlaceholder(0)] * 4
+    placements: Union[List[Placement, _ShardingPlaceholder]]= [_ShardingPlaceholder(0)] * 4
     # weight and bias (if present) must be Replicate
     placements.extend([Replicate()] * (num_tensor_inputs - 1))
     return [placements]

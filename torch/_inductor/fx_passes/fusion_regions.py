@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Detect fusion regions for overlap scheduling."""
 
 import operator
@@ -8,6 +9,7 @@ import torch.fx as fx
 from torch._logging import trace_structured
 from torch.utils._ordered_set import OrderedSet
 from torch.utils._runtime_estimation import get_num_bytes
+from typing import Dict, List, Set, Tuple, Union
 
 
 @dataclass
@@ -23,7 +25,7 @@ class FusionRegion:
         """Compute cost based on subgraph's placeholder inputs and output node."""
         self.total_bytes, self.cost_ms = self._compute_cost()
 
-    def _compute_cost(self) -> tuple[int, float]:
+    def _compute_cost(self) -> Tuple[int, float]:
         from torch.utils._pytree import tree_flatten
         from torch.utils._runtime_estimation import get_transfer_time
 
@@ -104,14 +106,14 @@ def is_fusible_node(n: fx.Node) -> bool:
     return True
 
 
-def _get_contiguous_fusible_spans(gm: fx.GraphModule) -> list[list[fx.Node]]:
+def _get_contiguous_fusible_spans(gm: fx.GraphModule) -> List[List[fx.Node]]:
     """Get contiguous spans of fusible nodes from the graph.
 
     Walks the graph in topological order and groups consecutive fusible
     nodes into spans. Non-fusible nodes act as span boundaries.
     """
-    spans: list[list[fx.Node]] = []
-    current_span: list[fx.Node] = []
+    spans: List[List[fx.Node]] = []
+    current_span: List[fx.Node] = []
 
     for node in gm.graph.nodes:
         if is_fusible_node(node):
@@ -128,7 +130,7 @@ def _get_contiguous_fusible_spans(gm: fx.GraphModule) -> list[list[fx.Node]]:
     return spans
 
 
-def _find_connected_components(span: list[fx.Node]) -> list[list[fx.Node]]:
+def _find_connected_components(span: List[fx.Node]) -> List[List[fx.Node]]:
     """Find connected components within a span of fusible nodes.
 
     Two nodes are connected if one is an input to the other (direct data dependency).
@@ -153,7 +155,7 @@ def _find_connected_components(span: list[fx.Node]) -> list[list[fx.Node]]:
                 uf.join(node_idx, node_to_idx[inp])
 
     # Group by root
-    root_to_nodes: dict[int, list[fx.Node]] = {}
+    root_to_nodes: Dict[int, List[fx.Node]] = {}
     for node in span:
         root = uf.find(node_to_idx[node])
         if root not in root_to_nodes:
@@ -165,7 +167,7 @@ def _find_connected_components(span: list[fx.Node]) -> list[list[fx.Node]]:
 
 def build_fusion_regions(
     gm: fx.GraphModule,
-) -> dict[fx.Node, OrderedSet[fx.Node]]:
+) -> Dict[fx.Node, OrderedSet[fx.Node]]:
     """Build fusion regions from contiguous spans of fusible nodes.
 
     1. Identify contiguous spans of fusible nodes (separated by non-fusible nodes)
@@ -178,13 +180,13 @@ def build_fusion_regions(
     Returns a dict mapping each node to its fusion group (OrderedSet of nodes).
     """
     # Build node -> topo index map for sorting
-    node_to_idx: dict[fx.Node, int] = {n: i for i, n in enumerate(gm.graph.nodes)}
+    node_to_idx: Dict[fx.Node, int] = {n: i for i, n in enumerate(gm.graph.nodes)}
 
     # Step 1: Get contiguous spans of fusible nodes
     spans = _get_contiguous_fusible_spans(gm)
 
     # Step 2: Find connected components within each span
-    region_of: dict[fx.Node, OrderedSet[fx.Node]] = {}
+    region_of: Dict[fx.Node, OrderedSet[fx.Node]] = {}
 
     for span in spans:
         if len(span) < 2:
@@ -210,8 +212,8 @@ def build_fusion_regions(
 
 def collapse_fusion_regions(
     gm: fx.GraphModule,
-    region_of: dict[fx.Node, OrderedSet[fx.Node]],
-) -> dict[fx.Node, FusionRegion]:
+    region_of: Dict[fx.Node, OrderedSet[fx.Node]],
+) -> Dict[fx.Node, FusionRegion]:
     """
     Collapse fusion regions into call_module nodes using fuse_by_partitions.
     Returns new_region_of mapping module nodes to FusionRegions.
@@ -222,7 +224,7 @@ def collapse_fusion_regions(
         return {}
 
     # Get unique node sets (regions with <2 nodes already filtered in build_fusion_regions)
-    unique_regions: list[tuple[OrderedSet[fx.Node], int]] = []
+    unique_regions: List[Tuple[OrderedSet[fx.Node], int]] = []
     seen_region_ids: OrderedSet[int] = OrderedSet()
     for node_set in region_of.values():
         region_id = id(node_set)
@@ -260,7 +262,7 @@ def collapse_fusion_regions(
     )
 
     # Build new_region_of by finding the call_module nodes
-    new_region_of: dict[fx.Node, FusionRegion] = {}
+    new_region_of: Dict[fx.Node, FusionRegion] = {}
 
     for region_idx in range(len(unique_regions)):
         subgraph_name = f"_fusion_region_{region_idx}"
@@ -287,8 +289,8 @@ def collapse_fusion_regions(
 
 def expand_fusion_regions(
     gm: fx.GraphModule,
-    region_of: dict[fx.Node, FusionRegion],
-) -> dict[fx.Node, fx.Node | None]:
+    region_of: Dict[fx.Node, FusionRegion],
+) -> Union[Dict[fx.Node, fx.Node, None]]:
     """
     Expand call_module nodes back to their original nodes using _inline_module.
 
@@ -297,7 +299,7 @@ def expand_fusion_regions(
     """
     from torch.fx.experimental.const_fold import _inline_module
 
-    result: dict[fx.Node, fx.Node | None] = {}
+    result: Union[Dict[fx.Node, fx.Node, None]]= {}
 
     if not region_of:
         return result

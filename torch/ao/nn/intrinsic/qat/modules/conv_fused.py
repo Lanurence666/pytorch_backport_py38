@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
-from typing import ClassVar
+from typing import ClassVar, Type, TypeVar, Union
 
 import torch
 import torch.ao.nn.intrinsic as nni
@@ -35,7 +37,7 @@ _BN_CLASS_MAP = {
 
 class _ConvBnNd(nn.modules.conv._ConvNd, nni._FusedModule):
     _version = 2
-    _FLOAT_MODULE: ClassVar[type[nn.modules.conv._ConvNd]]
+    _FLOAT_MODULE: ClassVar[Type[nn.modules.conv._ConvNd]]
 
     def __init__(
         self,
@@ -460,10 +462,10 @@ class ConvBn1d(_ConvBnNd, nn.Conv1d):
 
     """
 
-    _FLOAT_BN_MODULE: ClassVar[type[nn.BatchNorm1d]] = nn.BatchNorm1d
-    _FLOAT_RELU_MODULE: ClassVar[type[nn.Module] | None] = None
-    _FLOAT_MODULE: ClassVar[type[nn.Module]] = nni.ConvBn1d  # type: ignore[assignment]
-    _FLOAT_CONV_MODULE: ClassVar[type[nn.Conv1d]] = nn.Conv1d
+    _FLOAT_BN_MODULE: ClassVar[Type[nn.BatchNorm1d]] = nn.BatchNorm1d
+    _FLOAT_RELU_MODULE: Union[ClassVar[Type[nn.Module], None]]= None
+    _FLOAT_MODULE: ClassVar[Type[nn.Module]] = nni.ConvBn1d  # type: ignore[assignment]
+    _FLOAT_CONV_MODULE: ClassVar[Type[nn.Conv1d]] = nn.Conv1d
 
     def __init__(
         self,
@@ -530,12 +532,12 @@ class ConvBnReLU1d(ConvBn1d):
     """
 
     # base class defines _FLOAT_MODULE as "ConvBn1d"
-    _FLOAT_MODULE: ClassVar[type[nn.Module]] = nni.ConvBnReLU1d
-    _FLOAT_CONV_MODULE: ClassVar[type[nn.Conv1d]] = nn.Conv1d
-    _FLOAT_BN_MODULE: ClassVar[type[nn.BatchNorm1d]] = nn.BatchNorm1d
-    _FLOAT_RELU_MODULE: ClassVar[type[nn.Module] | None] = nn.ReLU
+    _FLOAT_MODULE: ClassVar[Type[nn.Module]] = nni.ConvBnReLU1d
+    _FLOAT_CONV_MODULE: ClassVar[Type[nn.Conv1d]] = nn.Conv1d
+    _FLOAT_BN_MODULE: ClassVar[Type[nn.BatchNorm1d]] = nn.BatchNorm1d
+    _FLOAT_RELU_MODULE: Union[ClassVar[Type[nn.Module], None]]= nn.ReLU
     # module class after fusing bn into conv
-    _FUSED_FLOAT_MODULE: ClassVar[type[nn.Module] | None] = nni.ConvReLU1d
+    _FUSED_FLOAT_MODULE: Union[ClassVar[Type[nn.Module], None]]= nni.ConvReLU1d
 
     def forward(self, input):
         r"""Performs forward pass through fused Conv1d, BatchNorm1d, and ReLU."""
@@ -560,10 +562,10 @@ class ConvReLU1d(nnqat.Conv1d, nni._FusedModule):
 
     """
 
-    _FLOAT_MODULE: ClassVar[type[nni.ConvReLU1d]] = nni.ConvReLU1d  # type: ignore[assignment]
-    _FLOAT_CONV_MODULE: ClassVar[type[nn.Conv1d]] = nn.Conv1d
-    _FLOAT_BN_MODULE: ClassVar[type[nn.Module] | None] = None
-    _FLOAT_RELU_MODULE: ClassVar[type[nn.Module] | None] = nn.ReLU
+    _FLOAT_MODULE: ClassVar[Type[nni.ConvReLU1d]] = nni.ConvReLU1d  # type: ignore[assignment]
+    _FLOAT_CONV_MODULE: ClassVar[Type[nn.Conv1d]] = nn.Conv1d
+    _FLOAT_BN_MODULE: Union[ClassVar[Type[nn.Module], None]]= None
+    _FLOAT_RELU_MODULE: Union[ClassVar[Type[nn.Module], None]]= nn.ReLU
 
     def __init__(
         self,
@@ -628,10 +630,10 @@ class ConvBn2d(_ConvBnNd, nn.Conv2d):
 
     """
 
-    _FLOAT_MODULE: ClassVar[type[nni.ConvBn2d]] = nni.ConvBn2d  # type: ignore[assignment]
-    _FLOAT_CONV_MODULE: ClassVar[type[nn.Conv2d]] = nn.Conv2d
-    _FLOAT_BN_MODULE: ClassVar[type[nn.Module] | None] = nn.BatchNorm2d
-    _FLOAT_RELU_MODULE: ClassVar[type[nn.Module] | None] = None
+    _FLOAT_MODULE: ClassVar[Type[nni.ConvBn2d]] = nni.ConvBn2d  # type: ignore[assignment]
+    _FLOAT_CONV_MODULE: ClassVar[Type[nn.Conv2d]] = nn.Conv2d
+    _FLOAT_BN_MODULE: Union[ClassVar[Type[nn.Module], None]]= nn.BatchNorm2d
+    _FLOAT_RELU_MODULE: Union[ClassVar[Type[nn.Module], None]]= None
 
     def __init__(
         self,
@@ -698,12 +700,12 @@ class ConvBnReLU2d(ConvBn2d):
     """
 
     # base class defines _FLOAT_MODULE as "ConvBn2d"
-    _FLOAT_MODULE: ClassVar[type[nni.ConvBnReLU2d]] = nni.ConvBnReLU2d  # type: ignore[assignment]
-    _FLOAT_CONV_MODULE: ClassVar[type[nn.Conv2d]] = nn.Conv2d
-    _FLOAT_BN_MODULE: ClassVar[type[nn.BatchNorm2d]] = nn.BatchNorm2d
-    _FLOAT_RELU_MODULE: ClassVar[type[nn.Module] | None] = nn.ReLU
+    _FLOAT_MODULE: ClassVar[Type[nni.ConvBnReLU2d]] = nni.ConvBnReLU2d  # type: ignore[assignment]
+    _FLOAT_CONV_MODULE: ClassVar[Type[nn.Conv2d]] = nn.Conv2d
+    _FLOAT_BN_MODULE: ClassVar[Type[nn.BatchNorm2d]] = nn.BatchNorm2d
+    _FLOAT_RELU_MODULE: Union[ClassVar[Type[nn.Module], None]]= nn.ReLU
     # module class after fusing bn into conv
-    _FUSED_FLOAT_MODULE: ClassVar[type[nni.ConvReLU2d] | None] = nni.ConvReLU2d
+    _FUSED_FLOAT_MODULE: Union[ClassVar[Type[nni.ConvReLU2d], None]]= nni.ConvReLU2d
 
     def forward(self, input):
         r"""Performs forward pass through fused Conv2d, BatchNorm2d, and ReLU."""
@@ -728,10 +730,10 @@ class ConvReLU2d(nnqat.Conv2d, nni._FusedModule):
 
     """
 
-    _FLOAT_MODULE: ClassVar[type[nn.Module]] = nni.ConvReLU2d  # type: ignore[assignment]
-    _FLOAT_CONV_MODULE: ClassVar[type[nn.Conv2d]] = nn.Conv2d
-    _FLOAT_BN_MODULE: ClassVar[type[nn.Module] | None] = None
-    _FLOAT_RELU_MODULE: ClassVar[type[nn.Module] | None] = nn.ReLU
+    _FLOAT_MODULE: ClassVar[Type[nn.Module]] = nni.ConvReLU2d  # type: ignore[assignment]
+    _FLOAT_CONV_MODULE: ClassVar[Type[nn.Conv2d]] = nn.Conv2d
+    _FLOAT_BN_MODULE: Union[ClassVar[Type[nn.Module], None]]= None
+    _FLOAT_RELU_MODULE: Union[ClassVar[Type[nn.Module], None]]= nn.ReLU
 
     def __init__(
         self,
@@ -796,10 +798,10 @@ class ConvBn3d(_ConvBnNd, nn.Conv3d):
 
     """
 
-    _FLOAT_MODULE: ClassVar[type[nni.ConvBn3d]] = nni.ConvBn3d  # type: ignore[assignment]
-    _FLOAT_CONV_MODULE: ClassVar[type[nn.Conv3d]] = nn.Conv3d
-    _FLOAT_BN_MODULE: ClassVar[type[nn.Module] | None] = nn.BatchNorm3d
-    _FLOAT_RELU_MODULE: ClassVar[type[nn.Module] | None] = None
+    _FLOAT_MODULE: ClassVar[Type[nni.ConvBn3d]] = nni.ConvBn3d  # type: ignore[assignment]
+    _FLOAT_CONV_MODULE: ClassVar[Type[nn.Conv3d]] = nn.Conv3d
+    _FLOAT_BN_MODULE: Union[ClassVar[Type[nn.Module], None]]= nn.BatchNorm3d
+    _FLOAT_RELU_MODULE: Union[ClassVar[Type[nn.Module], None]]= None
 
     def __init__(
         self,
@@ -865,12 +867,12 @@ class ConvBnReLU3d(ConvBn3d):
 
     """
 
-    _FLOAT_MODULE: ClassVar[type[nni.ConvBnReLU3d]] = nni.ConvBnReLU3d  # type: ignore[assignment]
-    _FLOAT_CONV_MODULE: ClassVar[type[nn.Conv3d]] = nn.Conv3d
-    _FLOAT_BN_MODULE: ClassVar[type[nn.BatchNorm3d]] = nn.BatchNorm3d
-    _FLOAT_RELU_MODULE: ClassVar[type[nn.ReLU] | None] = nn.ReLU
+    _FLOAT_MODULE: ClassVar[Type[nni.ConvBnReLU3d]] = nni.ConvBnReLU3d  # type: ignore[assignment]
+    _FLOAT_CONV_MODULE: ClassVar[Type[nn.Conv3d]] = nn.Conv3d
+    _FLOAT_BN_MODULE: ClassVar[Type[nn.BatchNorm3d]] = nn.BatchNorm3d
+    _FLOAT_RELU_MODULE: Union[ClassVar[Type[nn.ReLU], None]]= nn.ReLU
     # module class after fusing bn into conv
-    _FUSED_FLOAT_MODULE: ClassVar[type[nni.ConvReLU3d] | None] = nni.ConvReLU3d
+    _FUSED_FLOAT_MODULE: Union[ClassVar[Type[nni.ConvReLU3d], None]]= nni.ConvReLU3d
 
     def forward(self, input):
         r"""Performs forward pass through fused Conv3d, BatchNorm3d, and ReLU."""
@@ -897,10 +899,10 @@ class ConvReLU3d(nnqat.Conv3d, nni._FusedModule):
 
     """
 
-    _FLOAT_MODULE: ClassVar[type[nni.ConvReLU3d]] = nni.ConvReLU3d  # type: ignore[assignment]
-    _FLOAT_CONV_MODULE: ClassVar[type[nn.Conv3d]] = nn.Conv3d
-    _FLOAT_BN_MODULE: ClassVar[type[nn.Module] | None] = None
-    _FLOAT_RELU_MODULE: ClassVar[type[nn.Module] | None] = nn.ReLU
+    _FLOAT_MODULE: ClassVar[Type[nni.ConvReLU3d]] = nni.ConvReLU3d  # type: ignore[assignment]
+    _FLOAT_CONV_MODULE: ClassVar[Type[nn.Conv3d]] = nn.Conv3d
+    _FLOAT_BN_MODULE: Union[ClassVar[Type[nn.Module], None]]= None
+    _FLOAT_RELU_MODULE: Union[ClassVar[Type[nn.Module], None]]= nn.ReLU
 
     def __init__(
         self,

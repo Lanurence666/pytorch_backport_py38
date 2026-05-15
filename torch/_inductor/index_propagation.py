@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """This file implements the IndexPropagation ops handler, which wraps an
 underlying handler to add a limited form of constant propagation, as well as
@@ -22,9 +23,15 @@ SymPy expressions yet, despite sympy.Min and sympy.Max existing.
 """
 
 import itertools
-from collections.abc import Sequence
+
 from dataclasses import dataclass
-from typing import Any, Literal, overload, TypeAlias
+from typing import Any, Dict, Optional, Sequence, Tuple, Type, Union, overload
+from typing_extensions import Literal
+
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 import sympy
 
@@ -39,7 +46,7 @@ from .utils import generate_assert
 from .virtualized import V
 
 
-_ExprType = sympy.Expr | float | int | bool
+_ExprType = Union[sympy.Expr, float, int, bool]
 
 
 def _is_constant(val: _ExprType):
@@ -91,18 +98,18 @@ class SymPyOps:
         return value
 
     @staticmethod
-    def constant(value: int | float | bool, dtype: torch.dtype) -> TypedExpr:
+    def constant(value: Union[Union[int, float], bool], dtype: torch.dtype) -> TypedExpr:
         return TypedExpr(value, dtype)
 
     @staticmethod
-    def index_expr(value: sympy.Expr | int, dtype: torch.dtype) -> TypedExpr:
+    def index_expr(value: Union[sympy.Expr, int], dtype: torch.dtype) -> TypedExpr:
         return TypedExpr(value, dtype)
 
     @staticmethod
     def to_dtype(
         value: TypedExpr,
         dtype: torch.dtype,
-        src_dtype: torch.dtype | None = None,
+        src_dtype: Optional[torch.dtype] = None,
         use_compute_types: bool = False,
     ) -> TypedExpr:
         return TypedExpr(value.expr, dtype)
@@ -143,7 +150,7 @@ class SymPyOps:
         return TypedExpr(FloorDiv(x.expr, y.expr), result_type)
 
     @staticmethod
-    def mod(x: TypedExpr, y: TypedExpr) -> TypedExpr | None:
+    def mod(x: TypedExpr, y: TypedExpr) -> Optional[TypedExpr]:
         result_type = torch.promote_types(x.dtype, y.dtype)
         if not is_integer_dtype(result_type):
             return NotImplemented
@@ -152,7 +159,7 @@ class SymPyOps:
         return TypedExpr(result_expr, result_type)
 
     @staticmethod
-    def remainder(x: TypedExpr, y: TypedExpr) -> TypedExpr | None:
+    def remainder(x: TypedExpr, y: TypedExpr) -> Optional[TypedExpr]:
         result_type = torch.promote_types(x.dtype, y.dtype)
         if not is_integer_dtype(result_type):
             return NotImplemented
@@ -195,7 +202,7 @@ class IndexPropVar:
         )
 
 
-IndexPropResult: TypeAlias = IndexPropVar | tuple["IndexPropResult", ...]
+IndexPropResult = Union[IndexPropVar, Tuple["IndexPropResult", ...]]
 
 
 class IndexPropagation(DefaultHandler):
@@ -209,8 +216,8 @@ class IndexPropagation(DefaultHandler):
     def __init__(
         self,
         inner: Any,
-        iter_ranges: dict[sympy.Symbol, sympy.Expr],
-        indirect_var_ranges: dict[sympy.Symbol, sympy.Expr],
+        iter_ranges: Dict[sympy.Symbol, sympy.Expr],
+        indirect_var_ranges: Dict[sympy.Symbol, sympy.Expr],
     ) -> None:
         self._inner = inner
         self.shape_env = V.graph.sizevars.shape_env
@@ -238,7 +245,7 @@ class IndexPropagation(DefaultHandler):
             return self._inner.constant(val, dtype)
         return self._inner.index_expr(expr, dtype)
 
-    def unwrap(self, a: Any | IndexPropVar) -> Any:
+    def unwrap(self, a: Union[Any, IndexPropVar]) -> Any:
         if isinstance(a, (list, tuple)):
             return tuple(self.unwrap(v) for v in a)
 
@@ -261,16 +268,16 @@ class IndexPropagation(DefaultHandler):
         self,
         name: Literal["indirect_indexing"],
         args: Sequence[Any],
-        kwargs: dict[str, Any],
+        kwargs: Dict[str, Any],
     ) -> IndexPropVar: ...
 
     @overload
     def fallback(
-        self, name: str, args: Sequence[Any], kwargs: dict[str, Any]
+        self, name: str, args: Sequence[Any], kwargs: Dict[str, Any]
     ) -> IndexPropResult: ...
 
     def fallback(
-        self, name: str, args: Sequence[Any], kwargs: dict[str, Any]
+        self, name: str, args: Sequence[Any], kwargs: Dict[str, Any]
     ) -> IndexPropResult:
         # Fallback to the wrapped handler
         new_args = [self.unwrap(a) for a in args]
@@ -278,10 +285,10 @@ class IndexPropagation(DefaultHandler):
         return self.wrap(getattr(self._inner, name)(*new_args, **new_kwargs))
 
     def propagate_sympy(
-        self, name: str, args: Sequence[Any], kwargs: dict[str, Any]
+        self, name: str, args: Sequence[Any], kwargs: Dict[str, Any]
     ) -> IndexPropResult:
         # Build a new SymPy expression from this ops call
-        def unwrap(a: Any | IndexPropVar) -> Any:
+        def unwrap(a: Union[Any, IndexPropVar]) -> Any:
             if not isinstance(a, IndexPropVar):
                 return a
             return a.value
@@ -298,7 +305,7 @@ class IndexPropagation(DefaultHandler):
             return self.fallback(name, args, kwargs)
         return IndexPropVar.new_symbolic(new_expr)
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         if not hasattr(SymPyOps, name):
             return self.fallback(name, args, kwargs)
 
@@ -337,7 +344,7 @@ class IndexPropagation(DefaultHandler):
 
     def indirect_indexing(
         self,
-        index: Any | IndexPropVar,
+        index: Union[Any, IndexPropVar],
         size: Any,
         check: bool = True,
         wrap_neg=True,

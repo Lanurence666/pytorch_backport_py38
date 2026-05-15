@@ -1,8 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Callable, Dict, List, Optional, Set
+from typing_extensions import Protocol
+
 
 from torch import _C, _ops, autograd, Tensor
 from torch.utils import _pytree
@@ -11,14 +15,14 @@ from . import utils
 
 
 class InfoProtocol(Protocol):
-    _backward_fn: Callable | None
-    _setup_context_fn: Callable | None
+    _backward_fn: Optional[Callable]
+    _setup_context_fn: Optional[Callable]
 
 
 @dataclasses.dataclass
 class Info:
-    _backward_fn: Callable | None
-    _setup_context_fn: Callable | None
+    _backward_fn: Optional[Callable]
+    _setup_context_fn: Optional[Callable]
 
 
 def make_autograd_impl(op: _ops.OpOverload, info: InfoProtocol) -> Callable:
@@ -29,7 +33,7 @@ def make_autograd_impl(op: _ops.OpOverload, info: InfoProtocol) -> Callable:
     @dataclass
     class Metadata:
         keyset: _C.DispatchKeySet
-        keyword_only_args: dict[str, Any]
+        keyword_only_args: Dict[str, Any]
 
     def forward_no_grad(*args):
         metadata = args[-1]
@@ -127,15 +131,15 @@ def supports_tensorlist(cls: Any) -> Any:
     orig_apply = cls.apply
 
     @dataclass
-    class TensorListMetadata:
+    class Metadata:
         input_spec: _pytree.TreeSpec
-        output_spec: _pytree.TreeSpec | None = None
-        result_is_tuple: bool | None = None
+        output_spec: Optional[_pytree.TreeSpec]= None
+        result_is_tuple: Optional[bool]= None
 
     def new_forward(ctx, *args):
         metadata = args[-1]
         args = args[:-1]
-        if not isinstance(metadata, TensorListMetadata):
+        if not isinstance(metadata, Metadata):
             raise NotImplementedError(
                 "NYI: calling supports_tensorlist autograd.Function.forward directly. "
                 "You should probably be calling .apply instead. "
@@ -203,7 +207,7 @@ def supports_tensorlist(cls: Any) -> Any:
 
     def new_apply(*args):
         flat_args, input_spec = _pytree.tree_flatten(args, is_leaf=not_list_of_tensor)
-        metadata = TensorListMetadata(input_spec)
+        metadata = Metadata(input_spec)
         result = orig_apply(*flat_args, metadata)  # type: ignore[misc]
         if metadata.output_spec is None:
             raise AssertionError("metadata.output_spec must not be None")

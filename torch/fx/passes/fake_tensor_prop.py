@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Optional, Set
 
 import torch.fx
 from torch._subclasses.fake_tensor import FakeTensor, FakeTensorMode
@@ -28,7 +30,7 @@ class FakeTensorProp(torch.fx.Interpreter):
     """
 
     def __init__(
-        self, module: torch.fx.GraphModule, mode: FakeTensorMode | None = None
+        self, module: torch.fx.GraphModule, mode: Optional[FakeTensorMode] = None
     ) -> None:
         super().__init__(module)
         if mode is None:

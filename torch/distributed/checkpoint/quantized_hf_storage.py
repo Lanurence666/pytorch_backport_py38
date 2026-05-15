@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import json
 import logging
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Tuple
 
 import torch
 from torch.distributed.checkpoint._hf_utils import _metadata_fn
@@ -49,11 +51,11 @@ class QuantizedHuggingFaceStorageReader(HuggingFaceStorageReader):
 
         self.target_dtype: torch.dtype = target_dtype
         self.block_size: int = block_size
-        self._weight_scale_mapping: dict[str, str] = {}
+        self._weight_scale_mapping: Dict[str, str] = {}
         # Track which file contains each tensor
-        self._weight_map: dict[str, str] = {}
+        self._weight_map: Dict[str, str] = {}
         # Cache for full tensor shapes (fqn -> shape)
-        self._tensor_full_shapes: dict[str, torch.Size] = {}
+        self._tensor_full_shapes: Dict[str, torch.Size] = {}
 
     def read_metadata(self) -> Any:
         metadata = super().read_metadata()
@@ -92,7 +94,7 @@ class QuantizedHuggingFaceStorageReader(HuggingFaceStorageReader):
             weight_map = index_data.get("weight_map", {})
             self._build_weight_scale_mapping(weight_map)
 
-    def _build_weight_scale_mapping(self, weight_map: dict[str, str]):
+    def _build_weight_scale_mapping(self, weight_map: Dict[str, str]):
         """Analyze and build weight-scale tensor pairs from weight mapping."""
         # Store the complete weight map for file location lookups.
         self._weight_map = weight_map
@@ -137,7 +139,7 @@ class QuantizedHuggingFaceStorageReader(HuggingFaceStorageReader):
 
     def _get_slice_to_block_mapping(
         self, req: ReadItem
-    ) -> tuple[tuple[int, int], tuple[int, int], slice, slice]:
+    ) -> Tuple[Tuple[int, int], Tuple[int, int], slice, slice]:
         """
         Calculate which blocks correspond to the requested slice.
 
@@ -279,7 +281,7 @@ class QuantizedHuggingFaceStorageReader(HuggingFaceStorageReader):
         weight: torch.Tensor,
         scale_inv: torch.Tensor,
         full_tensor_shape: torch.Size,
-        slice_info: tuple[tuple[int, int], tuple[int, int], slice, slice],
+        slice_info: Tuple[Tuple[int, int], Tuple[int, int], slice, slice],
     ) -> torch.Tensor:
         """
         Dequantize a sliced tensor using the appropriate portion of the scale tensor.

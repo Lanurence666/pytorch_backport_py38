@@ -1,5 +1,9 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+from typing import Optional, Union
+
+
 from torch import Tensor
 
 from .adam import Adam, adam
@@ -21,17 +25,17 @@ class AdamW(Adam):
     def __init__(
         self,
         params: ParamsT,
-        lr: float | Tensor = 1e-3,
-        betas: tuple[float | Tensor, float | Tensor] = (0.9, 0.999),
+        lr: Union[float, Tensor] = 1e-3,
+        betas: Tuple[Union[float, Tensor], Union[float, Tensor]] = (0.9, 0.999),
         eps: float = 1e-8,
         weight_decay: float = 1e-2,
         amsgrad: bool = False,
         *,
         maximize: bool = False,
-        foreach: bool | None = None,
+        foreach: Optional[bool] = None,
         capturable: bool = False,
         differentiable: bool = False,
-        fused: bool | None = None,
+        fused: Optional[bool] = None,
     ) -> None:
         super().__init__(
             params,
@@ -101,7 +105,7 @@ AdamW.__doc__ = (
         lr (float, Tensor, optional): learning rate (default: 1e-3). A tensor LR
             is not yet supported for all our implementations. Please use a float
             LR if you are not also specifying fused=True or capturable=True.
-        betas (tuple[float | Tensor, float | Tensor], optional):
+        betas (Tuple[Union[float, Tensor], Union[float, Tensor]], optional):
             coefficients used for computing running averages of gradient and
             its square. If a tensor is provided, must be 1-element. (default: (0.9, 0.999))
         eps (float, optional): term added to the denominator to improve
@@ -128,26 +132,26 @@ AdamW.__doc__ = (
 
 # @_disable_dynamo_if_unsupported logic occurs in the decorator that's applied to F.adam
 def adamw(
-    params: list[Tensor],
-    grads: list[Tensor],
-    exp_avgs: list[Tensor],
-    exp_avg_sqs: list[Tensor],
-    max_exp_avg_sqs: list[Tensor],
-    state_steps: list[Tensor],
+    params: List[Tensor],
+    grads: List[Tensor],
+    exp_avgs: List[Tensor],
+    exp_avg_sqs: List[Tensor],
+    max_exp_avg_sqs: List[Tensor],
+    state_steps: List[Tensor],
     # kwonly args with defaults are not supported by functions compiled with torchscript issue #70627
     # setting this as kwarg for now as functional API is compiled by torch/distributed/optim
-    foreach: bool | None = None,
+    foreach: Optional[bool] = None,
     capturable: bool = False,
     differentiable: bool = False,
-    fused: bool | None = None,
-    grad_scale: Tensor | None = None,
-    found_inf: Tensor | None = None,
+    fused: Optional[bool] = None,
+    grad_scale: Optional[Tensor] = None,
+    found_inf: Optional[Tensor] = None,
     has_complex: bool = False,
     *,
     amsgrad: bool,
-    beta1: float | Tensor,
-    beta2: float | Tensor,
-    lr: float | Tensor,
+    beta1: Union[float, Tensor],
+    beta2: Union[float, Tensor],
+    lr: Union[float, Tensor],
     weight_decay: float,
     eps: float,
     maximize: bool,

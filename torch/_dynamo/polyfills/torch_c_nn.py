@@ -1,8 +1,9 @@
+from __future__ import annotations
 """
 Polyfills for torch._C._nn functions.
 """
 
-from typing import Any
+from typing import Any, Tuple, Type
 
 import torch
 from torch.overrides import _is_torch_function_mode_enabled, _pop_mode_temporarily
@@ -13,7 +14,7 @@ from ..decorators import substitute_in_graph
 @substitute_in_graph(torch._C._nn._parse_to, skip_signature_check=True)
 def _parse_to_polyfill(
     *args: Any, **kwargs: Any
-) -> tuple[torch.device, torch.dtype, bool, torch.memory_format]:
+) -> Tuple[torch.device, torch.dtype, bool, torch.memory_format]:
     """
     Polyfill for torch._C._nn._parse_to that parses arguments to nn.Module.to().
 

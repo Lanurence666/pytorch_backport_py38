@@ -1,6 +1,7 @@
 # Owner(s): ["module: dataloader"]
 # ruff: noqa: F841
 
+from __future__ import annotations
 import ctypes
 import errno
 import faulthandler

@@ -18,6 +18,8 @@
 # Based of https://github.com/python/cpython/blob/main/Lib/pickle.py
 # Expected to be useful for loading PyTorch model weights
 # For example:
+from __future__ import annotations
+
 # data = urllib.request.urlopen('https://download.pytorch.org/models/resnet50-0676ba61.pth').read()
 # buf = io.BytesIO(data)
 # weights = torch.load(buf, weights_only = True)
@@ -69,7 +71,7 @@ from pickle import (
 )
 from struct import unpack
 from sys import maxsize
-from typing import Any
+from typing import Any, Callable, Dict, List, Set, Tuple, Type, Union
 
 import torch
 from torch._utils import _sparse_tensors_to_validate, IMPORT_MAPPING, NAME_MAPPING
@@ -84,15 +86,15 @@ _blocklisted_modules = [
     "nt",
 ]
 
-_marked_safe_globals_set: set[Callable | tuple[Callable, str]] = set()
+_marked_safe_globals_set: Union[Set[Callable, Tuple[Callable, str]]]= set()
 
 
-def _add_safe_globals(safe_globals: list[Callable | tuple[Callable, str]]):
+def _add_safe_globals(safe_globals: List[Union[Callable, Tuple[Callable, str]]]):
     global _marked_safe_globals_set
     _marked_safe_globals_set = _marked_safe_globals_set.union(set(safe_globals))
 
 
-def _get_safe_globals() -> list[Callable | tuple[Callable, str]]:
+def _get_safe_globals() -> Union[List[Callable, Tuple[Callable, str]]]:
     global _marked_safe_globals_set
     return list(_marked_safe_globals_set)
 
@@ -103,14 +105,14 @@ def _clear_safe_globals():
 
 
 def _remove_safe_globals(
-    globals_to_remove: list[Callable | tuple[Callable, str]],
+    globals_to_remove: Union[List[Callable, Tuple[Callable, str]],]
 ):
     global _marked_safe_globals_set
     _marked_safe_globals_set = _marked_safe_globals_set - set(globals_to_remove)
 
 
 class _safe_globals:
-    def __init__(self, safe_globals: list[Callable | tuple[Callable, str]]):
+    def __init__(self, safe_globals: List[Union[Callable, Tuple[Callable, str]]]):
         self.safe_globals = safe_globals
 
     def __enter__(self):
@@ -128,7 +130,7 @@ class _safe_globals:
 # the dynamic additions to safe_globals would not be picked up by
 # _get_allowed_globals due to the lru_cache
 def _get_user_allowed_globals():
-    rc: dict[str, Any] = {}
+    rc: Dict[str, Any] = {}
     for f in _marked_safe_globals_set:
         if isinstance(f, tuple):
             if len(f) != 2:
@@ -172,7 +174,7 @@ def _tensor_rebuild_functions():
 # Unpickling machinery
 @_functools.lru_cache(maxsize=1)
 def _get_allowed_globals():
-    rc: dict[str, Any] = {
+    rc: Dict[str, Any] = {
         "collections.OrderedDict": OrderedDict,
         "collections.Counter": Counter,
         "torch.nn.parameter.Parameter": torch.nn.Parameter,
@@ -227,7 +229,7 @@ def _get_allowed_globals():
     return rc
 
 
-def _read_global_instruction(readline: Callable) -> tuple[str, str]:
+def _read_global_instruction(readline: Callable) -> Tuple[str, str]:
     module = readline()[:-1].decode("utf-8")
     name = readline()[:-1].decode("utf-8")
     # Patch since torch.save default protocol is 2
@@ -239,7 +241,7 @@ def _read_global_instruction(readline: Callable) -> tuple[str, str]:
     return module, name
 
 
-def get_globals_in_pkl(file) -> set[str]:
+def get_globals_in_pkl(file) -> Set[str]:
     globals_in_checkpoint = set()
     read = file.read
     readline = file.readline
@@ -309,7 +311,7 @@ class Unpickler:
         self.encoding = encoding
         self.readline = file.readline
         self.read = file.read
-        self.memo: dict[int, Any] = {}
+        self.memo: Dict[int, Any] = {}
         self.proto: int = -1
 
     def load(self):
@@ -318,7 +320,7 @@ class Unpickler:
         Return the reconstituted object hierarchy specified in the file.
         """
         self.metastack = []
-        self.stack: list[Any] = []
+        self.stack: List[Any] = []
         self.append = self.stack.append
         read = self.read
         while True:

@@ -1,10 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import inspect
 import itertools
-from collections.abc import Callable, Sequence
+
 from dataclasses import dataclass, field
 from enum import auto, Enum
-from typing import Any, cast
+from typing import Any, Callable, FrozenSet, List, Optional, Sequence, Set, Tuple, cast
 
 import torch
 import torch.nn as nn
@@ -78,7 +80,7 @@ case, the all-gather output and unsharded parameter share the same
 data, so we use storage resizing on the all-gather output.
 """
 
-lib = torch.library.Library("fsdp", "FRAGMENT")
+lib = torch.library.Library("fsdp", "FRAGMENT")  # noqa: TOR901
 
 lib.define("copy_(Tensor(a!) tensor, Tensor data) -> ()")
 
@@ -138,14 +140,14 @@ class ParamModuleInfo:
     # Parameter names are unprefixed, e.g. "weight", not "lin.weight"
     module: nn.Module
     param_name: str
-    shared_modules: list[nn.Module] = field(default_factory=list)
-    shared_param_names: list[str] = field(default_factory=list)
+    shared_modules: List[nn.Module] = field(default_factory=list)
+    shared_param_names: List[str] = field(default_factory=list)
 
 
 @dataclass
 class ExtensionsData:
     # User-defined metadata passed from pre to post-all-gather
-    all_gather_metadata: Any | None = None
+    all_gather_metadata: Optional[Any] = None
     # Save the all-gather input sizes to unflatten the all-gather outputs to ND
     all_gather_input_sizes: Sequence[torch.Size] = ()  # ND
 
@@ -161,28 +163,28 @@ class FSDPParam:
     """
 
     orig_dtype: torch.dtype
-    param_dtype: torch.dtype | None
-    reduce_dtype: torch.dtype | None
+    param_dtype: Optional[torch.dtype]
+    reduce_dtype: Optional[torch.dtype]
     _orig_size: torch.Size  # ND
     sharded_size: torch.Size  # ND
-    contiguous_sharded_stride: tuple[int, ...]
+    contiguous_sharded_stride: Tuple[int, ...]
     padded_sharded_param_size: torch.Size  # ND
     sharded_post_forward_size: torch.Size  # ND
-    contiguous_sharded_post_forward_stride: tuple[int, ...]
+    contiguous_sharded_post_forward_stride: Tuple[int, ...]
     _sharded_param_data: torch.Tensor  # 1D
     sharded_param: nn.Parameter  # ND
-    _sharded_post_forward_param_data: torch.Tensor | None  # 1D
-    _sharded_post_forward_param: nn.Parameter | None  # ND
+    _sharded_post_forward_param_data: Optional[torch.Tensor]  # 1D
+    _sharded_post_forward_param: Optional[nn.Parameter]  # ND
     _unsharded_param: nn.Parameter  # ND
-    unsharded_accumulated_grad: torch.Tensor | None  # ND
+    unsharded_accumulated_grad: Optional[torch.Tensor]  # ND
     _sharding_spec: DTensorSpec
     _unsharded_dtensor_spec: (
-        DTensorSpec | None
+        Optional[DTensorSpec]
     )  # set for DTensor params (SPMD or TP/EP)
-    all_gather_outputs: list[torch.Tensor]  # 1D
+    all_gather_outputs: List[torch.Tensor]  # 1D
     # All-gather extension attributes
     _extensions_data: ExtensionsData
-    _unsharded_inner_tensors: list[torch.Tensor]
+    _unsharded_inner_tensors: List[torch.Tensor]
     _orig_param_uid: int
 
     def __init__(
@@ -190,7 +192,7 @@ class FSDPParam:
         param: nn.Parameter,
         module_info: ParamModuleInfo,
         mesh_info: DataParallelMeshInfo,
-        post_forward_mesh_info: FSDPMeshInfo | None,
+        post_forward_mesh_info: Optional[FSDPMeshInfo],
         device: torch.device,
         shard_placement_fn: Callable[[nn.Parameter], ShardPlacementFnResult] | None,
         mp_policy: MixedPrecisionPolicy,
@@ -204,14 +206,14 @@ class FSDPParam:
         self.pin_memory = (
             self.offload_to_cpu and cast(CPUOffloadPolicy, offload_policy).pin_memory
         )
-        self.grad_offload_event: torch.Event | None = None
+        self.grad_offload_event: Optional[torch.Event] = None
         self._init_sharded_param(param, device, shard_placement_fn, mesh_info)
         if self.post_forward_mesh_info:
             self._init_sharded_post_forward_param_metadata(param)
         self._init_extensions()
-        self.all_gather_outputs: list[torch.Tensor] = []
+        self.all_gather_outputs: List[torch.Tensor] = []
         self.unsharded_accumulated_grad = None
-        self._param_fqn: str | None = None  # prefixed from root module
+        self._param_fqn: Optional[str] = None  # prefixed from root module
         # TODO: Remove this padding logic once DTensor pads the local tensor:
         # https://github.com/pytorch/pytorch/issues/113045
         self._post_load_hook_handle = (
@@ -398,7 +400,7 @@ class FSDPParam:
 
         # Cache DP dim indices so _get_grad_inner_tensor can skip
         # redistribution on DP dims and let FSDP's reduce-scatter handle them.
-        self._dp_dim_indices: frozenset[int] = frozenset(
+        self._dp_dim_indices: FrozenSet[int] = frozenset(
             dp_shard_indices + dp_replicate_indices
         )
 
@@ -417,7 +419,7 @@ class FSDPParam:
             )
 
         self._spmd_mesh = spmd_mesh
-        self._spmd_placements: tuple[Placement, ...] = tuple(new_placements)
+        self._spmd_placements: Tuple[Placement, ...] = tuple(new_placements)
         self._sharding_spec = DTensorSpec(
             self._spmd_mesh,
             self._spmd_placements,
@@ -464,7 +466,7 @@ class FSDPParam:
                 Replicate(),
                 *self._unsharded_dtensor_spec.placements,
             )
-        self._spmd_placements: tuple[Placement, ...]
+        self._spmd_placements: Tuple[Placement, ...]
         if isinstance(self.mesh_info, HSDPMeshInfo):
             if self.mesh_info.replicate_mesh_dim != 0:
                 raise AssertionError(
@@ -552,12 +554,12 @@ class FSDPParam:
             )
         if has_fsdp_pre_all_gather:
             self._extensions_data = ExtensionsData()
-        self._unsharded_inner_tensors: list[torch.Tensor] = []
+        self._unsharded_inner_tensors: List[torch.Tensor] = []
 
     def init_all_gather_outputs(
         self,
-        all_gather_input_numels: list[int],
-        all_gather_input_dtypes: list[torch.dtype],
+        all_gather_input_numels: List[int],
+        all_gather_input_dtypes: List[torch.dtype],
         world_size: int,
         device: torch.device,
     ):
@@ -618,7 +620,7 @@ class FSDPParam:
             unsharded_param, requires_grad=self.sharded_param.requires_grad
         )
 
-    def _unflatten_all_gather_outputs(self) -> tuple[torch.Tensor, ...]:
+    def _unflatten_all_gather_outputs(self) -> Tuple[torch.Tensor, ...]:
         return tuple(
             t.view(-1, *s[1:])
             for t, s in zip(
@@ -756,7 +758,7 @@ class FSDPParam:
             free_storage(tensor)
 
     @property
-    def all_gather_inputs(self) -> list[torch.Tensor]:  # 1D
+    def all_gather_inputs(self) -> List[torch.Tensor]:  # 1D
         self._assert_in_states(ShardedState.SHARDED, ShardedState.SHARDED_POST_FORWARD)
         if self.sharded_state == ShardedState.SHARDED:
             if hasattr(self._sharded_local_tensor, "fsdp_pre_all_gather"):
@@ -775,7 +777,7 @@ class FSDPParam:
                     raise AssertionError(
                         f"Invalid fsdp_pre_all_gather: {pre_all_gather_signature}\n"
                         "Expects fsdp_pre_all_gather(self, mesh: DeviceMesh, "
-                        "outer_size: torch.Size, outer_stride: tuple[int, ...], "
+                        "outer_size: torch.Size, outer_stride: Tuple[int, ...], "
                         "module: nn.Module, mp_policy: MixedPrecisionPolicy)"
                     )
                 if num_fn_params == 1:

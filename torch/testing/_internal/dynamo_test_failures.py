@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This file contains the list of tests that are known to fail under Dynamo
 
@@ -24,9 +25,10 @@ git will merge changes easier.
 import logging
 import os
 import sys
+from typing import Optional
 
 
-def find_test_dir() -> str | None:
+def find_test_dir() -> Optional[str]:
     # Find the path to the dynamo expected failure and skip files.
     from os.path import abspath, basename, dirname, exists, join, normpath
 

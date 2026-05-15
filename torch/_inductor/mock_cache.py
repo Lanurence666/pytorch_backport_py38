@@ -6,7 +6,7 @@ import contextlib
 import dataclasses
 import sys
 import threading
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Type
 from typing_extensions import override, Self
 from unittest.mock import patch
 
@@ -15,7 +15,7 @@ from torch._inductor.remote_cache import RemoteCacheBackend
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
     from types import TracebackType
 
 
@@ -57,7 +57,7 @@ class Stats:
 
 
 class _GlobalItemStats(Stats):
-    cache: dict[str, object]
+    cache: Dict[str, object]
 
     def __init__(self) -> None:
         super().__init__()
@@ -137,7 +137,7 @@ class MockBackend(RemoteCacheBackend[Any]):
         return wrapper
 
     @override
-    def _get(self, key: str) -> Any | None:
+    def _get(self, key: str) -> Optional[Any]:
         stat = global_stats.get_stat(self._name)
         if key in stat.cache:
             stat += Stats(num_get_hit=1)
@@ -267,8 +267,8 @@ class PatchCaches(contextlib.AbstractContextManager):
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
+        exc_type: Optional[Type[BaseException]],
+        exc_value: Optional[BaseException],
+        traceback: Optional[TracebackType],
     ) -> None:
         self._stack.__exit__(exc_type, exc_value, traceback)

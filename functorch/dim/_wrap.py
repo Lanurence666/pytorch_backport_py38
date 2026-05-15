@@ -1,8 +1,8 @@
+from __future__ import annotations
 """
 Python implementation of function wrapping functionality for functorch.dim.
 """
 
-from __future__ import annotations
 
 import functools
 from typing import Any, TYPE_CHECKING

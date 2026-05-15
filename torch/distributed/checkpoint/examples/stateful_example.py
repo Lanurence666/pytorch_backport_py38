@@ -18,6 +18,7 @@ from torch.distributed.checkpoint.state_dict import (
 )
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from typing import Set
 
 
 CHECKPOINT_DIR = f"~/{os.environ.get('LOGNAME', '')}/checkpoint"

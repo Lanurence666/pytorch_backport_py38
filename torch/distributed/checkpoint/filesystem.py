@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import collections
 import dataclasses
 import io
@@ -11,16 +13,16 @@ import threading
 import uuid
 import warnings
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
 from io import UnsupportedOperation
 from pathlib import Path
-from typing import Any, cast, Final, IO
+from typing import Any, Callable, Dict, Generator, IO, Iterable, Iterator, List, Optional, Sequence, Set, Tuple, Type, Union, cast
 
 # introduced as collections.abc.Buffer in Python 3.12
-from typing_extensions import Buffer
+from typing_extensions import Buffer, Final
 
 import torch
 from torch import Tensor
@@ -78,7 +80,7 @@ class _StorageInfo:
     relative_path: str
     offset: int
     length: int
-    transform_descriptors: Sequence[str] | None = None
+    transform_descriptors: Optional[Sequence[str]] = None
 
     def __getstate__(self):
         return {k: v for k, v in self.__dict__.items() if v is not None}
@@ -111,14 +113,14 @@ class _TensorLoader(ABC):
         pass
 
     @abstractmethod
-    def values(self) -> Iterator[tuple[torch.Tensor, object]]:
+    def values(self) -> Iterator[Tuple[torch.Tensor, object]]:
         pass
 
 
 class _SerialCpuLoader(_TensorLoader):
     def __init__(self, resolve_fun: Callable) -> None:
         self.resolve_fun = resolve_fun
-        self.items: list[tuple[int, object]] = []
+        self.items: List[Tuple[int, object]] = []
 
     def add(self, size: int, obj: object) -> None:
         self.items.append((size, obj))
@@ -126,7 +128,7 @@ class _SerialCpuLoader(_TensorLoader):
     def start_loading(self) -> None:
         pass
 
-    def values(self) -> Iterator[tuple[torch.Tensor, object]]:
+    def values(self) -> Iterator[Tuple[torch.Tensor, object]]:
         for _, obj in self.items:
             tensor = self.resolve_fun(obj).detach()
             tensor = tensor.cpu()
@@ -143,11 +145,11 @@ class _OverlappingCpuLoader(_TensorLoader):
     def __init__(
         self,
         resolve_fun: Callable,
-        stream: torch.Stream | None = None,
+        stream: Optional[torch.Stream] = None,
         inflight_threshhold: int = 1_000_000,
     ) -> None:
         self.resolve_fun = resolve_fun
-        self.items: list[tuple[int, object]] = []
+        self.items: List[Tuple[int, object]] = []
         self.inflight_threshhold = inflight_threshhold
         self.in_flight_data = 0
         self.current_items: collections.deque = collections.deque()
@@ -167,7 +169,7 @@ class _OverlappingCpuLoader(_TensorLoader):
     def _done(self) -> bool:
         return self.idx >= len(self.items)
 
-    def _drain(self) -> list[tuple[torch.Tensor, object]]:
+    def _drain(self) -> List[Tuple[torch.Tensor, object]]:
         drained = []
         if self.in_flight_data >= self.inflight_threshhold:
             self.stream.synchronize()
@@ -201,7 +203,7 @@ class _OverlappingCpuLoader(_TensorLoader):
                 )
                 self.in_flight_data += tensor.numel() * tensor.element_size()
 
-    def _finish(self) -> Iterable[tuple[torch.Tensor, object]]:
+    def _finish(self) -> Iterable[Tuple[torch.Tensor, object]]:
         if not self._done:
             raise AssertionError("_finish called before all items were processed")
         if len(self.current_items) > 0:
@@ -220,7 +222,7 @@ class _OverlappingCpuLoader(_TensorLoader):
         self.items.sort(key=operator.itemgetter(0))
         self._refill()
 
-    def values(self) -> Iterator[tuple[torch.Tensor, object]]:
+    def values(self) -> Iterator[Tuple[torch.Tensor, object]]:
         self.start_loading()
         while not self._done:
             drained = self._drain()
@@ -238,7 +240,7 @@ class _StorageWriterTransforms:
     """
 
     def __init__(
-        self, extensions: Sequence[StreamTransformExtension] | None = None
+        self, extensions: Optional[Sequence[StreamTransformExtension]] = None
     ) -> None:
         """
         If the extensions arg is None, this means the implementation
@@ -250,7 +252,7 @@ class _StorageWriterTransforms:
 
     def transform_save_stream(
         self, write_item: WriteItem, raw_stream: io.IOBase
-    ) -> tuple[IO[bytes], list[str]]:
+    ) -> Tuple[IO[bytes], List[str]]:
         # In order to avoid leaking fds, transformers' close must
         # cascade to wrapped streams, but since this function can
         # append to the raw stream, we can't close the actual stream.
@@ -293,14 +295,14 @@ def _item_size(item: WriteItem) -> int:
     return size * torch._utils._element_size(dtype)
 
 
-def _split_by_size_and_type(bins: int, items: list[WriteItem]) -> list[list[WriteItem]]:
+def _split_by_size_and_type(bins: int, items: List[WriteItem]) -> List[List[WriteItem]]:
     if bins == 1:
         return [items]
 
     bytes_w = [wi for wi in items if wi.type == WriteItemType.BYTE_IO]
     tensor_w = [wi for wi in items if wi.type != WriteItemType.BYTE_IO]
 
-    buckets: list[list[WriteItem]] = [[] for _ in range(bins)]
+    buckets: List[List[WriteItem]] = [[] for _ in range(bins)]
     bucket_sizes = [0 for _ in range(bins)]
 
     tensor_w.sort(key=_item_size, reverse=True)
@@ -320,7 +322,7 @@ def _split_by_size_and_type(bins: int, items: list[WriteItem]) -> list[list[Writ
 def _write_item(
     transforms: _StorageWriterTransforms,
     stream: io.IOBase,
-    data: io.BytesIO | torch.Tensor,
+    data: Union[io.BytesIO, torch.Tensor],
     write_item: WriteItem,
     storage_key: str,
     serialization_format: SerializationFormat,
@@ -448,8 +450,8 @@ def _write_files_from_queue(
                             serialization_format,
                         )
                     )
-                    tensor_dict[write_item.index.fqn] = tensor  # type: ignore[attr-defined]
-                    metadata_dict[write_item.index.fqn] = {  # type: ignore[attr-defined]
+                    tensor_Dict[write_item.index.fqn] = tensor  # type: ignore[attr-defined]
+                    metadata_Dict[write_item.index.fqn] = {  # type: ignore[attr-defined]
                         "saved_offsets": write_item.tensor_data.chunk.offsets  # type: ignore[attr-defined]
                     }
 
@@ -565,7 +567,7 @@ class FileSystem(FileSystemBase):
             path = Path(path)
         path.unlink()
 
-    def ls(self, path: str | os.PathLike) -> list[str]:
+    def ls(self, path: str | os.PathLike) -> List[str]:
         if not isinstance(path, Path):
             path = Path(path)
         return [str(p) for p in path.iterdir()]
@@ -593,7 +595,7 @@ class _FileSystemWriter(StorageWriter):
         thread_count: int = 1,
         per_thread_copy_ahead: int = 10_000_000,
         overwrite: bool = True,
-        _extensions: Sequence[StreamTransformExtension] | None = None,
+        _extensions: Optional[Sequence[StreamTransformExtension]] = None,
         serialization_format: SerializationFormat = SerializationFormat.TORCH_SAVE,
         *args: Any,
         **kwargs: Any,
@@ -623,7 +625,7 @@ class _FileSystemWriter(StorageWriter):
         self.overwrite = overwrite
         self.transforms = _StorageWriterTransforms(_extensions)
         self.serialization_format = serialization_format
-        self.rank: int | None = None
+        self.rank: Optional[int] = None
         self.use_collectives: bool = True
 
     def reset(self, checkpoint_id: str | os.PathLike | None = None) -> None:
@@ -668,7 +670,7 @@ class _FileSystemWriter(StorageWriter):
 
         return plan
 
-    def prepare_global_plan(self, plans: list[SavePlan]) -> list[SavePlan]:
+    def prepare_global_plan(self, plans: List[SavePlan]) -> List[SavePlan]:
         new_plans = [
             dataclasses.replace(plan, storage_data=_StoragePrefix(f"__{i}_"))
             if plan.storage_data is None
@@ -681,7 +683,7 @@ class _FileSystemWriter(StorageWriter):
         self,
         plan: SavePlan,
         planner: SavePlanner,
-    ) -> Future[list[WriteResult]]:
+    ) -> Future[List[WriteResult]]:
         storage_plan: _StoragePrefix = plan.storage_data
         file_count = 0
 
@@ -709,7 +711,7 @@ class _FileSystemWriter(StorageWriter):
         self,
         planner: SavePlanner,
         file_queue: queue.Queue,
-    ) -> Future[list[WriteResult]]:
+    ) -> Future[List[WriteResult]]:
         result_queue: queue.Queue = queue.Queue()
 
         threads = []
@@ -751,11 +753,11 @@ class _FileSystemWriter(StorageWriter):
             while True:
                 res += result_queue.get_nowait()
         except queue.Empty:
-            fut: Future[list[WriteResult]] = Future()
+            fut: Future[List[WriteResult]] = Future()
             fut.set_result(res)
             return fut
 
-    def finish(self, metadata: Metadata, results: list[list[WriteResult]]) -> None:
+    def finish(self, metadata: Metadata, results: List[List[WriteResult]]) -> None:
         metadata.version = CURRENT_DCP_VERSION
 
         storage_md = {}
@@ -789,10 +791,10 @@ class _FileSystemWriter(StorageWriter):
 
         self.fs.rename(tmp_path, metadata_path)
 
-    def storage_meta(self) -> StorageMeta | None:
+    def storage_meta(self) -> Optional[StorageMeta]:
         return StorageMeta(checkpoint_id=self.checkpoint_id, save_id=self.save_id)
 
-    def _get_metadata_path(self, rank: int | None = None) -> os.PathLike:
+    def _get_metadata_path(self, rank: Optional[int] = None) -> os.PathLike:
         filename = f"{_metadata_fn}" if rank is None else f"__{rank}{_metadata_fn}"
         return cast(Path, self.fs.concat_path(self.path, filename))
 
@@ -815,7 +817,7 @@ class _StorageReaderTransforms:
     learning and gathering feedback.
     """
 
-    def __init__(self, extension_registry: ExtensionRegistry | None = None) -> None:
+    def __init__(self, extension_registry: Optional[ExtensionRegistry] = None) -> None:
         self.extension_registry = (
             ExtensionRegistry() if extension_registry is None else extension_registry
         )
@@ -838,12 +840,12 @@ class FileSystemReader(StorageReader):
     def __init__(
         self,
         path: str | os.PathLike,
-        _extension_registry: ExtensionRegistry | None = None,  # EXPERIMENTAL
+        _extension_registry: Optional[ExtensionRegistry] = None,  # EXPERIMENTAL
     ) -> None:
         super().__init__()
         self.fs = FileSystem()
         self.path = self.fs.init_path(path)
-        self.storage_data: dict[Any, Any] = {}
+        self.storage_data: Dict[Any, Any] = {}
         self.load_id = _generate_uuid()
         self.transforms = _StorageReaderTransforms(_extension_registry)
         self.rank = None
@@ -860,7 +862,7 @@ class FileSystemReader(StorageReader):
 
     def read_data(self, plan: LoadPlan, planner: LoadPlanner) -> Future[None]:
         # group requests by file
-        per_file: dict[str, list[ReadItem]] = {}
+        per_file: Dict[str, List[ReadItem]] = {}
         for read_item in plan.items:
             item_md: _StorageInfo = self.storage_data[read_item.storage_index]
             path = item_md.relative_path
@@ -918,7 +920,7 @@ class FileSystemReader(StorageReader):
         fut.set_result(None)
         return fut
 
-    def _get_metadata_path(self, rank: int | None = None) -> os.PathLike:
+    def _get_metadata_path(self, rank: Optional[int] = None) -> os.PathLike:
         filename = f"{_metadata_fn}" if rank is None else f"__{rank}{_metadata_fn}"
         return cast(Path, self.fs.concat_path(self.path, filename))
 
@@ -947,7 +949,7 @@ class FileSystemReader(StorageReader):
     def prepare_local_plan(self, plan: LoadPlan) -> LoadPlan:
         return plan
 
-    def prepare_global_plan(self, plans: list[LoadPlan]) -> list[LoadPlan]:
+    def prepare_global_plan(self, plans: List[LoadPlan]) -> List[LoadPlan]:
         return plans
 
     @property
@@ -986,7 +988,7 @@ class FileSystemWriter(_FileSystemWriter, BlockingAsyncStager):
         per_thread_copy_ahead: int = 10_000_000,
         cache_staged_state_dict: bool = False,
         overwrite: bool = True,
-        _extensions: Sequence[StreamTransformExtension] | None = None,
+        _extensions: Optional[Sequence[StreamTransformExtension]] = None,
         serialization_format: SerializationFormat = SerializationFormat.TORCH_SAVE,
     ) -> None:
         """

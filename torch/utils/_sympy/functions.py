@@ -1,10 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import math
 import operator
 import sys
-from collections.abc import Callable
-from typing import SupportsFloat, TYPE_CHECKING, TypeVar
+
+from typing import Any, Callable, Generator, Iterable, List, Optional, Set, SupportsFloat, TYPE_CHECKING, Tuple, Type, TypeVar, Union
 from typing_extensions import TypeVarTuple, Unpack
 
 import sympy
@@ -31,24 +33,6 @@ if TYPE_CHECKING:
 
 _T = TypeVar("_T", bound=SupportsFloat)
 _Ts = TypeVarTuple("_Ts")
-
-# sympy.gcd on wide Add expressions triggers expensive polynomial-GCD
-# (dmp_sqr / dmp_rr_div) that scales poorly in the number of symbols.
-# safe_gcd() falls back to simple_floordiv_gcd past this threshold.
-_MAX_ADD_TERMS_FOR_POLY_GCD = 20
-
-
-def _is_wide_add(expr: sympy.Basic) -> bool:
-    return isinstance(expr, sympy.Add) and len(expr.args) > _MAX_ADD_TERMS_FOR_POLY_GCD
-
-
-def safe_gcd(a: sympy.Basic, b: sympy.Basic) -> sympy.Basic:
-    """Like sympy.gcd but avoids polynomial-GCD on wide Add expressions,
-    falling back to simple_floordiv_gcd instead."""
-    if _is_wide_add(a) or _is_wide_add(b):
-        return simple_floordiv_gcd(a, b)
-    return sympy.gcd(a, b)
-
 
 # Portions of this file are adapted from the Sympy codebase, which was
 # licensed as follows:
@@ -121,10 +105,10 @@ def _is_symbols_binary_summation(expr: sympy.Expr) -> bool:
 
 def _keep_float(
     f: Callable[[Unpack[_Ts]], _T],
-) -> Callable[[Unpack[_Ts]], _T | sympy.Float]:
+) -> Union[Callable[[Unpack[_Ts]], _T, sympy.Float]]:
     @functools.wraps(f)
-    def inner(*args: Unpack[_Ts]) -> _T | sympy.Float:
-        r: _T | sympy.Float = f(*args)
+    def inner(*args: Unpack[_Ts]) -> Union[_T, sympy.Float]:
+        r: Union[_T, sympy.Float]= f(*args)
         if any(isinstance(a, sympy.Float) for a in args) and not isinstance(
             r, sympy.Float
         ):
@@ -135,7 +119,7 @@ def _keep_float(
     return inner
 
 
-def fuzzy_eq(x: bool | None, y: bool | None) -> bool | None:
+def fuzzy_eq(x: Optional[bool], y: Optional[bool]) -> Optional[bool]:
     if None in (x, y):
         return None
     return x == y
@@ -159,7 +143,7 @@ def simple_floordiv_gcd(p: sympy.Basic, q: sympy.Basic) -> sympy.Basic:
     """
 
     def integer_coefficient(x: sympy.Basic) -> int:
-        integer_coefficients: list[int] = [
+        integer_coefficients: List[int] = [
             abs(int(arg))
             for arg in sympy.Mul.make_args(x)
             if isinstance(arg, (int, sympy.Integer))
@@ -175,10 +159,10 @@ def simple_floordiv_gcd(p: sympy.Basic, q: sympy.Basic) -> sympy.Basic:
     gcd: int = math.gcd(integer_factor(p), integer_factor(q))
     p, q = p / gcd, q / gcd  # type: ignore[operator, assignment]  # remove in py3.12
 
-    base_splits: list[tuple[sympy.Basic, ...]] = list(
+    base_splits: List[Tuple[sympy.Basic, ...]] = list(
         map(sympy.Mul.make_args, sympy.Add.make_args(p))
     )
-    divisor_split: tuple[sympy.Basic, ...] = sympy.Mul.make_args(q)
+    divisor_split: Tuple[sympy.Basic, ...] = sympy.Mul.make_args(q)
     for x in divisor_split:
         if all(x in base_split for base_split in base_splits):
             gcd = gcd * x  # type: ignore[operator]  # remove in py3.12
@@ -212,7 +196,7 @@ class FloorDiv(sympy.Function):
     NB: This is Python-style floor division, round to -Inf
     """
 
-    nargs: tuple[int, ...] = (2,)
+    nargs: Tuple[int, ...] = (2,)
     precedence: int = 35  # lower precedence than add
     is_integer: bool = True
 
@@ -232,7 +216,7 @@ class FloorDiv(sympy.Function):
     # Automatic evaluation.
     # https://docs.sympy.org/latest/guides/custom-functions.html#best-practices-for-eval
     @classmethod
-    def eval(cls, base: sympy.Integer, divisor: sympy.Integer) -> sympy.Basic | None:
+    def eval(cls, base: sympy.Integer, divisor: sympy.Integer) -> Optional[sympy.Basic]:
         # python test/test_dynamic_shapes.py -k TestDimConstraints.test_dim_constraints_solve_full
         # Assert triggered by inequality solver
         # assert base.is_integer, base
@@ -310,7 +294,7 @@ class FloorDiv(sympy.Function):
         try:
             gcd = simple_floordiv_gcd(base, divisor)
             if equal_valued(gcd, 1) and isinstance(divisor, sympy.Add):
-                gcd = safe_gcd(base, divisor)
+                gcd = sympy.gcd(base, divisor)
             if not equal_valued(gcd, 1):
                 return FloorDiv(
                     sympy.simplify(base / gcd), sympy.simplify(divisor / gcd)
@@ -320,7 +304,7 @@ class FloorDiv(sympy.Function):
 
         return None
 
-    def _eval_is_nonnegative(self) -> bool | None:
+    def _eval_is_nonnegative(self) -> Optional[bool]:
         p, q = self.args[:2]
         if all([p.is_integer, q.is_integer, p.is_nonnegative, q.is_nonnegative]):
             return True
@@ -332,14 +316,14 @@ class ModularIndexing(sympy.Function):
     ModularIndexing(a, b, c) => (a // b) % c where % is the C modulus
     """
 
-    nargs: tuple[int, ...] = (3,)
+    nargs: Tuple[int, ...] = (3,)
     is_integer: bool = True
     precedence: int = 35  # lower precedence than add
 
     @classmethod
     def eval(
         cls, base: sympy.Integer, divisor: sympy.Integer, modulus: sympy.Integer
-    ) -> sympy.Basic | None:
+    ) -> Optional[sympy.Basic]:
         if base == 0 or modulus == 1:
             return sympy.S.Zero
         if (
@@ -351,7 +335,7 @@ class ModularIndexing(sympy.Function):
 
         try:
             if divisor != 1:
-                gcd = safe_gcd(base, divisor)
+                gcd = sympy.gcd(base, divisor)
                 if gcd != 1:
                     return ModularIndexing(
                         sympy.simplify(base / gcd),
@@ -361,14 +345,11 @@ class ModularIndexing(sympy.Function):
         except sympy.PolynomialError:
             pass  # https://github.com/pytorch/pytorch/issues/108276
 
-        # Guard on width: the per-term gcd calls are cheap (via safe_gcd),
-        # but the result feeds into downstream sympy.expand() which blows up
-        # on wide Add expressions (e.g. in sizevars.simplify).
-        if isinstance(base, sympy.Add) and not _is_wide_add(base):
-            new_terms: list[sympy.Integer] = []
+        if isinstance(base, sympy.Add):
+            new_terms: List[sympy.Integer] = []
             all_positive: bool = True
             for term in base.args:
-                if safe_gcd(term, modulus * divisor) != modulus * divisor:
+                if sympy.gcd(term, modulus * divisor) != modulus * divisor:
                     if (isinstance(term, sympy.Integer) and term < 0) or (
                         isinstance(term, sympy.Mul)
                         and isinstance(term.args[0], sympy.Integer)
@@ -391,7 +372,7 @@ class ModularIndexing(sympy.Function):
 
         return None
 
-    def _eval_is_nonnegative(self) -> bool | None:
+    def _eval_is_nonnegative(self) -> Optional[bool]:
         p, q = self.args[:2]
         return fuzzy_eq(p.is_nonnegative, q.is_nonnegative)  # type: ignore[attr-defined]
 
@@ -401,24 +382,24 @@ class Where(sympy.Function):
     Good ol' ternary operator
     """
 
-    nargs: tuple[int, ...] = (3,)
+    nargs: Tuple[int, ...] = (3,)
     precedence: int = 35  # lower precedence than add
 
-    def _eval_is_integer(self) -> bool | None:
+    def _eval_is_integer(self) -> Optional[bool]:
         return True if self.args[1].is_integer and self.args[2].is_integer else None  # type: ignore[attr-defined]
 
-    def _eval_is_nonnegative(self) -> bool | None:
+    def _eval_is_nonnegative(self) -> Optional[bool]:
         return (
             True
             if self.args[1].is_nonnegative and self.args[2].is_nonnegative  # type: ignore[attr-defined]
             else None
         )
 
-    def _eval_is_positive(self) -> bool | None:
+    def _eval_is_positive(self) -> Optional[bool]:
         return True if self.args[1].is_positive and self.args[2].is_positive else None  # type: ignore[attr-defined]
 
     @classmethod
-    def eval(cls, c: sympy.Basic, p: sympy.Basic, q: sympy.Basic) -> sympy.Basic | None:
+    def eval(cls, c: sympy.Basic, p: sympy.Basic, q: sympy.Basic) -> Optional[sympy.Basic]:
         if c == sympy.true:
             return p
         elif c == sympy.false:
@@ -428,13 +409,13 @@ class Where(sympy.Function):
 
 # Python-style modulus: take sign from RHS
 class PythonMod(sympy.Function):
-    nargs: tuple[int, ...] = (2,)
+    nargs: Tuple[int, ...] = (2,)
 
     precedence: int = 35  # lower precedence than add
     is_integer: bool = True
 
     @classmethod
-    def eval(cls, p: sympy.Expr, q: sympy.Expr) -> sympy.Expr | None:
+    def eval(cls, p: sympy.Expr, q: sympy.Expr) -> Optional[sympy.Expr]:
         # python test/dynamo/test_export.py -k ExportTests.test_trivial_constraint
         # Triggered by sympy.solvers.inequalities.reduce_inequalities
         # assert p.is_integer, p
@@ -480,10 +461,10 @@ class PythonMod(sympy.Function):
         return None
 
     # NB: args[1] for PythonMod
-    def _eval_is_nonnegative(self) -> bool | None:
+    def _eval_is_nonnegative(self) -> Optional[bool]:
         return True if self.args[1].is_positive else None  # type: ignore[attr-defined]
 
-    def _eval_is_nonpositive(self) -> bool | None:
+    def _eval_is_nonpositive(self) -> Optional[bool]:
         return True if self.args[1].is_negative else None  # type: ignore[attr-defined]
 
     def _ccode(self, printer) -> str:
@@ -675,7 +656,7 @@ class MinMaxBase(Expr, LatticeOp):  # type: ignore[misc]
     @classmethod
     def _satisfy_unique_summations_symbols(
         cls, args
-    ) -> set[sympy.core.symbol.Symbol] | None:
+    ) -> Optional[Set[sympy.core.symbol.Symbol]]:
         """
         One common case in some models is building expressions of the form
         max(max(max(a+b...), c+d), e+f) which is simplified to max(a+b, c+d, e+f, ...).
@@ -730,8 +711,8 @@ class MinMaxBase(Expr, LatticeOp):  # type: ignore[misc]
 
     @classmethod
     def _unique_symbols(
-        cls, args, initial_set: set[sympy.core.symbol.Symbol] | None = None
-    ) -> set[sympy.core.symbol.Symbol] | None:
+        cls, args, initial_set: Optional[Set[sympy.core.symbol.Symbol]] = None
+    ) -> Optional[Set[sympy.core.symbol.Symbol]]:
         """
         Return seen_symbols if all atoms in all args are all unique symbols,
         else returns None. initial_set can be used to represent initial value for seen_symbols
@@ -1219,8 +1200,8 @@ class IsNonOverlappingAndDenseIndicator(sympy.Function):
                 raise AssertionError("dim must not be zero")
             # When all strides are integral, we can sort, and the size for the
             # largest stride doesn't matter and can be arbitrarily symbolic
-            s_sizes, s_strides = zip(
-                *sorted(zip(sizes, strides, strict=True), key=operator.itemgetter(1)),
+            s_sizes, s_strides = _zip_strict(
+                *sorted(zip(sizes, strides), key=operator.itemgetter(1)),
                 strict=True,
             )
             # Put something arbitrary in the max size spot, it'll be ignored

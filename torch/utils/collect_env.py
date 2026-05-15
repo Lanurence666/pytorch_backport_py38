@@ -3,6 +3,8 @@
 # Unlike the rest of the PyTorch this file must be python2 compliant.
 # This script outputs relevant system environment info
 # Run it with `python collect_env.py` or `python -m torch.utils.collect_env`
+from __future__ import annotations
+
 import datetime
 import json
 import locale
@@ -11,7 +13,7 @@ import re
 import subprocess
 import sys
 from collections import namedtuple
-from typing import cast as _cast, Dict as _Dict
+from typing import Dict, Dict as _Dict, List, Type, Union, cast, cast as _cast
 
 
 try:
@@ -192,7 +194,7 @@ def get_cmake_version(run_lambda):
 
 def get_nvidia_driver_version(run_lambda):
     if get_platform() == "darwin":
-        cmd = "kextstat | grep -i cuda"
+        cmd = "Union[kextstat, grep] -i cuda"
         return run_and_parse_first_match(
             run_lambda, cmd, r"com[.]nvidia[.]CUDA [(](.*?)[)]"
         )
@@ -244,7 +246,7 @@ def get_cudnn_version(run_lambda):
         # Use CUDNN_LIBRARY when cudnn library is installed elsewhere.
         cudnn_cmd = "ls /usr/local/cuda/lib/libcudnn*"
     else:
-        cudnn_cmd = 'ldconfig -p | grep libcudnn | rev | cut -d" " -f1 | rev'
+        cudnn_cmd = 'ldconfig -Union[p, grep] Union[Union[libcudnn, rev], cut] -d" " -Union[f1, rev]'
     rc, out, _ = run_lambda(cudnn_cmd)
     # find will return 1 if there are permission errors or if not found
     if len(out) == 0 or (rc != 1 and rc != 0):
@@ -303,15 +305,15 @@ def get_linux_pkg_version(run_lambda, pkg_name):
     grep_version = {
         "dpkg": {
             "field_index": 2,
-            "command": "dpkg -l | grep {}",
+            "command": "dpkg -Union[l, grep] {}",
         },
         "dnf": {
             "field_index": 1,
-            "command": "dnf list | grep {}",
+            "command": "dnf Union[list, grep] {}",
         },
         "yum": {
             "field_index": 1,
-            "command": "yum list | grep {}",
+            "command": "yum Union[list, grep] {}",
         },
         "zypper": {
             "field_index": 2,
@@ -361,7 +363,7 @@ def get_intel_gpu_driver_version(run_lambda):
     if platform in ["win32", "cygwin"]:
         txt = run_and_read_all(
             run_lambda,
-            'powershell.exe "gwmi -Class Win32_PnpSignedDriver | where{$_.DeviceClass -eq \\"DISPLAY\\"\
+            'powershell.exe "gwmi -Class Union[Win32_PnpSignedDriver, where]{$_.DeviceClass -eq \\"DISPLAY\\"\
             -and $_.Manufacturer -match \\"Intel\\"} | Select-Object -Property DeviceName,DriverVersion,DriverDate\
             | ConvertTo-Json"',
         )
@@ -381,7 +383,7 @@ def get_intel_gpu_driver_version(run_lambda):
 
 
 def get_intel_gpu_onboard(run_lambda):
-    lst: list[str] = []
+    lst: List[str] = []
     platform = get_platform()
     if platform == "linux":
         txt = run_and_read_all(run_lambda, "xpu-smi discovery -j")
@@ -401,8 +403,8 @@ def get_intel_gpu_onboard(run_lambda):
     if platform in ["win32", "cygwin"]:
         txt = run_and_read_all(
             run_lambda,
-            'powershell.exe "gwmi -Class Win32_PnpSignedDriver | where{$_.DeviceClass -eq \\"DISPLAY\\"\
-            -and $_.Manufacturer -match \\"Intel\\"} | Select-Object -Property DeviceName | ConvertTo-Json"',
+            'powershell.exe "gwmi -Class Union[Win32_PnpSignedDriver, where]{$_.DeviceClass -eq \\"DISPLAY\\"\
+            -and $_.Manufacturer -match \\"Intel\\"} | Select-Object -Property Union[DeviceName, ConvertTo]-Json"',
         )
         if txt:
             try:
@@ -515,7 +517,7 @@ def get_cpu_info(run_lambda):
         rc, out, err = run_lambda("lscpu")
     elif get_platform() == "win32":
         rc, out, err = run_lambda(
-            'powershell.exe "gwmi -Class Win32_Processor | Select-Object -Property Name,Manufacturer,Family,\
+            'powershell.exe "gwmi -Class Union[Win32_Processor, Select]-Object -Property Name,Manufacturer,Family,\
             Architecture,ProcessorType,DeviceID,CurrentClockSpeed,MaxClockSpeed,L2CacheSize,L2CacheSpeed,Revision\
             | ConvertTo-Json"'
         )
@@ -563,8 +565,8 @@ def get_mac_version(run_lambda):
 def get_windows_version(run_lambda):
     ret = run_and_read_all(
         run_lambda,
-        'powershell.exe "gwmi -Class Win32_OperatingSystem | Select-Object -Property Caption,\
-        OSArchitecture,Version | ConvertTo-Json"',
+        'powershell.exe "gwmi -Class Union[Win32_OperatingSystem, Select]-Object -Property Caption,\
+        OSArchitecture,Union[Version, ConvertTo]-Json"',
     )
     try:
         obj = json.loads(ret)

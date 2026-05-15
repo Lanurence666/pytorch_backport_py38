@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import argparse
 import os
 from enum import Enum
-from typing import cast
+from typing import Dict, List, Optional, Set, Type, cast
 
 import torch
 import torch.distributed as dist
@@ -145,7 +147,7 @@ class BroadcastingTorchSaveReader(StorageReader):
         """Implementation of the StorageReader method"""
         return plan
 
-    def prepare_global_plan(self, global_plan: list[LoadPlan]) -> list[LoadPlan]:
+    def prepare_global_plan(self, global_plan: List[LoadPlan]) -> List[LoadPlan]:
         """Implementation of the StorageReader method"""
         return global_plan
 
@@ -183,13 +185,13 @@ class DynamicMetaLoadPlanner(DefaultLoadPlanner):
     def set_up_planner(
         self,
         state_dict: STATE_DICT_TYPE,
-        metadata: Metadata | None = None,
+        metadata: Optional[Metadata] = None,
         is_coordinator: bool = False,
     ) -> None:
         """Setups of the planner, extnding default behavior by creating the Metadata object from the state dict"""
         super().set_up_planner(state_dict, metadata, is_coordinator)
 
-        state_dict_metadata: dict[str, STORAGE_TYPES] = {}
+        state_dict_metadata: Dict[str, STORAGE_TYPES] = {}
         for key, tensor in self.state_dict.items():
             if not torch.is_tensor(tensor):
                 raise RuntimeError(

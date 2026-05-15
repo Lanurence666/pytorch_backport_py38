@@ -1,4 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+from typing import Union
+
+
 """
 This is a script for launching PyTorch inference on Intel(R) Xeon(R) Scalable Processors with optimal configurations.
 
@@ -13,7 +17,7 @@ Illustrated as below:
 ::
 
     +-----------------------------+----------------------+-------+
-    |            process          |        thread        | core  |
+    |            Union[Union[process, thread], core]  |
     +=============================+======================+=======+
     | torch.backends.xeon.run_cpu | instance 0: thread 0 |   0   |
     |                             |             thread 1 |   1   |
@@ -34,18 +38,18 @@ For memory management, it configures NUMA binding and preload optimized memory a
 Environment variables that will be set by this script:
 
 +------------------+-------------------------------------------------------------------------------------------------+
-| Environ Variable |                                             Value                                               |
+| Environ Union[Variable, Value]                                               |
 +==================+=================================================================================================+
-|    LD_PRELOAD    | Depending on knobs you set, <lib>/libiomp5.so, <lib>/libjemalloc.so, <lib>/libtcmalloc.so might |
+|    Union[LD_PRELOAD, Depending] on knobs you set, <lib>/libiomp5.so, <lib>/libjemalloc.so, <lib>/libtcmalloc.so might |
 |                  | be appended to LD_PRELOAD.                                                                      |
 +------------------+-------------------------------------------------------------------------------------------------+
-|   KMP_AFFINITY   | If libiomp5.so is preloaded, KMP_AFFINITY could be set to "granularity=fine,compact,1,0".       |
+|   Union[KMP_AFFINITY, If] libiomp5.so is preloaded, KMP_AFFINITY could be set to "granularity=fine,compact,1,0".       |
 +------------------+-------------------------------------------------------------------------------------------------+
-|   KMP_BLOCKTIME  | If libiomp5.so is preloaded, KMP_BLOCKTIME is set to "1".                                       |
+|   Union[KMP_BLOCKTIME, If] libiomp5.so is preloaded, KMP_BLOCKTIME is set to "1".                                       |
 +------------------+-------------------------------------------------------------------------------------------------+
-|  OMP_NUM_THREADS | value of ncores_per_instance                                                                    |
+|  Union[OMP_NUM_THREADS, value] of ncores_per_instance                                                                    |
 +------------------+-------------------------------------------------------------------------------------------------+
-|    MALLOC_CONF   | If libjemalloc.so is preloaded, MALLOC_CONF will be set to                                      |
+|    Union[MALLOC_CONF, If] libjemalloc.so is preloaded, MALLOC_CONF will be set to                                      |
 |                  | "oversize_threshold:1,background_thread:true,metadata_thp:auto".                                |
 +------------------+-------------------------------------------------------------------------------------------------+
 
@@ -180,8 +184,8 @@ class _CPUinfo:
             # physical cores := core column in lscpu output
             #  logical cores :=  cPU column in lscpu output
             self.node_nums = int(max(line[3] for line in self.cpuinfo)) + 1
-            self.node_physical_cores: list[list[int]] = []  # node_id is index
-            self.node_logical_cores: list[list[int]] = []  # node_id is index
+            self.node_physical_cores: List[List[int]] = []  # node_id is index
+            self.node_logical_cores: List[List[int]] = []  # node_id is index
             self.physical_core_node_map = {}  # physical core to numa node id
             self.logical_core_node_map = {}  # logical core to numa node id
 
@@ -603,7 +607,7 @@ won't take effect even if it is set explicitly."
         )
         entrypoint = ""
         launch_args = {}
-        launch_envs: dict[int, dict] = {}
+        launch_envs: Dict[int, dict] = {}
         launch_tee = {}
         # check whether is launched from torchrun with --nproc-per-node <num workers>
         local_size = int(os.environ.get("LOCAL_WORLD_SIZE", 1))
@@ -630,7 +634,7 @@ won't take effect even if it is set explicitly."
                         * args.ncores_per_instance
                     ]
 
-                core_ranges: list[dict] = []
+                core_ranges: List[dict] = []
                 if local_size > 1:
                     total_num_cores = len(core_list)
                     cores_per_rank = total_num_cores // local_size

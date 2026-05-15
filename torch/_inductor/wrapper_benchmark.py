@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 import argparse
 import datetime
 import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
 from types import ModuleType
-from typing import Any, Protocol
+from typing import Any, Dict, List, Optional, Set, Type
+from typing_extensions import Protocol
+
 
 import torch
 from torch.autograd import DeviceType
@@ -73,7 +77,7 @@ def get_triton_kernel(mod: ModuleType):  # type: ignore[no-untyped-def]
 
 
 def benchmark_all_kernels(
-    benchmark_name: str, benchmark_all_configs: dict[Any, Any] | None
+    benchmark_name: str, benchmark_all_configs: Optional[Dict[Any, Any]]
 ) -> None:
     """
     An experimental API used only when config.benchmark_kernel is true.
@@ -109,9 +113,9 @@ def benchmark_all_kernels(
 
         def get_info_str(
             ms: float,
-            n_regs: Any | None,
-            n_spills: Any | None,
-            shared: Any | None,
+            n_regs: Optional[Any],
+            n_spills: Optional[Any],
+            shared: Optional[Any],
             prefix: str = "",
         ) -> str:
             if not any(x is None for x in [n_regs, n_spills, shared]):
@@ -193,7 +197,7 @@ def parse_profile_event_list(
         """
         return ev.self_device_time_total / 1000 / nruns  # type: ignore[attr-defined]
 
-    all_events: dict[str, list[ProfileEvent]] = defaultdict(list)
+    all_events: Dict[str, List[ProfileEvent]] = defaultdict(list)
 
     def add_event(
         ev: torch.autograd.profiler_util.EventList,
@@ -226,7 +230,7 @@ def parse_profile_event_list(
 
         add_event(ev, category)
 
-    def report_category(category: str, profile_events: list[ProfileEvent]) -> float:
+    def report_category(category: str, profile_events: List[ProfileEvent]) -> float:
         if not device_name:
             return 0.0
 

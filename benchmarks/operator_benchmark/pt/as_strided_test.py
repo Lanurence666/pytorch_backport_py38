@@ -1,3 +1,4 @@
+from __future__ import annotations
 import operator_benchmark as op_bench
 
 import torch

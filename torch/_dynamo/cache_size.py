@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import logging
 import weakref
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, List, Optional, Tuple, Type
 
 from torch._guards import CompileId
 
@@ -108,7 +110,7 @@ class CacheSizeRelevantForFrame:
 
 def _get_weakref_from_f_locals(
     frame: DynamoFrameType, local_name: str
-) -> weakref.ref[Any] | None:
+) -> Optional[weakref.ref[Any]]:
     obj = frame.f_locals.get(local_name, None)
     weak_id = None
     try:
@@ -141,7 +143,7 @@ def _has_same_id_matched_objs(frame: DynamoFrameType, cache_entry: Any) -> bool:
 
 def compute_cache_size(
     frame: DynamoFrameType,
-    cache_entries: list[Any],
+    cache_entries: List[Any],
     total_cache_entries_all_regions: int = 0,
 ) -> CacheSizeRelevantForFrame:
     # cache_entries is already scoped to a single isolate_recompiles region.
@@ -177,7 +179,7 @@ def is_recompilation(cache_size: CacheSizeRelevantForFrame) -> bool:
 
 def exceeds_recompile_limit(
     cache_size: CacheSizeRelevantForFrame, compile_id: CompileId
-) -> tuple[bool, str]:
+) -> Tuple[bool, str]:
     """
     Checks if we are exceeding the cache size limit.
     """
@@ -190,8 +192,7 @@ def exceeds_recompile_limit(
     # e.g. due to guarded objects being freed. This technically makes the
     # will_compilation_exceed_accumulated_limit check unnecessary, but we will keep the
     # check in case we have a better fix in the future.
-    if compile_id.frame_compile_id is None:
-        raise AssertionError("compile_id.frame_compile_id must not be None")
+    assert compile_id.frame_compile_id is not None
     if compile_id.frame_compile_id >= config.accumulated_recompile_limit:
         return True, "accumulated_recompile_limit"
     return False, ""

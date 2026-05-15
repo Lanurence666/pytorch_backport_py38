@@ -1,4 +1,5 @@
 # Owner(s): ["module: functorch"]
+from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from torch._functorch._activation_checkpointing.ac_logging_utils import (

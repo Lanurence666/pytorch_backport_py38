@@ -1,8 +1,8 @@
+from __future__ import annotations
 # mypy: ignore-errors
 
 """ "Normalize" arguments: convert array_likes to tensors, dtypes to torch dtypes and so on."""
 
-from __future__ import annotations
 
 import functools
 import inspect
@@ -13,11 +13,12 @@ import typing
 import torch
 
 from . import _dtypes, _dtypes_impl, _util
+from typing import Optional, Sequence, Type, Union
 
 
 ArrayLike = typing.TypeVar("ArrayLike")
-Scalar = int | float | complex | bool
-ArrayLikeOrScalar = ArrayLike | Scalar
+Scalar = Union[int, float, complex, bool]
+ArrayLikeOrScalar = Union[ArrayLike, Scalar]
 
 DTypeLike = typing.TypeVar("DTypeLike")
 AxisLike = typing.TypeVar("AxisLike")
@@ -39,7 +40,7 @@ KeepDims = typing.TypeVar("KeepDims")
 OutArray = typing.TypeVar("OutArray")
 
 NotImplementedType = typing.TypeVar(
-    "NotImplementedType", bound=types.NotImplementedType
+    "NotImplementedType", bound=type(NotImplemented)
 )
 
 
@@ -135,21 +136,21 @@ normalizers = {
     "ArrayLike": normalize_array_like,
     "ArrayLikeOrScalar": normalize_array_like_or_scalar,
     "Optional[ArrayLike]": normalize_optional_array_like,
-    "ArrayLike | None": normalize_optional_array_like,
+    "Optional[ArrayLike]": normalize_optional_array_like,
     "Sequence[ArrayLike]": normalize_seq_array_like,
     "Optional[ArrayLikeOrScalar]": normalize_optional_array_like_or_scalar,
-    "ArrayLikeOrScalar | None": normalize_optional_array_like_or_scalar,
+    "Optional[ArrayLikeOrScalar]": normalize_optional_array_like_or_scalar,
     "Optional[NDArray]": normalize_ndarray,
-    "NDArray | None": normalize_ndarray,
+    "Optional[NDArray]": normalize_ndarray,
     "Optional[OutArray]": normalize_outarray,
-    "OutArray | None": normalize_outarray,
+    "Optional[OutArray]": normalize_outarray,
     "NDArray": normalize_ndarray,
     "Optional[DTypeLike]": normalize_dtype,
-    "DTypeLike | None": normalize_dtype,
+    "Optional[DTypeLike]": normalize_dtype,
     "AxisLike": normalize_axis_like,
     "NotImplementedType": normalize_not_implemented,
     "Optional[CastingModes]": normalize_casting,
-    "CastingModes | None": normalize_casting,
+    "Optional[CastingModes]": normalize_casting,
 }
 
 

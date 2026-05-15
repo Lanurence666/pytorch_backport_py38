@@ -10,7 +10,11 @@ import os
 import sys
 import typing
 from abc import abstractmethod
-from typing import Any, Generic, TypeAlias, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar, Union
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 from typing_extensions import override
 
 from torch._dynamo.utils import dynamo_timed
@@ -38,7 +42,7 @@ if config.is_fbcode():
 
     Sample: TypeAlias = Sample_
 else:
-    Sample: TypeAlias = type[object]  # type: ignore[misc,no-redef]
+    Sample: TypeAlias = Type[object]  # type: ignore[misc,no-redef]
 
 
 _T = TypeVar("_T")
@@ -74,14 +78,14 @@ class RemoteCacheBackend(Generic[_T]):
         self._name = f"backend:{type(self).__name__}"
 
     @abstractmethod
-    def _get(self, key: str) -> _T | None:
+    def _get(self, key: str) -> Optional[_T]:
         pass
 
     @abstractmethod
     def _put(self, key: str, data: _T) -> None:
         pass
 
-    def get(self, key: str) -> _T | None:
+    def get(self, key: str) -> Optional[_T]:
         try:
             value = self._get(key)
             cache_stats.get(self._name, value)
@@ -111,7 +115,7 @@ class RemoteCacheSerde(Generic[_T, _U]):
 
 
 JsonDataTy: TypeAlias = Union[  # noqa: UP007
-    int, float, str, bool, dict[str, "JsonDataTy"], list["JsonDataTy"], None
+    int, float, str, bool, Dict[str, "JsonDataTy"], List["JsonDataTy"], None
 ]
 
 
@@ -137,7 +141,7 @@ class LocalCacheBackend(RemoteCacheBackend[bytes]):
     """
 
     @override
-    def _get(self, key: str) -> bytes | None:
+    def _get(self, key: str) -> Optional[bytes]:
         try:
             with open(key, "rb") as fd:
                 return fd.read()
@@ -176,7 +180,7 @@ class LocalCacheBackend(RemoteCacheBackend[bytes]):
 # use the concrete type of the RemoteCache as the reported cache. See
 # RemoteFxGraphCache below as an example.
 class RemoteCache(Generic[_T]):
-    backend_override_cls: Callable[[], RemoteCacheBackend[Any]] | None = None
+    backend_override_cls: Optional[Callable[[], RemoteCacheBackend[Any]]]= None
 
     def __init__(
         self, backend: RemoteCacheBackend[_U], serde: RemoteCacheSerde[_T, _U]
@@ -191,7 +195,7 @@ class RemoteCache(Generic[_T]):
 
     # See if the cache contains `key`. Returns `None` if the value is not
     # present in the cache.
-    def get(self, key: str) -> _T | None:
+    def get(self, key: str) -> Optional[_T]:
         with _WaitCounter("pytorch.remote_cache.get").guard():
             sample = self._create_sample()
             try:
@@ -225,16 +229,16 @@ class RemoteCache(Generic[_T]):
                 self._log_sample(sample)
 
     # Used to convert data from the cache into structured data.
-    def _decode(self, data: _U, sample: Sample | None) -> _T:  # type: ignore[override]
+    def _decode(self, data: _U, sample: Optional[Sample]) -> _T:  # type: ignore[override]
         return self.serde.decode(data)  # type: ignore[arg-type]
 
     # Used to convert structured data into data for the cache.
-    def _encode(self, value: _T, sample: Sample | None) -> object:  # returns _U
+    def _encode(self, value: _T, sample: Optional[Sample]) -> object:  # returns _U
         return self.serde.encode(value)
 
     # Get structured data from the cache.
     # Separate from `get` so that it can be overridden.
-    def _get(self, key: str, sample: Sample | None) -> _T | None:
+    def _get(self, key: str, sample: Optional[Sample]) -> Optional[_T]:
         if data := self._backend_get(key):
             return self._decode(data, sample)
         return None
@@ -247,7 +251,7 @@ class RemoteCache(Generic[_T]):
 
     # Put structured data into the cache.
     # Separate from `put` so that it can be overridden.
-    def _put(self, key: str, value: _T, sample: Sample | None) -> None:
+    def _put(self, key: str, value: _T, sample: Optional[Sample]) -> None:
         data = self._encode(value, sample)
         self._backend_put(key, data)
 
@@ -259,11 +263,11 @@ class RemoteCache(Generic[_T]):
 
     # Create a logging Sample - used with internal loggers to monitor cache
     # effectiveness.
-    def _create_sample(self) -> Sample | None:
+    def _create_sample(self) -> Optional[Sample]:
         return None
 
     # Write the logging Sample to the logger.
-    def _log_sample(self, sample: Sample | None) -> None:
+    def _log_sample(self, sample: Optional[Sample]) -> None:
         pass
 
 
@@ -273,7 +277,7 @@ class RedisRemoteCacheBackend(RemoteCacheBackend[bytes]):
     """
 
     # pyrefly: ignore [missing-attribute]
-    _redis: redis.Redis | None = None
+    _redis: Optional[redis.Redis]= None
 
     def __init__(self, cache_id: str) -> None:
         super().__init__()
@@ -289,7 +293,7 @@ class RedisRemoteCacheBackend(RemoteCacheBackend[bytes]):
             )
 
     @override
-    def _get(self, key: str) -> bytes | None:
+    def _get(self, key: str) -> Optional[bytes]:
         if not self._redis:
             # Either redis wasn't found or we already had some trouble...
             return None
@@ -342,12 +346,12 @@ class RedisRemoteCache(RemoteCache[JsonDataTy]):
         return self._key_fmt.format(key=key)
 
     @override
-    def _get(self, key: str, sample: Sample | None) -> JsonDataTy | None:
+    def _get(self, key: str, sample: Optional[Sample]) -> Optional[JsonDataTy]:
         key = self._get_key(key)
         return super()._get(key, sample)
 
     @override
-    def _put(self, key: str, value: JsonDataTy, sample: Sample | None) -> None:
+    def _put(self, key: str, value: JsonDataTy, sample: Optional[Sample]) -> None:
         key = self._get_key(key)
         super()._put(key, value, sample)
 
@@ -390,11 +394,11 @@ class RemoteDynamoPGOCache(RedisRemoteCache):
 def create_cache(
     key: str,
     is_fbcode: bool = False,
-    fb_cache_cls: str | None = None,
-    oss_cache_cls: str | None = None,
+    fb_cache_cls: Optional[str]= None,
+    oss_cache_cls: Optional[str]= None,
     *,
-    local_cache_cls: str | None = None,
-) -> RemoteCache[JsonDataTy] | None:
+    local_cache_cls: Optional[str]= None,
+) -> Optional[RemoteCache[JsonDataTy]]:
     try:
         this_module = sys.modules[__name__]
         if local_cache_cls is not None:
@@ -429,7 +433,7 @@ class _CacheStat:
 
 
 class _CacheStats:
-    _stats: dict[str, _CacheStat]
+    _stats: Dict[str, _CacheStat]
 
     def __init__(self) -> None:
         self._stats = collections.defaultdict(_CacheStat)
@@ -440,7 +444,7 @@ class _CacheStats:
     def hit(self, name: str, count: int = 1) -> None:
         self._stats[name].hit += count
 
-    def get(self, name: str, value: object | None) -> None:
+    def get(self, name: str, value: Optional[object]) -> None:
         if value is None:
             self.miss(name)
         else:

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+from typing import Dict, List
 import argparse
 import contextlib
 import logging
@@ -25,7 +27,7 @@ PYPROJECT_TOML_PATH = ROOT_PATH / "pyproject.toml"
 
 
 def run_cmd(
-    cmd: list[str], capture_output: bool = False
+    cmd: List[str], capture_output: bool = False
 ) -> subprocess.CompletedProcess[bytes]:
     logger.debug("Running command: %s", " ".join(cmd))
     return subprocess.run(
@@ -46,7 +48,7 @@ def interpreter_version(interpreter: str) -> str:
     return str(version_string.split(" ")[1])
 
 
-def get_supported_python_versions() -> list[str]:
+def get_supported_python_versions() -> List[str]:
     """Extract supported Python versions from pyproject.toml classifiers."""
     with open(PYPROJECT_TOML_PATH) as f:
         content = f.read()
@@ -59,7 +61,7 @@ def get_supported_python_versions() -> list[str]:
     return sorted(matches, key=lambda x: tuple(map(int, x.split("."))))
 
 
-def find_python_interpreters(mode: str) -> list[str]:
+def find_python_interpreters(mode: str) -> List[str]:
     """Find Python interpreters based on the specified mode."""
     if mode == "manylinux":
         return _find_manylinux_interpreters()
@@ -67,7 +69,7 @@ def find_python_interpreters(mode: str) -> list[str]:
         raise ValueError(f"Unsupported mode: {mode}")
 
 
-def _find_manylinux_interpreters() -> list[str]:
+def _find_manylinux_interpreters() -> List[str]:
     """Find Python interpreters in manylinux format (/opt/python/)."""
     supported_versions = get_supported_python_versions()
     interpreters = []
@@ -225,7 +227,7 @@ def main() -> None:
     else:
         pythons = args.python or [sys.executable]
 
-    build_times: dict[str, float] = dict()
+    build_times: Dict[str, float] = dict()
 
     if len(pythons) > 1 and args.destination == "dist/":
         logger.warning(

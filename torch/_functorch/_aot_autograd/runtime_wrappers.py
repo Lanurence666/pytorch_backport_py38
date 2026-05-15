@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module defines runtime wrappers, which, based on previous analysis attempts to:
 1. process the inputs and outputs
@@ -14,11 +15,11 @@ import itertools
 import pprint
 import typing
 import warnings
-from collections.abc import Callable, Generator, Sequence
+
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Any
+from typing import Any, Callable, Dict, FrozenSet, Generator, List, Optional, Sequence, Set, Tuple, Type, Union
 
 import torch
 import torch.fx as fx
@@ -35,6 +36,7 @@ from torch._guards import (
     tracing,
     TracingContext,
 )
+from torch._library.fake_class_registry import FakeScriptObject
 from torch._library.opaque_object import is_opaque_type
 from torch._library.utils import is_builtin
 from torch._logging import getArtifactLogger
@@ -45,6 +47,7 @@ from torch._subclasses import FakeTensor
 from torch.fx.experimental._backward_state import BackwardState
 from torch.fx.experimental.proxy_tensor import HANDLED_TYPES
 from torch.multiprocessing.reductions import StorageWeakRef
+from torch.types import IntLikeType
 from torch.utils._python_dispatch import (
     is_traceable_wrapper_subclass,
     TorchDispatchMode,
@@ -104,8 +107,8 @@ from .utils import (
 
 
 def _unwrap_tensor_subclasses_no_symints(
-    args: list[Any],
-) -> list[Any]:
+    args: List[Any],
+) -> List[Any]:
     return runtime_unwrap_tensor_subclasses(args, append_symints=False)  # type: ignore[arg-type]
 
 
@@ -114,7 +117,7 @@ zip = strict_zip
 aot_graphs_log = getArtifactLogger(__name__, "aot_graphs")
 
 
-def _unwrap_no_symints(args: list[Any]) -> list[Any]:
+def _unwrap_no_symints(args: List[Any]) -> List[Any]:
     return runtime_unwrap_tensor_subclasses(args, append_symints=False)
 
 
@@ -173,7 +176,7 @@ def _log_args_maybe_list(arg: object, label: str) -> None:
 # - the autograd cases inserts TensorAlias wrapper objects for outputs that alias inputs
 @dataclass
 class RuntimeWrapper(CompilerWrapper):
-    indices_of_inps_to_detach: list[int]
+    indices_of_inps_to_detach: List[int]
     trace_joint: bool
     disable_amp: bool
 
@@ -200,7 +203,7 @@ class NoopAliasHandler:
     ) -> None:
         pass
 
-    def __call__(self, orig_inputs: list[Any], fw_outs: list[Any], out: Any) -> Any:
+    def __call__(self, orig_inputs: List[Any], fw_outs: List[Any], out: Any) -> Any:
         return out
 
 
@@ -225,7 +228,7 @@ class AliasOfInputHandler:
         self.replay_views = config.view_replay_for_aliased_outputs
 
     def __call__(
-        self, orig_inputs: list[Any], fw_outs: list[Any], out: Any
+        self, orig_inputs: List[Any], fw_outs: List[Any], out: Any
     ) -> torch.Tensor:
         aliased_base_tensor = orig_inputs[self.base_idx]
         return gen_alias_from_base(
@@ -245,7 +248,7 @@ class IsInputHandler:
         self.unwrap_out = _unwrap_tensoralias if trace_joint else _identity
 
     def __call__(
-        self, orig_inputs: list[Any], fw_outs: list[Any], out: Any
+        self, orig_inputs: List[Any], fw_outs: List[Any], out: Any
     ) -> torch.Tensor:
         aliased_base_tensor = orig_inputs[self.base_idx]
         return aliased_base_tensor
@@ -273,7 +276,7 @@ class AliasOfIntermediateHandler:
         self.replay_views = config.view_replay_for_aliased_outputs
 
     def __call__(
-        self, orig_inputs: list[Any], fw_outs: list[Any], out: Any
+        self, orig_inputs: List[Any], fw_outs: List[Any], out: Any
     ) -> torch.Tensor:
         aliased_base_tensor = fw_outs[self.base_idx]
         return gen_alias_from_base(
@@ -320,10 +323,10 @@ def make_output_handler(
 # _dynamo_propagated_dynamic_indices, so there is no guarantee that the next graph
 # will have proper dynamism information. It only helps when the output of one compiled
 # graph feeds directly into the next.
-def mark_dynamo_propagated_dynamic_indices(t: torch.Tensor, dims: set[int]) -> None:
+def mark_dynamo_propagated_dynamic_indices(t: torch.Tensor, dims: Set[int]) -> None:
     if hasattr(t, "_dynamo_propagated_dynamic_indices"):
         # pyrefly: ignore [missing-attribute]
-        t._dynamo_propagated_dynamic_indices |= dims
+        t._dynamo_propagated_dynamic_indices.update(dims)
     else:
         t._dynamo_propagated_dynamic_indices = dims.copy()  # type: ignore[attr-defined]
 
@@ -359,7 +362,7 @@ def _schema_allows_aliasing(func: Any) -> bool:
 
 
 def _check_custom_op_aliasing(
-    name: str, args: tuple[Any, ...], kwargs: dict[str, Any], result: Any
+    name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any], result: Any
 ) -> None:
     """
     Check if custom op outputs alias inputs or other outputs.
@@ -377,7 +380,7 @@ def _check_custom_op_aliasing(
         if config.error_on_custom_op_aliasing:
             raise
         else:
-            msg = f"{e} This is deprecated and will become an error in a future version of PyTorch."
+            msg = f"{e} This is deprecated and will become an error in PyTorch 2.12."
             warnings.warn(msg, UserWarning, stacklevel=3)
 
 
@@ -412,8 +415,8 @@ class _AnalyzeCustomOpInputOutputMode(TorchDispatchMode):
         self,
         func: OpOverload,
         types: Any,
-        args: tuple[Any, ...] = (),
-        kwargs: dict[str, Any] | None = None,
+        args: Tuple[Any, ...] = (),
+        kwargs: Optional[Dict[str, Any]] = None,
     ) -> Any:
         if not kwargs:
             kwargs = {}
@@ -497,7 +500,7 @@ class _FirstInvocationContext:
 @dataclass
 class _RuntimeCompiledFnInvoker:
     compiled_fn: Callable[..., Any]
-    indices_of_inps_to_detach: list[int]
+    indices_of_inps_to_detach: List[int]
     trace_joint: bool
     disable_amp: bool
     first_invocation_ctx: _FirstInvocationContext = field(
@@ -511,7 +514,7 @@ class _RuntimeCompiledFnInvoker:
     # WARNING: this is a reference implementation; the hot path uses codegen'd
     # code from _create_runtime_wrapper(). Keep both in sync.
     # See Note [RuntimeWrapper codegen specification methods]
-    def run(self, args: list[Any], *, on_before_call: Callable[[], None]) -> list[Any]:
+    def run(self, args: List[Any], *, on_before_call: Callable[[], None]) -> List[Any]:
         with self.first_invocation_ctx():
             if self.trace_joint:
                 args_ = list(args)
@@ -523,10 +526,7 @@ class _RuntimeCompiledFnInvoker:
                 # It's possible to have trace_joint inside user specified with no_grad() region,
                 # if there is a nested with enable_grad(), that forces some outputs to require gradients.
                 # Therefore, we unconditionally turn on enable_grad() for compiled_fn execution.
-                with (
-                    torch.autograd._force_original_view_tracking(True),
-                    torch.enable_grad(),
-                ):
+                with torch.autograd._force_original_view_tracking(True), torch.enable_grad():
                     on_before_call()
                     return call_func_at_runtime_with_args(
                         self.compiled_fn,
@@ -561,8 +561,8 @@ class _RuntimeForwardEpilogue:
     runtime_metadata: ViewAndMutationMeta
     trace_joint: bool
     keep_input_mutations: bool
-    epilogue_args_idx: tuple[int, ...] = field(init=False)
-    output_handlers: tuple[Any, ...] = field(init=False)
+    epilogue_args_idx: Tuple[int, ...] = field(init=False)
+    output_handlers: Tuple[Any, ...] = field(init=False)
 
     def __post_init__(self) -> None:
         epilogue_args_idx = list(self.runtime_metadata.mutated_inp_runtime_indices)
@@ -596,13 +596,13 @@ class _RuntimeForwardEpilogue:
     # WARNING: this is a reference implementation; the hot path uses codegen'd
     # code from _create_runtime_wrapper(). Keep both in sync.
     # See Note [RuntimeWrapper codegen specification methods]
-    def capture_orig_inputs(self, args: list[Any]) -> dict[int, Any]:
+    def capture_orig_inputs(self, args: List[Any]) -> Dict[int, Any]:
         return {i: args[i] for i in self.epilogue_args_idx}
 
     # WARNING: this is a reference implementation; the hot path uses codegen'd
     # code from _create_runtime_wrapper(). Keep both in sync.
     # See Note [RuntimeWrapper codegen specification methods]
-    def increment_mutation_versions(self, args: list[Any]) -> None:
+    def increment_mutation_versions(self, args: List[Any]) -> None:
         if self.keep_input_mutations:
             mutated_args = (
                 args[i]
@@ -613,7 +613,7 @@ class _RuntimeForwardEpilogue:
     # WARNING: this is a reference implementation; the hot path uses codegen'd
     # code from _create_runtime_wrapper(). Keep both in sync.
     # See Note [RuntimeWrapper codegen specification methods]
-    def finalize(self, orig_inputs: dict[int, Any], all_outs: list[Any]) -> Any:
+    def finalize(self, orig_inputs: Dict[int, Any], all_outs: List[Any]) -> Any:
         self._validate_compiled_output_arity(all_outs)
         updated_inputs, fw_outs = self._split_mutated_inputs(all_outs)
         if updated_inputs is not None:
@@ -629,7 +629,7 @@ class _RuntimeForwardEpilogue:
             torch._C._set_grad_enabled(self.runtime_metadata.grad_enabled_mutation)
         return ret_outs
 
-    def _validate_compiled_output_arity(self, all_outs: list[Any]) -> None:
+    def _validate_compiled_output_arity(self, all_outs: List[Any]) -> None:
         expected_outs = (
             self.runtime_metadata.num_mutated_inp_runtime_indices
             + self.runtime_metadata.num_outputs
@@ -641,8 +641,8 @@ class _RuntimeForwardEpilogue:
             )
 
     def _split_mutated_inputs(
-        self, all_outs: list[Any]
-    ) -> tuple[list[Any] | None, list[Any]]:
+        self, all_outs: List[Any]
+    ) -> Optional[Tuple[List[Any]], List[Any]]:
         num_mutated_runtime_inps = self.runtime_metadata.num_mutated_inp_runtime_indices
         if num_mutated_runtime_inps == 0:
             return None, all_outs
@@ -652,7 +652,7 @@ class _RuntimeForwardEpilogue:
         )
 
     def _apply_input_mutations(
-        self, orig_inputs: dict[int, Any], updated_inputs: list[Any]
+        self, orig_inputs: Dict[int, Any], updated_inputs: List[Any]
     ) -> None:
         for i, inpt_idx in enumerate(self.runtime_metadata.mutated_inp_runtime_indices):
             meta = self.runtime_metadata.input_info[inpt_idx]
@@ -734,7 +734,7 @@ class _RuntimeForwardEpilogue:
                     original_inpt.copy_(updated_inpt)
 
     def _replay_output_aliases(
-        self, orig_inputs: dict[int, Any], fw_outs: list[Any]
+        self, orig_inputs: Dict[int, Any], fw_outs: List[Any]
     ) -> Any:
         if self.runtime_metadata.num_outputs_aliased == 0:
             return fw_outs
@@ -754,8 +754,8 @@ class _RuntimeForwardEpilogue:
 
 
 def _codegen_capture_orig_inputs(
-    rw_lines: list[str],
-    epilogue_args_idx: tuple[int, ...],
+    rw_lines: List[str],
+    epilogue_args_idx: Tuple[int, ...],
 ) -> None:
     if epilogue_args_idx:
         idx_str = ", ".join(f"{i}: args[{i}]" for i in epilogue_args_idx)
@@ -765,8 +765,8 @@ def _codegen_capture_orig_inputs(
 
 
 def _codegen_increment_mutation_versions(
-    rw_lines: list[str],
-    rw_globals: dict[str, object],
+    rw_lines: List[str],
+    rw_globals: Dict[str, object],
     keep_input_mutations: bool,
     runtime_metadata: ViewAndMutationMeta,
 ) -> None:
@@ -781,10 +781,10 @@ def _codegen_increment_mutation_versions(
 
 
 def _codegen_compiled_fn_invocation(
-    rw_lines: list[str],
-    rw_globals: dict[str, object],
+    rw_lines: List[str],
+    rw_globals: Dict[str, object],
     trace_joint: bool,
-    indices_of_inps_to_detach: list[int],
+    indices_of_inps_to_detach: List[int],
     disable_amp: bool,
 ) -> None:
     rw_lines.append("    with _first_ctx_():")
@@ -835,8 +835,8 @@ def _codegen_compiled_fn_invocation(
 
 
 def _codegen_epilogue(
-    rw_lines: list[str],
-    rw_globals: dict[str, object],
+    rw_lines: List[str],
+    rw_globals: Dict[str, object],
     runtime_metadata: ViewAndMutationMeta,
     runtime_epilogue: _RuntimeForwardEpilogue,
     num_mutated_runtime_inps: int,
@@ -882,7 +882,7 @@ def _create_runtime_wrapper(
     compiled_fn: Callable[..., Any],
     *,
     runtime_metadata: ViewAndMutationMeta,
-    indices_of_inps_to_detach: list[int],
+    indices_of_inps_to_detach: List[int],
     trace_joint: bool,
     keep_input_mutations: bool,
     disable_amp: bool,
@@ -905,7 +905,7 @@ def _create_runtime_wrapper(
         output_handlers = runtime_epilogue.output_handlers
         alias_lines = ["def _alias_fn(orig_inputs, fw_outs):"]
         alias_lines.append("    ret_outs = []")
-        alias_globals: dict[str, object] = {
+        alias_globals: Dict[str, object] = {
             "gen_alias_from_base": gen_alias_from_base,
             "_unwrap_tensoralias": _unwrap_tensoralias,
         }
@@ -972,7 +972,7 @@ def _create_runtime_wrapper(
             runtime_epilogue,
         )
 
-    def record_runtime_wrapper_prologue_enter() -> AbstractContextManager[None] | None:
+    def record_runtime_wrapper_prologue_enter() -> Optional[AbstractContextManager[None]]:
         if (
             torch.autograd.profiler._is_profiler_enabled
             and dynamo_config.record_runtime_overhead
@@ -985,7 +985,7 @@ def _create_runtime_wrapper(
         return None
 
     def record_runtime_wrapper_prologue_exit(
-        cm: AbstractContextManager[None] | None,
+        cm: Optional[AbstractContextManager[None]],
     ) -> None:
         if cm is not None:
             cm.__exit__(None, None, None)
@@ -994,7 +994,7 @@ def _create_runtime_wrapper(
     # with all branches resolved at compile time.
     if runtime_metadata.num_mutated_inp_runtime_indices > 0:
         mut_lines = ["def _apply_mutations(orig_inputs, updated_inputs):"]
-        mut_globals: dict[str, object] = {
+        mut_globals: Dict[str, object] = {
             "torch": torch,
             "_unwrap_tensoralias": _unwrap_tensoralias,
         }
@@ -1075,8 +1075,8 @@ def _create_runtime_wrapper(
         + runtime_metadata.num_intermediate_bases
     )
 
-    rw_lines: list[str] = []
-    rw_globals: dict[str, object] = {
+    rw_lines: List[str] = []
+    rw_globals: Dict[str, object] = {
         "torch": torch,
         "_normalize_as_list_": normalize_as_list,
     }
@@ -1112,7 +1112,7 @@ def _create_runtime_wrapper(
     _first_invocation_ctx = compiled_invoker.first_invocation_ctx
 
     @simple_wraps(_inner_compiled_fn)
-    def runtime_wrapper(args: list[Any]) -> Any:
+    def runtime_wrapper(args: List[Any]) -> Any:
         cm = record_runtime_wrapper_prologue_enter()
         prologue_exited = False
 
@@ -1160,7 +1160,7 @@ class FunctionalizedRngRuntimeWrapper(InductorWrapper):
     def pre_compile(
         self,
         fw_module: torch.fx.GraphModule,
-        flat_args: list[Any],
+        flat_args: List[Any],
         aot_config: AOTConfig,
         *,
         fw_metadata: ViewAndMutationMeta,
@@ -1250,17 +1250,17 @@ class FunctionalizedRngRuntimeWrapper(InductorWrapper):
 # WARNING: this does NOT operate on TraceFn
 @dataclass
 class FakifiedOutWrapper(InductorWrapper):
-    out_metas: list[torch.Tensor] = field(default_factory=list)
+    out_metas: List[torch.Tensor] = field(default_factory=list)
     # TracingContext.fwd_output_strides
     # Generated from actually doing compile
     # NB: an entry is None if it's not a Tensor
-    fwd_output_strides: list[list[int] | None] | None = None
+    fwd_output_strides: Optional[List[List[int]]] | None = None
     needs_post_compile: bool = True
 
     def pre_compile(
         self,
         fw_module: fx.GraphModule,  # Must be fw_module from aot_dispatch_*_graph
-        flat_args: list[Any],
+        flat_args: List[Any],
         aot_config: AOTConfig,
         *,
         fw_metadata: ViewAndMutationMeta,
@@ -1273,7 +1273,7 @@ class FakifiedOutWrapper(InductorWrapper):
         else:
             self.needs_post_compile = False
 
-    def _compute_output_meta_with_inductor_strides(self) -> list[torch.Tensor]:
+    def _compute_output_meta_with_inductor_strides(self) -> List[torch.Tensor]:
         out = self.out_metas
         fwd_output_strides = self.fwd_output_strides
         if not fwd_output_strides:
@@ -1305,7 +1305,7 @@ class FakifiedOutWrapper(InductorWrapper):
 
     # To be called post compile
     def set_fwd_output_strides(
-        self, fwd_output_strides: list[list[int] | None]
+        self, fwd_output_strides: Optional[List[List[int]]]
     ) -> None:
         self.fwd_output_strides = fwd_output_strides
 
@@ -1324,7 +1324,7 @@ class FakifiedOutWrapper(InductorWrapper):
             fakified_out = self._compute_output_meta_with_inductor_strides()
 
             @wraps(compiled_fn)
-            def wrapper(runtime_args: list[Any]) -> Any:
+            def wrapper(runtime_args: List[Any]) -> Any:
                 nonlocal fakified_out
                 if fakified_out is not None:
                     out = fakified_out
@@ -1344,19 +1344,19 @@ class FakifiedOutWrapper(InductorWrapper):
 @dataclass
 class AOTDispatchSubclassWrapper(CompilerWrapper):
     trace_joint: bool
-    fw_only: Callable[..., Any] | None  # Not cached, only used in pre_compile
-    maybe_subclass_meta: SubclassMeta | None
-    num_fw_outs_saved_for_bw: int | None
+    fw_only: Optional[Callable[..., Any]]  # Not cached, only used in pre_compile
+    maybe_subclass_meta: Optional[SubclassMeta]
+    num_fw_outs_saved_for_bw: Optional[int]
 
     def pre_compile(
         self,
         flat_fn: TraceFn,
-        flat_args: list[FxValue],
-        flat_args_descs: list[AOTInput],
+        flat_args: List[FxValue],
+        flat_args_descs: List[AOTInput],
         aot_config: AOTConfig,
         *,
         fw_metadata: ViewAndMutationMeta,
-    ) -> tuple[TraceFn, list[FxValue], list[AOTInput], ViewAndMutationMeta]:
+    ) -> Tuple[TraceFn, List[FxValue], List[AOTInput], ViewAndMutationMeta]:
         (new_flat_fn, new_flat_args, new_flat_args_descs, subclass_meta) = (
             aot_dispatch_subclass(
                 flat_fn,
@@ -1371,7 +1371,7 @@ class AOTDispatchSubclassWrapper(CompilerWrapper):
         return new_flat_fn, new_flat_args, new_flat_args_descs, fw_metadata
 
     @staticmethod
-    def _get_frozen_inp_indices() -> frozenset[int]:
+    def _get_frozen_inp_indices() -> FrozenSet[int]:
         # fw_compiler_freezing (compile_fx.py) bakes frozen params into the
         # graph and sets their TracingContext.params_flat entries to None
         # before post_compile runs.  We pass these indices to codegen so it
@@ -1523,35 +1523,35 @@ class EffectTokensWrapper(CompilerWrapper):
 #
 @dataclass
 class AOTDedupeWrapper(CompilerWrapper):
-    keep_arg_mask: list[bool] = field(default_factory=list)
-    add_dupe_map: list[int] = field(default_factory=list)
-    old_input_metadata: list[InputAliasInfo] = field(default_factory=list)
+    keep_arg_mask: List[bool] = field(default_factory=list)
+    add_dupe_map: List[int] = field(default_factory=list)
+    old_input_metadata: List[InputAliasInfo] = field(default_factory=list)
     needs_post_compile: bool = True
 
     # NB: Hot path, avoid set lookups here
     # TODO: Can avoid the zip here too, probably
-    def remove_dupe_args(self, args: list[Any]) -> list[Any]:
+    def remove_dupe_args(self, args: List[Any]) -> List[Any]:
         return [t for t, keep in zip(args, self.keep_arg_mask) if keep]
 
-    def add_dupe_args(self, args: list[Any]) -> list[Any]:
+    def add_dupe_args(self, args: List[Any]) -> List[Any]:
         return [args[i] for i in self.add_dupe_map]
 
     def pre_compile(
         self,
         flat_fn: TraceFn,
-        flat_args: list[FxValue],
-        flat_args_descs: list[AOTInput],
+        flat_args: List[FxValue],
+        flat_args_descs: List[AOTInput],
         aot_config: AOTConfig,
         *,
         fw_metadata: ViewAndMutationMeta,
-    ) -> tuple[TraceFn, list[FxValue], list[AOTInput], ViewAndMutationMeta]:
+    ) -> Tuple[TraceFn, List[FxValue], List[AOTInput], ViewAndMutationMeta]:
         # Use information about whether or not flat_fn mutates its arguments
         # or not to handle dupe args
 
         # Strategy 1: For any input that is not mutated, we can leafify it if we
         # need to remove a duplicate.
-        leaf_flat_args: list[FxValue] = []
-        leaf_flat_args_descs: list[AOTInput] = []
+        leaf_flat_args: List[FxValue] = []
+        leaf_flat_args_descs: List[AOTInput] = []
         args_set = set()
         ok = True
 
@@ -1617,10 +1617,10 @@ class AOTDedupeWrapper(CompilerWrapper):
         # - add_dupe_map = [0, 1, 0, 2] (tells us how to reconstruct the original list)
         # - keep_arg_mask = [True, True, False, True] (tells us which args to keep when deduplicating)
 
-        seen_args: dict[Tensor, int] = {}
+        seen_args: Dict[Tensor, int] = {}
         # Implicitly map duped arg position (list index) to de-duped arg position
-        keep_arg_mask: list[bool] = []
-        add_dupe_map: list[int] = []
+        keep_arg_mask: List[bool] = []
+        add_dupe_map: List[int] = []
         duped_arg_len = len(flat_args)
 
         j = 0  # index into deduped_flat_args
@@ -1678,7 +1678,7 @@ class AOTDedupeWrapper(CompilerWrapper):
         @simple_wraps(flat_fn)
         def wrapped_flat_fn(
             *args: FxValue,
-        ) -> tuple[list[FxValue], list[AOTOutput]]:
+        ) -> Tuple[List[FxValue], List[AOTOutput]]:
             outs, out_descs = call_and_expect_output_descs(
                 flat_fn,
                 self.add_dupe_args(args),  # type: ignore[arg-type]
@@ -1740,10 +1740,10 @@ class AOTDedupeWrapper(CompilerWrapper):
         #     return wrapped_compiled_fn
 
         @wraps(wrapped_compiled_fn)
-        def debugged_compiled_fn(args: list[Any]) -> Any:
+        def debugged_compiled_fn(args: List[Any]) -> Any:
             # Test that the computed remove/add arg functions are an inverse
             new_args = self.add_dupe_args(self.remove_dupe_args(args))
-            seen: dict[Any, None] = {}
+            seen: Dict[Any, None] = {}
             for i, (x, y) in enumerate(zip(new_args, args)):
                 seen[y] = None
                 if x is not y:
@@ -1788,17 +1788,17 @@ class AOTSyntheticBaseWrapper(CompilerWrapper):
     # the synthetic base code prohibits more cases in the autograd case than the inference case.
     trace_joint: bool  # TODO: refactor trace_joint
     needs_post_compile: bool = True
-    aliased_arg_idx_with_metadata_mutations: list[int] = field(default_factory=list)
+    aliased_arg_idx_with_metadata_mutations: List[int] = field(default_factory=list)
 
     def pre_compile(
         self,
         flat_fn: TraceFn,
-        flat_args: list[FxValue],
-        flat_args_descs: list[AOTInput],
+        flat_args: List[FxValue],
+        flat_args_descs: List[AOTInput],
         aot_config: AOTConfig,
         *,
         fw_metadata: ViewAndMutationMeta,
-    ) -> tuple[Callable[..., Any], list[FxValue], list[AOTInput], ViewAndMutationMeta]:
+    ) -> Tuple[Callable[..., Any], List[FxValue], List[AOTInput], ViewAndMutationMeta]:
         is_inference = not self.trace_joint
         (
             flat_args_with_synthetic_bases,
@@ -1863,7 +1863,7 @@ class AOTSyntheticBaseWrapper(CompilerWrapper):
         )
         replay_views = config.view_replay_for_aliased_outputs
 
-        def _unpack_synthetic_bases(primals: tuple[Any, ...]) -> list[Any]:
+        def _unpack_synthetic_bases(primals: Tuple[Any, ...]) -> List[Any]:
             f_args_inner = []
             # pyrefly: ignore [not-iterable]
             for inner_idx_or_tuple in synthetic_base_info:
@@ -1951,7 +1951,7 @@ class AOTSyntheticBaseWrapper(CompilerWrapper):
         is_inference = not self.trace_joint
 
         @wraps(compiled_fn)
-        def wrapped_compiled_fn(args: list[Any]) -> Any:
+        def wrapped_compiled_fn(args: List[Any]) -> Any:
             # TODO: this sure seems expensive to run at runtime (which
             # post_compile seems to imply it does?!)
             args_with_synthetic_bases, _, synthetic_base_info = merge_view_inputs(
@@ -2061,14 +2061,14 @@ class AOTSyntheticBaseWrapper(CompilerWrapper):
 #   f(c_base, b_base, a, d)
 def merge_view_inputs(
     aot_config: AOTConfig,
-    fwd_inputs: list[Any],
+    fwd_inputs: List[Any],
     # This is None when called at runtime from post_compile closure
-    fwd_inputs_descs: list[AOTInput] | None,
-    mutated_input_info: list[InputAliasInfo],
+    fwd_inputs_descs: Optional[List[AOTInput]],
+    mutated_input_info: List[InputAliasInfo],
     *,
     # The autograd case currently has more restrictions than the inference case.
     is_inference: bool,
-) -> tuple[list[Any], list[AOTInput], list[int | tuple[int, torch.Tensor]] | None]:
+) -> Tuple[List[Any], List[AOTInput], List[Union[int, Tuple[int, torch.Tensor]]] | None]:
     if fwd_inputs_descs is None:
         fwd_inputs_descs = [DummyAOTInput(i) for i in range(len(fwd_inputs))]
 
@@ -2111,7 +2111,7 @@ def merge_view_inputs(
         # Return early when there are no mutations.
         return fwd_inputs, fwd_inputs_descs, None
 
-    storage_ref_to_idx: dict[StorageWeakRef, list[int]] = collections.defaultdict(list)
+    storage_ref_to_idx: Dict[StorageWeakRef, List[int]] = collections.defaultdict(list)
     # pyrefly: ignore [implicit-any]
     base_args = []
     # pyrefly: ignore [implicit-any]
@@ -2131,7 +2131,7 @@ def merge_view_inputs(
     # - another int (corresponding to the index in the argument list of the element from the outer calling convention)
     # - idx, view_tensor, where we can generate the new output with view_tensor._view_func(old_args[idx])
     #   idx corresponds to which synthetic base from the outer calling context to view
-    inner_calling_convention_meta: dict[int, int | tuple[int, torch.Tensor]] = {}
+    inner_calling_convention_meta: Dict[int, Union[int, Tuple[int, torch.Tensor]]] = {}
     for aliased_input_indices in storage_ref_to_idx.values():
         if len(aliased_input_indices) <= 1 or not any(
             # We only care about mutations that affect all aliases,
@@ -2171,8 +2171,7 @@ def merge_view_inputs(
         # and error out. We can fix them later.
         # These checks are transitive, so we don't need to check every pair.
         for idx1, idx2 in zip(
-            aliased_input_indices, aliased_input_indices[1:], strict=False
-        ):
+            aliased_input_indices, aliased_input_indices[1:]):
             view1 = fwd_inputs[idx1]
             view2 = fwd_inputs[idx2]
             # The "inputs that are aliased but have different differentiable bases" case
@@ -2313,7 +2312,7 @@ def merge_view_inputs(
             inner_calling_convention_meta[old_idx] = new_idx
 
         # post process into a list
-        post_processed_calling_convention_meta: list[int | tuple[int, torch.Tensor]] = [
+        post_processed_calling_convention_meta: List[Union[int, Tuple[int, torch.Tensor]]] = [
             -1 for _ in range(len(inner_calling_convention_meta))
         ]
         for k, v in inner_calling_convention_meta.items():
@@ -2342,9 +2341,9 @@ def merge_view_inputs(
 @dataclass
 class AutogradLazyBackwardCompileInfo:
     bw_module: Callable[..., Any]
-    placeholder_list: list[Any]
-    saved_context: TracingContext | None
-    saved_compile_context: CompileContext | None
+    placeholder_list: List[Any]
+    saved_context: Optional[TracingContext]
+    saved_compile_context: Optional[CompileContext]
 
 
 # On an AOT Autograd cache hit, we already have a lowered backward, so there is usually
@@ -2368,11 +2367,248 @@ def _raise_if_functorch_active() -> None:
     )
 
 
+# NOTE: this function must be torch._dynamo.allow_in_graph-able. Non tensor/symnode inputs must be constants.
+def _backward_prologue_functional(
+    ctx_saved_tensors: Sequence[torch.Tensor],
+    ctx_symints: Sequence[IntLikeType],
+    ctx_opaque_objects: Sequence[Any],
+    metadata: ViewAndMutationMeta,
+    maybe_subclass_metadata: Optional[SubclassMeta],
+    flat_args: Sequence[Any],
+    codegen_unwrap_fn: Optional[Callable[..., Any]] = None,
+) -> List[Any]:
+    # Calling convention: we expect a grad_out passed to the backward:
+    # - for every output of the fw that does *not* alias an input or graph intermediate
+    # - for every updated_input generated by the fw that does *not* alias an input (aka only data-mutations)
+    # - for every graph intermediate that we need to use to generate an output later.
+    # The other outputs in the autograd.Function.forward that do *not* show up in the backward include:
+    # - outputs that alias inputs or graph intermediates
+    # - updated inputs due to metadata-only mutations.
+    # We need to return them in the forward, but ensure that they all do not get gradients in the backward,
+    # and we filter them out here before passing the remaining grad_outputs into the compiled backward.
+    _raise_if_functorch_active()
+
+    num_intermediate_bases = metadata.num_intermediate_bases
+    num_mutated_runtime_inps = metadata.num_mutated_inp_runtime_indices
+    expected_grad_outs = (
+        metadata.num_outputs + num_mutated_runtime_inps + num_intermediate_bases
+    )
+    deterministic = metadata.deterministic
+    global_deterministic = torch.are_deterministic_algorithms_enabled()
+    if deterministic is not None:
+        torch._check(
+            not (not deterministic and global_deterministic),
+            lambda: (
+                "This compiled backward function is being run with "
+                "torch.use_deterministic_algorithms(True), "
+                "but it was previously generated during the forward function while "
+                "torch.use_deterministic_algorithms(False) was set."
+            ),
+        )
+
+    if len(flat_args) != expected_grad_outs:
+        raise AssertionError(
+            f"expected {expected_grad_outs} grad_outs, got {len(flat_args)}"
+        )
+    out_info = metadata.output_info
+
+    inp_tangents, out_tangents, intermediate_base_tangents = (
+        flat_args[:num_mutated_runtime_inps],
+        flat_args[
+            num_mutated_runtime_inps : num_mutated_runtime_inps + metadata.num_outputs
+        ],
+        flat_args[num_mutated_runtime_inps + metadata.num_outputs :],
+    )
+    # Release grad refs from the caller's list (boxed calling convention).
+    # Slicing already copied refs into sub-lists above, so clearing the
+    # original list only drops redundant refs. The isinstance guard skips
+    # this when flat_args is a tuple (non-boxed path from compiled_autograd).
+    if isinstance(flat_args, list):
+        flat_args.clear()
+    # input_info contains info on *every* input,
+    # But in the backward(), we are only given grad outputs for every mutated input
+    # We then need to filter out the grad outputs that correspond to metadata-only mutations or don't require grad
+    input_info = metadata.input_info
+    inp_tangents_filtered = [
+        x
+        for x, info_idx in zip(
+            inp_tangents,
+            metadata.mutated_inp_runtime_indices,
+        )
+        if input_info[info_idx].mutates_data and input_info[info_idx].requires_grad
+    ]
+    # We also need to filter out grad outputs that correspond to outputs aliasing inputs/intermediates
+    out_tangents_filtered = [
+        x
+        for x, info in zip(out_tangents, out_info)
+        if info.output_type
+        in [
+            OutputType.non_alias,
+            OutputType.unsafe_view_alias,
+            OutputType.custom_function_view,
+        ]
+        and issubclass(info.raw_type, torch.Tensor)
+        and info.requires_grad_for_backward
+    ]
+    # intermediate bases always require gradients, and always participate in the backward graph.
+    flat_bw_args_with_grads = [
+        *inp_tangents_filtered,
+        *out_tangents_filtered,
+        *intermediate_base_tangents,
+    ]
+    num_flat_bw_args_with_grads = len(flat_bw_args_with_grads)
+
+    # sanity asserts
+    # metadata_only_inps = [
+    #     x for x, info_idx in zip(inp_tangents, mutated_inp_indices)
+    #     if not input_info[info_idx].mutates_data
+    # ]
+    # aliased_outputs = [
+    #     x for x, info in zip(out_tangents, out_info) if info.output_type != OutputType.non_alias]
+    # assert all(x is None for x in metadata_only_inps)
+    # assert all(x is None for x in aliased_outputs)
+    # TODO: replace this with FunctionalizedRngRuntimeWrapper
+    # pyrefly: ignore [implicit-any]
+    rng_args = []
+    if metadata.is_rng_op_functionalized:
+        # Add the seed and offset to args
+        rng_args = CUDARngStateHelper.get_torch_state_as_tuple()
+
+    bw_tokens = [None] * metadata.num_backward_tokens
+
+    # - note: donated buffer logic requires (*ctx.symints, *ctx.saved_tensors, *ctx.opaques) showing up first
+    #   in the bw output order.
+
+    # Every dereference of ctx.saved_tensors incurs saved_tensors_hooks calls
+    # There are tests that count these calls, saving to var.
+    num_ctx_saved_tensors = len(ctx_saved_tensors)
+    all_args = [
+        *ctx_symints,
+        *ctx_saved_tensors,
+        *ctx_opaque_objects,
+        *flat_bw_args_with_grads,
+        *bw_tokens,
+        *rng_args,
+    ]
+    del ctx_saved_tensors
+
+    # Note: [AOTAutograd Backward Guards]
+    # During AOTDispatch, we eagerly create and trace out a joint fw-bw graph.
+    # Doing so requires us to "guess" about some of the metadata of our grad_outputs.
+    #
+    # In particular: if an output to the forward is a plain tensor or a subclass,
+    # its corresponding grad_output in the backward **may or may not** be
+    # a plain tensor or a subclass. The main cases are:
+    # (1) If an output is a plain tensor, its grad_out will also be a plain tensor,
+    #     *unless* the output is used in some subclass compute later in the forward graph,
+    #     which will cause its grad_output to become a subclass
+    # (2) If an output is a subclass, its grad_out will also be a subclass,
+    #     *unless* the output of the forward did not actually participate in the gradient computation,
+    #     in which case autograd will insert a plain tensor of zeros for the grad_output.
+    #     We could avoid this case with `torch.autograd.Function.set_materialize_grads`,
+    #     although this is not turned on today in AOTAutgrad and would require more work.
+    #
+    # Today, we make a guess on subclass-ness based on the above examples,
+    # and hard-error in the backward if we guessed wrong.
+    #
+    # In the future, we should add backward guards that would allow us to
+    # properly handle this case instead of erroring: we would need to retrace the backward graph,
+    # since we might produce an entirely different trace if our grad_outputs are subclass or not.
+    del flat_bw_args_with_grads
+
+    tangents_start_idx = (
+        len(all_args) - num_flat_bw_args_with_grads - len(rng_args) - len(bw_tokens)
+    )
+    expected_tangents_start = (
+        len(ctx_symints) + num_ctx_saved_tensors + len(ctx_opaque_objects)
+    )
+    if tangents_start_idx != expected_tangents_start:
+        raise AssertionError(
+            f"expected tangents_start_idx == {expected_tangents_start}, got {tangents_start_idx}"
+        )
+    tangents_end_idx = len(all_args) - len(rng_args) - len(bw_tokens)
+
+    # TODO: figure out how to refactor the backward properly
+    # so I can use aot_dispatch_subclass_wrapper() here.
+    if maybe_subclass_metadata is not None:
+        tangents = all_args[tangents_start_idx:tangents_end_idx]
+
+        if len(tangents) != len(metadata.subclass_tangent_meta):
+            raise RuntimeError(
+                "The grad inputs should be same number as forward output tangents"
+            )
+
+        stack_traces = metadata.tangent_source_stack_traces or ()
+
+        flat_processed_tangents = list(
+            itertools.chain.from_iterable(
+                (
+                    AOTDispatchAutograd.process_runtime_tangent(
+                        t,
+                        m,
+                        tangent_idx=idx,
+                        tangent_desc=desc,
+                        compile_id_str=metadata.compile_id_str,
+                        tangent_stack_trace=stack_traces[idx] if stack_traces else None,
+                    )[1]
+                )
+                for idx, (t, m, desc) in enumerate(
+                    zip(
+                        tangents,
+                        metadata.subclass_tangent_meta,
+                        metadata.traced_tangents_descs,
+                    )
+                )
+            )
+        )
+
+        if codegen_unwrap_fn is not None:
+            unwrap = codegen_unwrap_fn
+        else:
+            unwrap = _unwrap_no_symints
+        all_args = (
+            unwrap(all_args[:tangents_start_idx])
+            + flat_processed_tangents
+            + unwrap(all_args[tangents_end_idx:])
+        )
+    else:
+        stack_traces = metadata.tangent_source_stack_traces or ()
+
+        all_args = [
+            (
+                AOTDispatchAutograd.process_runtime_tangent(
+                    t,
+                    metadata.subclass_tangent_meta[i - tangents_start_idx],
+                    tangent_idx=i - tangents_start_idx,
+                    tangent_desc=metadata.traced_tangents_descs[i - tangents_start_idx],
+                    compile_id_str=metadata.compile_id_str,
+                    tangent_stack_trace=(
+                        stack_traces[i - tangents_start_idx] if stack_traces else None
+                    ),
+                )[0]
+                if (tangents_start_idx <= i < tangents_end_idx)
+                else t
+            )
+            for i, t in enumerate(all_args)
+        ]
+
+    # Backward with forward inputs mutations is not supported in double backward.
+    if (
+        torch.is_grad_enabled()
+        and metadata.indices_of_inputs_that_requires_grad_with_mutations_in_bw
+    ):
+        raise RuntimeError(
+            "aot_autograd does not support input mutations with requires_grad in backward for create_graph=True"
+        )
+
+    return all_args
+
+
 def initialize_rng_states(
     num_rng: int,
     graphsafe_idx: int,
-    fwd_rng_states: list[torch.Generator],
-    bwd_rng_states: list[torch.Generator],
+    fwd_rng_states: List[torch.Generator],
+    bwd_rng_states: List[torch.Generator],
 ) -> None:
     """
     Initialize the cudagraph safe rng states.
@@ -2405,6 +2641,61 @@ def initialize_rng_states(
                 for i in range(num_rng)
             ]
         )
+
+
+# NOTE: this function must be torch._dynamo.allow_in_graph-able. Non tensor/symnode inputs must be constants.
+def _backward_epilogue_functional(
+    metadata: ViewAndMutationMeta,
+    maybe_subclass_metadata: Optional[SubclassMeta],
+    out: Any,
+    *,
+    ctx_opaque_objects: Sequence[Any] = (),
+    make_subclass_override: Optional[Callable[..., Any]] = None,
+    codegen_wrap_fn: Optional[Callable[..., Any]] = None,
+) -> Tuple[Any, ...]:
+    # Toss out the backward output tokens
+    num_bw_tokens = metadata.num_backward_tokens
+    if num_bw_tokens > 0:
+        out = out[:-num_bw_tokens]
+
+    # TODO: replace this with FunctionalizedRngRuntimeWrapper.post_compile
+    out = FunctionalizedRngRuntimeWrapper()._functionalized_rng_runtime_epilogue(
+        metadata, out, offset_index=len(out) - 1
+    )
+    out = tuple(out)
+
+    # Replace compile-time opaque constants in the backward output with the
+    # real runtime opaques saved from the forward pass. During joint graph
+    # tracing, backward output opaques come from tangent constants (baked at
+    # compile time). At runtime we need the actual opaque objects that were
+    # saved for backward from the forward pass.
+    if ctx_opaque_objects:
+        opaque_iter = iter(ctx_opaque_objects)
+        out = tuple(
+            next(opaque_iter) if isinstance(v, FakeScriptObject) else v for v in out
+        )
+        remaining = list(opaque_iter)
+        if remaining:
+            raise AssertionError(
+                f"ctx_opaque_objects had {len(remaining)} leftover entries "
+                "(expected all to be consumed by FakeScriptObject slots in backward output)"
+            )
+
+    # TODO: figure out how to refactor the backward properly so I can use aot_dispatch_subclass_wrapper() here.
+    if maybe_subclass_metadata is not None:
+        if maybe_subclass_metadata.grad_input_metas is None:
+            raise AssertionError("grad_input_metas must not be None")
+        if codegen_wrap_fn is not None and make_subclass_override is None:
+            return codegen_wrap_fn(out)
+        outs_wrapped = wrap_tensor_subclasses(
+            out,
+            subclass_metas=maybe_subclass_metadata.grad_input_metas,
+            included_subclass_symints=True,
+            is_runtime=True,
+            make_subclass_override=make_subclass_override,
+        )
+        return outs_wrapped
+    return out
 
 
 def coerce_to_expected_memory_format(
@@ -2505,18 +2796,18 @@ class SerializableCompiledFunction:
 @dataclass
 class AOTDispatchAutogradCompileSpec:
     compiled_fw_func: Callable[..., Any]
-    compiled_bw_func: Callable[..., Any] | None
-    maybe_subclass_meta: SubclassMeta | None
+    compiled_bw_func: Optional[Callable[..., Any]]
+    maybe_subclass_meta: Optional[SubclassMeta]
     num_symints_saved_for_bw: int
-    backward_state_indices: list[int]
+    backward_state_indices: List[int]
     disable_amp: bool
-    indices_of_inps_to_detach: list[int]
+    indices_of_inps_to_detach: List[int]
     lazy_backward_info: (
-        AutogradLazyBackwardCompileInfo | CachedAutogradLazyBackwardCompileInfo | None
+        Union[AutogradLazyBackwardCompileInfo, Optional[CachedAutogradLazyBackwardCompileInfo]]
     )
     aot_config: AOTConfig
     fw_metadata: ViewAndMutationMeta
-    try_save_cache_entry: Callable[..., Any] | None
+    try_save_cache_entry: Optional[Callable[..., Any]]
 
 
 @dataclass
@@ -2587,12 +2878,17 @@ class _AutogradSavedState:
             )
         ctx.opaque_objects = opaque_object_outs
 
+    def load_tensors(self, ctx: Any) -> Sequence[torch.Tensor]:
+        if len(ctx._tensors_no_vc_check) > 0:
+            return list(ctx.saved_tensors) + ctx._tensors_no_vc_check
+        return ctx.saved_tensors
+
 
 @dataclass
 class _AutogradForwardEpilogue:
     metadata: ViewAndMutationMeta
 
-    def finalize(self, ctx: Any, fw_outs: Sequence[Any]) -> tuple[Any, ...]:
+    def finalize(self, ctx: Any, fw_outs: Sequence[Any]) -> Tuple[Any, ...]:
         num_outputs = self.metadata.num_outputs
         num_outputs_aliased = self.metadata.num_outputs_aliased
         num_mutated_runtime_inps = self.metadata.num_mutated_inp_runtime_indices
@@ -2665,17 +2961,17 @@ class _AutogradForwardEpilogue:
 @dataclass
 class _AutogradRngStateTracker:
     num_rng: int
-    graphsafe_idx: int | None
-    fwd_rng_states: list[torch.Generator] = field(default_factory=list)
-    bwd_rng_states: list[torch.Generator] = field(default_factory=list)
+    graphsafe_idx: Optional[int]
+    fwd_rng_states: List[torch.Generator] = field(default_factory=list)
+    bwd_rng_states: List[torch.Generator] = field(default_factory=list)
     curr_fwd_iter: Any = field(default_factory=lambda: itertools.count(0))
     backward_state_position: int = 0
-    pending_forwards: set[int] = field(default_factory=set)
-    saved_backward_tensor_states: dict[int, list[torch.Tensor]] = field(
+    pending_forwards: Set[int] = field(default_factory=set)
+    saved_backward_tensor_states: Dict[int, List[torch.Tensor]] = field(
         default_factory=dict
     )
 
-    def add_forward_args(self, ctx: Any, args: tuple[Any, ...]) -> tuple[Any, ...]:
+    def add_forward_args(self, ctx: Any, args: Tuple[Any, ...]) -> Tuple[Any, ...]:
         if self.num_rng == 0:
             return args
 
@@ -2702,7 +2998,7 @@ class _AutogradRngStateTracker:
         self.pending_forwards.add(curr_iter)
         return (*args, *self.fwd_rng_states)
 
-    def add_backward_args(self, ctx: Any, all_args: list[Any]) -> None:
+    def add_backward_args(self, ctx: Any, all_args: List[Any]) -> None:
         if self.num_rng == 0:
             return
 
@@ -2745,14 +3041,14 @@ class _AutogradRngStateTracker:
 
 @dataclass
 class _AutogradBackwardCompiler:
-    compiled_bw: Callable[..., Any] | None
+    compiled_bw: Optional[Callable[..., Any]]
     lazy_backward_info: (
-        AutogradLazyBackwardCompileInfo | CachedAutogradLazyBackwardCompileInfo | None
+        Union[AutogradLazyBackwardCompileInfo, Optional[CachedAutogradLazyBackwardCompileInfo]]
     )
     disable_amp: bool
     aot_config: AOTConfig
     fw_metadata: ViewAndMutationMeta
-    try_save_cache_entry: Callable[..., Any] | None
+    try_save_cache_entry: Optional[Callable[..., Any]]
 
     def get_or_compile(self, *, saved_tensors_use_once: bool) -> Callable[..., Any]:
         if self.compiled_bw is not None:
@@ -2775,25 +3071,7 @@ class _AutogradBackwardCompiler:
 
         context = torch._C._DisableAutocast if self.disable_amp else nullcontext
         metrics_context = get_metrics_context()
-        with (
-            tracing(saved_context),
-            compile_context(saved_compile_context),
-            context(),
-            track_graph_compiling(self.aot_config, "backward"),
-            metrics_context,
-            dynamo_timed(
-                "backward._backward_impl",
-                phase_name="entire_backward_compile",
-                log_pt2_compile_event=True,
-                dynamo_compile_column_us="backward_cumulative_compile_time_us",
-                log_waitcounter=True,
-                waitcounter_name_override="entire_backward_compile",
-            ),
-            callback_handler.install_callbacks(
-                CallbackTrigger.LAZY_BACKWARD,
-                str(CompileContext.current_compile_id()),
-            ),
-        ):
+        with tracing(saved_context), compile_context(saved_compile_context), context(), track_graph_compiling(self.aot_config, "backward"), metrics_context, dynamo_timed( "backward._backward_impl", phase_name="entire_backward_compile", log_pt2_compile_event=True, dynamo_compile_column_us="backward_cumulative_compile_time_us", log_waitcounter=True, waitcounter_name_override="entire_backward_compile", ), callback_handler.install_callbacks( CallbackTrigger.LAZY_BACKWARD, str(CompileContext.current_compile_id()), ):
             CompileEventLogger.compilation_metric(is_forward=False)
             # See Note: [Backward graph lazy lowering]
             if self.aot_config.bw_compiler is None:
@@ -2877,332 +3155,11 @@ class _AutogradBackwardCompiler:
                 )
 
 
-def _codegen_backward_prologue(
-    fw_metadata: ViewAndMutationMeta,
-    maybe_subclass_meta: SubclassMeta | None,
-    codegen_unwrap_fn: Callable[..., Any] | None,
-) -> Callable[..., Any]:
-    from .subclass_codegen import _compile_and_exec_source
-
-    num_mutated_runtime_inps = fw_metadata.num_mutated_inp_runtime_indices
-    num_outputs = fw_metadata.num_outputs
-    num_intermediate_bases = fw_metadata.num_intermediate_bases
-    expected_grad_outs = num_outputs + num_mutated_runtime_inps + num_intermediate_bases
-    deterministic = fw_metadata.deterministic
-    num_backward_tokens = fw_metadata.num_backward_tokens
-    is_rng_op_functionalized = fw_metadata.is_rng_op_functionalized
-    has_subclass = maybe_subclass_meta is not None
-    has_mutations_in_bw = bool(
-        fw_metadata.indices_of_inputs_that_requires_grad_with_mutations_in_bw
-    )
-    input_info = fw_metadata.input_info
-
-    inp_surviving: list[int] = []
-    for i, info_idx in enumerate(fw_metadata.mutated_inp_runtime_indices):
-        if input_info[info_idx].mutates_data and input_info[info_idx].requires_grad:
-            inp_surviving.append(i)
-
-    out_surviving: list[int] = []
-    for i, info in enumerate(fw_metadata.output_info):
-        if (
-            info.output_type
-            in [
-                OutputType.non_alias,
-                OutputType.unsafe_view_alias,
-                OutputType.custom_function_view,
-            ]
-            and issubclass(info.raw_type, torch.Tensor)
-            and info.requires_grad_for_backward
-        ):
-            out_surviving.append(num_mutated_runtime_inps + i)
-
-    intermediate_start = num_mutated_runtime_inps + num_outputs
-    all_surviving = (
-        inp_surviving
-        + out_surviving
-        + list(range(intermediate_start, expected_grad_outs))
-    )
-    num_flat_bw_args_with_grads = len(all_surviving)
-
-    L: list[str] = [
-        "def _backward_prologue("
-        "ctx_saved_tensors, ctx_symints, ctx_opaque_objects, flat_args):"
-    ]
-    G: dict[str, object] = {
-        "_raise_if_functorch_active_": _raise_if_functorch_active,
-        "torch": torch,
-    }
-
-    L.append("    _raise_if_functorch_active_()")
-
-    if deterministic is not None and not deterministic:
-        L.append("    _gd = torch.are_deterministic_algorithms_enabled()")
-        L.append("    torch._check(not _gd, lambda: (")
-        L.append("        'This compiled backward function is being run with '")
-        L.append("        'torch.use_deterministic_algorithms(True), '")
-        L.append(
-            "        'but it was previously generated during the forward function"
-            " while '"
-        )
-        L.append("        'torch.use_deterministic_algorithms(False) was set.'))")
-
-    L.append(f"    if len(flat_args) != {expected_grad_outs}:")
-    L.append(
-        f"        raise AssertionError("
-        f"f'expected {expected_grad_outs} grad_outs, "
-        f"got {{len(flat_args)}}')"
-    )
-
-    if all_surviving:
-        items = ", ".join(f"flat_args[{i}]" for i in all_surviving)
-        L.append(f"    _bw_grads = [{items}]")
-    else:
-        L.append("    _bw_grads = []")
-
-    L.append("    if isinstance(flat_args, list):")
-    L.append("        flat_args.clear()")
-
-    L.append("    _n_saved = len(ctx_saved_tensors)")
-
-    parts = [
-        "*ctx_symints",
-        "*ctx_saved_tensors",
-        "*ctx_opaque_objects",
-        "*_bw_grads",
-    ]
-    if num_backward_tokens > 0:
-        parts.append(f"*([None] * {num_backward_tokens})")
-    if is_rng_op_functionalized:
-        G["_get_rng_state_"] = CUDARngStateHelper.get_torch_state_as_tuple
-        parts.append("*_get_rng_state_()")
-    L.append(f"    all_args = [{', '.join(parts)}]")
-    L.append("    del ctx_saved_tensors")
-
-    L.append("    _ts = len(ctx_symints) + _n_saved + len(ctx_opaque_objects)")
-    L.append(f"    _te = _ts + {num_flat_bw_args_with_grads}")
-
-    G["_process_tangent_"] = AOTDispatchAutograd.process_runtime_tangent
-    G["_tangent_metas_"] = fw_metadata.subclass_tangent_meta
-    G["_tangent_descs_"] = fw_metadata.traced_tangents_descs
-    G["_compile_id_"] = fw_metadata.compile_id_str
-    G["_stack_traces_"] = fw_metadata.tangent_source_stack_traces or ()
-
-    if has_subclass:
-        G["_chain_"] = itertools.chain.from_iterable
-
-        L.append("    _tangents = all_args[_ts:_te]")
-        L.append(f"    if len(_tangents) != {len(fw_metadata.subclass_tangent_meta)}:")
-        L.append(
-            "        raise RuntimeError("
-            "'The grad inputs should be same number as forward output tangents')"
-        )
-        L.append("    _fpt = list(_chain_(")
-        L.append("        _process_tangent_(t, m, idx, desc, _compile_id_,")
-        L.append("            _stack_traces_[idx] if _stack_traces_ else None)[1]")
-        L.append("        for idx, (t, m, desc) in enumerate(")
-        L.append("            zip(_tangents, _tangent_metas_, _tangent_descs_))))")
-
-        if codegen_unwrap_fn is not None:
-            G["_unwrap_"] = codegen_unwrap_fn
-        else:
-            G["_unwrap_"] = _unwrap_no_symints
-        L.append(
-            "    all_args = _unwrap_(all_args[:_ts]) + _fpt + _unwrap_(all_args[_te:])"
-        )
-    elif num_flat_bw_args_with_grads > 0:
-        L.append(f"    for j in range({num_flat_bw_args_with_grads}):")
-        L.append("        _i = _ts + j")
-        L.append("        all_args[_i] = _process_tangent_(all_args[_i],")
-        L.append("            _tangent_metas_[j], j, _tangent_descs_[j], _compile_id_,")
-        L.append("            _stack_traces_[j] if _stack_traces_ else None)[0]")
-
-    if has_mutations_in_bw:
-        L.append("    if torch.is_grad_enabled():")
-        L.append("        raise RuntimeError(")
-        L.append(
-            "            'aot_autograd does not support input mutations with "
-            "requires_grad in backward for create_graph=True')"
-        )
-
-    L.append("    return all_args")
-
-    source = "\n".join(L)
-    return _compile_and_exec_source(
-        source, G, "_backward_prologue", "backward_prologue"
-    )
-
-
-def _codegen_backward_epilogue(
-    fw_metadata: ViewAndMutationMeta,
-    maybe_subclass_meta: SubclassMeta | None,
-    codegen_wrap_fn: Callable[..., Any] | None,
-) -> Callable[..., Any]:
-    from .subclass_codegen import _compile_and_exec_source
-
-    num_bw_tokens = fw_metadata.num_backward_tokens
-    is_rng = fw_metadata.is_rng_op_functionalized
-    has_subclass = maybe_subclass_meta is not None
-
-    if has_subclass:
-        lines: list[str] = ["def _backward_epilogue(out, make_subclass_override=None):"]
-    else:
-        lines = ["def _backward_epilogue(out):"]
-    code_globals: dict[str, object] = {}
-
-    if num_bw_tokens > 0:
-        lines.append(f"    out = out[:-{num_bw_tokens}]")
-
-    if is_rng:
-        if fw_metadata.num_outputs_rng_offset != 1:
-            raise AssertionError(
-                f"expected num_outputs_rng_offset == 1, got {fw_metadata.num_outputs_rng_offset}"
-            )
-        code_globals["_set_offset_"] = CUDARngStateHelper.set_new_offset
-        lines.append("    _oi = len(out) - 1")
-        lines.append("    _set_offset_(out[_oi])")
-        lines.append("    out = out[:_oi] + out[_oi + 1:]")
-
-    lines.append("    out = tuple(out)")
-
-    if has_subclass:
-        code_globals["_wrap_subclasses_"] = wrap_tensor_subclasses
-        if (
-            maybe_subclass_meta.grad_input_metas is None
-        ):  # pyrefly: ignore [missing-attribute]
-            raise AssertionError("grad_input_metas must not be None")
-        code_globals["_grad_input_metas_"] = (
-            maybe_subclass_meta.grad_input_metas
-        )  # pyrefly: ignore [missing-attribute]
-        if codegen_wrap_fn is not None:
-            code_globals["_wrap_"] = codegen_wrap_fn
-            lines.append("    if make_subclass_override is None:")
-            lines.append("        return _wrap_(out)")
-        lines.append("    return _wrap_subclasses_(out,")
-        lines.append("        subclass_metas=_grad_input_metas_,")
-        lines.append("        included_subclass_symints=True, is_runtime=True,")
-        lines.append("        make_subclass_override=make_subclass_override)")
-    else:
-        lines.append("    return out")
-
-    source = "\n".join(lines)
-    return _compile_and_exec_source(
-        source, code_globals, "_backward_epilogue", "backward_epilogue"
-    )
-
-
-def _codegen_compiled_forward(
-    fw_metadata: ViewAndMutationMeta,
-    backward_state_indices: list[int],
-    disable_amp: bool,
-    num_rng: int,
-) -> Callable[..., Any]:
-    from .subclass_codegen import _compile_and_exec_source
-
-    lines: list[str] = [
-        "def _compiled_forward(ctx, args, _rng_add_, _save_, _finalize_, _compiled_fw_):"
-    ]
-    code_globals: dict[str, object] = {
-        "torch": torch,
-        "BackwardState": BackwardState,
-        "_normalize_as_list_": normalize_as_list,
-    }
-
-    if backward_state_indices:
-        idx = backward_state_indices[0]
-        lines.append(f"    _bw_state = args[{idx}]")
-        lines.append("    if not isinstance(_bw_state, BackwardState):")
-        lines.append("        raise AssertionError(")
-        lines.append("            f'expected BackwardState, got {type(_bw_state)}')")
-        lines.append("    ctx._compiled_autograd_backward_state = _bw_state")
-
-    if num_rng > 0:
-        lines.append("    args = _rng_add_(ctx, args)")
-
-    if disable_amp:
-        code_globals["_DisableAutocast_"] = torch._C._DisableAutocast
-        lines.append("    with _DisableAutocast_():")
-        lines.append("        fw_outs = _normalize_as_list_(_compiled_fw_(list(args)))")
-    else:
-        lines.append("    fw_outs = _normalize_as_list_(_compiled_fw_(list(args)))")
-
-    lines.append("    _save_(ctx, fw_outs)")
-    lines.append("    return _finalize_(ctx, fw_outs)")
-
-    source = "\n".join(lines)
-    return _compile_and_exec_source(
-        source, code_globals, "_compiled_forward", "compiled_function_forward"
-    )
-
-
-def _codegen_compiled_backward(
-    num_rng: int,
-    num_tensors_no_vc_check: int | None,
-) -> Callable[..., Any]:
-    from .subclass_codegen import _compile_and_exec_source
-
-    lines: list[str] = [
-        "def _compiled_backward("
-        "_flat_args_, _ctx_, _prologue_,"
-        " _rng_add_, _impl_, _epilogue_, _double_bw_):"
-    ]
-    code_globals: dict[str, object] = {
-        "torch": torch,
-        "functools": functools,
-    }
-
-    lines.append("""\
-    if len(_flat_args_) != 1 or not isinstance(_flat_args_[0], list):
-        raise AssertionError(
-            'Compiled backward expects grads as a single mutable list '
-            f'argument, but got {len(_flat_args_)} args. '
-            'Grads must be passed as [grad0, grad1, ...] to allow '
-            'freeing individual grads mid-backward.')
-    grad_args = _flat_args_[0]
-    del _flat_args_""")
-
-    if num_tensors_no_vc_check is not None and num_tensors_no_vc_check > 0:
-        lines.append("    _saved = (*_ctx_.saved_tensors, *_ctx_._tensors_no_vc_check)")
-    else:
-        lines.append("    _saved = _ctx_.saved_tensors")
-
-    lines.append(
-        "    all_args = _prologue_(_saved, _ctx_.symints,"
-        " _ctx_.opaque_objects, grad_args)"
-    )
-    lines.append("    del _saved")
-
-    if num_rng > 0:
-        lines.append("    _rng_add_(_ctx_, all_args)")
-
-    lines.append("    def impl_fn(double_ctx=None):")
-    lines.append("        out = _impl_(_ctx_, all_args)")
-    lines.append("        return _epilogue_(out)")
-
-    lines.append("    if (torch._C._is_key_in_tls('context')")
-    lines.append(
-        "            and (_cc := torch._C._get_obj_in_tls('context')) is not None):"
-    )
-    lines.append("        impl_fn = functools.partial(_cc.run, impl_fn)")
-
-    lines.append("    _ng = torch.is_grad_enabled() and any(")
-    lines.append(
-        "        t.requires_grad for t in all_args if isinstance(t, torch.Tensor))"
-    )
-    lines.append("    if _ng:")
-    lines.append("        return _double_bw_(_ctx_, impl_fn, all_args)")
-    lines.append("    return impl_fn()")
-
-    source = "\n".join(lines)
-    return _compile_and_exec_source(
-        source, code_globals, "_compiled_backward", "compiled_function_backward"
-    )
-
-
 @dataclass
 class _AOTDispatchAutogradFunctionFactory:
     spec: AOTDispatchAutogradCompileSpec
 
-    def build(self) -> type[torch.autograd.Function]:
+    def build(self) -> Type[torch.autograd.Function]:
         compile_id = CompileContext.current_compile_id()
         compile_id_str = str(compile_id) if compile_id is not None else None
         self.spec.fw_metadata.compile_id_str = compile_id_str
@@ -3241,31 +3198,6 @@ class _AOTDispatchAutogradFunctionFactory:
                 grad_input_metas=maybe_subclass_meta.grad_input_metas,
             )
 
-        _codegen_bw_prologue = _codegen_backward_prologue(
-            fw_metadata,
-            maybe_subclass_meta,
-            _codegen_bw_unwrap_fn,
-        )
-
-        _codegen_bw_epilogue = _codegen_backward_epilogue(
-            fw_metadata,
-            maybe_subclass_meta,
-            _codegen_bw_wrap_fn,
-        )
-
-        _codegen_fwd = _codegen_compiled_forward(
-            fw_metadata,
-            backward_state_indices,
-            disable_amp,
-            rng_state.num_rng,
-        )
-
-        _codegen_bwd = _codegen_compiled_backward(
-            rng_state.num_rng,
-            fw_metadata.num_tensors_saved_with_no_vc_check,
-        )
-
-
         # Codegen for CompiledFunction.forward: emit straight-line TensorAlias
         # wrapping, _unsafe_view, and non-differentiable output collection with
         # all indices resolved at compile time.
@@ -3274,7 +3206,7 @@ class _AOTDispatchAutogradFunctionFactory:
         num_outputs_aliased = fw_metadata.num_outputs_aliased
 
         _xform_lines = ["def _transform_raw_returns(raw_returns):"]
-        _xform_globals: dict[str, object] = {
+        _xform_globals: Dict[str, object] = {
             "TensorAlias": TensorAlias,
             "torch": torch,
             "Tensor": Tensor,
@@ -3304,7 +3236,7 @@ class _AOTDispatchAutogradFunctionFactory:
 
         # Non-differentiable output collection: build a list of specific indices
         # at compile time rather than iterating at runtime.
-        _non_diff_indices: list[int] = []
+        _non_diff_indices: List[int] = []
         _returns_meta = [
             x
             for x in fw_metadata.input_info
@@ -3327,7 +3259,7 @@ class _AOTDispatchAutogradFunctionFactory:
 
         from .subclass_codegen import _compile_and_exec_source
 
-        _codegen_transform_raw_returns: Callable[..., list[Any]] = (
+        _codegen_transform_raw_returns: Callable[..., List[Any]] = (
             _compile_and_exec_source(  # type: ignore[assignment]
                 _xform_source,
                 _xform_globals,
@@ -3337,7 +3269,7 @@ class _AOTDispatchAutogradFunctionFactory:
         )
 
         # Monkey-patch forward_epilogue.finalize to use codegen'd transform
-        def _codegen_finalize(ctx: Any, fw_outs: Any) -> tuple[Any, ...]:
+        def _codegen_finalize(ctx: Any, fw_outs: Any) -> Tuple[Any, ...]:
             num_forward_returns = fw_metadata.num_forward_returns
             raw_returns = list(fw_outs[:num_forward_returns])
             fw_outs_not_requiring_grad = _codegen_transform_raw_returns(raw_returns)
@@ -3372,47 +3304,106 @@ class _AOTDispatchAutogradFunctionFactory:
             compiled_fw = compiled_fw_func
             compiled_bw = compiled_bw_func
             metadata: ViewAndMutationMeta = fw_metadata  # type: ignore[assignment]
-            maybe_subclass_metadata: SubclassMeta | None = maybe_subclass_meta
+            maybe_subclass_metadata: Optional[SubclassMeta] = maybe_subclass_meta
             num_symints_saved_for_bw = num_symints_saved_for_bw_
             _aot_id = aot_config.aot_id
             _lazy_backward_info = lazy_backward_info
-            _bw_prologue_fn = _codegen_bw_prologue
-            _bw_epilogue_fn = _codegen_bw_epilogue
-            _fwd_fn = _codegen_fwd
-            _bwd_fn = _codegen_bwd
+            _bw_epilogue_wrap_fn = _codegen_bw_wrap_fn
+            _bw_prologue_unwrap_fn = _codegen_bw_unwrap_fn
             boxed_grads_call = True
 
             @staticmethod
-            def _compiled_autograd_key(ctx: Any) -> tuple[Any, ...]:
+            def _compiled_autograd_key(ctx: Any) -> Tuple[Any, ...]:
                 return (ctx._autograd_function_id, *ctx.symints)
 
             @staticmethod
             # pyrefly: ignore [bad-override]
             def forward(ctx: Any, *deduped_flat_tensor_args: Any) -> Any:
-                return CompiledFunction._fwd_fn(
-                    ctx,
-                    deduped_flat_tensor_args,
-                    rng_state.add_forward_args,
-                    saved_state.save_from_forward,
-                    forward_epilogue.finalize,
+                args = deduped_flat_tensor_args
+                if backward_state_indices:
+                    bw_state = args[backward_state_indices[0]]
+                    if not isinstance(bw_state, BackwardState):
+                        raise AssertionError(
+                            f"expected BackwardState, got {type(bw_state)}"
+                        )
+                    ctx._compiled_autograd_backward_state = bw_state
+
+                args = rng_state.add_forward_args(ctx, args)
+
+                # There is a pretty complicated calling convention around what the compiled fw returns.
+                # The full list of outputs and their relative order is:
+                # (*tokens, *mutated_inputs, *fw_outs, *fw_intermediate_bases, *saved_tensors, *saved_symints)
+                # - Note that in the synthetic bases case, mutated_inputs will correspond to an updated version
+                #   of the original view, and not the synthetic base
+                # - Note that donated buffer logic requires (*saved_tensors, *saved_symints) showing up last
+                #   in the fw output order.
+                fw_outs = call_func_at_runtime_with_args(
                     CompiledFunction.compiled_fw,
+                    # pyrefly: ignore [bad-argument-type]
+                    args,
+                    disable_amp=disable_amp,
                 )
 
+                saved_state.save_from_forward(ctx, fw_outs)
+                return forward_epilogue.finalize(ctx, fw_outs)
+
             @staticmethod
-            def backward(ctx: Any, *flat_args: Any) -> tuple[Any, ...]:
-                return CompiledFunction._bwd_fn(
-                    flat_args,
-                    ctx,
-                    CompiledFunction._bw_prologue_fn,
-                    rng_state.add_backward_args,
-                    CompiledFunction._backward_impl,
-                    CompiledFunction._bw_epilogue_fn,
-                    CompiledFunction._double_backward,
+            def backward(ctx: Any, *flat_args: Any) -> Tuple[Any, ...]:
+                # With boxed_grads_call, grads arrive as a single mutable
+                # list (not *args) so backward can free them individually
+                # to reduce peak memory.
+                if CompiledFunction.boxed_grads_call:
+                    if len(flat_args) != 1 or not isinstance(flat_args[0], list):
+                        raise AssertionError(
+                            "boxed_grads_call is set but backward received "
+                            f"{len(flat_args)} args instead of a single mutable "
+                            "list. When boxed_grads_call=True, grads must be "
+                            "passed as a single list argument [grad0, grad1, ...] "
+                            "to allow freeing individual grads mid-backward."
+                        )
+                    grad_args = flat_args[0]
+                else:
+                    # Non-boxed path: used by subclasses of CompiledFunction
+                    # that override boxed_grads_call to False.
+                    grad_args = list(flat_args)
+                del flat_args
+                all_args = _backward_prologue_functional(
+                    saved_state.load_tensors(ctx),
+                    ctx.symints,
+                    ctx.opaque_objects,
+                    CompiledFunction.metadata,
+                    CompiledFunction.maybe_subclass_metadata,
+                    grad_args,
+                    codegen_unwrap_fn=CompiledFunction._bw_prologue_unwrap_fn,
                 )
+                rng_state.add_backward_args(ctx, all_args)
+
+                def impl_fn(double_ctx: Any = None) -> Any:
+                    out = CompiledFunction._backward_impl(ctx, all_args)
+                    return _backward_epilogue_functional(
+                        CompiledFunction.metadata,
+                        CompiledFunction.maybe_subclass_metadata,
+                        out,
+                        codegen_wrap_fn=CompiledFunction._bw_epilogue_wrap_fn,
+                    )
+
+                if (
+                    torch._C._is_key_in_tls("context")
+                    and (config_ctx := torch._C._get_obj_in_tls("context")) is not None
+                ):
+                    impl_fn = functools.partial(config_ctx.run, impl_fn)
+
+                needs_grad = torch.is_grad_enabled() and any(
+                    t.requires_grad for t in all_args if isinstance(t, torch.Tensor)
+                )
+                if needs_grad:
+                    # double backward
+                    return CompiledFunction._double_backward(ctx, impl_fn, all_args)
+                return impl_fn()
 
             @staticmethod
             def _double_backward(
-                ctx: Any, impl_fn: Callable[..., Any], all_args: list[Any]
+                ctx: Any, impl_fn: Callable[..., Any], all_args: List[Any]
             ) -> Any:
                 # Ensure that the graph is connected, and error if double backward is performed.
                 # See comment for why once_differentiable is not sufficient:
@@ -3439,7 +3430,7 @@ class _AOTDispatchAutogradFunctionFactory:
                 return CompiledFunctionBackward.apply(*all_args)
 
             @staticmethod
-            def _backward_impl(ctx: Any, all_args: list[Any]) -> Any:
+            def _backward_impl(ctx: Any, all_args: List[Any]) -> Any:
                 # compiled autograd reimplements this function at proxy_call_aot_backward
                 if backward_state_indices:
                     raise AssertionError("BackwardState requires CompiledAutograd")
@@ -3485,15 +3476,15 @@ class _AOTDispatchAutogradFunctionFactory:
 class AOTDispatchAutograd:
     @staticmethod
     def _raise_tangent_metadata_error(
-        expected_type: type | None,
+        expected_type: Optional[type],
         expected_meta: Any,
         runtime_type: type,
         runtime_meta: Any,
         orig_x: torch.Tensor,
-        tangent_idx: int | None,
-        tangent_desc: Any | None,
-        compile_id_str: str | None,
-        tangent_stack_trace: str | None,
+        tangent_idx: Optional[int],
+        tangent_desc: Optional[Any],
+        compile_id_str: Optional[str],
+        tangent_stack_trace: Optional[str],
     ) -> RuntimeError:
         expected_subclass_got_plain_tensor = (
             expected_type is not None
@@ -3561,12 +3552,12 @@ Your tensor subclass must implement __coerce_same_metadata_as_tangent__."""
     @staticmethod
     def process_runtime_tangent(
         x: Any,
-        meta: PlainTensorMeta | SubclassCreationMeta,
-        tangent_idx: int | None = None,
-        tangent_desc: Any | None = None,
-        compile_id_str: str | None = None,
-        tangent_stack_trace: str | None = None,
-    ) -> tuple[Any, list[Any]]:
+        meta: Union[PlainTensorMeta, SubclassCreationMeta],
+        tangent_idx: Optional[int] = None,
+        tangent_desc: Optional[Any] = None,
+        compile_id_str: Optional[str] = None,
+        tangent_stack_trace: Optional[str] = None,
+    ) -> Tuple[Any, List[Any]]:
         if not isinstance(x, torch.Tensor):
             return x, [x]
 
@@ -3578,7 +3569,7 @@ Your tensor subclass must implement __coerce_same_metadata_as_tangent__."""
             x = coerce_to_expected_memory_format(x, meta.memory_format)
             return x, [x]
 
-        expected_type: type | None = torch.Tensor
+        expected_type: Optional[type] = torch.Tensor
         expected_meta = None
         if isinstance(meta, SubclassCreationMeta):
             expected_type = meta.original_subclass_type
@@ -3597,7 +3588,7 @@ Your tensor subclass must implement __coerce_same_metadata_as_tangent__."""
         if is_traceable_wrapper_subclass(x):
             runtime_subclass_keys, runtime_meta = x.__tensor_flatten__()
 
-        def maybe_coerce(x: torch.Tensor) -> torch.Tensor | None:
+        def maybe_coerce(x: torch.Tensor) -> Optional[torch.Tensor]:
             same_type: bool = expected_type == runtime_type
             same_meta: bool = expected_meta == runtime_meta
 
@@ -3679,7 +3670,7 @@ Your tensor subclass must implement __coerce_same_metadata_as_tangent__."""
 
 @dataclass
 class DebugAssertWrapper(CompilerWrapper):
-    flat_requires_grad: list[bool | None] = field(default_factory=list)
+    flat_requires_grad: List[Optional[bool]] = field(default_factory=list)
 
     def post_compile(
         self,
@@ -3689,7 +3680,7 @@ class DebugAssertWrapper(CompilerWrapper):
         runtime_metadata: ViewAndMutationMeta,
     ) -> Callable[..., Any]:
         lines = ["def inner_fn(args):"]
-        globals_dict: dict[str, object] = {"compiled_fn": compiled_fn}
+        globals_dict: Dict[str, object] = {"compiled_fn": compiled_fn}
         for i, can_require_grad in enumerate(self.flat_requires_grad):
             if can_require_grad is None:
                 lines.append(
@@ -3699,7 +3690,7 @@ class DebugAssertWrapper(CompilerWrapper):
                 )
             elif not can_require_grad:
                 msg_name = f"_msg_{i}"
-                globals_dict[msg_name] = format_guard_bug_msg(
+                globals_Dict[msg_name] = format_guard_bug_msg(
                     aot_config,
                     f"{describe_input(i, aot_config)} would not require grad",
                 )
@@ -3709,7 +3700,7 @@ class DebugAssertWrapper(CompilerWrapper):
         lines.append("    return compiled_fn(args)")
 
         source = "\n".join(lines)
-        globals_dict["Tensor"] = Tensor
+        globals_Dict["Tensor"] = Tensor
 
         from .subclass_codegen import _compile_and_exec_source
 
@@ -3723,14 +3714,14 @@ class DebugAssertWrapper(CompilerWrapper):
 
 
 def pre_compile(
-    wrappers: list[CompilerWrapper],
+    wrappers: List[CompilerWrapper],
     flat_fn: TraceFn,
-    flat_args: list[FxValue],
-    flat_args_descs: list[AOTInput],
+    flat_args: List[FxValue],
+    flat_args_descs: List[AOTInput],
     aot_config: AOTConfig,
     *,
     fw_metadata: ViewAndMutationMeta,
-) -> tuple[TraceFn, list[FxValue], list[AOTInput], ViewAndMutationMeta]:
+) -> Tuple[TraceFn, List[FxValue], List[AOTInput], ViewAndMutationMeta]:
     """
     Runs a sequence of wrappers on the given function and arguments.
     Mutates wrappers in place.
@@ -3743,12 +3734,12 @@ def pre_compile(
 
 
 def post_compile(
-    wrappers: list[CompilerWrapper],
+    wrappers: List[CompilerWrapper],
     compiled_fn: Callable[..., Any],
     aot_config: AOTConfig,
     *,
     runtime_metadata: ViewAndMutationMeta,
-) -> tuple[Callable[..., Any], ViewAndMutationMeta]:
+) -> Tuple[Callable[..., Any], ViewAndMutationMeta]:
     """
     Runs a sequence of wrappers on the given function. Should be called after pre_compile()
     """
@@ -3761,7 +3752,7 @@ def post_compile(
 
 def make_runtime_safe(
     fw_metadata: ViewAndMutationMeta,
-    maybe_subclass_meta: SubclassMeta | None,
+    maybe_subclass_meta: Optional[SubclassMeta],
 ) -> None:
     """
     Calls make_runtime_safe on all ViewAndMutationMetas.

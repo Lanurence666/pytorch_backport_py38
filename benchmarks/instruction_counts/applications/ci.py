@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Collect instruction counts for continuous integration."""
 
 # mypy: ignore-errors
@@ -43,7 +44,7 @@ def main(argv: list[str]) -> None:
     )
 
     keys = tuple({str(work_order): None for work_order in work_orders}.keys())
-    md5 = hashlib.md5(usedforsecurity=False)
+    md5 = hashlib.md5()
     for key in keys:
         md5.update(key.encode("utf-8"))
 

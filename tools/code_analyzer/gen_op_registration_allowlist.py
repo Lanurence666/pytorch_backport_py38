@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Dict, List, Set
 """
 This util is invoked from cmake to produce the op registration allowlist param
 for `ATen/gen.py` for custom mobile build.
@@ -8,7 +10,6 @@ For custom build with static dispatch, the op dependency graph will be omitted,
 and it will directly output root ops as the allowlist.
 """
 
-from __future__ import annotations
 
 import argparse
 from collections import defaultdict
@@ -16,7 +17,7 @@ from collections import defaultdict
 import yaml
 
 
-DepGraph = dict[str, set[str]]
+DepGraph = Dict[str, Set[str]]
 
 
 def canonical_name(opname: str) -> str:
@@ -35,7 +36,7 @@ def load_op_dep_graph(fname: str) -> DepGraph:
         return dict(result)
 
 
-def load_root_ops(fname: str) -> list[str]:
+def load_root_ops(fname: str) -> List[str]:
     result = []
     with open(fname) as stream:
         for op in yaml.safe_load(stream):
@@ -45,9 +46,9 @@ def load_root_ops(fname: str) -> list[str]:
 
 def gen_transitive_closure(
     dep_graph: DepGraph,
-    root_ops: list[str],
+    root_ops: List[str],
     train: bool = False,
-) -> list[str]:
+) -> List[str]:
     result = set(root_ops)
     queue = root_ops.copy()
 
@@ -74,7 +75,7 @@ def gen_transitive_closure(
     return sorted(result)
 
 
-def gen_transitive_closure_str(dep_graph: DepGraph, root_ops: list[str]) -> str:
+def gen_transitive_closure_str(dep_graph: DepGraph, root_ops: List[str]) -> str:
     return " ".join(gen_transitive_closure(dep_graph, root_ops))
 
 

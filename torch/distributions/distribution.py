@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import warnings
 from typing_extensions import deprecated
 
@@ -7,6 +9,7 @@ from torch import Tensor
 from torch.distributions import constraints
 from torch.distributions.utils import lazy_property
 from torch.types import _size
+from typing import Dict, Optional, Set
 
 
 __all__ = ["Distribution"]
@@ -47,7 +50,7 @@ class Distribution:
         self,
         batch_shape: torch.Size = torch.Size(),
         event_shape: torch.Size = torch.Size(),
-        validate_args: bool | None = None,
+        validate_args: Optional[bool]= None,
     ) -> None:
         self._batch_shape = batch_shape
         self._event_shape = event_shape
@@ -119,7 +122,7 @@ class Distribution:
         return self._event_shape
 
     @property
-    def arg_constraints(self) -> dict[str, constraints.Constraint]:
+    def arg_constraints(self) -> Dict[str, constraints.Constraint]:
         """
         Returns a dictionary from argument names to
         :class:`~torch.distributions.constraints.Constraint` objects that
@@ -129,7 +132,7 @@ class Distribution:
         raise NotImplementedError
 
     @property
-    def support(self) -> constraints.Constraint | None:
+    def support(self) -> Optional[constraints.Constraint]:
         """
         Returns a :class:`~torch.distributions.constraints.Constraint` object
         representing this distribution's support.
@@ -338,7 +341,7 @@ class Distribution:
         return self.__new__(type(self)) if _instance is None else _instance
 
     def __repr__(self) -> str:
-        param_names = [k for k in self.arg_constraints if k in self.__dict__]
+        param_names = [k for k, _ in self.arg_constraints.items() if k in self.__dict__]
         args_string = ", ".join(
             [
                 f"{p}: {self.__dict__[p] if self.__dict__[p].numel() == 1 else self.__dict__[p].size()}"

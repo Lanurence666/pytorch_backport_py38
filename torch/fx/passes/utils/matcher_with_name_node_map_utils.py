@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 from torch.fx import Graph, GraphModule, Node
 from torch.fx._compatibility import compatibility
 
 from .matcher_utils import InternalMatch, SubgraphMatcher
+from typing import Dict, List, Tuple
 
 
 __all__ = ["SubgraphMatcherWithNameNodeMap"]
@@ -9,11 +12,11 @@ __all__ = ["SubgraphMatcherWithNameNodeMap"]
 
 def _split_to_graph_and_name_node_map(
     gm: GraphModule,
-) -> tuple[GraphModule, dict[str, Node]]:
+) -> Tuple[GraphModule, Dict[str, Node]]:
     from torch.fx.graph import _PyTreeInfo
     from torch.utils._pytree import tree_flatten, tree_unflatten
 
-    name_node_map: dict[str, Node] = {}
+    name_node_map: Dict[str, Node] = {}
     for n in gm.graph.nodes:
         if n.op == "output":
             if gm._out_spec is None:
@@ -91,7 +94,7 @@ class SubgraphMatcherWithNameNodeMap(SubgraphMatcher):
             ignore_literals,
         )
 
-    def match(self, graph: Graph, node_name_match: str = "") -> list[InternalMatch]:
+    def match(self, graph: Graph, node_name_match: str = "") -> List[InternalMatch]:
         """The returned InternalMatch will have name_node_map populated with a map
         from node name (str) to the target node, e.g.
         ``{"conv": target_conv_ndoe, "relu": target_relu_node}``

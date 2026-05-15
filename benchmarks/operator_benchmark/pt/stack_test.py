@@ -1,3 +1,4 @@
+from __future__ import annotations
 import random
 
 import operator_benchmark as op_bench

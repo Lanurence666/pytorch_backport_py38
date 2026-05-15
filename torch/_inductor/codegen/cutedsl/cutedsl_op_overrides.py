@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 CuteDSL-specific operation overrides for pointwise operations.
@@ -15,14 +16,21 @@ from torch._inductor.codegen.common import CSEVariable, OpOverrides
 from torch._inductor.utils import get_bounds_index_expr
 from torch._inductor.virtualized import OpsValue, V
 from torch.utils._sympy.value_ranges import ValueRanges
+from typing import Optional, Tuple, Type, Union, cast
 
 
+def _math_exp2_compat(x):
+    try:
+        from math import exp2 as _math_exp2_compat
+        return _math_exp2_compat(x)
+    except ImportError:
+        return 2.0 ** x
 class CuteDSLCSEVariable(CSEVariable):
     def __init__(
         self,
         name: str,
         bounds: ValueRanges[sympy.Expr],
-        dtype: torch.dtype | None = None,
+        dtype: Optional[torch.dtype]= None,
         shape=None,
         *,
         is_scalar_expr: bool = False,
@@ -31,7 +39,7 @@ class CuteDSLCSEVariable(CSEVariable):
         self.is_scalar_expr = is_scalar_expr
 
 
-CuteDSLArg = CSEVariable | str | bool | float | int
+CuteDSLArg = Union[CSEVariable, str, bool, float, int]
 
 
 def upcast_compute_type(dtype: torch.dtype) -> torch.dtype:
@@ -68,7 +76,7 @@ class CuteDSLOpOverrides(OpOverrides):
     LOG2_E = 1.4426950408889634  # 1/ln(2) for converting natural exp to base-2 exp
 
     @staticmethod
-    def _get_cse_var(arg: CuteDSLArg) -> CSEVariable | None:
+    def _get_cse_var(arg: CuteDSLArg) -> Optional[CSEVariable]:
         """Extract CSEVariable from arg if it's a tensor (either direct or wrapped in OpsValue)."""
         if isinstance(arg, CSEVariable):
             return arg
@@ -84,7 +92,7 @@ class CuteDSLOpOverrides(OpOverrides):
         return str(arg)
 
     @staticmethod
-    def _node_tensor_flags() -> tuple[bool, bool] | None:
+    def _node_tensor_flags() -> Optional[Tuple[bool, bool]]:
         node = V.current_node
         if not isinstance(node, torch.fx.Node) or len(node.args) < 2:
             return None
@@ -130,7 +138,7 @@ class CuteDSLOpOverrides(OpOverrides):
     @staticmethod
     def _extract_dtype_and_bounds(
         *args: CuteDSLArg,
-    ) -> tuple[torch.dtype | None, ValueRanges[sympy.Expr]]:
+    ) -> Union[Tuple[torch.dtype, None, ValueRanges[sympy.Expr]]]:
         """Extract dtype and bounds from CSEVariable arguments (including OpsValue wrappers)."""
         for arg in args:
             cse_var = CuteDSLOpOverrides._get_cse_var(arg)
@@ -219,7 +227,7 @@ class CuteDSLOpOverrides(OpOverrides):
         return result
 
     @staticmethod
-    def _expected_tensor_val() -> torch.Tensor | None:
+    def _expected_tensor_val() -> Optional[torch.Tensor]:
         """Return the fake-tensor value from the current FX node's metadata, if any."""
         node = V.current_node
         if not isinstance(node, torch.fx.Node):
@@ -263,7 +271,7 @@ class CuteDSLOpOverrides(OpOverrides):
         return op_format.format(x=x)
 
     @staticmethod
-    def constant(value: bool | float | int, dtype: torch.dtype) -> str:
+    def constant(value: Union[Union[bool, float], int], dtype: torch.dtype) -> str:
         """Generate CuteDSL constant representation."""
         if value == float("-inf"):
             return "float('-inf')"
@@ -323,7 +331,7 @@ class CuteDSLOpOverrides(OpOverrides):
         if CuteDSLOpOverrides._get_cse_var(x) is None:
             x = CuteDSLOpOverrides._cast_expr(str(x), torch.float32)
         return CuteDSLOpOverrides._apply_unary_op(
-            x, f"cute.math.exp2({{x}} * {CuteDSLOpOverrides.LOG2_E})"
+            x, f"cute._math_exp2_compat({{x}} * {CuteDSLOpOverrides.LOG2_E})"
         )
 
     @staticmethod
@@ -372,7 +380,7 @@ class CuteDSLOpOverrides(OpOverrides):
 
         result = CuteDSLOpOverrides._apply_unary_op(
             x_fp32,
-            f"(1.0 / (1.0 + cute.math.exp2(-{{x}} * {CuteDSLOpOverrides.LOG2_E})))",
+            f"(1.0 / (1.0 + cute._math_exp2_compat(-{{x}} * {CuteDSLOpOverrides.LOG2_E})))",
         )
 
         expected = CuteDSLOpOverrides._expected_tensor_val()

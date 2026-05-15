@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 r"""Pruning methods."""
 
 import numbers
@@ -6,6 +8,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 
 import torch
+from typing import Dict, Iterable, Tuple, Type
 
 
 class BasePruningMethod(ABC):
@@ -277,7 +280,7 @@ class PruningContainer(BasePruningMethod):
     """
 
     def __init__(self, *args) -> None:
-        self._pruning_methods: tuple[BasePruningMethod, ...] = ()
+        self._pruning_methods: Tuple[BasePruningMethod, ...] = ()
         if not isinstance(args, Iterable):  # only 1 item
             self._tensor_name = args._tensor_name
             self.add_pruning_method(args)

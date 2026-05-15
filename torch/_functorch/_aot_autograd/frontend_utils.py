@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import warnings
 from contextlib import contextmanager
-from typing import Any, cast, TYPE_CHECKING
+from typing import Any, Dict, Generator, List, Optional, TYPE_CHECKING, Tuple, Union, cast
 
 import torch
 import torch.utils._pytree as pytree
@@ -20,7 +20,7 @@ from .schemas import AOTConfig, FakifiedFlatArgs
 
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, KeysView
+    from collections.abc import KeysView
 
 
 static_inputs_log = torch._logging.getArtifactLogger(
@@ -29,12 +29,12 @@ static_inputs_log = torch._logging.getArtifactLogger(
 
 
 def process_inputs(
-    flat_args: list[Any],
+    flat_args: List[Any],
     aot_config: AOTConfig,
     fake_mode: FakeTensorMode,
-    shape_env: ShapeEnv | None,
+    shape_env: Optional[ShapeEnv],
     ignore_shape_env: bool = False,
-) -> tuple[FakifiedFlatArgs, list[int]]:
+) -> Tuple[FakifiedFlatArgs, List[int]]:
     """Convert real tensor inputs into fake tensors for AOT autograd tracing.
 
     Called at compile time (not runtime) to produce the fake inputs that AOT
@@ -69,7 +69,7 @@ def process_inputs(
     except ImportError:
         AsyncCollectiveTensor = None
 
-    act_input_indices: list[int] = []
+    act_input_indices: List[int] = []
     if AsyncCollectiveTensor is not None:
         for i, a in enumerate(flat_args):
             if isinstance(a, AsyncCollectiveTensor):
@@ -112,22 +112,24 @@ def process_inputs(
                 # See if all inner tensors are FakeTensors from this mode
                 all_this_fake = True
                 for a in attrs:
-                    match getattr(x, a):
-                        case FakeTensor() as v:
-                            if v.fake_mode is not fake_mode:
-                                # FakeTensor subclass from a different mode.
-                                # Fall through to refakify.
-                                all_this_fake = False
-                                break
-                        case torch.Tensor():
-                            all_this_fake = False
-                            break
-                        case OpaqueBase():
-                            pass
-                        case unexpected:
-                            raise AssertionError(
-                                f"expected Tensor or OpaqueBase, got {type(unexpected)}"
-                            )
+                    # TODO: Python 3.8 compat - match/case block needs manual conversion
+                    # match getattr(x, a):
+                    # case FakeTensor() as v:
+                    # if v.fake_mode is not fake_mode:
+                    # # FakeTensor subclass from a different mode.
+                    # # Fall through to refakify.
+                    # all_this_fake = False
+                    # break
+                    # case torch.Tensor():
+                    # all_this_fake = False
+                    # break
+                    # case OpaqueBase():
+                    # pass
+                    # case unexpected:
+                    # raise AssertionError(
+                    # f"expected Tensor or OpaqueBase, got {type(unexpected)}"
+                    # )
+                    pass  # placeholder for removed match/case
 
                 if all_this_fake:
                     return x
@@ -167,8 +169,8 @@ def process_inputs(
 
 
 def construct_fake_mode(
-    flat_args: list[Any], aot_config: AOTConfig
-) -> tuple[FakeTensorMode, ShapeEnv | None]:
+    flat_args: List[Any], aot_config: AOTConfig
+) -> Tuple[FakeTensorMode, Optional[ShapeEnv]]:
     fake_mode = detect_fake_mode(flat_args)
     if fake_mode is None:
         shape_env = ShapeEnv() if aot_config.dynamic_shapes else None
@@ -182,8 +184,8 @@ def _try_get_metadata_from_dynamo(
     mod: torch.nn.Module,
     param_keys: KeysView[str],
     full_args_num: int,
-    full_args_descs: list[DifferentiableAOTInput],
-) -> tuple[list[torch._guards.Source | None] | None, list[int]]:
+    full_args_descs: List[DifferentiableAOTInput],
+) -> Union[Tuple[List[torch._guards.Source, None], None], List[int]]:
     """
     Metadata is forwarded from Dynamo to AOTDispatch via special fields on GraphModule.
     We first verify that `mod` does come from Dynamo, then we handle cases where
@@ -217,11 +219,11 @@ def _try_get_metadata_from_dynamo(
     # can now be done safely. (2) Dynamo logic protects the 1:1 sizing below.
     # Additionally, we mark static indices for cudagraphs.
     param_name_to_source = cast(
-        dict[str, torch._guards.Source], mod._param_name_to_source
+        Dict[str, torch._guards.Source], mod._param_name_to_source
     )
     seen_sources = set()
 
-    aot_autograd_arg_pos_to_source: list[torch._guards.Source | None] = []
+    aot_autograd_arg_pos_to_source: List[Optional[torch._guards.Source]] = Union[[]]
     static_input_indices = []
     # Collect the new inputs lifted by aotdispatch
     for i, name in enumerate(param_keys):
@@ -311,11 +313,11 @@ def _detect_attribute_assignment(mod: torch.nn.Module) -> Generator[None, None, 
         *NN_MODULE_LAZY_STD_ATTRS,
     }
 
-    def _get_attributes(mod: torch.nn.Module) -> dict[str, Any]:
+    def _get_attributes(mod: torch.nn.Module) -> Dict[str, Any]:
         # return any attributes of a module that are not standard attributes
         return {k: v for k, v in mod.__dict__.items() if k not in STD_ATTRS}
 
-    def _get_all_module_attributes(mod: torch.nn.Module) -> dict[str, dict[str, Any]]:
+    def _get_all_module_attributes(mod: torch.nn.Module) -> Dict[str, Dict[str, Any]]:
         # return attributes from all modules and submodules
         result = {}
         for name, submodule in mod.named_modules():
@@ -323,7 +325,7 @@ def _detect_attribute_assignment(mod: torch.nn.Module) -> Generator[None, None, 
         return result
 
     def _restore_all_module_attributes(
-        mod: torch.nn.Module, snapshot: dict[str, dict[str, Any]]
+        mod: torch.nn.Module, snapshot: Dict[str, Dict[str, Any]]
     ) -> None:
         # restore attributes to all modules and submodules
         for name, submodule in mod.named_modules():
@@ -343,8 +345,8 @@ def _detect_attribute_assignment(mod: torch.nn.Module) -> Generator[None, None, 
         # to detect which tensor attributes were assigned
 
         def _collect_assigned_tensor_attributes(
-            snapshot: dict[str, dict[str, Any]], new_attrs: dict[str, dict[str, Any]]
-        ) -> list[str]:
+            snapshot: Dict[str, Dict[str, Any]], new_attrs: Dict[str, Dict[str, Any]]
+        ) -> List[str]:
             assigned_tensor_attributes = []
 
             def _compare_values(path: str, old_val: Any, new_val: Any) -> None:

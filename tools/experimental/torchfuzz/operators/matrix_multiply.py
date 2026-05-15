@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 """Matrix multiplication operator implementations."""
 
 import random
@@ -51,7 +53,7 @@ class MMOperator(MatrixMultiplyOperator):
         self.weight = 5.0
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.mm"
 
@@ -76,7 +78,7 @@ class MMOperator(MatrixMultiplyOperator):
 
         return True
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for matrix multiplication."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("MMOperator can only produce TensorSpec outputs")
@@ -107,7 +109,7 @@ class MMOperator(MatrixMultiplyOperator):
         return [input1_spec, input2_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for matrix multiplication."""
         if len(input_names) != 2:
@@ -136,7 +138,7 @@ class AddmmOperator(MatrixMultiplyOperator):
         self.weight = 5.0
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.addmm"
 
@@ -161,7 +163,7 @@ class AddmmOperator(MatrixMultiplyOperator):
 
         return True
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for additive matrix multiplication."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("AddmmOperator can only produce TensorSpec outputs")
@@ -199,7 +201,7 @@ class AddmmOperator(MatrixMultiplyOperator):
         return [bias_spec, input1_spec, input2_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for additive matrix multiplication."""
         if len(input_names) != 3:
@@ -229,7 +231,7 @@ class BmmOperator(MatrixMultiplyOperator):
         self.weight = 5.0
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.bmm"
 
@@ -254,7 +256,7 @@ class BmmOperator(MatrixMultiplyOperator):
 
         return True
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for batch matrix multiplication."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("BmmOperator can only produce TensorSpec outputs")
@@ -285,7 +287,7 @@ class BmmOperator(MatrixMultiplyOperator):
         return [input1_spec, input2_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for batch matrix multiplication."""
         if len(input_names) != 2:
@@ -314,7 +316,7 @@ class MatmulOperator(MatrixMultiplyOperator):
         self.weight = 500.0
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.matmul"
 
@@ -339,7 +341,7 @@ class MatmulOperator(MatrixMultiplyOperator):
 
         return True
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for general matrix multiplication."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("MatmulOperator can only produce TensorSpec outputs")
@@ -416,7 +418,7 @@ class MatmulOperator(MatrixMultiplyOperator):
         return [input1_spec, input2_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for general matrix multiplication."""
         if len(input_names) != 2:

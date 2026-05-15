@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Checks that all symbols in torch/header_only_apis.txt are tested in a .cpp
 test file to ensure header-only-ness. The .cpp test file must be built
@@ -10,7 +11,7 @@ import json
 import re
 from enum import Enum
 from pathlib import Path
-from typing import NamedTuple
+from typing import Dict, List, NamedTuple, Set, Union
 
 
 LINTER_CODE = "HEADER_ONLY_LINTER"
@@ -24,15 +25,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 CPP_TEST_GLOBS = [
@@ -43,8 +44,8 @@ REPO_ROOT = Path(__file__).parents[3]
 
 
 def find_matched_symbols(
-    symbols_regex: re.Pattern[str], test_globs: list[str] = CPP_TEST_GLOBS
-) -> set[str]:
+    symbols_regex: re.Pattern[str], test_globs: List[str] = CPP_TEST_GLOBS
+) -> Set[str]:
     """
     Goes through all lines not starting with // in the cpp files and
     accumulates a list of matches with the symbols_regex. Note that
@@ -68,8 +69,8 @@ def find_matched_symbols(
 
 
 def check_file(
-    filename: str, test_globs: list[str] = CPP_TEST_GLOBS
-) -> list[LintMessage]:
+    filename: str, test_globs: List[str] = CPP_TEST_GLOBS
+) -> List[LintMessage]:
     """
     Goes through the header_only_apis.txt file and verifies that all symbols
     within the file can be found tested in an appropriately independent .cpp
@@ -78,9 +79,9 @@ def check_file(
     Note that we expect CPP_TEST_GLOBS to be passed in as test_globs--the
     only reason this is an argument at all is for ease of testing.
     """
-    lint_messages: list[LintMessage] = []
+    lint_messages: List[LintMessage] = []
 
-    symbols: dict[str, int] = {}  # symbol -> lineno
+    symbols: Dict[str, int] = {}  # symbol -> lineno
     with open(filename) as f:
         for idx, line in enumerate(f):
             # commented out lines should be skipped

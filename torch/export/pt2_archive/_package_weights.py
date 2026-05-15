@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import collections
 import warnings
 
 import torch
 from torch._subclasses.fake_tensor import FakeTensor
 from torch.utils._ordered_set import OrderedSet
+from typing import Dict, List, Set, Tuple
 
 
 def _end_ptr(tensor: torch.Tensor) -> int:
@@ -76,10 +79,10 @@ class Weights(dict):
     so it doesn't have the same property as the original weight (such as underlying storage pointer).
     """
 
-    def __init__(self, weight_dict: dict[str, tuple[torch.Tensor, TensorProperties]]):
+    def __init__(self, weight_dict: Dict[str, Tuple[torch.Tensor, TensorProperties]]):
         super().__init__(weight_dict)
 
-    def get_weight(self, name: str) -> tuple[torch.Tensor, TensorProperties]:
+    def get_weight(self, name: str) -> Tuple[torch.Tensor, TensorProperties]:
         return self[name]
 
     def get_weight_properties(self, name: str) -> TensorProperties:
@@ -87,7 +90,7 @@ class Weights(dict):
 
 
 def get_complete_tensor(
-    group: OrderedSet[tuple[str, str]], models_weights: dict[str, Weights]
+    group: OrderedSet[Tuple[str, str]], models_weights: Dict[str, Weights]
 ) -> torch.Tensor:
     """
     Given a group of (model_name, weight_name) pairs whose tensors share the same
@@ -193,14 +196,14 @@ def get_complete_tensor(
     )
 
 
-def group_weights(all_weights: dict[str, Weights]) -> list[OrderedSet[tuple[str, str]]]:
+def group_weights(all_weights: Dict[str, Weights]) -> List[OrderedSet[Tuple[str, str]]]:
     """
     Group weights that share the same underlying storage.
 
     Returns a list of sets, each set contains a tuple of (model_name, weight_name).
     """
 
-    weights_dict: dict[tuple[int, torch.dtype], OrderedSet[tuple[str, str]]] = (
+    weights_dict: Dict[Tuple[int, torch.dtype], OrderedSet[Tuple[str, str]]] = (
         collections.defaultdict(OrderedSet)
     )  # (storage_key, dtype) -> set(weight)
 

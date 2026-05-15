@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Test op correctness by comparing with PyTorch results.
 
@@ -22,7 +23,6 @@ in onnxruntime by running the inference sessions in a separate process.
 errors.
 """
 
-from __future__ import annotations
 
 import os
 from typing import TYPE_CHECKING

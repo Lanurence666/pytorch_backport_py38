@@ -1,5 +1,6 @@
 # Owner(s): ["module: dynamo"]
 
+from __future__ import annotations
 import torch
 import torch._dynamo.test_case
 import torch._dynamo.testing

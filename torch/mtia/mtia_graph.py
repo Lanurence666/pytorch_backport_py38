@@ -4,9 +4,10 @@ from __future__ import annotations
 from typing_extensions import Self
 
 import torch
+from typing import Optional, Tuple, Union
 
 
-_POOL_HANDLE = tuple[int, int]
+_POOL_HANDLE = Tuple[int, int]
 
 
 def graph_pool_handle() -> _POOL_HANDLE:
@@ -63,18 +64,18 @@ class MTIAGraph(torch._C._MTIAGraph):
 
 
 class graph:
-    default_capture_stream: torch.mtia.Stream | None = None
+    default_capture_stream: Optional[torch.mtia.Stream]= None
 
     def __init__(
         self,
         mtia_graph: MTIAGraph,
-        pool: _POOL_HANDLE | None = None,
-        stream: torch.mtia.Stream | None = None,
+        pool: Optional[_POOL_HANDLE]= None,
+        stream: Optional[torch.mtia.Stream]= None,
     ):
         if self.__class__.default_capture_stream is None:
             self.__class__.default_capture_stream = torch.mtia.current_stream()
 
-        self.pool: tuple[()] | tuple[_POOL_HANDLE] = () if pool is None else (pool,)
+        self.pool: Union[Tuple[()], Tuple[_POOL_HANDLE]] = () if pool is None else (pool,)
         self.capture_stream = (
             stream if stream is not None else self.__class__.default_capture_stream
         )

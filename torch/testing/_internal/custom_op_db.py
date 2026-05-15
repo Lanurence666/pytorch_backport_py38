@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import torch
 import functools
 from torch.testing import make_tensor
@@ -17,7 +19,7 @@ from torch.testing._internal.autograd_function_db import (
 )
 from torch import Tensor
 from torch.types import Number
-from typing import *  # noqa: F403
+from typing import *  # noqa: F403, List, Sequence, Tuple
 
 # Note: [custom op db]
 #
@@ -29,7 +31,7 @@ def to_numpy(tensor):
     return tensor.cpu().numpy()
 
 @torch.library.custom_op("_torch_testing::numpy_cube", mutates_args=())
-def numpy_cube(x: Tensor) -> tuple[Tensor, Tensor]:
+def numpy_cube(x: Tensor) -> Tuple[Tensor, Tensor]:
     x_np = to_numpy(x)
     dx = torch.tensor(3 * x_np ** 2, device=x.device)
     return torch.tensor(x_np ** 3, device=x.device), dx
@@ -114,7 +116,7 @@ def numpy_mul_scalar_vmap(info, in_dims, x, *, scalar):
 numpy_mul_scalar.register_vmap(numpy_mul_scalar_vmap)
 
 @torch.library.custom_op("_torch_testing::numpy_sort", mutates_args=())
-def numpy_sort(x: Tensor, dim: int) -> tuple[Tensor, Tensor, Tensor]:
+def numpy_sort(x: Tensor, dim: int) -> Tuple[Tensor, Tensor, Tensor]:
     device = x.device
     x = to_numpy(x)
     ind = np.argsort(x, axis=dim)
@@ -349,7 +351,7 @@ def sample_inputs_numpy_split_copy(opinfo, device, dtype, requires_grad, **kwarg
     yield SampleInput(x, args=([1, 3, 6], 1))
 
 @torch.library.custom_op('_torch_testing::numpy_split_copy_with_int', mutates_args=())
-def numpy_split_copy_with_int(x: Tensor, splits: Sequence[int], dim: int) -> tuple[List[Tensor], int]:
+def numpy_split_copy_with_int(x: Tensor, splits: Sequence[int], dim: int) -> Tuple[List[Tensor], int]:
     x_np = to_numpy(x)
     arrs = np.split(x_np, splits, axis=dim)
     return [torch.tensor(arr, device=x.device, dtype=x.dtype) for arr in arrs], len(splits)
@@ -556,7 +558,7 @@ custom_op_db = [
 # some mechanical test cases
 # ==============================================================
 
-lib = torch.library.Library("_torch_testing", "FRAGMENT")
+lib = torch.library.Library("_torch_testing", "FRAGMENT")  # noqa: TOR901
 
 lib.define("source0(Tensor x) -> Tensor")
 

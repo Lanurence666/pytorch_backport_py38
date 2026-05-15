@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from collections import defaultdict
 
@@ -5,6 +7,7 @@ import torch
 import torch.fx as fx
 from torch._logging import trace_structured
 from torch.utils._ordered_set import OrderedSet
+from typing import Dict, List, Optional, Set, Union
 
 
 log = logging.getLogger(__name__)
@@ -22,16 +25,16 @@ class AugmentedGraphHelper:
     def __init__(
         self,
         graph: fx.Graph,
-        node_ancestors: dict[fx.Node, OrderedSet[fx.Node]] | None = None,
+        node_ancestors: Optional[Dict[fx.Node, OrderedSet[fx.Node]]]= None,
     ):
         # Each node starts in its own singleton set
         self.graph = graph
         self.merge_sets = {node: OrderedSet([node]) for node in graph.nodes}
 
         # Extra dependencies: node depends on dep (dep must come before node)
-        self.extra_deps: dict[fx.Node, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
+        self.extra_deps: Dict[fx.Node, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
         # Extra uses: reverse of extra_deps (node is used by user)
-        self.extra_uses: dict[fx.Node, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
+        self.extra_uses: Dict[fx.Node, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
         # Note: only reflect original ancestors, not maintained through additional deps
         # or merge sets
         self.node_ancestors = node_ancestors
@@ -101,7 +104,7 @@ class AugmentedGraphHelper:
     def _get_all_ancestors(self, node: fx.Node) -> OrderedSet[fx.Node]:
         """Transitive ancestors through both data deps and extra deps."""
         ancestors: OrderedSet[fx.Node] = OrderedSet()
-        stack: list[fx.Node] = list(node.all_input_nodes)
+        stack: List[fx.Node] = list(node.all_input_nodes)
         stack.extend(self.extra_deps.get(node, ()))
         while stack:
             n = stack.pop()
@@ -151,7 +154,7 @@ class AugmentedGraphHelper:
         return False
 
     def transfer_erased_node_deps(
-        self, erased_to_new: dict[fx.Node, fx.Node | None]
+        self, erased_to_new: Dict[fx.Node, Optional[fx.Node]]
     ) -> None:
         """
         Transfer all extra dependencies from erased nodes to their replacements, handling
@@ -161,7 +164,7 @@ class AugmentedGraphHelper:
         same erasure batch — these are intra-bucket deps that would create
         cycles (e.g. new_start <-> new_wait within the same bucket).
         """
-        erased_merge_sets: dict[fx.Node, fx.Node | None] = {}
+        erased_merge_sets: Union[Dict[fx.Node, fx.Node, None]]= {}
 
         for replaced, new in erased_to_new.items():
             for equiv in self.merge_sets[replaced]:
@@ -264,7 +267,7 @@ class AugmentedGraphHelper:
                 f".overlap_scheduling_autofix_cycles = True"
             )
 
-    def get_all_extra_deps(self) -> dict[fx.Node, OrderedSet[fx.Node]]:
+    def get_all_extra_deps(self) -> Dict[fx.Node, OrderedSet[fx.Node]]:
         """
         Get all extra dependencies in a format suitable for topological sort.
         Returns a copy to avoid external modifications.

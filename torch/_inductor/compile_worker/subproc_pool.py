@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import functools
 import itertools
@@ -11,11 +13,11 @@ import sys
 import threading
 import traceback
 import typing
-from collections.abc import Callable
+
 from concurrent.futures import Future, ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from enum import Enum, IntEnum
-from typing import Any, IO, TypeVar
+from typing import Any, Callable, Dict, IO, Optional, Tuple, Type, TypeVar, Union
 from typing_extensions import Never, ParamSpec
 
 # _thread_safe_fork is needed because the subprocesses in the pool can read
@@ -52,7 +54,7 @@ def _pack_msg(msg_header: MsgHeader, job_id: int, length: int) -> bytes:
     return struct.pack("nnn", int(msg_header), job_id, length)
 
 
-def _unpack_msg(data: bytes) -> tuple[MsgHeader, int, int]:
+def _unpack_msg(data: bytes) -> Tuple[MsgHeader, int, int]:
     if not data:
         return MsgHeader.ERROR, -1, -1
     msg_header, job_id, length = struct.unpack("nnn", data)
@@ -72,7 +74,7 @@ def _send_msg(
     write_pipe.flush()
 
 
-def _recv_msg(read_pipe: IO[bytes]) -> tuple[MsgHeader, int, bytes]:
+def _recv_msg(read_pipe: IO[bytes]) -> Tuple[MsgHeader, int, bytes]:
     msg_header, job_id, length = _unpack_msg(read_pipe.read(msg_bytes))
     data = read_pipe.read(length) if length > 0 else b""
     return msg_header, job_id, data
@@ -131,7 +133,7 @@ class SubprocPool:
     def __init__(
         self,
         nprocs: int,
-        pickler: SubprocPickler | None = None,
+        pickler: Optional[SubprocPickler]= None,
         kind: SubprocKind = SubprocKind.FORK,
         quiesce: bool = False,
     ) -> None:
@@ -196,9 +198,9 @@ class SubprocPool:
         )
 
         self.futures_lock = threading.Lock()
-        self.pending_futures: dict[int, Future[Any]] = {}
+        self.pending_futures: Dict[int, Future[Any]] = {}
         # The pending waitcounter, is used to indicate the time when we have any specific job running.
-        self.pending_waitcounters: dict[int, Any] = {}
+        self.pending_waitcounters: Dict[int, Any] = {}
         self.job_id_count = itertools.count()
 
         # The running waitcounter indicates the time when the SubProcPool object exists.
@@ -209,17 +211,17 @@ class SubprocPool:
         self.running_waitcounter.__enter__()
 
         # The quiesce waitcounter indicates when the job is in a quiesced state.
-        self.quiesce_waitcounter: _WaitCounterTracker | None = None
+        self.quiesce_waitcounter: Optional[_WaitCounterTracker] = None
 
         # Firstjob is used to capture the time from when the firstjob is queued, to when the first job is done.
         self.firstjob = True
-        self.firstjob_id: int | None = None
+        self.firstjob_id: Optional[int] = None
         self.firstjob_waitcounter = _WaitCounter(
             "pytorch.wait_counter.subproc_pool.first_job"
         ).guard()
 
         if quiesce:
-            self.timer: Timer | None = Timer(
+            self.timer: Optional[Timer] = Timer(
                 config.quiesce_async_compile_time, self.quiesce
             )
         else:
@@ -369,7 +371,7 @@ class SubprocMain:
         self.write_pipe = write_pipe
         self.write_lock = threading.Lock()
         self.nprocs = nprocs
-        self.pool: ProcessPoolExecutor | None = None
+        self.pool: Optional[ProcessPoolExecutor] = None
         self.running = True
 
     def main(self) -> None:
@@ -460,7 +462,7 @@ class SubprocMain:
         return pickler.dumps(result)
 
 
-AnyPool = ProcessPoolExecutor | SubprocPool
+AnyPool = Union[ProcessPoolExecutor, SubprocPool]
 
 
 def _warm_process_pool(pool: ProcessPoolExecutor, n: int) -> None:

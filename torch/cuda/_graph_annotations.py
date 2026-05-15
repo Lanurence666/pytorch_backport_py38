@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Annotate CUDA graph kernel nodes during capture.
 
 During CUDA graph capture, ``mark_kernels`` uses ``cudaGraphGetNodes``
@@ -37,7 +39,7 @@ Usage during capture::
 from collections import defaultdict
 from contextlib import contextmanager
 from logging import getLogger
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
 from torch.cuda._utils import _check_cuda_bindings, _HAS_CUDA_BINDINGS
@@ -56,7 +58,7 @@ logger = getLogger(__name__)
 
 # Tri-state: None = not probed, True = available, False = unavailable.
 # Deferred to first use to avoid premature CUDA initialization.
-_tools_id_available: bool | None = None
+_tools_id_available: Optional[bool]= None
 
 # Global kill switch. When False, mark_kernels and mark_stream are no-ops.
 _annotations_enabled: bool = False
@@ -85,7 +87,7 @@ def _is_tools_id_unavailable() -> bool:
     return False
 
 
-def _get_tools_id(node: Any) -> int | None:
+def _get_tools_id(node: Any) -> Optional[int]:
     """Return the toolsId for a graph node, or None if unavailable."""
     global _tools_id_available
     if _tools_id_available is None:
@@ -137,14 +139,14 @@ def _get_node_count(graph: Any) -> int:
 
 
 # toolsId -> list of annotation objects.
-_kernel_annotations: defaultdict[int, list[Any]] = defaultdict(list)
+_kernel_annotations: defaultdict[int, List[Any]] = defaultdict(list)
 
 # Node types we annotate. Initialized lazily to avoid touching cuda.bindings
 # at import time.
-_ANNOTATABLE_TYPES: set[Any] | None = None
+_ANNOTATABLE_TYPES: Optional[Set[Any]]= None
 
 
-def _get_annotatable_types() -> set[Any]:
+def _get_annotatable_types() -> Set[Any]:
     global _ANNOTATABLE_TYPES
     if _ANNOTATABLE_TYPES is None:
         _ANNOTATABLE_TYPES = {
@@ -155,17 +157,17 @@ def _get_annotatable_types() -> set[Any]:
 
 
 # Pending scopes: (annotation, start_node_index, end_node_index).
-_pending_scopes: list[tuple[Any, int, int]] = []
+_pending_scopes: List[Tuple[Any, int, int]] = []
 
 # Graph handle saved during capture for post-capture resolution.
 _capture_graph: Any = None
 
 # Capture graph ID saved by resolve_pending_annotations for remap_to_exec_graph.
-_last_capture_graph_id: int | None = None
+_last_capture_graph_id: Optional[int]= None
 
 
 @contextmanager  # type: ignore[arg-type]
-def mark_kernels(annotation: str | dict[str, Any]):
+def mark_kernels(annotation: Union[str, Dict[str, Any]]):
     """Context manager that records node index ranges for later annotation.
 
     During capture, calls ``cudaGraphGetNodes`` to count graph nodes before
@@ -268,7 +270,7 @@ def resolve_pending_annotations() -> None:
             key=lambda s: (s[1], -s[2], -s[3]),
         )
         scope_ptr = 0
-        active_stack: list[tuple[int, Any]] = []  # (end_idx, annotation)
+        active_stack: List[Tuple[int, Any]] = []  # (end_idx, annotation)
 
         for i in range(num):
             # Pop scopes whose range ended.
@@ -311,7 +313,7 @@ def resolve_pending_annotations() -> None:
                 # with setdefault lets the inner scope's values win for
                 # overlapping keys (e.g. name, stream) while outer scopes
                 # fill in any missing keys.
-                merged: dict[str, Any] = {}
+                merged: Dict[str, Any] = {}
                 for _, ann in reversed(active_stack):
                     if isinstance(ann, dict):
                         for ak, av in ann.items():
@@ -351,7 +353,7 @@ def remap_to_exec_graph(torch_cuda_graph: torch.cuda.CUDAGraph) -> None:
     # Previously remapped annotations (from earlier captures) keep their
     # correct exec graph IDs.
     capture_graph_id = _last_capture_graph_id
-    remapped: dict[int, list[Any]] = {}
+    remapped: Dict[int, List[Any]] = {}
     for tools_id, ann_list in _kernel_annotations.items():
         graph_id = tools_id >> 32
         if capture_graph_id is not None and graph_id != capture_graph_id:
@@ -369,7 +371,7 @@ def remap_to_exec_graph(torch_cuda_graph: torch.cuda.CUDAGraph) -> None:
     _kernel_annotations.update(remapped)
 
 
-def get_kernel_annotations() -> dict[int, list[Any]]:
+def get_kernel_annotations() -> Dict[int, List[Any]]:
     """Return the current kernel annotation map (toolsId -> annotations)."""
     return _kernel_annotations
 
@@ -386,7 +388,7 @@ def clear_kernel_annotations() -> None:
 # observed non-graphed CUDA stream ID) so every assigned lane is visually
 # distinct in Perfetto and doesn't collide with real streams.
 _stream_id_counter: int = 60
-_stream_id_map: dict[int, int] = {}
+_stream_id_map: Dict[int, int] = {}
 
 
 def _get_stream_id(stream: torch.cuda.Stream) -> int:
@@ -409,7 +411,7 @@ def get_stream_for_pg(pg_key: str) -> int:
 
 
 @contextmanager  # type: ignore[arg-type]
-def mark_stream(stream: torch.cuda.Stream, annotation: str | dict[str, Any]):
+def mark_stream(stream: torch.cuda.Stream, annotation: Union[str, Dict[str, Any]]):
     """Switch to stream, inject its ID into annotation, and mark kernels.
 
     If *stream* is already the current stream, no stream switch or stream ID

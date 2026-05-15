@@ -21,6 +21,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 namespace torch {
 
@@ -617,7 +618,7 @@ auto handle_torch_function_no_python_arg_parser(
   // (5) FakeTensorMode.__torch_dispatch__ (infra modes next highest)
   // (6) FakeTensor.__torch_fake_dispatch__ (infra subclasses next highest)
 
-  // Why do FunctionalTensor and FakeTensor even need to be special-cased
+  // Why does do FunctionalTensor and FakeTensor even need to be special-cased
   // in the ordering?
   // In theory we could remove their __torch_dispatch__, but both of these
   // subclasses override sizes/strides metadata calls with __torch_dispatch__,

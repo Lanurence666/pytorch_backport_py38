@@ -38,7 +38,7 @@ class RedirectImportFinder(importlib.abc.MetaPathFinder):
         if fullname in redirect_imports:
             try:
                 # Attempt to import the standalone module
-                name = fullname.removeprefix("test.")
+                name = (fullname[len("test."):] if fullname.startswith("test.") else fullname)
                 r = importlib.import_module(name)
                 # Redirect the module in sys.modules
                 sys.modules[fullname] = r

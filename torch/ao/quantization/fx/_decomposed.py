@@ -1,10 +1,13 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 
 import torch
 from torch._refs import _unsqueeze_multiple
 from torch.ao.quantization.utils import determine_qparams, validate_qmin_qmax
 from torch.library import impl, Library
+from typing import Optional, Tuple, Type, cast
 
 
 # Note: decomposed means decomposed quantized tensor, using decomposed so that the
@@ -30,13 +33,13 @@ def _quant_min_max_bounds_check(quant_min, quant_max, dtype):
 
     if quant_min < quant_min_lower_bound:
         raise AssertionError(
-            "quant_min out of bounds for dtype, "
+            "quant_min out of bound for dtype, "
             f"quant_min_lower_bound: {quant_min_lower_bound} quant_min: {quant_min}"
         )
 
     if quant_max > quant_max_upper_bound:
         raise AssertionError(
-            "quant_max out of bounds for dtype, "
+            "quant_max out of bound for dtype, "
             f"quant_max_upper_bound: {quant_max_upper_bound} quant_max: {quant_max}"
         )
 
@@ -248,7 +251,7 @@ def dequantize_per_tensor(
     quant_max: int,
     dtype: torch.dtype,
     *,
-    out_dtype: torch.dtype | None = None,
+    out_dtype: torch.Optional[dtype] = None
 ) -> torch.Tensor:
     """Affine dequantization for the Tensor using the same quantization parameters to map
     from quantized values to floating point values
@@ -300,7 +303,7 @@ def dequantize_per_tensor_meta(
     quant_max: int,
     dtype: torch.dtype,
     *,
-    out_dtype: torch.dtype | None = None,
+    out_dtype: torch.Optional[dtype] = None
 ) -> torch.Tensor:
     if out_dtype is None:
         out_dtype = torch.float32
@@ -326,7 +329,7 @@ def dequantize_per_tensor_tensor(
     quant_max: int,
     dtype: torch.dtype,
     *,
-    out_dtype: torch.dtype | None = None,
+    out_dtype: torch.Optional[dtype] = None
 ) -> torch.Tensor:
     """Affine dequantization for the Tensor using the same quantization parameters to map
     from quantized values to floating point values
@@ -361,7 +364,7 @@ def dequantize_per_tensor_tensor_meta(
     quant_max: int,
     dtype: torch.dtype,
     *,
-    out_dtype: torch.dtype | None = None,
+    out_dtype: torch.Optional[dtype] = None
 ) -> torch.Tensor:
     if out_dtype is None:
         out_dtype = torch.float32
@@ -403,7 +406,7 @@ def dequantize_per_tensor_tensor2(
     quant_max: torch.Tensor,
     dtype: torch.dtype,
     *,
-    out_dtype: torch.dtype | None = None,
+    out_dtype: torch.Optional[dtype] = None
 ) -> torch.Tensor:
     """Affine dequantization for the Tensor using the same quantization parameters to map
     from quantized values to floating point values
@@ -438,7 +441,7 @@ def dequantize_per_tensor_tensor2_meta(
     quant_max,
     dtype,
     *,
-    out_dtype: torch.dtype | None = None,
+    out_dtype: torch.Optional[dtype] = None
 ) -> torch.Tensor:
     return dequantize_per_tensor_tensor_meta(
         input, scale, zero_point, quant_min, quant_max, dtype, out_dtype=out_dtype
@@ -454,7 +457,7 @@ quantized_decomposed_lib.define(
 @impl(quantized_decomposed_lib, "choose_qparams.tensor", "CompositeExplicitAutograd")
 def choose_qparams_tensor(
     input: torch.Tensor, qmin: int, qmax: int, eps: float, dtype: torch.dtype
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Given an input Tensor, derive the per tensor affine quantization parameter
     (scale and zero_point) for target quantized Tensor from the Tensor
 
@@ -508,7 +511,7 @@ quantized_decomposed_lib.define(
 )
 def choose_qparams_symmetric_tensor(
     input: torch.Tensor, qmin: int, qmax: int, eps: float, dtype: torch.dtype
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Given an input Tensor, derive the per tensor affine quantization parameter
     (scale and zero_point) for target quantized Tensor from the Tensor
 
@@ -552,7 +555,7 @@ def choose_qparams_symmetric_tensor(
 @impl(quantized_decomposed_lib, "choose_qparams.tensor", "Meta")
 def choose_qparams_tensor_meta(
     input: torch.Tensor, quant_min: int, quant_max: int, eps: float, dtype: torch.dtype
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     if input.dtype not in [
         torch.float32,
         torch.float16,
@@ -573,7 +576,7 @@ def choose_qparams_tensor_meta(
 @impl(quantized_decomposed_lib, "choose_qparams_symmetric.tensor", "Meta")
 def choose_qparams_symmetric_tensor_meta(
     input: torch.Tensor, quant_min: int, quant_max: int, eps: float, dtype: torch.dtype
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     return torch.empty(1, dtype=torch.double, device=input.device), torch.empty(
         1, dtype=torch.int64, device=input.device
     )
@@ -680,13 +683,13 @@ quantized_decomposed_lib.define(
 def dequantize_per_channel(
     input: torch.Tensor,
     scales: torch.Tensor,
-    zero_points: torch.Tensor | None,
+    zero_points: Optional[torch.Tensor],
     axis: int,
     quant_min: int,
     quant_max: int,
     dtype: torch.dtype,
     *,
-    out_dtype: torch.dtype | None = None,
+    out_dtype: torch.Optional[dtype] = None
 ) -> torch.Tensor:
     """Affine per channel dequantization for the Tensor using the same quantization
     parameters for each channel/axis to map from quantized values to floating point values
@@ -745,13 +748,13 @@ def dequantize_per_channel(
 def dequantize_per_channel_meta(
     input: torch.Tensor,
     scales: torch.Tensor,
-    zero_points: torch.Tensor | None,
+    zero_points: Optional[torch.Tensor],
     axis: int,
     quant_min: int,
     quant_max: int,
     dtype: torch.dtype,
     *,
-    out_dtype: torch.dtype | None = None,
+    out_dtype: torch.Optional[dtype] = None
 ) -> torch.Tensor:
     if input.dtype != dtype:
         raise AssertionError(
@@ -778,7 +781,7 @@ quantized_decomposed_lib.define(
 def choose_qparams_per_token(
     input: torch.Tensor,
     dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Choose quantization parameters for per token quantization. This means for a N dimension Tensor
     (M1, M2, ...Mn, N), we calculate scales/zero_points for each N elements and quantize
     every N elements with the same quantization parameter. The dimension for scales/zero_points
@@ -818,7 +821,7 @@ def choose_qparams_per_token(
 def choose_qparams_per_token_meta(
     input: torch.Tensor,
     dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     size = list(input.shape[:-1]) + [1]
     return torch.empty(size, dtype=torch.double, device=input.device), torch.empty(
         size, dtype=torch.int64, device=input.device
@@ -838,7 +841,7 @@ quantized_decomposed_lib.define(
 def _choose_qparams_per_token_asymmetric_impl(
     input: torch.Tensor,
     dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Choose quantization parameters for per token quantization. This means for a N dimension Tensor
     (M1, M2, ...Mn, N), we calculate scales/zero_points for each N elements and quantize
     every N elements with the same quantization parameter. The dimension for scales/zero_points
@@ -891,7 +894,7 @@ quantized_decomposed_lib.define(
 def choose_qparams_per_token_asymmetric(
     input: torch.Tensor,
     dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     return _choose_qparams_per_token_asymmetric_impl(input, dtype)
 
 
@@ -903,7 +906,7 @@ def choose_qparams_per_token_asymmetric(
 def choose_qparams_per_token_asymmetric_meta(
     input: torch.Tensor,
     dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     size = list(input.shape[:-1]) + [1]
     return torch.empty(size, dtype=torch.double, device=input.device), torch.empty(
         size, dtype=torch.int64, device=input.device
@@ -1138,7 +1141,7 @@ quantized_decomposed_lib.define(
 def dequantize_per_channel_group(
     w_int8: torch.Tensor,
     scales: torch.Tensor,
-    zero_points: torch.Tensor | None,
+    zero_points: Optional[torch.Tensor],
     quant_min: int,
     quant_max: int,
     dtype: torch.dtype,

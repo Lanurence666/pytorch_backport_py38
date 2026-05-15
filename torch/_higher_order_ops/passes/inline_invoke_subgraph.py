@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import operator
 from collections import Counter
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, TYPE_CHECKING
 
 import torch
 from torch.fx.graph_module import GraphModule
@@ -67,7 +69,7 @@ def inline_single_use_recursive(gm: GraphModule, global_counts: Counter[str]) ->
     inline_invoke_subgraph_nodes(gm, single_use_nodes)
 
 
-def hoist_submodules(gm: GraphModule, subgraph: GraphModule) -> dict[str, str]:
+def hoist_submodules(gm: GraphModule, subgraph: GraphModule) -> Dict[str, str]:
     """Move submodules of *subgraph* onto *gm*, returning a name-remap dict.
 
     For each direct child module of *subgraph* (e.g. ``fwd_body_0``), register
@@ -75,7 +77,7 @@ def hoist_submodules(gm: GraphModule, subgraph: GraphModule) -> dict[str, str]:
     new name so that ``get_attr`` targets copied from *subgraph*'s graph can be
     rewritten.
     """
-    name_map: dict[str, str] = {}
+    name_map: Dict[str, str] = {}
     existing_names = {name for name, _ in gm.named_children()}
     for child_name, child_mod in list(subgraph.named_children()):
         new_name = child_name
@@ -89,7 +91,7 @@ def hoist_submodules(gm: GraphModule, subgraph: GraphModule) -> dict[str, str]:
     return name_map
 
 
-def inline_invoke_subgraph_nodes(gm: GraphModule, invoke_nodes: list["Node"]) -> None:
+def inline_invoke_subgraph_nodes(gm: GraphModule, invoke_nodes: List["Node"]) -> None:
     """Shared helper that inlines a list of invoke_subgraph nodes."""
     for node in invoke_nodes:
         get_attr_node: torch.fx.Node = node.args[0]  # pyrefly: ignore[bad-assignment]
@@ -101,7 +103,7 @@ def inline_invoke_subgraph_nodes(gm: GraphModule, invoke_nodes: list["Node"]) ->
         # get_attr nodes copied from the subgraph resolve correctly.
         name_map = hoist_submodules(gm, subgraph)
 
-        env: dict[Node, Any] = dict(
+        env: Dict[Node, Any] = dict(
             zip(subgraph.graph.find_nodes(op="placeholder"), operands)
         )
 

@@ -24,12 +24,14 @@
 #if defined(__CUDACC__) || defined(__HIPCC__)
 template <typename scalar_t>
 inline C10_DEVICE scalar_t max_propagate_nan(scalar_t a, scalar_t b) {
-  scalar_t max = at::_isnan(b) ? b : std::max(a, b);
+  using opmath_t = at::opmath_type<scalar_t>;
+  scalar_t max = at::_isnan(b) ? b : (static_cast<opmath_t>(a) >= static_cast<opmath_t>(b) ? a : b);
   return max;
 }
 template <typename scalar_t>
 inline C10_DEVICE scalar_t min_propagate_nan(scalar_t a, scalar_t b) {
-  scalar_t min = at::_isnan(b) ? b : std::min(a, b);
+  using opmath_t = at::opmath_type<scalar_t>;
+  scalar_t min = at::_isnan(b) ? b : (static_cast<opmath_t>(a) <= static_cast<opmath_t>(b) ? a : b);
   return min;
 }
 #define MAX(X, Y) max_propagate_nan(X,Y)
@@ -421,28 +423,28 @@ namespace detail {
 template <typename scalar_t>
 struct LessOrNan {
   C10_DEVICE bool operator () (scalar_t a, scalar_t b, int64_t idx_a, int64_t idx_b) const {
-    // If (a == b), then choose the one with lower idx, else min(a, b)
+    using opmath_t = at::opmath_type<scalar_t>;
     if (at::_isnan(a)) {
       if (at::_isnan(b)) {
         return idx_a < idx_b;
       }
       return true;
     }
-    return (a == b) ? idx_a < idx_b : (a < b);
+    return (static_cast<opmath_t>(a) == static_cast<opmath_t>(b)) ? idx_a < idx_b : (static_cast<opmath_t>(a) < static_cast<opmath_t>(b));
   }
 };
 
 template <typename scalar_t>
 struct GreaterOrNan {
   C10_DEVICE bool operator () (scalar_t a, scalar_t b, int64_t idx_a, int64_t idx_b) const {
-    // If (a == b), then choose the one with lower idx, else max(a, b)
+    using opmath_t = at::opmath_type<scalar_t>;
     if (at::_isnan(a)) {
       if (at::_isnan(b)) {
         return idx_a < idx_b;
       }
       return true;
     }
-    return (a == b) ? idx_a < idx_b : (a > b);
+    return (static_cast<opmath_t>(a) == static_cast<opmath_t>(b)) ? idx_a < idx_b : (static_cast<opmath_t>(a) > static_cast<opmath_t>(b));
   }
 };
 
@@ -517,8 +519,9 @@ struct MinMaxOps {
   }
 
   inline C10_DEVICE acc_t combine(acc_t a, acc_t b) const {
-    auto min_val = (at::_isnan(a.first) || a.first < b.first) ? a.first : b.first;
-    auto max_val = (at::_isnan(a.second) || a.second > b.second) ? a.second : b.second;
+    using opmath_t = at::opmath_type<acc_scalar_t>;
+    auto min_val = (at::_isnan(a.first) || static_cast<opmath_t>(a.first) < static_cast<opmath_t>(b.first)) ? a.first : b.first;
+    auto max_val = (at::_isnan(a.second) || static_cast<opmath_t>(a.second) > static_cast<opmath_t>(b.second)) ? a.second : b.second;
 
     return {min_val, max_val};
   }

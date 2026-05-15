@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
@@ -7,6 +9,7 @@ import torch
 import torch.distributed as dist
 import torch.distributed.algorithms.model_averaging.utils as utils
 from torch.utils._typing_utils import not_none as _not_none
+from typing import Dict, Iterable, Optional, Union
 
 
 __all__ = ["ModelAverager", "PeriodicModelAverager"]
@@ -22,7 +25,7 @@ class ModelAverager(ABC):
                        will be used. (default: ``None``)
     """
 
-    def __init__(self, process_group: dist.ProcessGroup | None = None):
+    def __init__(self, process_group: Optional[dist.ProcessGroup] = None):
         self.process_group = (
             process_group if process_group is not None else _not_none(dist.group.WORLD)
         )
@@ -87,7 +90,7 @@ class PeriodicModelAverager(ModelAverager):
     """
 
     def __init__(
-        self, period, warmup_steps=0, process_group: dist.ProcessGroup | None = None
+        self, period, warmup_steps=0, process_group: Optional[dist.ProcessGroup] = None
     ):
         super().__init__(process_group)
         if warmup_steps < 0:
@@ -107,7 +110,7 @@ class PeriodicModelAverager(ModelAverager):
 
     def average_parameters(
         self,
-        params: Iterable[torch.nn.Parameter] | Iterable[dict[str, torch.nn.Parameter]],
+        params: Union[Iterable[torch.nn.Parameter], Iterable[Dict[str, torch.nn.Parameter]],]
     ):
         """
         Averages parameters or parameter groups of an optimizer if ``step`` is no less than ``warmup_steps``.

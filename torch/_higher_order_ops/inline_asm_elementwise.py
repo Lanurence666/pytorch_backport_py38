@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import re
 
@@ -9,6 +11,7 @@ from torch._higher_order_ops.utils import autograd_not_implemented
 from torch._ops import HigherOrderOperator
 from torch._subclasses.fake_tensor import FakeTensorMode
 from torch.fx.experimental.proxy_tensor import ProxyTorchDispatchMode, track_tensor_tree
+from typing import Tuple
 
 
 __all__ = ["inline_asm_elementwise"]
@@ -98,7 +101,7 @@ class InlineAsmElementwiseOp(HigherOrderOperator):
 inline_asm_elementwise = InlineAsmElementwiseOp()
 
 
-def _parse_constraints(constraints: str) -> tuple[int, int]:
+def _parse_constraints(constraints: str) -> Tuple[int, int]:
     parts = [p.strip() for p in constraints.split(",")]
     n_outputs = sum(1 for p in parts if p.startswith("="))
     n_inputs = len(parts) - n_outputs

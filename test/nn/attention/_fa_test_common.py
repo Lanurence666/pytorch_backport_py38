@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: sdpa"]
 """
 Common test utilities for Flash Attention (FA3, FA4) tests.

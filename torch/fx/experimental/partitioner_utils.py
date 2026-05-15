@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 from enum import Enum
-from typing import NamedTuple
+from typing import Dict, List, Set, Tuple
+from typing_extensions import NamedTuple
+
 
 from torch.fx.node import map_arg, Node
 
@@ -10,13 +14,13 @@ class Partition:
     """
 
     def __init__(self, partition_id: int) -> None:
-        self.nodes: set[Node] = set()
+        self.nodes: Set[Node] = set()
         self.partition_id = partition_id
-        self.parents: set[Partition] = set()
-        self.children: set[Partition] = set()
+        self.parents: Set[Partition] = set()
+        self.children: Set[Partition] = set()
         self.bfs_level: int = -1
         self.used_mem_bytes: int = 0
-        self.logical_device_ids: list[int] = []
+        self.logical_device_ids: List[int] = []
 
     def __str__(self) -> str:
         return str(self.partition_id)
@@ -27,7 +31,7 @@ class Partition:
             self.used_mem_bytes += get_extra_size_of(node, self.nodes)
 
     def add_node(self, node: Node) -> None:
-        input_nodes: dict[Node, None] = {}
+        input_nodes: Dict[Node, None] = {}
         map_arg(node.args, input_nodes.setdefault)
         map_arg(node.kwargs, input_nodes.setdefault)
         # Add current node's input nodes if they are placeholder or constants
@@ -42,7 +46,7 @@ class Partition:
         if node in self.nodes:
             self.nodes.remove(node)
             # Collect the node's input nodes
-            input_nodes: dict[Node, None] = {}
+            input_nodes: Dict[Node, None] = {}
             map_arg(node.args, input_nodes.setdefault)
             map_arg(node.kwargs, input_nodes.setdefault)
             # Check if an input node is a placeholder or get_attr,
@@ -87,23 +91,23 @@ class PartitionMode(Enum):
 
 
 class PartitionerConfig(NamedTuple):
-    devices: list[Device]
+    devices: List[Device]
     mode: PartitionMode = PartitionMode.size_based
     transfer_rate_bytes_per_sec: float = 0.0
-    node_to_latency_mapping: dict[Node, NodeLatency] = {}
-    node_to_partition_mapping: dict[Node, int] = {}
-    partition_to_logical_device_mapping: dict[int, list[int]] = {}
+    node_to_latency_mapping: Dict[Node, NodeLatency] = {}
+    node_to_partition_mapping: Dict[Node, int] = {}
+    partition_to_logical_device_mapping: Dict[int, List[int]] = {}
     # Saturate host by replicating partitions to the remaining idle devices.
     saturate_host: bool = False
 
 
-def get_extra_size_of(node: Node, nodes: set[Node]) -> int:
+def get_extra_size_of(node: Node, nodes: Set[Node]) -> int:
     """Given a node and a set of nodes,
     this function return the extra size that needed
     if this node is included in this set.
     """
     # Find all its input nodes
-    input_nodes: dict[Node, None] = {}
+    input_nodes: Dict[Node, None] = {}
     map_arg(node.args, input_nodes.setdefault)
     map_arg(node.kwargs, input_nodes.setdefault)
     # Calculate total size of related nodes
@@ -126,18 +130,18 @@ def get_extra_size_of(node: Node, nodes: set[Node]) -> int:
 
 
 def get_latency_of_one_partition(
-    partition: Partition, node_to_latency_mapping: dict[Node, NodeLatency]
+    partition: Partition, node_to_latency_mapping: Dict[Node, NodeLatency]
 ) -> PartitionLatency:
     """Given a partition and its nodes' latency, return a PartitionLatency for this partition"""
 
-    def get_top_nodes(partition: Partition) -> list[Node]:
+    def get_top_nodes(partition: Partition) -> List[Node]:
         """Given a partition, return a list of nodes on the top bfs level"""
-        top_nodes: list[Node] = []
+        top_nodes: List[Node] = []
         for node in partition.nodes:
             # Skip placeholder and get_attr nodes
             if node.op in {"placeholder", "get_attr"}:
                 continue
-            input_nodes: dict[Node, None] = {}
+            input_nodes: Dict[Node, None] = {}
             map_arg(node.args, input_nodes.setdefault)
             map_arg(node.kwargs, input_nodes.setdefault)
             # If a node has no input nodes in this partition,
@@ -215,12 +219,12 @@ def get_latency_of_one_partition(
 
 
 def get_partition_to_latency_mapping(
-    partitions: list[Partition], node_to_latency_mapping: dict[Node, NodeLatency]
-) -> dict[Partition, PartitionLatency]:
+    partitions: List[Partition], node_to_latency_mapping: Dict[Node, NodeLatency]
+) -> Dict[Partition, PartitionLatency]:
     """Given all the partitions and node_to_latency_mapping dictionary,
     return a mapping dictionary of each partition to its overall latency
     """
-    partition_to_latency_mapping: dict[Partition, PartitionLatency] = {}
+    partition_to_latency_mapping: Dict[Partition, PartitionLatency] = {}
     # Go through each partition and get its latency
     for partition in partitions:
         partition_latency = get_latency_of_one_partition(
@@ -254,7 +258,7 @@ def get_comm_latency_between(
     # the output size of those input nodes will be counted
     # and added to comm_size
     for node in child_partition.nodes:
-        input_nodes: dict[Node, None] = {}
+        input_nodes: Dict[Node, None] = {}
         map_arg(node.args, input_nodes.setdefault)
         map_arg(node.kwargs, input_nodes.setdefault)
         for n in input_nodes:
@@ -267,8 +271,8 @@ def get_comm_latency_between(
 
 
 def get_latency_of_partitioned_graph(
-    partitions: list[Partition],
-    partition_to_latency_mapping: dict[Partition, PartitionLatency],
+    partitions: List[Partition],
+    partition_to_latency_mapping: Dict[Partition, PartitionLatency],
     transfer_rate_bytes_per_sec: float,
 ) -> float:
     """Given all partitions in a graph, find the critical path among all partitions
@@ -297,7 +301,7 @@ def get_latency_of_partitioned_graph(
             return max_latency_sec
         return latency_so_far_sec
 
-    def get_top_partitions(partitions: list[Partition]) -> list[Partition]:
+    def get_top_partitions(partitions: List[Partition]) -> List[Partition]:
         """This function is to return all the partitions without parents
         as the starting points of all the paths
         """

@@ -4,6 +4,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import argparse
 import gc
 import os
@@ -11,7 +13,7 @@ import pickle
 import re
 import time
 from collections import defaultdict
-from typing import Any
+from typing import Any, Dict, List, Set, Tuple, Union
 
 from torch.distributed.flight_recorder.components.fr_logger import FlightRecorderLogger
 
@@ -25,7 +27,7 @@ __all__ = [
 logger: FlightRecorderLogger = FlightRecorderLogger()
 
 
-def read_dump(prefix: str, filename: str) -> dict[str, str | int | list[Any]]:
+def read_dump(prefix: str, filename: str) -> Union[Dict[str, str, int, List[Any]]]:
     basename = os.path.basename(filename)
 
     rank = int(basename[len(prefix) :])
@@ -50,12 +52,12 @@ def read_dump(prefix: str, filename: str) -> dict[str, str | int | list[Any]]:
 exp = re.compile(r"([\w\-\_]*?)(\d+)$")
 
 
-def _determine_prefix(files: list[str]) -> str:
+def _determine_prefix(files: List[str]) -> str:
     """If the user doesn't specify a prefix, but does pass a dir full of similarly-prefixed files, we should be able to
     infer the common prefix most of the time.  But if we can't confidently infer, just fall back to requiring the user
     to specify it
     """
-    possible_prefixes: defaultdict[str, set[int]] = defaultdict(set)
+    possible_prefixes: defaultdict[str, Set[int]] = defaultdict(set)
     for f in files:
         m = exp.search(f)
         if m:
@@ -72,7 +74,7 @@ def _determine_prefix(files: list[str]) -> str:
         )
 
 
-def read_dir(args: argparse.Namespace) -> tuple[dict[str, dict[str, Any]], str]:
+def read_dir(args: argparse.Namespace) -> Tuple[Dict[str, Dict[str, Any]], str]:
     gc.disable()
     prefix = args.prefix
     details = {}

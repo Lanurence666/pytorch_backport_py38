@@ -1,11 +1,11 @@
+from __future__ import annotations
 """
 Python polyfills for operator
 """
 
-from __future__ import annotations
 
 import operator
-from typing import Any, overload, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Iterable, Sequence, TYPE_CHECKING, Tuple, Type, TypeVar, Union, overload
 from typing_extensions import TypeVarTuple, Unpack
 
 from ..decorators import substitute_in_graph
@@ -38,12 +38,12 @@ def attrgetter(attr: str, /) -> Callable[[Any], _U]: ...
 # pyrefly: ignore [inconsistent-overload]
 def attrgetter(
     attr1: str, attr2: str, /, *attrs: str
-) -> Callable[[Any], tuple[_U1, _U2, Unpack[_Us]]]: ...
+) -> Callable[[Any], Tuple[_U1, _U2, Unpack[_Us]]]: ...
 
 
 # Reference: https://docs.python.org/3/library/operator.html#operator.attrgetter
 @substitute_in_graph(operator.attrgetter, is_embedded_type=True)  # type: ignore[arg-type,misc]
-def attrgetter(*attrs: str) -> Callable[[Any], Any | tuple[Any, ...]]:
+def attrgetter(*attrs: str) -> Union[Callable[[Any], Any, Tuple[Any, ...]]]:
     if len(attrs) == 0:
         raise TypeError("attrgetter expected 1 argument, got 0")
 
@@ -63,7 +63,7 @@ def attrgetter(*attrs: str) -> Callable[[Any], Any | tuple[Any, ...]]:
 
     else:
 
-        def getter(obj: Any) -> tuple[Any, ...]:  # type: ignore[misc]
+        def getter(obj: Any) -> Tuple[Any, ...]:  # type: ignore[misc]
             return tuple(resolve_attr(obj, attr) for attr in attrs)
 
     return getter
@@ -71,7 +71,7 @@ def attrgetter(*attrs: str) -> Callable[[Any], Any | tuple[Any, ...]]:
 
 # Reference: https://docs.python.org/3/library/operator.html#operator.concat
 @substitute_in_graph(operator.concat, can_constant_fold_through=True)  # type: ignore[arg-type]
-def concat(a: Sequence[_T], b: Sequence[_T2], /) -> Sequence[_T | _T2]:
+def concat(a: Sequence[_T], b: Sequence[_T2], /) -> Union[Sequence[_T, _T2]]:
     return a + b  # type: ignore[operator]
 
 
@@ -83,7 +83,7 @@ def countOf(a: Iterable[_T], b: _T, /) -> int:
 
 # Reference: https://docs.python.org/3/library/operator.html#operator.iconcat
 @substitute_in_graph(operator.iconcat)  # type: ignore[arg-type]
-def iconcat(a: Sequence[_T], b: Sequence[_T2], /) -> Sequence[_T | _T2]:
+def iconcat(a: Sequence[_T], b: Sequence[_T2], /) -> Union[Sequence[_T, _T2]]:
     a += b  # type: ignore[operator]
     return a  # type: ignore[return-value]
 
@@ -97,12 +97,12 @@ def itemgetter(item: _T, /) -> Callable[[Any], _U]: ...
 # pyrefly: ignore [inconsistent-overload]
 def itemgetter(
     item1: _T1, item2: _T2, /, *items: Unpack[_Ts]
-) -> Callable[[Any], tuple[_U1, _U2, Unpack[_Us]]]: ...
+) -> Callable[[Any], Tuple[_U1, _U2, Unpack[_Us]]]: ...
 
 
 # Reference: https://docs.python.org/3/library/operator.html#operator.itemgetter
 @substitute_in_graph(operator.itemgetter, is_embedded_type=True)  # type: ignore[arg-type,misc]
-def itemgetter(*items: Any) -> Callable[[Any], Any | tuple[Any, ...]]:
+def itemgetter(*items: Any) -> Union[Callable[[Any], Any, Tuple[Any, ...]]]:
     if len(items) == 0:
         raise TypeError("itemgetter expected 1 argument, got 0")
 
@@ -114,7 +114,7 @@ def itemgetter(*items: Any) -> Callable[[Any], Any | tuple[Any, ...]]:
 
     else:
 
-        def getter(obj: Any) -> tuple[Any, ...]:  # type: ignore[misc]
+        def getter(obj: Any) -> Tuple[Any, ...]:  # type: ignore[misc]
             return tuple(obj[item] for item in items)
 
     return getter

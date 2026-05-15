@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 A LocalTensor is a tensor subclass which simulates a tensor that is
 distributed across SPMD ranks.  A LocalTensor might be size N, but in fact
@@ -48,9 +50,13 @@ import sys
 import threading
 from ast import Call
 from collections import defaultdict
-from collections.abc import Callable, Generator, Sequence
+
 from types import TracebackType
-from typing import Any, Optional, ParamSpec, TypeVar, Union
+from typing import Any, Callable, Dict, FrozenSet, Generator, List, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec
 
 
 try:
@@ -99,7 +105,7 @@ def _is_in_fake_tensor_mode() -> bool:
 
 
 def _reduce_multidim_lists(
-    lists_to_reduce: list[Any], reduce_func: Callable[[list[Any]], Any]
+    lists_to_reduce: List[Any], reduce_func: Callable[[List[Any]], Any]
 ) -> Any:
     """
     Reduces a list of multi-dimensional lists, assuming they all have
@@ -130,7 +136,7 @@ def _reduce_multidim_lists(
 
     # Check if the first element of this list is *also* a list.
     # This determines if we are at the base case or need to recurse.
-    if isinstance(first_list[0], list):
+    if isinstance(first_List[0], list):
         # --- RECURSIVE STEP ---
         # The elements are lists, so we need to go one level deeper.
 
@@ -175,7 +181,7 @@ def _reduce_multidim_lists(
         return result
 
 
-def _is_inplace_op(op: OpOverload | Callable[..., Any]) -> bool:
+def _is_inplace_op(op: Union[OpOverload, Callable[..., Any]]) -> bool:
     return (
         isinstance(op, OpOverload)
         # Not precise heuristic to detect inplace operation
@@ -188,7 +194,7 @@ def _is_inplace_op(op: OpOverload | Callable[..., Any]) -> bool:
     )
 
 
-def _int_on_rank(i: "int | LocalIntNode | ConstantIntNode", r: int) -> int:
+def _int_on_rank(i: "Union[Union[int, LocalIntNode], ConstantIntNode]", r: int) -> int:
     if isinstance(i, LocalIntNode):
         return i._local_ints[r]
     elif isinstance(i, ConstantIntNode):
@@ -228,7 +234,7 @@ def _map_to_rank_local_val(val: Any, rank: int) -> Any:
     return val
 
 
-def _collect_accelerator_rng_states() -> dict[int, torch.Tensor]:
+def _collect_accelerator_rng_states() -> Dict[int, torch.Tensor]:
     """
     Collects RNG state from all available accelerator devices.
 
@@ -247,7 +253,7 @@ def _collect_accelerator_rng_states() -> dict[int, torch.Tensor]:
     return {}
 
 
-def _set_accelerator_rng_states(rng_states: dict[int, torch.Tensor]) -> None:
+def _set_accelerator_rng_states(rng_states: Dict[int, torch.Tensor]) -> None:
     """
     Sets RNG state for all accelerator devices from a list of states.
 
@@ -263,7 +269,7 @@ def _set_accelerator_rng_states(rng_states: dict[int, torch.Tensor]) -> None:
                 torch.get_device_module().set_rng_state(device_rng_state)
 
 
-def _get_rng_state() -> tuple[torch.Tensor, dict[int, torch.Tensor]]:
+def _get_rng_state() -> Tuple[torch.Tensor, Dict[int, torch.Tensor]]:
     """
     Gets CPU and accelerator (e.g., CUDA, XPU device) rng states from all devices.
     """
@@ -271,7 +277,7 @@ def _get_rng_state() -> tuple[torch.Tensor, dict[int, torch.Tensor]]:
 
 
 def _set_rng_state(
-    cpu_state: torch.Tensor, accelerator_states: dict[int, torch.Tensor]
+    cpu_state: torch.Tensor, accelerator_states: Dict[int, torch.Tensor]
 ) -> None:
     """
     Sets CPU and accelerator (e.g., CUDA, XPU device) rng states for all devices. If
@@ -282,7 +288,7 @@ def _set_rng_state(
     _set_accelerator_rng_states(accelerator_states)
 
 
-def _combine_int_rank_results(rank_results: dict[int, int]) -> int | torch.SymInt:
+def _combine_int_rank_results(rank_results: Dict[int, int]) -> Union[int, torch.SymInt]:
     any_v = next(iter(rank_results.values()))
 
     if all(v == any_v for v in rank_results.values()):
@@ -291,7 +297,7 @@ def _combine_int_rank_results(rank_results: dict[int, int]) -> int | torch.SymIn
     return torch.SymInt(LocalIntNode(rank_results))
 
 
-def _combine_any_rank_results(rank_results: dict[int, Any]) -> Any:
+def _combine_any_rank_results(rank_results: Dict[int, Any]) -> Any:
     any_v = next(iter(rank_results.values()))
 
     if isinstance(any_v, Tensor):
@@ -316,7 +322,7 @@ def _combine_any_rank_results(rank_results: dict[int, Any]) -> Any:
     return any_v
 
 
-def _combine_rank_results(rank_results: dict[int, Any], default: Any | None) -> Any:
+def _combine_rank_results(rank_results: Dict[int, Any], default: Optional[Any]) -> Any:
     rank_ids = rank_results.keys()
     rank_value = rank_results[next(iter(rank_ids))]
 
@@ -341,10 +347,10 @@ def _zero_sized_like(tensor: torch.Tensor, dim: int) -> torch.Tensor:
 
 
 def _for_each_rank_run_func(
-    func: OpOverload | Callable[..., Any],
-    ranks: frozenset[int],
+    func: Union[OpOverload, Callable[..., Any]],
+    ranks: FrozenSet[int],
     args: Sequence[Any],
-    kwargs: dict[str, Any],
+    kwargs: Dict[str, Any],
     *,
     alias: bool = True,
 ) -> Any:
@@ -360,7 +366,7 @@ def _for_each_rank_run_func(
 
     flat_rank_rets = {}
 
-    default_value: Tensor | None = None
+    default_value: Optional[Tensor] = None
     for r in sorted(ranks):
         if use_per_rank_rng:
             if lm is None:
@@ -426,15 +432,15 @@ class LocalIntNode:
     because often only a SymInt is accepted where we wish to use this.
     """
 
-    def __new__(cls, local_ints: dict[int, int]) -> "ConstantIntNode | LocalIntNode":  # type: ignore[misc]
+    def __new__(cls, local_ints: Dict[int, int]) -> "Union[ConstantIntNode, LocalIntNode]":  # type: ignore[misc]
         if len(set(local_ints.values())) == 1:
             return ConstantIntNode(next(iter(local_ints.values())))
         return super().__new__(cls)
 
-    def __init__(self, local_ints: dict[int, int]):
+    def __init__(self, local_ints: Dict[int, int]):
         self._local_ints = local_ints
 
-    def maybe_as_int(self) -> int | None:
+    def maybe_as_int(self) -> Optional[int]:
         return None
 
     def is_int(self) -> bool:
@@ -471,8 +477,8 @@ class LocalIntNode:
         return False
 
     def sym_max(
-        self, other: "int | LocalIntNode | ConstantIntNode"
-    ) -> "LocalIntNode | ConstantIntNode":
+        self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]"
+    ) -> "Union[LocalIntNode, ConstantIntNode]":
         return LocalIntNode(
             {
                 r: max(self._local_ints[r], _int_on_rank(other, r))
@@ -481,8 +487,8 @@ class LocalIntNode:
         )
 
     def sym_min(
-        self, other: "int | LocalIntNode | ConstantIntNode"
-    ) -> "LocalIntNode | ConstantIntNode":
+        self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]"
+    ) -> "Union[LocalIntNode, ConstantIntNode]":
         return LocalIntNode(
             {
                 r: min(self._local_ints[r], _int_on_rank(other, r))
@@ -490,90 +496,90 @@ class LocalIntNode:
             }
         )
 
-    def sym_sum(self, other: Sequence[Any]) -> "LocalIntNode | ConstantIntNode":
+    def sym_sum(self, other: Sequence[Any]) -> "Union[LocalIntNode, ConstantIntNode]":
         t = LocalIntNode(dict.fromkeys(self._local_ints, 0))
         for o in other:
             t = t.add(o)
         return t
 
-    def neg(self) -> "LocalIntNode | ConstantIntNode":
+    def neg(self) -> "Union[LocalIntNode, ConstantIntNode]":
         return LocalIntNode({r: -self._local_ints[r] for r in self._local_ints})
 
     def add(
-        self, other: "int | LocalIntNode | ConstantIntNode"
-    ) -> "LocalIntNode | ConstantIntNode":
+        self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]"
+    ) -> "Union[LocalIntNode, ConstantIntNode]":
         return LocalIntNode(
             {r: self._local_ints[r] + _int_on_rank(other, r) for r in self._local_ints}
         )
 
     def sub(
-        self, other: "int | LocalIntNode | ConstantIntNode"
-    ) -> "LocalIntNode | ConstantIntNode":
+        self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]"
+    ) -> "Union[LocalIntNode, ConstantIntNode]":
         return LocalIntNode(
             {r: self._local_ints[r] - _int_on_rank(other, r) for r in self._local_ints}
         )
 
     def mul(
-        self, other: "int | LocalIntNode | ConstantIntNode"
-    ) -> "LocalIntNode | ConstantIntNode":
+        self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]"
+    ) -> "Union[LocalIntNode, ConstantIntNode]":
         return LocalIntNode(
             {r: self._local_ints[r] * _int_on_rank(other, r) for r in self._local_ints}
         )
 
     def floordiv(
-        self, other: "int | LocalIntNode | ConstantIntNode"
-    ) -> "LocalIntNode | ConstantIntNode":
+        self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]"
+    ) -> "Union[LocalIntNode, ConstantIntNode]":
         return LocalIntNode(
             {r: self._local_ints[r] // _int_on_rank(other, r) for r in self._local_ints}
         )
 
     def mod(
-        self, other: "int | LocalIntNode | ConstantIntNode"
-    ) -> "LocalIntNode | ConstantIntNode":
+        self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]"
+    ) -> "Union[LocalIntNode, ConstantIntNode]":
         return LocalIntNode(
             {r: self._local_ints[r] % _int_on_rank(other, r) for r in self._local_ints}
         )
 
     def int_floordiv(
-        self, other: "int | LocalIntNode | ConstantIntNode"
-    ) -> "LocalIntNode | ConstantIntNode":
+        self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]"
+    ) -> "Union[LocalIntNode, ConstantIntNode]":
         return LocalIntNode(
             {r: self._local_ints[r] // _int_on_rank(other, r) for r in self._local_ints}
         )
 
-    def eq(self, other: "int | LocalIntNode | ConstantIntNode") -> bool | SymBool:
+    def eq(self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]") -> Union[bool, SymBool]:
         r = {self._local_ints[r] == _int_on_rank(other, r) for r in self._local_ints}
         return torch._C._get_constant_bool_symnode(len(r) == 1 and next(iter(r)))
 
-    def ne(self, other: "int | LocalIntNode | ConstantIntNode") -> bool | SymBool:
+    def ne(self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]") -> Union[bool, SymBool]:
         r = {self._local_ints[r] != _int_on_rank(other, r) for r in self._local_ints}
         return torch._C._get_constant_bool_symnode(len(r) > 1 or next(iter(r)))
 
-    def ge(self, other: "int | LocalIntNode | ConstantIntNode") -> bool | SymBool:
+    def ge(self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]") -> Union[bool, SymBool]:
         r = {self._local_ints[r] >= _int_on_rank(other, r) for r in self._local_ints}
         if len(r) != 1:
             raise AssertionError((self, other))
         return torch._C._get_constant_bool_symnode(next(iter(r)))
 
-    def le(self, other: "int | LocalIntNode | ConstantIntNode") -> bool | SymBool:
+    def le(self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]") -> Union[bool, SymBool]:
         r = {self._local_ints[r] <= _int_on_rank(other, r) for r in self._local_ints}
         if len(r) != 1:
             raise AssertionError((self, other))
         return torch._C._get_constant_bool_symnode(next(iter(r)))
 
-    def gt(self, other: "int | LocalIntNode | ConstantIntNode") -> bool | SymBool:
+    def gt(self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]") -> Union[bool, SymBool]:
         r = {self._local_ints[r] > _int_on_rank(other, r) for r in self._local_ints}
         if len(r) != 1:
             raise AssertionError((self, other))
         return torch._C._get_constant_bool_symnode(next(iter(r)))
 
-    def lt(self, other: "int | LocalIntNode | ConstantIntNode") -> bool | SymBool:
+    def lt(self, other: "Union[Union[int, LocalIntNode], ConstantIntNode]") -> Union[bool, SymBool]:
         r = {self._local_ints[r] < _int_on_rank(other, r) for r in self._local_ints}
         if len(r) != 1:
             raise AssertionError((self, other))
         return torch._C._get_constant_bool_symnode(next(iter(r)))
 
-    def wrap_int(self, num: int) -> "LocalIntNode | ConstantIntNode":
+    def wrap_int(self, num: int) -> "Union[LocalIntNode, ConstantIntNode]":
         return ConstantIntNode(num)
 
 
@@ -845,7 +851,7 @@ def _from_local_tensor_attr(attr: str) -> int:
     return int(attr[len(_LOCAL_TENSOR_ATTR_PREFIX) :])
 
 
-def _all_elements_same(values: list[Any]) -> bool:
+def _all_elements_same(values: List[Any]) -> bool:
     if not values:
         return True
     first_value = values[0]
@@ -853,10 +859,10 @@ def _all_elements_same(values: list[Any]) -> bool:
 
 
 def _compute_local_tensor_meta(
-    local_tensors: dict[int, torch.Tensor],
-) -> tuple[
-    list[torch.SymInt | int],
-    list[torch.SymInt | int],
+    local_tensors: Dict[int, torch.Tensor],
+) -> Tuple[
+    List[Union[torch.SymInt, int]],
+    List[Union[torch.SymInt, int]],
     torch.device,
     torch.dtype,
     torch.layout,
@@ -894,8 +900,8 @@ def _compute_local_tensor_meta(
             )
 
     # Compute shape/stride.  We allow for non-SPMD'ness here
-    local_shapes: dict[int, dict[int, int]] = defaultdict(dict)  # dim => rank => size
-    local_strides: dict[int, dict[int, int]] = defaultdict(dict)  # dim => rank => size
+    local_shapes: Dict[int, Dict[int, int]] = defaultdict(dict)  # dim => rank => size
+    local_strides: Dict[int, Dict[int, int]] = defaultdict(dict)  # dim => rank => size
     for r, local_tensor in local_tensors.items():
         for d, size in enumerate(local_tensor.shape):
             local_shapes[d][r] = size
@@ -934,17 +940,17 @@ class LocalTensor(torch.Tensor):
     """
 
     # Map from global rank to the local tensor.
-    _local_tensors: dict[int, torch.Tensor]
+    _local_tensors: Dict[int, torch.Tensor]
     # Precomputed for speed set of keys from the local tensor map.
-    _ranks: frozenset[int]
-    _size: list[torch.SymInt | int]
+    _ranks: FrozenSet[int]
+    _size: List[Union[torch.SymInt, int]]
     __slots__ = ["_local_tensors", "_ranks", "_size"]
 
     @staticmethod
     @torch._disable_dynamo
     def __new__(
         cls,
-        local_tensors: dict[int, torch.Tensor],
+        local_tensors: Dict[int, torch.Tensor],
         requires_grad: bool = False,
     ) -> "LocalTensor":
         if any(t.requires_grad for t in local_tensors.values()):
@@ -995,7 +1001,7 @@ class LocalTensor(torch.Tensor):
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__()
 
-    def __deepcopy__(self, memo: dict[Any, Any] | None) -> "LocalTensor":
+    def __deepcopy__(self, memo: Optional[Dict[Any, Any]]) -> "LocalTensor":
         local_tensors_copy = {
             r: copy.deepcopy(t, memo) for r, t in self._local_tensors.items()
         }
@@ -1017,7 +1023,7 @@ class LocalTensor(torch.Tensor):
             return self._local_tensors[rank]
         return object.__getattribute__(self, name)
 
-    def __tensor_flatten__(self) -> tuple[list[str], tuple[Any, ...]]:
+    def __tensor_flatten__(self) -> Tuple[List[str], Tuple[Any, ...]]:
         """
         protocol to inform how to flatten a DTensor to local tensor
         for PT2 tracing
@@ -1027,10 +1033,10 @@ class LocalTensor(torch.Tensor):
 
     @staticmethod
     def __tensor_unflatten__(
-        inner_tensors: dict[str, Any],
-        flatten_spec: tuple[Any, ...],
+        inner_tensors: Dict[str, Any],
+        flatten_spec: Tuple[Any, ...],
         outer_size: torch.Size,
-        outer_stride: tuple[int, ...],
+        outer_stride: Tuple[int, ...],
     ) -> "LocalTensor":
         if flatten_spec is None:
             raise AssertionError(
@@ -1047,9 +1053,9 @@ class LocalTensor(torch.Tensor):
     def __torch_dispatch__(  # type: ignore[override]
         cls,
         func: Any,
-        types: tuple[Any, ...],
-        args: tuple[Any, ...] = (),
-        kwargs: dict[str, Any] | None = None,
+        types: Tuple[Any, ...],
+        args: Tuple[Any, ...] = (),
+        kwargs: Optional[Dict[str, Any]] = None,
     ) -> Any:
         if kwargs is None:
             kwargs = {}
@@ -1100,7 +1106,7 @@ class LocalTensor(torch.Tensor):
             for t in self._local_tensors.values()
         )
 
-    def tolist(self) -> list[Any]:
+    def tolist(self) -> List[Any]:
         """
         Try to reconcile, if successful convert to list, otherwise if dtype is integer,
         convert to list of local integers.
@@ -1115,7 +1121,7 @@ class LocalTensor(torch.Tensor):
                 return _reduce_multidim_lists(
                     local_lists,
                     lambda values: torch.SymInt(
-                        LocalIntNode(dict(zip(ranks, values, strict=True)))
+                        LocalIntNode(dict(_zip_strict(ranks, values)))
                     ),
                 )
 
@@ -1140,7 +1146,7 @@ class LocalTensor(torch.Tensor):
         cl.requires_grad_(self.requires_grad)
         return cl
 
-    def _equal_local_tensors(self) -> torch.Tensor | torch.Size | None:
+    def _equal_local_tensors(self) -> Union[torch.Tensor, Optional[torch.Size]]:
         it = iter(self._local_tensors.values())
         t1 = next(it)
         if all(t2.equal(t1) for t2 in it):
@@ -1180,20 +1186,20 @@ class _LocalContiguous(torch.autograd.Function):
     def backward(  # type: ignore[override]
         ctx: torch.autograd.function.FunctionCtx,
         grad_output: torch.Tensor,
-    ) -> tuple[torch.Tensor, None]:
+    ) -> Tuple[torch.Tensor, None]:
         return grad_output, None
 
 
 # If set to `True` the LocalTensorMode stack will be created for the whole process,
 # otherwise it will be created for each thread.
 _PROCESS_MODE: bool = True
-_PROCESS_LOCAL_TENSOR_MODE: list["LocalTensorMode"] = []
+_PROCESS_LOCAL_TENSOR_MODE: List["LocalTensorMode"] = []
 # When running under local runner each thread must create its own local tensor mode
 # so that they do not interfere with each other.
 _THREAD_LOCAL_TENSOR_MODE: threading.local = threading.local()
 
 
-def get_local_tensor_mode_list() -> list["LocalTensorMode"]:
+def get_local_tensor_mode_list() -> List["LocalTensorMode"]:
     global _PROCESS_MODE
     if _PROCESS_MODE:
         global _PROCESS_LOCAL_TENSOR_MODE
@@ -1214,7 +1220,7 @@ _PATCHED_DEVICE_MESH_METHODS: Sequence[str] = (
 )
 
 # These random functions are also patched.
-_PATCHED_RANDOM_FUNCTIONS: Sequence[tuple[str, str]] = (
+_PATCHED_RANDOM_FUNCTIONS: Sequence[Tuple[str, str]] = (
     ("torch.random.manual_seed", "torch_manual_seed"),
     ("torch.manual_seed", "torch_manual_seed"),
     ("torch.random.initial_seed", "torch_initial_seed"),
@@ -1240,12 +1246,8 @@ class LocalTensorMode(TorchDispatchMode):
     functions over ranks.
     """
 
-    @classmethod
-    def ignore_compile_internals(cls) -> bool:
-        return True
-
     # What ranks this local tensor mode is operating over
-    def __init__(self, ranks: int | frozenset[int]):
+    def __init__(self, ranks: Union[int, FrozenSet[int]]):
         if isinstance(ranks, int):
             # assume is world size
             self.ranks = frozenset(range(ranks))
@@ -1255,15 +1257,15 @@ class LocalTensorMode(TorchDispatchMode):
             self.ranks = ranks
         self._disable = True
         # Used to store the patched DeviceMesh methods
-        self._old_device_mesh_methods: dict[str, Callable[..., object]] | None = None
+        self._old_device_mesh_methods: Dict[str, Callable[..., object]] | None = None
         # Used to store the patched "random" functions
-        self._old_random_functions: dict[str, Callable[..., object]] = {}
-        self._per_rank_rng_states: dict[
-            int, tuple[torch.Tensor, dict[int, torch.Tensor]]
+        self._old_random_functions: Dict[str, Callable[..., object]] = {}
+        self._per_rank_rng_states: Dict[
+            int, Tuple[torch.Tensor, Dict[int, torch.Tensor]]
         ] = {}
         # Cache for get_coordinate results, keyed by mesh id
         # Protected by _coordinate_cache_lock for thread safety in MPMD contexts
-        self._coordinate_cache: dict[int, list[SymInt]] = {}
+        self._coordinate_cache: Dict[int, List[SymInt]] = {}
         self._coordinate_cache_lock = threading.Lock()
 
     def __enter__(self) -> "LocalTensorMode":
@@ -1284,26 +1286,26 @@ class LocalTensorMode(TorchDispatchMode):
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
     ) -> None:
         local_tensor_mode_list = get_local_tensor_mode_list()
         local_tensor_mode_list.pop()
         self.disable_()
         if len(local_tensor_mode_list) > 0:
-            if local_tensor_mode_list[-1]._disable:
-                local_tensor_mode_list[-1].disable_()
+            if local_tensor_mode_List[-1]._disable:
+                local_tensor_mode_List[-1].disable_()
             else:
-                local_tensor_mode_list[-1].enable_()
+                local_tensor_mode_List[-1].enable_()
         super().__exit__(exc_type, exc_val, exc_tb)
 
     def __torch_dispatch__(
         self,
         func: Any,
-        types: tuple[Any, ...],
-        args: tuple[Any, ...] = (),
-        kwargs: dict[str, Any] | None = None,
+        types: Tuple[Any, ...],
+        args: Tuple[Any, ...] = (),
+        kwargs: Optional[Dict[str, Any]] = None,
     ) -> Any:
         if kwargs is None:
             kwargs = {}
@@ -1459,7 +1461,7 @@ class LocalTensorMode(TorchDispatchMode):
             return LocalTensor({r: cb(r) for r in self.ranks})
 
     def tensor_map(
-        self, tensor: LocalTensor, cb: Callable[[int, Tensor], Tensor | None]
+        self, tensor: LocalTensor, cb: Callable[[int, Tensor], Optional[Tensor]]
     ) -> LocalTensor:
         """
         Creates a LocalTensor instance by mapping rank id to ids local shard.
@@ -1475,7 +1477,7 @@ class LocalTensorMode(TorchDispatchMode):
             # pyrefly: ignore [bad-argument-type, bad-argument-count]
             return LocalTensor(results)
 
-    def _any_local_rng_state(self) -> tuple[torch.Tensor, dict[int, torch.Tensor]]:
+    def _any_local_rng_state(self) -> Tuple[torch.Tensor, Dict[int, torch.Tensor]]:
         return self._per_rank_rng_states[next(iter(self.ranks))]
 
     def _patch_device_mesh(self) -> None:
@@ -1584,7 +1586,7 @@ class _LocalDeviceMesh:
     """
 
     @staticmethod
-    def get_coordinate(self: DeviceMesh) -> list[SymInt] | None:
+    def get_coordinate(self: DeviceMesh) -> Optional[List[SymInt]]:
         # NB: In order to support submeshes the code below recreates for each
         # rank submesh with the same mesh dimensions as current mesh. We are
         # doing this because when submesh is created it is created for a particular
@@ -1605,7 +1607,7 @@ class _LocalDeviceMesh:
             if mesh_id in lm._coordinate_cache:
                 return lm._coordinate_cache[mesh_id]
 
-            coords: list[dict[int, int]] = [{} for _ in range(self.ndim)]
+            coords: List[Dict[int, int]] = [{} for _ in range(self.ndim)]
             # Clone rank_map to avoid "Cannot set version_counter for inference tensor"
             # error when running under torch.inference_mode()
             rank_map = self._rank_map.clone()
@@ -1638,14 +1640,14 @@ class _LocalDeviceMesh:
         return my_coordinate[index]
 
     @staticmethod
-    def get_rank(self) -> int | SymInt:
+    def get_rank(self) -> Union[int, SymInt]:
         lm = enabled_local_tensor_mode()
         if lm is None:
             raise AssertionError("Unexpectedly not in LocalTensorMode")
         return torch.SymInt(LocalIntNode(local_ints={r: r for r in lm.ranks}))
 
     @staticmethod
-    def get_local_rank(self, mesh_dim: int | str | None = None) -> int | SymInt:
+    def get_local_rank(self, mesh_dim: Optional[Union[int, str]] = None) -> Union[int, SymInt]:
         lm = enabled_local_tensor_mode()
         if lm is None:
             raise AssertionError("Unexpectedly not in LocalTensorMode")
@@ -1670,7 +1672,7 @@ class _LocalDeviceMesh:
         return coords[mesh_dim]
 
 
-def reconcile_args(args: Any, kwargs: dict[str, Any] | None = None) -> Any:
+def reconcile_args(args: Any, kwargs: Optional[Dict[str, Any]] = None) -> Any:
     """
     Reconciles arguments by converting any LocalTensor instances in the input
     arguments to their underlying torch.Tensor representation.
@@ -1697,7 +1699,7 @@ def reconcile_args(args: Any, kwargs: dict[str, Any] | None = None) -> Any:
     return pytree.tree_unflatten(reconciled_args, args_spec)
 
 
-def local_tensor_mode() -> LocalTensorMode | None:
+def local_tensor_mode() -> Optional[LocalTensorMode]:
     """
     Returns the current active LocalTensorMode if one exists.
 
@@ -1710,11 +1712,11 @@ def local_tensor_mode() -> LocalTensorMode | None:
     """
     local_tensor_mode_list = get_local_tensor_mode_list()
     if len(local_tensor_mode_list) > 0:
-        return local_tensor_mode_list[-1]
+        return local_tensor_mode_List[-1]
     return None
 
 
-def enabled_local_tensor_mode() -> LocalTensorMode | None:
+def enabled_local_tensor_mode() -> Optional[LocalTensorMode]:
     """
     Returns the current active LocalTensorMode only if it's enabled.
 
@@ -1780,7 +1782,7 @@ def rank_map(cb: Callable[[int], Tensor]) -> Tensor:
         return cb(dist.get_rank())
 
 
-def tensor_map(tensor: Tensor, cb: Callable[[int, Tensor], Tensor | None]) -> Tensor:
+def tensor_map(tensor: Tensor, cb: Callable[[int, Tensor], Optional[Tensor]]) -> Tensor:
     """
     Transforms a tensor by mapping a callback over the current rank and its
     local shard.
@@ -1880,7 +1882,7 @@ import threading
 from queue import Queue
 
 
-_LOCAL_RUNNER_MODE: "LocalRunnerMode | None" = None
+_LOCAL_RUNNER_MODE: "Union[LocalRunnerMode, None]" = None
 
 
 class _ExceptionRaisingThread(threading.Thread):
@@ -1890,7 +1892,7 @@ class _ExceptionRaisingThread(threading.Thread):
         super().__init__(
             target=target, name=name, args=args, kwargs=kwargs, daemon=daemon
         )
-        self.exception: BaseException | None = None
+        self.exception: Optional[BaseException] = None
 
     def run(self):
         try:
@@ -1915,7 +1917,7 @@ class LocalRunnerMode:
     runner_context = threading.local()
 
     def __init__(
-        self, ranks: frozenset[int] | int, concurrency: int, fn: Callable[[int], None]
+        self, ranks: Union[FrozenSet[int], int], concurrency: int, fn: Callable[[int], None]
     ):
         if isinstance(ranks, int):
             ranks = frozenset(range(ranks))
@@ -1925,7 +1927,7 @@ class LocalRunnerMode:
         self._run_id = -1
         self._run_cond = threading.Condition(self._run_lock)
 
-        self._recv_objects: dict[int, dict[int, Queue]] = {
+        self._recv_objects: Dict[int, Dict[int, Queue]] = {
             dst: {src: Queue() for src in ranks} for dst in ranks
         }
         self._runners = [
@@ -1949,9 +1951,9 @@ class LocalRunnerMode:
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
     ) -> None:
         for r in self._runners:
             r.join()
@@ -1982,7 +1984,7 @@ class LocalRunnerMode:
         if self._run_id != LocalRunnerMode.runner_context.id:
             raise AssertionError("Calling thread does not hold the run lock")
 
-    def _get_recv_object(self, src: int, dst: int) -> object | None:
+    def _get_recv_object(self, src: int, dst: int) -> Optional[object]:
         peers = [src] if src != -1 else list(self._ranks)
         recv_objects = self._recv_objects[dst]
 
@@ -2045,7 +2047,7 @@ class _LocalPhiloxState:
         return LocalTensor(self._per_rank_states)  # type: ignore[name-defined]
 
     @property
-    def offset(self) -> int | SymInt:
+    def offset(self) -> Union[int, SymInt]:
         from torch.distributed.tensor._random import _PhiloxState
 
         offsets = {}
@@ -2059,7 +2061,7 @@ class _LocalPhiloxState:
         return SymInt(LocalIntNode(offsets))
 
     @offset.setter
-    def offset(self, offset: int | SymInt) -> None:
+    def offset(self, offset: Union[int, SymInt]) -> None:
         from torch.distributed.tensor._random import _PhiloxState
 
         if isinstance(offset, SymInt) and isinstance(offset.node, LocalIntNode):
@@ -2075,7 +2077,7 @@ class _LocalPhiloxState:
                 rank_philox.offset = offset_tensor
 
     @property
-    def seed(self) -> int | SymInt:
+    def seed(self) -> Union[int, SymInt]:
         from torch.distributed.tensor._random import _PhiloxState
 
         seeds = {}
@@ -2088,7 +2090,7 @@ class _LocalPhiloxState:
         return SymInt(LocalIntNode(seeds))
 
     @seed.setter
-    def seed(self, seed: int | SymInt) -> None:
+    def seed(self, seed: Union[int, SymInt]) -> None:
         from torch.distributed.tensor._random import _PhiloxState
 
         if isinstance(seed, SymInt) and isinstance(seed.node, LocalIntNode):

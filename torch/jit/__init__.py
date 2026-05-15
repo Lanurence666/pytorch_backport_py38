@@ -1,8 +1,8 @@
 # mypy: allow-untyped-defs
 import warnings
-from collections.abc import Iterator
+
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import torch._C
 
@@ -225,7 +225,7 @@ def isinstance(obj, target_type):
     .. testcode::
 
         import torch
-        from typing import Any, Dict, List
+        from typing import Any, Dict, Iterator, List, Optional, Tuple, Dict, List
 
         class MyModule(torch.nn.Module):
             def __init__(self) -> None:

@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: mobile"]
 
+from __future__ import annotations
 import io
 import unittest
 from collections import namedtuple

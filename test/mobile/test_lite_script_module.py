@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: mobile"]
 
+from __future__ import annotations
 import inspect
 import io
 from tempfile import TemporaryFileName

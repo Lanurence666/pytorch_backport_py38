@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 /*
 [Note: Compiled Autograd]

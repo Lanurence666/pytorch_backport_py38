@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Dict, List, TYPE_CHECKING, Tuple
 
 from torchgen.api.autograd import (
     Derivative,
@@ -518,8 +518,8 @@ UNTRACEABLE_FUNCTIONS = VIEW_FUNCTIONS
 
 
 def get_infos_with_derivatives_list(
-    differentiability_infos: dict[FunctionSchema, dict[str, DifferentiabilityInfo]],
-) -> list[DifferentiabilityInfo]:
+    differentiability_infos: Dict[FunctionSchema, Dict[str, DifferentiabilityInfo]],
+) -> List[DifferentiabilityInfo]:
     diff_info_list = [
         info
         for diffinfo_dict in differentiability_infos.values()
@@ -531,7 +531,7 @@ def get_infos_with_derivatives_list(
 
 def gen_autograd_functions_lib(
     out: str,
-    differentiability_infos: dict[FunctionSchema, dict[str, DifferentiabilityInfo]],
+    differentiability_infos: Dict[FunctionSchema, Dict[str, DifferentiabilityInfo]],
     template_path: str,
 ) -> None:
     """Functions.h and Functions.cpp body
@@ -564,7 +564,7 @@ def gen_autograd_functions_lib(
 
 def gen_autograd_functions_python(
     out: str,
-    differentiability_infos: dict[FunctionSchema, dict[str, DifferentiabilityInfo]],
+    differentiability_infos: Dict[FunctionSchema, Dict[str, DifferentiabilityInfo]],
     template_path: str,
 ) -> None:
     fm = FileManager(install_dir=out, template_dir=template_path, dry_run=False)
@@ -610,19 +610,19 @@ def gen_autograd_functions_python(
 
 
 def process_function(info: DifferentiabilityInfo, template: CodeTemplate) -> str:
-    saved_variables: list[str] = []
-    release_variables: list[str] = []
-    saved_list_sizes: list[str] = []
-    unpack: list[str] = []
-    asserts: list[str] = []
-    compute_index_ranges: list[str] = []
-    getter_definitions: list[str] = []
-    py_getsetdef_structs: list[str] = []
-    compiled_args: list[str] = []
-    apply_with_saved_before: list[str] = []
-    apply_with_saved_after: list[str] = []
-    apply_functional_args: list[str] = []
-    apply_functional_args_ref_types: list[str] = []
+    saved_variables: List[str] = []
+    release_variables: List[str] = []
+    saved_list_sizes: List[str] = []
+    unpack: List[str] = []
+    asserts: List[str] = []
+    compute_index_ranges: List[str] = []
+    getter_definitions: List[str] = []
+    py_getsetdef_structs: List[str] = []
+    compiled_args: List[str] = []
+    apply_with_saved_before: List[str] = []
+    apply_with_saved_after: List[str] = []
+    apply_functional_args: List[str] = []
+    apply_functional_args_ref_types: List[str] = []
     # Maps the name of an input (to the original forward operator;
     # examples are "self", "other") to the order in which they appear in the
     # operator.
@@ -630,7 +630,7 @@ def process_function(info: DifferentiabilityInfo, template: CodeTemplate) -> str
     # the mapping is: {"self": 0, "other": 1}.
     # We use this mapping to populate needs_input_grad in some order and then grab
     # values from it.
-    input_name_to_idx: dict[str, int] = {}
+    input_name_to_idx: Dict[str, int] = {}
 
     for idx, arg in enumerate(info.args_with_derivatives):
         if arg.type in TENSOR_LIST_LIKE_CTYPES:
@@ -921,7 +921,7 @@ static PyObject* THP${op}_${name}_getter(THPCppFunction *self, void *_unused) {
     else:
         will_release_variables = ""
 
-    body: list[str] = []
+    body: List[str] = []
 
     if uses_single_grad(info):
         body.append("const auto& grad = grads[0];")
@@ -935,7 +935,7 @@ static PyObject* THP${op}_${name}_getter(THPCppFunction *self, void *_unused) {
     def emit_derivative(
         derivative: Derivative,
         args_with_derivatives: Sequence[Binding],
-    ) -> tuple[bool, str]:
+    ) -> Tuple[bool, str]:
         formula = derivative.formula
         var_names = derivative.var_names
 
@@ -981,7 +981,7 @@ static PyObject* THP${op}_${name}_getter(THPCppFunction *self, void *_unused) {
                 f"needs_input_grad[{input_name_to_idx[name]}]" for name in var_names
             ]
             needs_input_grad = " || ".join(needs_input_grad)
-            copy_ranges: list[str] = []
+            copy_ranges: List[str] = []
             for i, n in enumerate(var_names):
                 copy_ranges.append(
                     DERIVATIVE_MULTI_COPY_RANGE.substitute(
@@ -1003,7 +1003,7 @@ static PyObject* THP${op}_${name}_getter(THPCppFunction *self, void *_unused) {
             derivative, info.args_with_derivatives
         )
         body.append(derivative_text)
-        need_any_grad_defined_var |= checks_any_grad_defined
+        need_any_grad_defined_var = need_any_grad_defined_var or checks_any_grad_defined
 
     for name in input_name_to_idx:
         masks.append(f"task_should_compute_output({{ {name}_ix }}),")
@@ -1038,13 +1038,13 @@ static PyObject* THP${op}_${name}_getter(THPCppFunction *self, void *_unused) {
     )
     unpack_ivalues = []
     for typ, name in zip(apply_functional_args_ref_types, apply_functional_args):
-        typ = typ.removesuffix("&")
+        typ = (typ[:-len("&")] if "&" and typ.endswith("&") else typ)
         unpack_ivalues.append(f"auto {name} = packed_args.unpack<{typ}>();")
 
     schema_args = [f"std::array<bool, {len(input_name_to_idx)}>"]
     for typ in apply_functional_args_ref_types:
-        typ = typ.removesuffix("&")
-        typ = typ.removeprefix("const")
+        typ = (typ[:-len("&")] if "&" and typ.endswith("&") else typ)
+        typ = (typ[len("const"):] if typ.startswith("const") else typ)
         schema_args.append(typ.strip())
     compute_schema = ["std::vector<at::TypePtr> schema = {"]
     for schema_arg in schema_args:

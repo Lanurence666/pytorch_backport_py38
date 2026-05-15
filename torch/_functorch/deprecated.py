@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 The APIs in this file are exposed as `functorch.*`. They are thin wrappers
 around the torch.func.* APIs that have deprecation warnings -- we're trying
@@ -7,11 +8,10 @@ NB: We don't use *args, **kwargs in the signatures because that changes the
 documentation.
 """
 
-from __future__ import annotations
 
 import textwrap
 import warnings
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, List, Optional, TYPE_CHECKING, Tuple, Union
 
 import torch._functorch.apis as apis
 import torch._functorch.eager_transforms as _impl
@@ -20,14 +20,14 @@ import torch.nn as nn
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
 
     from torch._functorch.eager_transforms import argnums_t
     from torch._functorch.vmap import in_dims_t, out_dims_t
 
 
 def get_warning(
-    api: str, new_api: str | None = None, replace_newlines: bool = False
+    api: str, new_api: Optional[str] = None, replace_newlines: bool = False
 ) -> str:
     if new_api is None:
         new_api = f"torch.func.{api}"
@@ -44,15 +44,15 @@ def get_warning(
     return warning
 
 
-def warn_deprecated(api: str, new_api: str | None = None) -> None:
+def warn_deprecated(api: str, new_api: Optional[str] = None) -> None:
     warning = get_warning(api, new_api, replace_newlines=True)
     warnings.warn(warning, FutureWarning, stacklevel=3)
 
 
 def setup_docs(
     functorch_api: Callable[..., Any],
-    torch_func_api: Callable[..., Any] | None = None,
-    new_api_name: str | None = None,
+    torch_func_api: Optional[Callable[..., Any]]= None,
+    new_api_name: Optional[str]= None,
 ) -> None:
     api_name = functorch_api.__name__
     if torch_func_api is None:
@@ -73,7 +73,7 @@ def vmap(
     out_dims: out_dims_t = 0,
     randomness: str = "error",
     *,
-    chunk_size: int | None = None,
+    chunk_size: Optional[int]= None,
 ) -> Callable[..., Any]:
     warn_deprecated("vmap", "torch.vmap")
     return apis.vmap(func, in_dims, out_dims, randomness, chunk_size=chunk_size)
@@ -112,10 +112,10 @@ def jvp(
 
 def jacrev(
     func: Callable[..., Any],
-    argnums: int | tuple[int, ...] = 0,
+    argnums: Union[int, Tuple[int, ...]]= 0,
     *,
     has_aux: bool = False,
-    chunk_size: int | None = None,
+    chunk_size: Optional[int]= None,
     _preallocate_and_copy: bool = False,
 ) -> Callable[..., Any]:
     warn_deprecated("jacrev")
@@ -163,7 +163,7 @@ def make_functional_with_buffers(
     return _nn_impl.make_functional_with_buffers(model, disable_autograd_tracking)
 
 
-def combine_state_for_ensemble(models: list[nn.Module]) -> Any:
+def combine_state_for_ensemble(models: List[nn.Module]) -> Any:
     warn_deprecated("combine_state_for_ensemble", "torch.func.stack_module_state")
     return _nn_impl.combine_state_for_ensemble(models)
 

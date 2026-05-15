@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import gc
-from typing import Literal
-from typing_extensions import Self
+from typing import Optional, Set, Tuple
+from typing_extensions import Literal, Self
 
 import torch
 from torch._C import _acceleratorGraph
@@ -21,7 +23,7 @@ class Graph(_acceleratorGraph):
             the executable graph is not instantiated automatically; it must be explicitly created
             by calling ``instantiate``, or it will be instantiated on the first call to ``replay``.
             Defaults to ``False``.
-        pool (tuple[int, int], optional): Memory pool identifier for this graph. Multiple graphs
+        pool (Tuple[int, int], optional): Memory pool identifier for this graph. Multiple graphs
             can share the same pool by passing the same identifier, which can reduce memory overhead.
             Defaults to ``None``.
         capture_error_mode (Literal["default", "global", "thread_local", "relaxed"], optional):
@@ -52,7 +54,7 @@ class Graph(_acceleratorGraph):
         cls,
         keep_graph: bool = False,
         *,
-        pool: tuple[int, int] | None = None,
+        pool: Optional[Tuple[int, int]]= None,
         capture_error_mode: Literal[
             "default", "global", "thread_local", "relaxed"
         ] = "default",
@@ -63,7 +65,7 @@ class Graph(_acceleratorGraph):
         self,
         keep_graph: bool = False,
         *,
-        pool: tuple[int, int] | None = None,
+        pool: Optional[Tuple[int, int]]= None,
         capture_error_mode: Literal[
             "default", "global", "thread_local", "relaxed"
         ] = "default",
@@ -113,7 +115,7 @@ class Graph(_acceleratorGraph):
         """
         super().reset()
 
-    def pool(self) -> tuple[int, int]:
+    def pool(self) -> Tuple[int, int]:
         r"""
         Return an opaque token representing the id of this graph's memory pool.
 

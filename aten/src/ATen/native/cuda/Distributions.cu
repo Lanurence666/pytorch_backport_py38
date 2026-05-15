@@ -3,6 +3,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/cuda/CUDAApplyUtils.cuh>
 #include <ATen/AccumulateType.h>
+#include <ATen/OpMathType.h>
 #include <ATen/cuda/CUDAGeneratorImpl.h>
 #include <ATen/native/UnaryOps.h>
 #include <ATen/native/cuda/DistributionTemplates.h>
@@ -114,8 +115,9 @@ void gamma_cuda_kernel(
         };
         BaseSampler<accscalar_t, decltype(normal_lambda)> standard_normal(normal_lambda);
         auto sample = sample_gamma<scalar_t, accscalar_t, decltype(uniform_lambda), decltype(normal_lambda)>(alpha, standard_uniform, standard_normal);
-        auto min_value = std::numeric_limits<scalar_t>::min();
-        ret_val = (min_value > sample) ? min_value : sample;
+        auto min_value = static_cast<accscalar_t>(std::numeric_limits<scalar_t>::min());
+        auto sample_op = static_cast<accscalar_t>(sample);
+        ret_val = (min_value > sample_op) ? static_cast<scalar_t>(min_value) : static_cast<scalar_t>(sample);
       };
   at::cuda::CUDA_tensor_apply2<scalar_t, scalar_t, decltype(functor),
                                /*max_threads_per_block=*/256,
@@ -132,12 +134,13 @@ void launch_dirichlet_kernel(at::TensorIteratorBase &iter) {
     at::native::gpu_kernel(
         iter,
         [] GPU_LAMBDA (scalar_t gamma, scalar_t gamma_sum) {
-      auto ret_val = gamma / gamma_sum;
-      auto min_value = std::numeric_limits<scalar_t>::min();
-      auto max_value = 1 - std::numeric_limits<scalar_t>::epsilon();
+      using opmath_t = at::opmath_type<scalar_t>;
+      auto ret_val = static_cast<opmath_t>(gamma) / static_cast<opmath_t>(gamma_sum);
+      auto min_value = static_cast<opmath_t>(std::numeric_limits<scalar_t>::min());
+      auto max_value = opmath_t(1) - static_cast<opmath_t>(std::numeric_limits<scalar_t>::epsilon());
       ret_val = (min_value > ret_val) ? min_value : ret_val;
       ret_val = (max_value < ret_val) ? max_value : ret_val;
-      return ret_val;
+      return static_cast<scalar_t>(ret_val);
     });
   });
 }

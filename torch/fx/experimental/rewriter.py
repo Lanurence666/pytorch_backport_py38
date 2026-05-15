@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import ast
 import copy
 import functools
 import inspect
 import textwrap
-from collections.abc import Callable
+
 from types import FunctionType
-from typing import Any, cast
+from typing import Any, Callable, Dict, Optional, Type, Union, cast
 
 import torch
 from torch._sources import normalize_source_lines
@@ -52,7 +54,7 @@ class AST_Rewriter(ast.NodeTransformer):
 
         # return the compiled function with the original globals
         def change_func_globals(
-            f: FunctionType, globals: dict[str, object]
+            f: FunctionType, globals: Dict[str, object]
         ) -> FunctionType:
             """Based on https://stackoverflow.com/a/13503277/2988730 (@unutbu)"""
             # __globals__ is a private member of the function class
@@ -116,15 +118,15 @@ class AST_Rewriter(ast.NodeTransformer):
 class RewritingTracer(Tracer):
     def trace(
         self,
-        root: torch.nn.Module | Callable[..., Any],
-        concrete_args: dict[str, Any] | None = None,
+        root: Union[torch.nn.Module, Callable[..., Any]],
+        concrete_args: Optional[Dict[str, Any]] = None,
     ) -> Graph:
         return super().trace(_rewrite(root), concrete_args)
 
 
 def _rewrite(
-    fn: torch.nn.Module | Callable[..., Any],
-) -> torch.nn.Module | Callable[..., Any]:
+    fn: Union[torch.nn.Module, Callable[..., Any]],
+) -> Union[torch.nn.Module, Callable[..., Any]]:
     if isinstance(fn, torch.nn.Module):
         # Rewrite this module's `forward` as well as the `forward`s of
         # all of this module's recursive descendents. Return the new,

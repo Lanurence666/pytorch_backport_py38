@@ -1,12 +1,15 @@
+from __future__ import annotations
+
 import torch
 
 from collections.abc import Sequence
 from tensorboard.compat.proto.node_def_pb2 import NodeDef
 from tensorboard.compat.proto.attr_value_pb2 import AttrValue
 from tensorboard.compat.proto.tensor_shape_pb2 import TensorShapeProto
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 
-def attr_value_proto(dtype: object, shape: Sequence[int] | None, s: str | None) -> dict[str, AttrValue]:
+def attr_value_proto(dtype: object, shape: Optional[Sequence[int]], s: Optional[str]) -> Dict[str, AttrValue]:
     """Create a dict of objects matching a NodeDef's attr field.
 
     Follows https://github.com/tensorflow/tensorboard/blob/master/tensorboard/compat/proto/attr_value.proto
@@ -33,10 +36,10 @@ def tensor_shape_proto(outputsize: Sequence[int]) -> TensorShapeProto:
 def node_proto(
     name: str,
     op: str = "UnSpecified",
-    input: list[str] | str | None = None,
-    dtype: torch.dtype | None = None,
-    shape: tuple[int, ...] | None = None,
-    outputsize: Sequence[int] | None = None,
+    input: Optional[Union[List[str], str]]= None,
+    dtype: Optional[torch.dtype]= None,
+    shape: Optional[Tuple[int, ...]]= None,
+    outputsize: Optional[Sequence[int]]= None,
     attributes: str = "",
 ) -> NodeDef:
     """Create an object matching a NodeDef.

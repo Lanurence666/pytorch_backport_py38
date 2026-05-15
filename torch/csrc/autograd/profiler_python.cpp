@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <Python.h>
+#include "pythoncapi_compat.h"
 #include <frameobject.h>
 
 #include <ATen/core/TensorBase.h>

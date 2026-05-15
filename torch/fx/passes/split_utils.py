@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import copy
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Mapping, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import torch.fx
 from torch.fx._compatibility import compatibility
@@ -59,38 +61,35 @@ class Component:
     name: str
 
     # Stores the placeholder nodes in `graph`.
-    input_placeholders: list[torch.fx.Node] = field(default_factory=list)
+    input_placeholders: List[torch.fx.Node] = field(default_factory=list)
 
     # Store the nodes in original graph that are placeholder in `graph`.
-    orig_inputs: list[torch.fx.Node] = field(default_factory=list)
+    orig_inputs: List[torch.fx.Node] = field(default_factory=list)
 
     # Store the nodes in original graph that are outputs in `graph`.
-    orig_outputs: list[torch.fx.Node] = field(default_factory=list)
+    orig_outputs: List[torch.fx.Node] = field(default_factory=list)
 
     # Mapping from get_attr node in original graph to get_attr node in `graph`.
-    getattr_maps: dict[torch.fx.Node, torch.fx.Node] = field(default_factory=dict)
-    constructor_args: list[str] = field(default_factory=list)
-    gm: torch.fx.GraphModule | None = None
+    getattr_maps: Dict[torch.fx.Node, torch.fx.Node] = field(default_factory=dict)
+    constructor_args: List[str] = field(default_factory=list)
+    gm: Optional[torch.fx.GraphModule]= None
 
 
 @compatibility(is_backward_compatible=False)
 def split_by_tags(
     gm: torch.fx.GraphModule,
-    tags: list[str],
+    tags: List[str],
     return_fqn_mapping: bool = False,
     return_tuple: bool = False,
-    GraphModuleCls: type[torch.fx.GraphModule] = torch.fx.GraphModule,
-) -> torch.fx.GraphModule | tuple[torch.fx.GraphModule, dict[str, str]]:
+    GraphModuleCls: Type[torch.fx.GraphModule] = torch.fx.GraphModule,
+) -> Union[torch.fx.GraphModule, Tuple[torch.fx.GraphModule, Dict[str, str]]]:
     """
     Splits a GraphModule using tags on its graph nodes. We honor the order of
     tags. For example, we have tags = ["a", "b", "c"], the function will create
     the initial submodules in the order of "a", "b", "c".
 
     To set a tag:
-
-    .. code-block:: python
-
-        gm.graph.nodes[idx].tag = "mytag"
+    gm.graph.nodes[idx].tag = "mytag"
 
     This will result in all nodes with the same tag being extracted and placed in their
     own submodule. For placeholder, output and get_attr node, the tag is ignored. placeholder
@@ -99,56 +98,44 @@ def split_by_tags(
 
     Given the following module def:
 
-    .. code-block:: python
+    class SimpleModule(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.linear1 = torch.nn.Linear(...)
+            self.linear2 = torch.nn.Linear(...)
+            self.linear3 = torch.nn.Linear(...)
 
-        class SimpleModule(torch.nn.Module):
-            def __init__(self) -> None:
-                super().__init__()
-                self.linear1 = torch.nn.Linear(...)
-                self.linear2 = torch.nn.Linear(...)
-                self.linear3 = torch.nn.Linear(...)
-
-            def forward(self, in1, in2):
-                r1 = self.linear1(in1)
-                r2 = self.linear2(in2)
-                r3 = torch.cat([r1, r2])
-                return self.linear3(r3)
+        def forward(self, in1, in2):
+            r1 = self.linear1(in1)
+            r2 = self.linear2(in2)
+            r3 = torch.cat([r1, r2])
+            return self.linear3(r3)
 
     Marking the node corresponding to in1 with the tag sc.REQUEST_ONLY.lower() results in the following split:
 
     ro:
-
-    .. code-block:: python
-
-        def forward(self, in1):
-            self = self.root
-            linear1 = self.linear1(in1)
-            return linear1
+    def forward(self, in1):
+        self = self.root
+        linear1 = self.linear1(in1)
+        return linear1
 
     main:
-
-    .. code-block:: python
-
-        def forward(self, in2, linear1):
-            self = self.root
-            linear2 = self.linear2(in2)
-            cat_1 = torch.cat([linear1, linear2])
-            linear3 = self.linear3(cat_1)
-            return linear3
+    def forward(self, in2, linear1):
+        self = self.root
+        linear2 = self.linear2(in2)
+        cat_1 = torch.cat([linear1, linear2])
+        linear3 = self.linear3(cat_1)
+        return linear3
 
     main:
-
-    .. code-block:: python
-
-        def forward(self, in1, in2):
-            self = self.root
-            ro_0 = self.ro_0(in1)
-            main_1 = self.main_1(in2, ro_0)
-            return main_1
+    def forward(self, in1, in2):
+        self = self.root
+        ro_0 = self.ro_0(in1)
+        main_1 = self.main_1(in2, ro_0)
+        return main_1
 
     Returns:
         split_gm: torch fx graph after split
-
         orig_to_split_fqn_mapping: a map between the original fqn and the fqn
             after split for call_module and get_attr.
     """
@@ -162,29 +149,29 @@ def split_by_tags(
         return r
 
     # Mapping from node in original module to node in created submodule.
-    node_remapping: dict[torch.fx.Node, torch.fx.Node] = {}
+    node_remapping: Dict[torch.fx.Node, torch.fx.Node] = {}
 
     # Mapping from node in original module or created submodules to
     # corresponding component.
-    node_to_component: dict[torch.fx.Node, Component] = {}
+    node_to_component: Dict[torch.fx.Node, Component] = {}
 
     # Mapping from tag to the corresponding component.
-    tag_to_component: dict[str, Component] = {}
+    tag_to_component: Dict[str, Component] = {}
 
     # Stores all components.
-    all_components: list[Component] = []
+    all_components: List[Component] = []
 
     # Stores nodes that will be used in main graph.
-    used_in_main: dict[torch.fx.Node, None] = {}
+    used_in_main: Dict[torch.fx.Node, None] = {}
 
     # Main graph after split.
     main_g = torch.fx.Graph()
 
     # Mapping from node in original module to node in main graph after split.
-    main_remapping: dict[torch.fx.Node, torch.fx.Node] = {}
+    main_remapping: Dict[torch.fx.Node, torch.fx.Node] = {}
 
     # Output node of original module.
-    output_node: torch.fx.Node | None = None
+    output_node: Optional[torch.fx.Node]= None
 
     # Create a component for each tag, we don't expect to create other components afterwards.
     for tag in tags:
@@ -294,7 +281,7 @@ def split_by_tags(
             node_to_component[n].orig_outputs.append(n)
 
     # Now we create a graphmodule for each component.
-    orig_to_split_fqn_mapping: dict[str, str] = {}
+    orig_to_split_fqn_mapping: Dict[str, str] = {}
     for comp in all_components:
         outs = tuple(map(node_remapping.__getitem__, comp.orig_outputs))
 
@@ -344,7 +331,7 @@ def split_by_tags(
 
 
 @compatibility(is_backward_compatible=False)
-def move_non_tensor_nodes_on_boundary(subgraphs: list["Subgraph"]) -> None:
+def move_non_tensor_nodes_on_boundary(subgraphs: List["Subgraph"]) -> None:
     """
     Move non-tensor nodes on the boundary between subgraphs.
 
@@ -365,12 +352,12 @@ def move_non_tensor_nodes_on_boundary(subgraphs: list["Subgraph"]) -> None:
         subgraphs: List of subgraphs containing nodes to be processed
     """
     # Create a mapping from node to subgraph for quick lookup
-    node_to_subgraph: dict[torch.fx.Node, int] = {}
+    node_to_subgraph: Dict[torch.fx.Node, int] = {}
     for i, subgraph in enumerate(subgraphs):
         for node in subgraph.nodes:
             node_to_subgraph[node] = i
 
-    def get_children_in_graph(node: torch.fx.Node) -> list[torch.fx.Node]:
+    def get_children_in_graph(node: torch.fx.Node) -> List[torch.fx.Node]:
         """Get children nodes that are in callable ops and in some subgraph"""
         return [
             user
@@ -378,7 +365,7 @@ def move_non_tensor_nodes_on_boundary(subgraphs: list["Subgraph"]) -> None:
             if user.op in CALLABLE_NODE_OPS and user in node_to_subgraph
         ]
 
-    def get_parents_in_graph(node: torch.fx.Node) -> list[torch.fx.Node]:
+    def get_parents_in_graph(node: torch.fx.Node) -> List[torch.fx.Node]:
         """Get parent nodes that are in callable ops and in some subgraph"""
         return [
             arg
@@ -400,7 +387,7 @@ def move_non_tensor_nodes_on_boundary(subgraphs: list["Subgraph"]) -> None:
 
     def can_move_node_and_dependencies(
         node: torch.fx.Node, from_subgraph: int, to_subgraph: int
-    ) -> tuple[bool, set[torch.fx.Node]]:
+    ) -> Tuple[bool, Set[torch.fx.Node]]:
         """
         Check if node and its dependencies can be moved from from_subgraph to to_subgraph.
         Returns (can_move, nodes_to_move)
@@ -455,8 +442,8 @@ def move_non_tensor_nodes_on_boundary(subgraphs: list["Subgraph"]) -> None:
         if not subgraph.is_acc:
             continue
         # Step 1: Find non-tensor nodes with children in other subgraphs
-        queue: list[torch.fx.Node] = []
-        processed: set[torch.fx.Node] = set()
+        queue: List[torch.fx.Node] = []
+        processed: Set[torch.fx.Node] = set()
 
         for node in subgraph.nodes:
             # Check if node is non-tensor

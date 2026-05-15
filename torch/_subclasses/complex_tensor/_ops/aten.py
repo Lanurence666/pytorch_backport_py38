@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING
+from typing import Any, Callable, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type, Union
 
 import torch
 
@@ -37,7 +37,7 @@ def register_binary_linear(op: OpType) -> Callable[..., Any]:
         lhs: ComplexTensor,
         rhs: ComplexTensor,
         *args: Any,
-        alpha: int | float | complex,
+        alpha: Union[Union[int, float], complex],
         **kwargs: Any,
     ) -> ComplexTensor:
         return op(lhs, aten.mul(rhs, alpha, *args, **kwargs), *args, **kwargs)
@@ -71,7 +71,7 @@ def imag_impl(self: ComplexTensor) -> torch.Tensor:
 
 
 @register_complex(aten.is_pinned)
-def is_pinned_impl(self: ComplexTensor, device: torch.device | None = None) -> bool:
+def is_pinned_impl(self: ComplexTensor, device: Optional[torch.device] = None) -> bool:
     return self.is_pinned(device)
 
 
@@ -161,7 +161,7 @@ fill__impl = register_binary_linear(aten.fill_)
 
 @register_complex(aten.rsub)
 def rsub_impl(
-    lhs: ComplexTensor, rhs: ComplexTensor, alpha: int | float | complex | None = None
+    lhs: ComplexTensor, rhs: ComplexTensor, alpha: Union[Union[int, float], Optional[complex]] = None
 ) -> ComplexTensor:
     if alpha is None:
         return torch.sub(rhs, lhs)  # type: ignore[bad-return]
@@ -171,7 +171,7 @@ def rsub_impl(
 @register_complex(aten.div)
 @register_complex(aten.true_divide)
 def div_impl(
-    lhs: ComplexTensor, rhs: ComplexTensor, *, rounding_mode: str | None = None
+    lhs: ComplexTensor, rhs: ComplexTensor, *, rounding_mode: Optional[str] = None
 ) -> ComplexTensor:
     if rounding_mode is not None:
         raise NotImplementedError(
@@ -214,11 +214,6 @@ def prod_impl(self: ComplexTensor, *args: Any, **kwargs: Any) -> ComplexTensor:
     u = prod_r * torch.cos(sum_phi)
     v = prod_r * torch.sin(sum_phi)
     return ComplexTensor(u, v).to(dtype)  # type: ignore[bad-return]
-
-
-@register_complex(aten.complex)
-def complex_impl(re: torch.Tensor, im: torch.Tensor) -> ComplexTensor:
-    return ComplexTensor(re, im)
 
 
 @register_complex(aten.pow)
@@ -478,12 +473,12 @@ def isclose_impl(
         b_r_nan = torch.isnan(b_r)
         a_i_nan = torch.isnan(a_i)
         b_i_nan = torch.isnan(b_i)
-        a_nan = a_r_nan | a_i_nan
+        a_nan = Union[a_r_nan, a_i_nan]
 
         # This logical expression makes sure that the isnan of both the real and imaginary parts
         # matches (so 1 + nan*i doesn't equal nan + 1*i)
         equal_nan_condition = ((a_r_nan == b_r_nan) & (a_i_nan == b_i_nan)) & a_nan
-        return basic_condition | equal_nan_condition
+        return {**basic_condition, **equal_nan_condition}
 
     return basic_condition
 
@@ -557,9 +552,9 @@ def full_like_impl(
     input: ComplexTensor,
     fill_value: complex,
     *args: Any,
-    dtype: torch.dtype | None = None,
+    dtype: Optional[torch.dtype] = None,
     **kwargs: Any,
-) -> torch.Tensor | ComplexTensor:
+) -> Union[torch.Tensor, ComplexTensor]:
     # Note: Cannot be merged with the cases below due to the `fill_value` argument
     input_r, input_i = split_complex_tensor(input)
     if dtype is not None and dtype not in COMPLEX_TO_REAL:
@@ -577,8 +572,8 @@ def full_like_impl(
 
 def register_like(op: OpType) -> Callable[..., Any]:
     def impl(
-        self: ComplexTensor, *args: Any, dtype: torch.dtype | None = None, **kwargs: Any
-    ) -> torch.Tensor | ComplexTensor:
+        self: ComplexTensor, *args: Any, dtype: Optional[torch.dtype] = None, **kwargs: Any
+    ) -> Union[torch.Tensor, ComplexTensor]:
         self_re, self_im = split_complex_tensor(self)
 
         if dtype is not None and dtype not in COMPLEX_TO_REAL:
@@ -673,9 +668,9 @@ def addmm_impl(
     input: ComplexTensor,
     mat1: ComplexTensor,
     mat2: ComplexTensor,
-    out_dtype: torch.dtype | None = None,
-    beta: int | float | complex = 1,
-    alpha: int | float | complex = 1,
+    out_dtype: Optional[torch.dtype] = None,
+    beta: Union[Union[int, float], complex] = 1,
+    alpha: Union[Union[int, float], complex] = 1,
 ) -> ComplexTensor:
     ret = beta * input + alpha * torch.mm(mat1, mat2)
     if not isinstance(ret, ComplexTensor):
@@ -730,11 +725,11 @@ def linalg_vector_norm_impl(
 
 @register_force_test(aten.copy_)
 def copy__impl(
-    self: ComplexTensor | torch.Tensor,
-    src: ComplexTensor | torch.Tensor,
+    self: Union[ComplexTensor, torch.Tensor],
+    src: Union[ComplexTensor, torch.Tensor],
     *args: Any,
     **kwargs: Any,
-) -> ComplexTensor | torch.Tensor:
+) -> Union[ComplexTensor, torch.Tensor]:
     if not self.dtype.is_complex:
         warnings.warn(
             "Casting complex values to real discards the imaginary part", UserWarning
@@ -774,7 +769,7 @@ def allclose_impl(
 
 
 @register_complex(aten.stack)
-def stack_impl(self: list[ComplexTensor], *args: Any, **kwargs: Any) -> ComplexTensor:
+def stack_impl(self: List[ComplexTensor], *args: Any, **kwargs: Any) -> ComplexTensor:
     re_im_tuples = [split_complex_arg(self_i) for self_i in self]
     u = torch.stack([c[0] for c in re_im_tuples], *args, **kwargs)
     v = torch.stack([c[1] for c in re_im_tuples], *args, **kwargs)
@@ -867,7 +862,7 @@ def masked_fill__impl(
 
 @register_complex(aten.constant_pad_nd)
 def constant_pad_nd_impl(
-    self: ComplexTensor, pad: Sequence[int], value: complex | None = None
+    self: ComplexTensor, pad: Sequence[int], value: Optional[complex] = None
 ) -> ComplexTensor:
     self_re, self_im = split_complex_tensor(self)
     if value is None:
@@ -916,7 +911,7 @@ def scatter_add__impl(
 @register_complex(aten.index_put_)
 def index_put__impl(
     self: ComplexTensor,
-    indices: tuple[torch.Tensor, ...],
+    indices: Tuple[torch.Tensor, ...],
     values: ComplexTensor,
     accumulate: bool = False,
 ) -> ComplexTensor:
@@ -937,13 +932,13 @@ def tanh_backward(out_grad: ComplexTensor, y: ComplexTensor) -> ComplexTensor:
 
 @register_complex(aten.diagonal_backward)
 def diagonal_backward(
-    grad_output: torch.Tensor, input_sizes: list[int], offset: int, dim1: int, dim2: int
+    grad_output: torch.Tensor, input_sizes: List[int], offset: int, dim1: int, dim2: int
 ) -> torch.Tensor:
     grad_input = grad_output.new_zeros(input_sizes)
     return torch.diagonal_scatter(grad_input, grad_output, offset, dim1, dim2)
 
 
-def _dt_to_real(dt: torch.dtype | Any) -> torch.dtype | Any:
+def _dt_to_real(dt: Union[torch.dtype, Any]) -> Union[torch.dtype, Any]:
     if not isinstance(dt, torch.dtype):
         return dt
 
@@ -955,7 +950,7 @@ def register_to_impl(op: OpType) -> Callable[..., Any]:
 
     def impl(
         self: ComplexTensor, *args: Any, **kwargs: Any
-    ) -> torch.Tensor | ComplexTensor:
+    ) -> Union[torch.Tensor, ComplexTensor]:
         x, y = split_complex_tensor(self)
         try:
             args = tuple(_dt_to_real(a) for a in args)

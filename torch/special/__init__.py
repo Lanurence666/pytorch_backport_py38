@@ -1,6 +1,7 @@
 import torch
 from torch._C import _add_docstr, _special  # type: ignore[attr-defined]
 from torch._torch_docs import common_args, multi_dim_common
+from typing import cast
 
 
 __all__ = [

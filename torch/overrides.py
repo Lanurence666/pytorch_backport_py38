@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Python implementation of ``__torch_function__``
 
@@ -28,9 +29,9 @@ import functools
 import sys
 import types
 import warnings
-from collections.abc import Callable, Iterable
+
 from functools import wraps
-from typing import Any, cast, TypeVar
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Type, TypeVar, cast
 from typing_extensions import ParamSpec
 
 import torch
@@ -99,15 +100,15 @@ def _disable_user_warnings(
     return wrapper
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 @_disable_user_warnings
-def get_ignored_functions() -> set[Callable]:
+def get_ignored_functions() -> Set[Callable]:
     """
     Return public functions that cannot be overridden by ``__torch_function__``.
 
     Returns
     -------
-    set[Callable]
+    Set[Callable]
         A tuple of functions that are publicly available in the torch API but cannot
         be overridden with ``__torch_function__``. Mostly this is because none of the
         arguments of these functions are tensors or tensor-likes.
@@ -392,8 +393,8 @@ def get_ignored_functions() -> set[Callable]:
     return functions
 
 
-@functools.cache
-def get_default_nowrap_functions() -> set[Callable]:
+@functools.lru_cache(maxsize=None)
+def get_default_nowrap_functions() -> Set[Callable]:
     """
     Return public functions that do not wrap in a subclass when invoked by
     the default ``Tensor.__torch_function__`` that preserves subclasses.  Typically,
@@ -418,9 +419,9 @@ def get_default_nowrap_functions() -> set[Callable]:
     }
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 @_disable_user_warnings
-def get_testing_overrides() -> dict[Callable, Callable]:
+def get_testing_overrides() -> Dict[Callable, Callable]:
     """Return a dict containing dummy overrides for all overridable functions
 
     Returns
@@ -446,7 +447,7 @@ def get_testing_overrides() -> dict[Callable, Callable]:
     # function signatures for native kernels that can be consumed by inspect.
     # See Issue #28233.
     Tensor = torch.Tensor
-    ret: dict[Callable, Callable] = {
+    ret: Dict[Callable, Callable] = {
         torch.abs: lambda input, out=None: -1,
         torch.absolute: lambda input, out=None: -1,
         torch.adaptive_avg_pool1d: lambda input, output_size: -1,
@@ -1647,8 +1648,8 @@ def wrap_torch_function(
 
 def _get_overloaded_args(
     relevant_args: Iterable[Any],
-    get_type_fn: Callable[[Any], type] | None = None,
-) -> list[Any]:
+    get_type_fn: Optional[Callable[[Any], type]] = None,
+) -> List[Any]:
     """Returns a list of arguments on which to call __torch_function__.
 
     Checks arguments in relevant_args for __torch_function__ implementations,
@@ -1689,8 +1690,8 @@ def _get_overloaded_args(
     if not torch._C._is_torch_function_enabled():
         return []
     # Runtime is O(num_arguments * num_unique_types)
-    overloaded_types: set[type] = set()
-    overloaded_args: list[Any] = []
+    overloaded_types: Set[type] = set()
+    overloaded_args: List[Any] = []
     for arg in relevant_args:
         arg_type = get_type_fn(arg)
         # We only collect arguments if they have a unique type, which ensures
@@ -1862,9 +1863,9 @@ has_torch_function_variadic = _add_docstr(
 )
 
 
-@functools.cache
-def _get_overridable_functions() -> tuple[
-    dict[Any, list[Callable]], dict[Callable, str]
+@functools.lru_cache(maxsize=None)
+def _get_overridable_functions() -> Tuple[
+    Dict[Any, List[Callable]], Dict[Callable, str]
 ]:
     overridable_funcs = collections.defaultdict(list)
     index = {}
@@ -1948,7 +1949,7 @@ def _get_overridable_functions() -> tuple[
 
 
 @_disable_user_warnings
-def get_overridable_functions() -> dict[Any, list[Callable]]:
+def get_overridable_functions() -> Dict[Any, List[Callable]]:
     """List functions that are overridable via __torch_function__
 
     Returns
@@ -1981,8 +1982,8 @@ def resolve_name(f):
     return _get_overridable_functions()[1].get(f)
 
 
-@functools.cache
-def _get_tensor_methods() -> set[Callable]:
+@functools.lru_cache(maxsize=None)
+def _get_tensor_methods() -> Set[Callable]:
     """Returns a set of the overridable methods on ``torch.Tensor``"""
     overridable_funcs = get_overridable_functions()
     methods = set(overridable_funcs[torch.Tensor])

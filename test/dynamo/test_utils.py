@@ -214,26 +214,17 @@ class TestUtils(TestCase):
         self.assertEqual(traced_code_lists, [])
 
     def test_add_record_function_data(self):
-        with (
-            mock.patch("torch.autograd.profiler._is_profiler_enabled", False),
-            mock.patch("torch.autograd.profiler.record_function") as mock_rf,
-        ):
+        with mock.patch("torch.autograd.profiler._is_profiler_enabled", False), mock.patch("torch.autograd.profiler.record_function") as mock_rf:
             utils.CompileEventLogger.add_record_function_data(
                 "test_event", key1="value1", key2="value2"
             )
             mock_rf.assert_not_called()
 
-        with (
-            mock.patch("torch.autograd.profiler._is_profiler_enabled", True),
-            mock.patch("torch.autograd.profiler.record_function") as mock_rf,
-        ):
+        with mock.patch("torch.autograd.profiler._is_profiler_enabled", True), mock.patch("torch.autograd.profiler.record_function") as mock_rf:
             utils.CompileEventLogger.add_record_function_data("test_event")
             mock_rf.assert_not_called()
 
-        with (
-            mock.patch("torch.autograd.profiler._is_profiler_enabled", True),
-            mock.patch("torch.autograd.profiler.record_function") as mock_rf,
-        ):
+        with mock.patch("torch.autograd.profiler._is_profiler_enabled", True), mock.patch("torch.autograd.profiler.record_function") as mock_rf:
             utils.CompileEventLogger.add_record_function_data(
                 "test_event", key1="value1", key2="value2"
             )
@@ -1165,10 +1156,7 @@ class TestDynamoTimed(TestCase):
         )
 
         compilation_events = []
-        with (
-            dynamo_config.patch({"automatic_dynamic_shapes": False}),
-            mock.patch("torch._dynamo.utils.log_compilation_event") as log_event,
-        ):
+        with dynamo_config.patch({"automatic_dynamic_shapes": False}), mock.patch("torch._dynamo.utils.log_compilation_event") as log_event:
 
             @torch.compile()
             def f(x):

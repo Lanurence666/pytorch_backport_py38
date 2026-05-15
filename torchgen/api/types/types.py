@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Dict
 """
 Where should I add a new type? `types_base.py` vs `types.py`
 
@@ -13,7 +15,6 @@ Add new types to `types.py` if these types are ATen/c10 related.
 Add new types to `types_base.py` if they are basic and not attached to ATen/c10.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 
@@ -87,7 +88,7 @@ symIntArrayRefT = BaseCppType("c10", "SymIntArrayRef")
 scalar_t = BaseCppType("", "scalar_t")
 opmath_t = BaseCppType("", "opmath_t")
 
-ScalarTypeToCppMapping: dict[ScalarType, BaseCppType] = {
+ScalarTypeToCppMapping: Dict[ScalarType, BaseCppType] = {
     ScalarType.Byte: byteT,
     ScalarType.Char: charT,
     ScalarType.Short: shortT,
@@ -107,7 +108,7 @@ ScalarTypeToCppMapping: dict[ScalarType, BaseCppType] = {
     ScalarType.Float8_e8m0fnu: float8_e8m0fnuT,
 }
 
-BaseTypeToCppMapping: dict[BaseTy, BaseCppType] = {
+BaseTypeToCppMapping: Dict[BaseTy, BaseCppType] = {
     BaseTy.int: longT,
     BaseTy.float: doubleT,
     BaseTy.bool: boolT,

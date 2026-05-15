@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 import os
 import threading
@@ -9,6 +11,7 @@ from urllib.parse import urlparse
 
 import torch
 import torch.distributed as dist
+from typing import Generator, Tuple, Type
 
 
 __all__ = ["is_available"]
@@ -84,7 +87,7 @@ if is_available():
     from .options import TensorPipeRpcBackendOptions
     from .server_process_global_profiler import _server_process_global_profile
 
-    rendezvous_iterator: Generator[tuple[Store, int, int], None, None]
+    rendezvous_iterator: Generator[Tuple[Store, int, int], None, None]
 
     __all__ += ["init_rpc", "BackendType", "TensorPipeRpcBackendOptions"]
     # pyrefly: ignore [unresolvable-dunder-all]

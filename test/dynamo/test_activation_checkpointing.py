@@ -1,4 +1,5 @@
 # Owner(s): ["module: dynamo"]
+from __future__ import annotations
 import contextlib
 import copy
 import functools
@@ -2400,12 +2401,7 @@ class RematerializeACNodesPassTests(torch._dynamo.test_case.TestCase):
             partition_fn=None,
         )
 
-        with (
-            torch._functorch.config.patch(
-                remat_using_tags_for_fwd_loss_bwd_graph=remat_using_tags_for_fwd_loss_bwd_graph
-            ),
-            torch._dynamo.config.patch(trace_autograd_ops=True),
-        ):
+        with torch._functorch.config.patch( remat_using_tags_for_fwd_loss_bwd_graph=remat_using_tags_for_fwd_loss_bwd_graph ), torch._dynamo.config.patch(trace_autograd_ops=True):
             compiled_fn = torch.compile(fn, backend=backend, fullgraph=True)
             result = compiled_fn(*inputs)
 
@@ -3000,11 +2996,7 @@ class ActivationCheckpointingNonStrictTracerTests(torch._dynamo.test_case.TestCa
                 torch.autograd.grad(y.sum(), (x,))
                 return torch.neg(y)
 
-        with (
-            torch.compiler._non_strict_tracing_context(),
-            torch.compiler._patch_autograd_grad(),
-            preserve_node_meta(),
-        ):
+        with torch.compiler._non_strict_tracing_context(), torch.compiler._patch_autograd_grad(), preserve_node_meta():
             gm = make_fx(fn)(x)
 
         backward_nodes = [
@@ -3031,11 +3023,7 @@ class ActivationCheckpointingNonStrictTracerTests(torch._dynamo.test_case.TestCa
                 y.sum().backward()
                 return torch.neg(y)
 
-        with (
-            torch.compiler._non_strict_tracing_context(),
-            torch.compiler._patch_engine_backward(),
-            preserve_node_meta(),
-        ):
+        with torch.compiler._non_strict_tracing_context(), torch.compiler._patch_engine_backward(), preserve_node_meta():
             gm = make_fx(fn)(x)
 
         backward_nodes = [
@@ -3091,11 +3079,7 @@ class ActivationCheckpointingNonStrictTracerTests(torch._dynamo.test_case.TestCa
 
         full_args = (*flat_params, x)
 
-        with (
-            torch.compiler._non_strict_tracing_context(),
-            torch.compiler._patch_autograd_grad(),
-            preserve_node_meta(),
-        ):
+        with torch.compiler._non_strict_tracing_context(), torch.compiler._patch_autograd_grad(), preserve_node_meta():
             return make_fx(train_step)(*full_args)
 
     def test_checkpoint_traces_through_eager_ac_under_non_strict(self):
@@ -3289,13 +3273,7 @@ class ActivationCheckpointingNestedCompileTests(torch._dynamo.test_case.TestCase
 
         ctx = TracingContext(fake_mode)
 
-        with (
-            fake_mode,
-            tracing(ctx),
-            preserve_node_meta(),
-            skip_nested_compile(),
-            torch.compiler._non_strict_tracing_context(),
-        ):
+        with fake_mode, tracing(ctx), preserve_node_meta(), skip_nested_compile(), torch.compiler._non_strict_tracing_context():
             gm = make_fx(fn)(fx_x)
 
         self.assertExpectedInline(

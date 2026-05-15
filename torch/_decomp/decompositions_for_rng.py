@@ -1,5 +1,7 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 from collections import defaultdict
 from collections.abc import Callable
@@ -8,11 +10,12 @@ import torch
 import torch._decomp as decomp
 from torch._decomp import get_decompositions
 from torch._ops import OpOverload
+from typing import Callable, Dict
 
 
 aten = torch.ops.aten
 
-rng_decompositions: dict[str, dict[OpOverload, Callable]] = defaultdict(dict)
+rng_decompositions: Dict[str, Dict[OpOverload, Callable]] = defaultdict(dict)
 
 
 def register_rng_decomposition(aten_op):

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Public interfaces for PyTorch Inductor runtime caching.
 
 This module provides high-level caching interfaces for memoization and
@@ -12,13 +13,13 @@ import pickle
 import shutil
 import threading
 import weakref
-from collections.abc import Callable
+
 from dataclasses import dataclass, field
 from hashlib import sha256
 from os import PathLike
 from pathlib import Path
-from typing import cast, Generic, Protocol, TypedDict
-from typing_extensions import ParamSpec, TypeVar
+from typing import Any, Callable, Dict, Generic, List, Optional, Set, Type, TypedDict, Union, cast
+from typing_extensions import ParamSpec, Protocol, TypeVar
 
 from filelock import FileLock
 
@@ -65,7 +66,7 @@ class CacheDump(TypedDict):
         cache_size: The total number of cache entries across all collections.
     """
 
-    collections: dict[str | None, dict[str, CacheDumpEntry]]
+    collections: Dict[Optional[str], Dict[str, CacheDumpEntry]]
     cache_size: int
 
 
@@ -172,10 +173,10 @@ class DeferredRecording(Generic[_R, _EncodedR]):
                            return the same object or construct a new appropriate response.
     """
 
-    _callbacks: list[Callable[[_EncodedR], None]] | None = field(
+    _callbacks: List[Callable[[_EncodedR], None]] | None = field(
         default_factory=list, repr=False
     )
-    _encoded_result: _EncodedR | None = field(default=None, repr=False)
+    _encoded_result: Optional[_EncodedR] = field(default=None, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     make_interim_result: Callable[[], _R] | None = field(default=None, repr=False)
 
@@ -245,7 +246,7 @@ class DeferredRecording(Generic[_R, _EncodedR]):
             else:
                 self._callbacks.append(callback)
 
-    def get_interim_result(self) -> InterimResult[_R] | None:
+    def get_interim_result(self) -> Optional[InterimResult[_R]]:
         """Try to get an interim result for use while deferred recording is pending.
 
         When a memoized function is called again with the same parameters while
@@ -307,7 +308,7 @@ class ResultEncoderFactory(Protocol[_P, _R, _EncodedR]):
     def __call__(
         self,
         fn: Callable[_P, _R],
-    ) -> Callable[_P, Callable[[_R], _EncodedR | DeferredRecording[_R, _EncodedR]]]: ...
+    ) -> Callable[_P, Callable[[_R], Union[_EncodedR, DeferredRecording[_R, _EncodedR]]]]: ...
 
 
 # pyrefly: ignore [variance-mismatch]
@@ -355,7 +356,7 @@ class _BaseMemoizer:
 
     @staticmethod
     def _make_key(
-        custom_params_encoder: Callable[..., object] | None,
+        custom_params_encoder: Optional[Callable[..., object]],
         *args: object,
         **kwargs: object,
     ) -> str:
@@ -387,8 +388,8 @@ class _BaseMemoizer:
 
     def record(
         self,
-        custom_params_encoder: Callable[_P, object] | None = None,
-        custom_result_encoder: ResultEncoderFactory[_P, _R, _EncodedR] | None = None,
+        custom_params_encoder: Optional[Callable[_P, object]] = None,
+        custom_result_encoder: Optional[ResultEncoderFactory[_P, _R, _EncodedR]] = None,
     ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
         """Record a function call result. Must be implemented by subclasses.
 
@@ -401,8 +402,8 @@ class _BaseMemoizer:
 
     def replay(
         self,
-        custom_params_encoder: Callable[_P, object] | None = None,
-        custom_result_decoder: ResultDecoderFactory[_P, _R, _EncodedR] | None = None,
+        custom_params_encoder: Optional[Callable[_P, object]] = None,
+        custom_result_decoder: Optional[ResultDecoderFactory[_P, _R, _EncodedR]] = None,
     ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
         """Replay a cached function result. Must be implemented by subclasses.
 
@@ -415,9 +416,9 @@ class _BaseMemoizer:
 
     def memoize(
         self,
-        custom_params_encoder: Callable[_P, object] | None = None,
-        custom_result_encoder: ResultEncoderFactory[_P, _R, _EncodedR] | None = None,
-        custom_result_decoder: ResultDecoderFactory[_P, _R, _EncodedR] | None = None,
+        custom_params_encoder: Optional[Callable[_P, object]] = None,
+        custom_result_encoder: Optional[ResultEncoderFactory[_P, _R, _EncodedR]] = None,
+        custom_result_decoder: Optional[ResultDecoderFactory[_P, _R, _EncodedR]] = None,
     ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
         """Memoize a function with record and replay functionality.
 
@@ -512,7 +513,7 @@ class Memoizer(_BaseMemoizer):
     of results.
     """
 
-    def __init__(self, sub_key: str | None = None) -> None:
+    def __init__(self, sub_key: Optional[str] = None) -> None:
         """Initialize the Memoizer instance with an in-memory cache.
 
         Args:
@@ -524,7 +525,7 @@ class Memoizer(_BaseMemoizer):
             implementations._InMemoryCacheImpl()
         )
         # Optional sub_key for nested cache structure
-        self._sub_key: str | None = sub_key
+        self._sub_key: Optional[str] = sub_key
         # Track pending deferred recordings by cache key.
         # Uses WeakValueDictionary to prevent memory leaks: if the DeferredRecording
         # is no longer referenced elsewhere (e.g., the async computation was cancelled
@@ -591,7 +592,7 @@ class Memoizer(_BaseMemoizer):
         """
         return Path(cache_dir()) / "memoizer_cache.lock"
 
-    def _read_dump_from_disk(self, filepath: Path | None = None) -> CacheDump | None:
+    def _read_dump_from_disk(self, filepath: Optional[Path] = None) -> Optional[CacheDump]:
         """Read a cache dump from disk.
 
         Attempts to read and parse a cache JSON file.
@@ -647,7 +648,7 @@ class Memoizer(_BaseMemoizer):
                 e,
             )
 
-    def _prepare_dump(self, existing_dump: CacheDump | None) -> CacheDump:
+    def _prepare_dump(self, existing_dump: Optional[CacheDump]) -> CacheDump:
         """Prepare a cache dump from the current Memoizer state.
 
         Takes the existing dump (if any) and merges it with the current
@@ -677,7 +678,7 @@ class Memoizer(_BaseMemoizer):
         existing_entries = dump["collections"].get(lookup_key, {})
 
         # Format cache entries as {"params": ..., "result": ...}
-        formatted_cache: dict[str, CacheDumpEntry] = dict(existing_entries)
+        formatted_cache: Dict[str, CacheDumpEntry] = dict(existing_entries)
         for key, value in self._cache._memory.items():
             entry = value
             formatted_cache[key] = CacheDumpEntry(
@@ -772,7 +773,7 @@ class Memoizer(_BaseMemoizer):
                 dump_file_path,
             )
 
-    def _extract_entries_from_dump(self, dump: CacheDump) -> dict[str, CacheDumpEntry]:
+    def _extract_entries_from_dump(self, dump: CacheDump) -> Dict[str, CacheDumpEntry]:
         """Extract cache entries from a dump based on sub_key.
 
         Args:
@@ -787,7 +788,7 @@ class Memoizer(_BaseMemoizer):
         lookup_key = "null" if self._sub_key is None else self._sub_key
         return collections.get(lookup_key, {})
 
-    def _populate_cache_from_entries(self, entries: dict[str, CacheDumpEntry]) -> None:
+    def _populate_cache_from_entries(self, entries: Dict[str, CacheDumpEntry]) -> None:
         """Populate the in-memory cache from dump entries.
 
         Args:
@@ -802,8 +803,8 @@ class Memoizer(_BaseMemoizer):
 
     def record(
         self,
-        custom_params_encoder: Callable[_P, object] | None = None,
-        custom_result_encoder: ResultEncoderFactory[_P, _R, _EncodedR] | None = None,
+        custom_params_encoder: Optional[Callable[_P, object]] = None,
+        custom_result_encoder: Optional[ResultEncoderFactory[_P, _R, _EncodedR]] = None,
     ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
         """Record a function call result with custom encoding.
 
@@ -910,8 +911,8 @@ class Memoizer(_BaseMemoizer):
 
     def replay(
         self,
-        custom_params_encoder: Callable[_P, object] | None = None,
-        custom_result_decoder: ResultDecoderFactory[_P, _R, _EncodedR] | None = None,
+        custom_params_encoder: Optional[Callable[_P, object]] = None,
+        custom_result_decoder: Optional[ResultDecoderFactory[_P, _R, _EncodedR]] = None,
     ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
         """Replay a cached function result without executing the function.
 
@@ -1023,7 +1024,7 @@ class PersistentMemoizer(_BaseMemoizer):
     or when you need disk caching to persist results across program boundaries.
     """
 
-    def __init__(self, sub_dir: PathLike[str] | None = None) -> None:
+    def __init__(self, sub_dir: Optional[PathLike[str]] = None) -> None:
         """Initialize the PersistentMemoizer with two-level caching.
 
         Args:
@@ -1058,8 +1059,8 @@ class PersistentMemoizer(_BaseMemoizer):
 
     def record(
         self,
-        custom_params_encoder: Callable[_P, object] | None = None,
-        custom_result_encoder: ResultEncoderFactory[_P, _R, _EncodedR] | None = None,
+        custom_params_encoder: Optional[Callable[_P, object]] = None,
+        custom_result_encoder: Optional[ResultEncoderFactory[_P, _R, _EncodedR]] = None,
     ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
         """Record a function call result with custom encoding to both caches.
 
@@ -1175,8 +1176,8 @@ class PersistentMemoizer(_BaseMemoizer):
 
     def replay(
         self,
-        custom_params_encoder: Callable[_P, object] | None = None,
-        custom_result_decoder: ResultDecoderFactory[_P, _R, _EncodedR] | None = None,
+        custom_params_encoder: Optional[Callable[_P, object]] = None,
+        custom_result_decoder: Optional[ResultDecoderFactory[_P, _R, _EncodedR]] = None,
     ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
         """Replay a cached function result without executing the function.
 

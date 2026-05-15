@@ -1,10 +1,11 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """CPU-specific implementations for flex attention"""
 
 import copy
 import os
 import sys
-from typing import Any
+from typing import Any, List, Set
 
 import sympy
 
@@ -84,7 +85,7 @@ def lower_cpu(
             "torch.compile on current platform is not supported for CPU."
         )
 
-    fake_buffers: list[Buffer] = []
+    fake_buffers: List[Buffer] = []
 
     # [Note] Handle the case where the split sizes are not statically known.
     # The value of cur_qSplitSize and cur_kvSplitSize are decided during runtime.
@@ -266,7 +267,7 @@ def lower_cpu(
         [B, Hq, seq_len_q, v_head_dim],
         stride=[sympy.sympify(s) for s in out_strides],
     )
-    _choices: list[Any] = []
+    _choices: List[Any] = []
     input_nodes = [query, key, value, kv_num_blocks, kv_indices]
     if not full_kv_num_blocks:
         no_full_kv_block = True
@@ -289,7 +290,7 @@ def lower_cpu(
         input_nodes += [
             value
             for value in kernel_input_name_to_buffer.values()
-            if not isinstance(value, sympy.Expr)
+            if not isinstance(value, sympy.Symbol)
         ]
 
     skip_mask_score = kernel_options.get("SKIP_MASK_SCORE", False)

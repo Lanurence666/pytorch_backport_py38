@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 
 import torch
@@ -7,6 +9,7 @@ from torch.distributions import constraints
 from torch.distributions.exp_family import ExponentialFamily
 from torch.distributions.utils import _standard_normal, broadcast_all
 from torch.types import _Number, _size
+from typing import Optional, Tuple, Union
 
 
 __all__ = ["Normal"]
@@ -54,9 +57,9 @@ class Normal(ExponentialFamily):
 
     def __init__(
         self,
-        loc: Tensor | float,
-        scale: Tensor | float,
-        validate_args: bool | None = None,
+        loc: Union[Tensor, float],
+        scale: Union[Tensor, float],
+        validate_args: Optional[bool] = None,
     ) -> None:
         self.loc, self.scale = broadcast_all(loc, scale)
         if isinstance(loc, _Number) and isinstance(scale, _Number):
@@ -114,7 +117,7 @@ class Normal(ExponentialFamily):
         return 0.5 + 0.5 * math.log(2 * math.pi) + torch.log(self.scale)
 
     @property
-    def _natural_params(self) -> tuple[Tensor, Tensor]:
+    def _natural_params(self) -> Tuple[Tensor, Tensor]:
         return (self.loc / self.scale.pow(2), -0.5 * self.scale.pow(2).reciprocal())
 
     # pyrefly: ignore [bad-override]

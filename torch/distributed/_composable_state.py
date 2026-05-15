@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import weakref
-from typing import cast
+from typing import Dict, Optional, Type, cast
 
 import torch.nn as nn
 
@@ -20,7 +22,7 @@ def _insert_module_state(module: nn.Module, state: _State) -> None:
     _module_state_mapping[module] = weakref.ref(state)
 
 
-def _get_module_state(module: nn.Module) -> _State | None:
+def _get_module_state(module: nn.Module) -> Optional[_State]:
     """
     Return the ``_State`` in ``model``.
 

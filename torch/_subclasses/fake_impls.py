@@ -6,7 +6,7 @@ import math
 import operator
 import sys
 from functools import reduce
-from typing import Any, cast as typing_cast, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type, TypeVar, Union, cast, cast as typing_cast, overload
 from typing_extensions import ParamSpec
 
 import torch
@@ -41,13 +41,13 @@ from torch.utils._stats import count_label
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    
 
     from torch._subclasses.fake_tensor import FakeTensorMode
     from torch.types import IntLikeType
 
 
-FakeTensorLike = FakeTensor | torch.Tensor
+FakeTensorLike = Union[FakeTensor, torch.Tensor]
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 _T = TypeVar("_T")
@@ -70,7 +70,7 @@ op_implementations_checks = []
 aten = torch._ops.ops.aten
 
 
-def ordered_set(*items: _T) -> dict[_T, bool]:
+def ordered_set(*items: _T) -> Dict[_T, bool]:
     return dict.fromkeys(items, True)
 
 
@@ -147,7 +147,7 @@ def contains_tensor_types(type_: Any) -> bool:
     )
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _is_tensor_constructor(func: OpOverload) -> bool:
     if not isinstance(func, OpOverload):
         raise AssertionError(f"func must be an OpOverload, got {type(func)}")
@@ -163,8 +163,8 @@ def _is_tensor_constructor(func: OpOverload) -> bool:
 def register_op_impl(
     run_impl_check: Callable[[OpOverload], bool]
     | OpOverload
-    | list[OpOverload]
-    | tuple[OpOverload, ...],
+    | List[OpOverload]
+    | Tuple[OpOverload, ...],
 ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     def impl_decorator(op_impl: Callable[_P, _R]) -> Callable[_P, _R]:
         if isinstance(run_impl_check, OpOverload):
@@ -258,7 +258,7 @@ def non_kwarg_is_pinned(
 # They take string arguments and should not have device/dtype parameters added
 @register_op_impl(torch.ops.profiler._record_function_enter.default)
 def _record_function_enter(
-    fake_mode: FakeTensorMode, func: OpOverload, name: str, args: object | None = None
+    fake_mode: FakeTensorMode, func: OpOverload, name: str, args: Optional[object] = None
 ) -> FakeTensor:
     # Call the real implementation to get a real handle tensor
     with in_kernel_invocation_manager(fake_mode):
@@ -280,7 +280,7 @@ def _record_function_exit(
 
 @register_op_impl(torch.ops.profiler._record_function_enter_new.default)
 def _record_function_enter_new(
-    fake_mode: FakeTensorMode, func: OpOverload, name: str, args: object | None = None
+    fake_mode: FakeTensorMode, func: OpOverload, name: str, args: Optional[object] = None
 ) -> Any:
     # Call the real implementation - returns a custom class, not a tensor
     # Just pass through without wrapping
@@ -379,13 +379,13 @@ def _unique(
     fake_mode: FakeTensorMode,
     func: OpOverload,
     arg: FakeTensor,
-    dim: int | None,
+    dim: Optional[int],
     sorted: bool = True,
     return_inverse: bool = False,
     return_counts: bool = False,
     *,
     unique_consecutive: bool = False,
-) -> tuple[FakeTensor, FakeTensor, FakeTensor]:
+) -> Tuple[FakeTensor, FakeTensor, FakeTensor]:
     if (
         fake_mode.shape_env is None
         or not fake_mode.shape_env.allow_dynamic_output_shape_ops
@@ -465,7 +465,7 @@ def unique2(
     sorted: bool = True,
     return_inverse: bool = False,
     return_counts: bool = False,
-) -> tuple[FakeTensor, FakeTensor, FakeTensor]:
+) -> Tuple[FakeTensor, FakeTensor, FakeTensor]:
     return _unique(fake_mode, func, arg, None, sorted, return_inverse, return_counts)
 
 
@@ -528,7 +528,7 @@ def unique_dim(
     sorted: bool = True,
     return_inverse: bool = False,
     return_counts: bool = False,
-) -> tuple[FakeTensor, FakeTensor, FakeTensor]:
+) -> Tuple[FakeTensor, FakeTensor, FakeTensor]:
     return _unique(
         fake_mode,
         func,
@@ -548,8 +548,8 @@ def unique_consecutive(
     arg: FakeTensor,
     return_inverse: bool = False,
     return_counts: bool = False,
-    dim: int | None = None,
-) -> tuple[FakeTensor, FakeTensor, FakeTensor]:
+    dim: Optional[int] = None,
+) -> Tuple[FakeTensor, FakeTensor, FakeTensor]:
     return _unique(
         fake_mode,
         func,
@@ -568,7 +568,7 @@ def _compute_stride(
     old_stride: Sequence[IntLikeType],
     new_shape: Sequence[IntLikeType],
     size_oblivious: bool = False,
-) -> list[IntLikeType] | None:
+) -> Optional[List[IntLikeType]]:
     from torch.fx.experimental.symbolic_shapes import (
         guard_or_false,
         guard_or_true,
@@ -595,7 +595,7 @@ def _compute_stride(
     if zero_numel and maybe_guard_or_false(sym_eq(old_shape, new_shape)):
         return list(old_stride)
 
-    new_stride: list[IntLikeType] = [0] * len(new_shape)
+    new_stride: List[IntLikeType] = [0] * len(new_shape)
 
     if zero_numel:
         for view_d in range(len(new_shape) - 1, -1, -1):
@@ -643,7 +643,7 @@ def _compute_stride(
 
 
 def _view_has_unbacked_input(
-    a: torch.Tensor, shape: ShapeType | tuple[ShapeType]
+    a: torch.Tensor, shape: Union[ShapeType, Tuple[ShapeType]]
 ) -> bool:
     from torch.fx.experimental.symbolic_shapes import has_guarding_hint
 
@@ -658,7 +658,7 @@ def _view_has_unbacked_input(
 
 def _view_unbacked_meta(
     a: torch.Tensor,
-    shape: ShapeType | tuple[ShapeType],
+    shape: Union[ShapeType, Tuple[ShapeType]],
     size_oblivious_enabled: bool = True,
     allow_copy: bool = False,
 ) -> torch.Tensor:
@@ -742,7 +742,7 @@ def _view_unbacked_meta(
 @register_op_impl(aten._reshape_copy.default)
 def _reshape_copy(
     fake_mode: FakeTensorMode, func: OpOverload, a: FakeTensor, *shape: Any
-) -> FakeTensor | Exception:
+) -> Union[FakeTensor, Exception]:
     if a.is_sparse or a.is_mkldnn:
         return NotImplemented
 
@@ -790,7 +790,7 @@ def _view_meta_copy(
     func: OpOverload,
     a: FakeTensor,
     *shape: IntLikeType,
-    out: FakeTensor | None = None,
+    out: Optional[FakeTensor] = None,
 ) -> FakeTensor:
     # view_copy is the non-aliasing counterpart of view. Eager may succeed on
     # cases where a pure view is impossible (e.g. expand -> flatten) by
@@ -811,7 +811,7 @@ def repeat_interleave_tensor(
     fake_mode: FakeTensorMode,
     func: OpOverload,
     repeats: FakeTensor,
-    output_size: IntLikeType | None = None,
+    output_size: Optional[IntLikeType] = None,
 ) -> FakeTensor:
     if output_size is None:
         if (
@@ -834,7 +834,7 @@ def repeat_interleave_tensor(
 @register_op_impl(torch.ops.aten._local_scalar_dense.default)
 def local_scalar_dense(
     fake_mode: FakeTensorMode, func: OpOverload, arg: FakeTensor
-) -> int | float | bool | torch.SymInt | torch.SymFloat | torch.SymBool:
+) -> Union[Union[int, float], Union[bool, torch.SymInt]] | Union[torch.SymFloat, torch.SymBool]:
     if (r := arg.item_memo) is not None:
         return r
     if fake_mode.shape_env is None or (
@@ -858,7 +858,7 @@ def local_scalar_dense(
 @register_op_impl(torch.ops.aten.nonzero_numpy.default)
 def nonzero_numpy(
     fake_mode: FakeTensorMode, func: OpOverload, arg: FakeTensor
-) -> list[FakeTensor]:
+) -> List[FakeTensor]:
     return torch.ops.aten.nonzero.default(arg).unbind(1)
 
 
@@ -918,8 +918,8 @@ def _padded_dense_to_jagged_forward(
     fake_mode: FakeTensorMode,
     func: OpOverload,
     padded: FakeTensor,
-    offsets: list[FakeTensor],
-    total_L: IntLikeType | None = None,
+    offsets: List[FakeTensor],
+    total_L: Optional[IntLikeType] = None,
 ) -> FakeTensor:
     # only one jagged dim is supported for now
     if len(offsets) != 1:
@@ -954,7 +954,7 @@ def _padded_dense_to_jagged_forward(
     return padded.new_empty(output_shape)  # type: ignore[return]
 
 
-def _compute_slice_index(size: IntLikeType, index: IntLikeType) -> IntLikeType | None:
+def _compute_slice_index(size: IntLikeType, index: IntLikeType) -> Optional[IntLikeType]:
     from torch.fx.experimental.symbolic_shapes import guard_or_false, sym_and
 
     if guard_or_false(sym_and(index >= 0, index <= size)):
@@ -979,8 +979,8 @@ def slice_forward(
     func: OpOverload,
     self: FakeTensor,
     dim: int = 0,
-    start: int | None = None,
-    end: int | None = None,
+    start: Optional[int] = None,
+    end: Optional[int] = None,
     step: int = 1,
 ) -> FakeTensor:
     from torch.fx.experimental.symbolic_shapes import (
@@ -1008,7 +1008,7 @@ def slice_forward(
     )
 
     # size
-    new_size: IntLikeType | None = None
+    new_size: Optional[IntLikeType] = None
     if start_index is not None and end_index is not None:
         if guard_or_false(end_index >= start_index):
             new_size = (end_index - start_index + step - 1) // step
@@ -1100,12 +1100,12 @@ def assert_tensor_metadata(
     fake_mode: FakeTensorMode,
     func: OpOverload,
     t: FakeTensor,
-    sizes: torch.Size | None = None,
-    strides: tuple[int, ...] | None = None,
-    dtype: torch.dtype | None = None,
+    sizes: Optional[torch.Size] = None,
+    strides: Optional[Tuple[int, ...]] = None,
+    dtype: Optional[torch.dtype] = None,
     *,
-    device: torch.device | None = None,
-    layout: torch.layout | None = None,
+    device: Optional[torch.device] = None,
+    layout: Optional[torch.layout] = None,
 ) -> None:
     if sizes is not None:
         if t.size() != sizes:
@@ -1145,7 +1145,7 @@ def data_dep(
 # Bool Indices get Expanded as Masks
 # See: IndexingUtils.h:expandTensors
 def check_no_bool_index_tensors(
-    func: OpOverload, self: FakeTensor, indices: list[FakeTensor | None]
+    func: OpOverload, self: FakeTensor, indices: List[Optional[FakeTensor]]
 ) -> None:
     for index in indices:
         if index is not None and index.dtype in (torch.bool, torch.uint8):
@@ -1155,8 +1155,8 @@ def check_no_bool_index_tensors(
 def run_and_return_new_tensor_of_input_device(
     fake_mode: FakeTensorMode,
     func: OpOverload,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
 ) -> FakeTensor:
     # TODO: ref
     _, new_kwargs = _normalize_function_or_error(
@@ -1192,7 +1192,7 @@ def has_meta(func: OpOverload) -> bool:
 )
 def foreach_run_and_map_input_device(
     fake_mode: FakeTensorMode, func: OpOverload, *args: Any, **kwargs: Any
-) -> list[FakeTensor] | None:
+) -> Optional[List[FakeTensor]]:
     tensor_lists = [
         arg
         for arg in itertools.chain(args, kwargs.values())
@@ -1250,7 +1250,7 @@ def index_tensor(
 @register_op_impl(aten._embedding_bag.default)
 def embedding_bag(
     fake_mode: FakeTensorMode, func: OpOverload, *args: Any, **kwargs: Any
-) -> tuple[FakeTensor, FakeTensor, FakeTensor, FakeTensor]:
+) -> Tuple[FakeTensor, FakeTensor, FakeTensor, FakeTensor]:
     from torch._meta_registrations import meta_embedding_bag
 
     with fake_mode:
@@ -1340,24 +1340,12 @@ def nyi(fake_mode: FakeTensorMode, func: OpOverload, *args: Any, **kwargs: Any) 
 @register_op_impl([aten.convolution.default, aten.convolution_backward.default])
 def conv(
     fake_mode: FakeTensorMode, func: OpOverload, *args: Any, **kwargs: Any
-) -> FakeTensor | tuple[FakeTensor | None, FakeTensor | None, FakeTensor | None]:
+) -> Union[FakeTensor, Tuple[FakeTensor, None, FakeTensor, None, FakeTensor, None]]:
     _, new_kwargs = _normalize_function_or_error(
         func, args=args, kwargs=kwargs, normalize_to_only_use_kwargs=True
     )
     input_ = new_kwargs["input"]
     weight = new_kwargs["weight"]
-    # Internal passes such as Inductor freezing may run fake propagation over
-    # folded convs that do not need to match eager's public input checks.
-    if (
-        func is aten.convolution.default
-        and input_.fake_device.type == "cuda"
-        and input_.dtype != weight.dtype
-        and not fake_mode.allow_non_fake_inputs
-    ):
-        raise RuntimeError(
-            f"Input type ({input_.dtype}) and weight type "
-            f"({weight.dtype}) should be the same"
-        )
     device = input_.fake_device
     # need to re-enable mode so the tensors report fake device
     with fake_mode:
@@ -1379,7 +1367,7 @@ def conv(
             # convolution has "bias" but not "bias_sizes"; convolution_backward
             # has "bias_sizes" but not "bias". .get() handles both with one call.
             bias = new_kwargs.get("bias")
-            select_kwargs: dict[str, object] = dict(
+            select_kwargs: Dict[str, object] = dict(
                 stride=new_kwargs["stride"],
                 padding=new_kwargs["padding"],
                 dilation=new_kwargs["dilation"],
@@ -1405,8 +1393,8 @@ def conv(
             )
 
     def convert(
-        t: torch.Tensor | None, mem_fmt: torch.memory_format | None
-    ) -> FakeTensor | None:
+        t: Optional[torch.Tensor], mem_fmt: Optional[torch.memory_format]
+    ) -> Optional[FakeTensor]:
         if t is None:
             return t
         if mem_fmt is not None:
@@ -1435,7 +1423,7 @@ def bincount(
     fake_mode: FakeTensorMode,
     func: OpOverload,
     inputs: FakeTensor,
-    weights: FakeTensor | None = None,
+    weights: Optional[FakeTensor] = None,
     minlength: IntLikeType = 0,
 ) -> FakeTensor:
     if (
@@ -1461,7 +1449,7 @@ def _pack_padded_sequence(
     inputs: FakeTensor,
     lengths: FakeTensor,
     batch_first: bool,
-) -> tuple[FakeTensor, FakeTensor]:
+) -> Tuple[FakeTensor, FakeTensor]:
     if (
         fake_mode.shape_env is None
         or not fake_mode.shape_env.allow_dynamic_output_shape_ops
@@ -1504,13 +1492,13 @@ def register_fast_op_impl(
 # infer_size_impl in ExpandUtils
 def infer_size(
     a: Sequence[IntLikeType], b: Sequence[IntLikeType]
-) -> tuple[IntLikeType, ...]:
+) -> Tuple[IntLikeType, ...]:
     from torch.fx.experimental.symbolic_shapes import guard_or_false
 
     dimsA = len(a)
     dimsB = len(b)
     ndim = max(dimsA, dimsB)
-    expandedSizes: list[IntLikeType] = [0] * ndim
+    expandedSizes: List[IntLikeType] = [0] * ndim
     for i in range(ndim - 1, -1, -1):
         offset = ndim - 1 - i
         dimA = dimsA - 1 - offset
@@ -1562,7 +1550,7 @@ def make_fast_binary_impl(
         operands = args
 
         # compute_shape
-        final_shape: ShapeType | None = None
+        final_shape: Optional[ShapeType] = None
         for op in operands:
             shape: ShapeType = op.shape if isinstance(op, torch.Tensor) else ()
             if final_shape is None:
@@ -1594,7 +1582,7 @@ def make_fast_binary_impl(
         # compute_types
         cpu = torch.device("cpu")
         common_device: torch.device = cpu
-        common_dtype: torch.dtype | None = None
+        common_dtype: Optional[torch.dtype] = None
         has_different_input_dtypes = False
         for op in operands:
             if not isinstance(op, torch.Tensor):
@@ -1699,8 +1687,8 @@ def fast_detach(
     return FakeTensor(fake_mode, out, x.device)
 
 
-@functools.cache
-def get_fast_op_impls() -> dict[OpOverload, Callable[..., Any]]:
+@functools.lru_cache(maxsize=None)
+def get_fast_op_impls() -> Dict[OpOverload, Callable[..., Any]]:
     import torch._refs
 
     register_fast_op_impl(torch.ops.aten.add.Tensor)(

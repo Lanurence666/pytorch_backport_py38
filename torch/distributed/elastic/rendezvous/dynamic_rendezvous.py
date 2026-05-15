@@ -5,6 +5,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import inspect
 import logging
 import os
@@ -14,11 +16,11 @@ import threading
 import time
 import weakref
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch.distributed as dist
 from torch.distributed import Store
@@ -68,7 +70,7 @@ class RendezvousBackend(ABC):
         """Get the name of the backend."""
 
     @abstractmethod
-    def get_state(self) -> tuple[bytes, Token] | None:
+    def get_state(self) -> Optional[Tuple[bytes, Token]]:
         """Get the rendezvous state.
 
         Returns:
@@ -84,8 +86,8 @@ class RendezvousBackend(ABC):
 
     @abstractmethod
     def set_state(
-        self, state: bytes, token: Token | None = None
-    ) -> tuple[bytes, Token, bool] | None:
+        self, state: bytes, token: Optional[Token] = None
+    ) -> Optional[Tuple[bytes, Token, bool]]:
         """Set the rendezvous state.
 
         The new rendezvous state is set conditionally:
@@ -154,10 +156,10 @@ class RendezvousTimeout:
 
     def __init__(
         self,
-        join: timedelta | None = None,
-        last_call: timedelta | None = None,
-        close: timedelta | None = None,
-        heartbeat: timedelta | None = None,
+        join: Optional[timedelta]= None,
+        last_call: Optional[timedelta]= None,
+        close: Optional[timedelta]= None,
+        heartbeat: Optional[timedelta]= None,
     ) -> None:
         self._set_timeouts(
             join=join, last_call=last_call, close=close, heartbeat=heartbeat
@@ -183,7 +185,7 @@ class RendezvousTimeout:
         """Get the keep-alive heartbeat timeout."""
         return self._heartbeat
 
-    def _set_timeouts(self, **timeouts: timedelta | None):
+    def _set_timeouts(self, **timeouts: Optional[timedelta]):
         for name, timeout in timeouts.items():
             if timeout is None:
                 timeout = self._DEFAULT_TIMEOUTS[name]
@@ -258,7 +260,7 @@ class _NodeDescGenerator:
         # An integer that is incremented with each call to generate().
         self._local_id = 0
 
-    def generate(self, local_addr: str | None = None) -> _NodeDesc:
+    def generate(self, local_addr: Optional[str] = None) -> _NodeDesc:
         # This method can be called by multiple threads concurrently; therefore,
         # we must increment the integer atomically.
         with self._lock:
@@ -297,12 +299,12 @@ class _RendezvousState:
 
     round: int
     complete: bool
-    deadline: datetime | None
+    deadline: Optional[datetime]
     closed: bool
-    participants: dict[_NodeDesc, int]
-    wait_list: set[_NodeDesc]
-    redundancy_list: set[_NodeDesc]
-    last_heartbeats: dict[_NodeDesc, datetime]
+    participants: Dict[_NodeDesc, int]
+    wait_list: Set[_NodeDesc]
+    redundancy_list: Set[_NodeDesc]
+    last_heartbeats: Dict[_NodeDesc, datetime]
 
     def __init__(self) -> None:
         self.round = 0
@@ -345,7 +347,7 @@ class _RendezvousStateHolder(ABC):
         """Get the local state."""
 
     @abstractmethod
-    def sync(self) -> bool | None:
+    def sync(self) -> Optional[bool]:
         """Read or writes the latest state.
 
         Returns:
@@ -378,7 +380,7 @@ class _BackendRendezvousStateHolder(_RendezvousStateHolder):
     _token: Token
     _dirty: bool
     _last_sync_time: float
-    _dead_nodes: list[_NodeDesc]
+    _dead_nodes: List[_NodeDesc]
 
     def __init__(
         self,
@@ -408,13 +410,13 @@ class _BackendRendezvousStateHolder(_RendezvousStateHolder):
         """See base class."""
         return self._state
 
-    def sync(self) -> bool | None:
+    def sync(self) -> Optional[bool]:
         """See base class."""
-        state_bits: bytes | None = None
+        state_bits: Optional[bytes]= None
 
         token = None
 
-        has_set: bool | None
+        has_set: Optional[bool]
 
         if self._dirty:
             has_set = False
@@ -574,7 +576,7 @@ class _RendezvousOpExecutor(ABC):
         self,
         state_handler: Callable[[_RendezvousContext, float], _Action],
         deadline: float,
-        update_deadline: Callable[[timedelta], float] | None = None,
+        update_deadline: Optional[Callable[[timedelta], float]]= None,
     ) -> None:
         """Execute a rendezvous operation.
 
@@ -638,7 +640,7 @@ class _DistributedRendezvousOpExecutor(_RendezvousOpExecutor):
         self,
         state_handler: Callable[[_RendezvousContext, float], _Action],
         deadline: float,
-        update_deadline: Callable[[timedelta], float] | None = None,
+        update_deadline: Optional[Callable[[timedelta], float]]= None,
     ) -> None:
         """See base class."""
         action = None
@@ -1006,7 +1008,7 @@ class DynamicRendezvousHandler(RendezvousHandler):
     _state_holder: _RendezvousStateHolder
     _op_executor: _RendezvousOpExecutor
     _heartbeat_lock: threading.Lock
-    _keep_alive_timer: _PeriodicTimer | None
+    _keep_alive_timer: Optional[_PeriodicTimer]
 
     @classmethod
     def from_backend(
@@ -1016,8 +1018,8 @@ class DynamicRendezvousHandler(RendezvousHandler):
         backend: RendezvousBackend,
         min_nodes: int,
         max_nodes: int,
-        local_addr: str | None = None,
-        timeout: RendezvousTimeout | None = None,
+        local_addr: Optional[str]= None,
+        timeout: Optional[RendezvousTimeout]= None,
         keep_alive_interval: int = 5,
         keep_alive_max_attempt: int = 3,
     ):
@@ -1102,15 +1104,15 @@ class DynamicRendezvousHandler(RendezvousHandler):
         self._keep_alive_timer = None
 
         # Cached shared store server reference
-        self._shared_tcp_store_server: dist.Store | None = None
+        self._shared_tcp_store_server: Optional[dist.Store] = None
 
-        self._bootstrap_store_info: RendezvousStoreInfo | None = None
+        self._bootstrap_store_info: Optional[RendezvousStoreInfo] = None
 
     def _record(
         self,
         message: str,
         node_state: NodeState = NodeState.RUNNING,
-        rank: int | None = None,
+        rank: Optional[int]= None,
     ) -> None:
         construct_and_record_rdzv_event(
             name=f"{self.__class__.__name__}.{get_method_name()}",
@@ -1203,12 +1205,9 @@ class DynamicRendezvousHandler(RendezvousHandler):
             )
 
         # This will only be hit when TCPStore sharing is enabled.
-        # Rebuild bootstrap store info when this is the first rendezvous or
-        # when the node became rank 0 but hasn't created a TCP store server
-        # yet (rank changed between rounds due to elastic membership changes).
-        if self._bootstrap_store_info is None or (
-            rank == 0 and self._shared_tcp_store_server is None
-        ):
+        if self._bootstrap_store_info is None:
+            # To avoid race in get_free_port because we release the port after the call,
+            # we want to create a TCPStore server soon afterwards.
             server_port = 0
             if rank == 0:
                 self._shared_tcp_store_server = self._create_tcp_store_server(
@@ -1362,7 +1361,7 @@ class DynamicRendezvousHandler(RendezvousHandler):
 
         self._keep_alive_timer.cancel()
 
-    def _get_world(self) -> tuple[int, int]:
+    def _get_world(self) -> Tuple[int, int]:
         state = self._state_holder.state
 
         return state.participants[self._this_node], len(state.participants)
@@ -1381,7 +1380,7 @@ class DynamicRendezvousHandler(RendezvousHandler):
         return time.monotonic() + timeout.total_seconds()
 
 
-def _get_timeout(params: RendezvousParameters, key: str) -> timedelta | None:
+def _get_timeout(params: RendezvousParameters, key: str) -> Optional[timedelta]:
     timeout = params.get_as_int(key + "_timeout")
     if timeout is None:
         return None
@@ -1400,23 +1399,23 @@ def create_handler(
             The backend to use to hold the rendezvous state.
 
     +-------------------+------------------------------------------------------+
-    | Parameter         | Description                                          |
+    | Union[Parameter, Description]                                          |
     +===================+======================================================+
-    | join_timeout      | The total time, in seconds, within which the         |
+    | Union[join_timeout, The] total time, in seconds, within which the         |
     |                   | rendezvous is expected to complete. Defaults to 600  |
     |                   | seconds.                                             |
     +-------------------+------------------------------------------------------+
-    | last_call_timeout | An additional wait amount, in seconds, before        |
+    | Union[last_call_timeout, An] additional wait amount, in seconds, before        |
     |                   | completing the rendezvous once the minimum number of |
     |                   | nodes has been reached. Defaults to 30 seconds.      |
     +-------------------+------------------------------------------------------+
-    | close_timeout     | The time, in seconds, within which the rendezvous is |
+    | Union[close_timeout, The] time, in seconds, within which the rendezvous is |
     |                   | expected to close after a call to                    |
     |                   | :py:meth:`RendezvousHandler.set_closed` or           |
     |                   | :py:meth:`RendezvousHandler.shutdown`. Defaults to   |
     |                   | 30 seconds.                                          |
     +-------------------+------------------------------------------------------+
-    | heartbeat         | The time, in seconds, within which a keep-alive      |
+    | Union[heartbeat, The] time, in seconds, within which a keep-alive      |
     |                   | heartbeat is expected to complete                    |
     +-------------------+------------------------------------------------------+
     """

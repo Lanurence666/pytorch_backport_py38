@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 import faulthandler
 import functools
 import inspect
@@ -24,7 +26,9 @@ from datetime import timedelta
 from enum import Enum
 from functools import partial, reduce, wraps
 from io import StringIO
-from typing import Any, NamedTuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type
+from typing_extensions import NamedTuple
+
 from unittest.mock import patch
 
 import torch
@@ -35,7 +39,6 @@ import torch.nn as nn
 from torch._C._autograd import DeviceType
 from torch._C._distributed_c10d import _SymmetricMemory
 from torch._logging._internal import trace_log
-from torch.distributed.distributed_c10d import _TORCHCOMM_AVAILABLE
 from torch.testing._internal import common_utils
 from torch.testing._internal.common_utils import (
     FILE_SCHEMA,
@@ -58,25 +61,6 @@ from torch.testing._internal.distributed.multi_threaded_pg import (
     ProcessLocalGroup,
 )
 
-
-TORCHCOMM_HAS_GLOO = False
-TORCHCOMM_HAS_XCCL = False
-TORCHCOMM_HAS_NCCL = False
-TORCHCOMM_HAS_RCCL = False
-TORCHCOMM_HAS_NCCLX = False
-TORCHCOMM_HAS_RCCLX = False
-if _TORCHCOMM_AVAILABLE:
-    import torchcomms
-
-    for _backend, _flag in [
-        ("gloo", "TORCHCOMM_HAS_GLOO"),
-        ("xccl", "TORCHCOMM_HAS_XCCL"),
-        ("nccl", "TORCHCOMM_HAS_NCCL"),
-        ("rcclx", "TORCHCOMM_HAS_RCCLX"),
-        ("ncclx", "TORCHCOMM_HAS_NCCLX"),
-    ]:
-        if torchcomms.is_backend_built(_backend):
-            globals()[_flag] = True
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -361,7 +345,7 @@ def with_nccl_blocking_wait(func):
     def wrapper(*args, **kwargs):
         # Save and unset TORCH_NCCL_ASYNC_ERROR_HANDLING
         try:
-            cached_nccl_async_error_handling: str | None = os.environ[
+            cached_nccl_async_error_handling: Optional[str]= os.environ[
                 "TORCH_NCCL_ASYNC_ERROR_HANDLING"
             ]
             del os.environ["TORCH_NCCL_ASYNC_ERROR_HANDLING"]
@@ -371,7 +355,7 @@ def with_nccl_blocking_wait(func):
 
         # Save val of TORCH_NCCL_BLOCKING_WAIT and set it.
         try:
-            cached_nccl_blocking_wait: str | None = os.environ[
+            cached_nccl_blocking_wait: Optional[str]= os.environ[
                 "TORCH_NCCL_BLOCKING_WAIT"
             ]
         except KeyError:
@@ -534,7 +518,7 @@ def skip_if_rocm_multiprocess(func):
     return unittest.skipIf(TEST_WITH_ROCM, TEST_SKIPS["skipIfRocm"].message)(func)
 
 
-def skip_if_rocm_arch_multiprocess(arch: tuple[str, ...]):
+def skip_if_rocm_arch_multiprocess(arch: Tuple[str, ...]):
     """Skips a test for given ROCm archs - multiprocess UTs"""
 
     def decorator(func):
@@ -735,10 +719,10 @@ def init_multigpu_helper(world_size: int, backend: str):
     return rank_to_GPU
 
 
-tmp_dir: tempfile.TemporaryDirectory | None = None
+tmp_dir: Optional[tempfile.TemporaryDirectory]= None
 
 
-def initialize_temp_directories(init_method: str | None = None) -> None:
+def initialize_temp_directories(init_method: Optional[str] = None) -> None:
     global tmp_dir
     tmp_dir = tempfile.TemporaryDirectory()
     os.environ["TEMP_DIR"] = tmp_dir.name
@@ -763,7 +747,7 @@ def cleanup_temp_dir() -> None:
 def retrieve_result_from_completion_queue(
     process: torch.multiprocessing.Process,
     completion_queue: torch.multiprocessing.Queue,
-    timeout: int | None = None,
+    timeout: Optional[int]= None,
 ) -> Any:
     """Get result from the completion_queue associated with process.
 
@@ -1233,17 +1217,7 @@ class DistributedTestBase(MultiProcessTestCase):
             store=store,
         )
         if "nccl" in self.backend(device) or "xccl" in self.backend(device):
-            accelerator = torch.accelerator.current_accelerator()
-            if accelerator:
-                device_type = accelerator.type
-                device = torch.device(f"{device_type}:{self.rank}")
-                torch.set_default_device(device)
-                torch.accelerator.set_device_index(device)
-            else:
-                raise RuntimeError(
-                    f"Expected to find an accelerator when initializing process group"
-                    f" with {self.backend(device)} backend, but got None"
-                )
+            torch.accelerator.set_device_index(self.rank)
         return torch.distributed.distributed_c10d._get_default_group()
 
     def rank_to_device(self, device):
@@ -1253,7 +1227,7 @@ class DistributedTestBase(MultiProcessTestCase):
 
 def run_subtests(
     cls_inst,
-    subtest_config: dict[str, list[Any]],
+    subtest_config: Dict[str, List[Any]],
     test_fn: Callable,
     *test_args,
     **test_kwargs: Any,
@@ -1272,12 +1246,12 @@ def run_subtests(
         test_kwargs: Keyword arguments to pass to ``test_fn``.
     """
     # Convert the config mapping to a list to have a fixed order
-    subtest_config_items: list[tuple[str, list[Any]]] = list(subtest_config.items())
-    subtest_config_keys: list[str] = [item[0] for item in subtest_config_items]
-    subtest_config_values: list[list[Any]] = [item[1] for item in subtest_config_items]
+    subtest_config_items: List[Tuple[str, List[Any]]] = list(subtest_config.items())
+    subtest_config_keys: List[str] = [item[0] for item in subtest_config_items]
+    subtest_config_values: List[List[Any]] = [item[1] for item in subtest_config_items]
     for values in itertools.product(*subtest_config_values):
         # Map keyword to chosen value
-        subtest_kwargs = dict(zip(subtest_config_keys, values, strict=True))
+        subtest_kwargs = dict(_zip_strict(subtest_config_keys, values))
         with cls_inst.subTest(**subtest_kwargs):
             torch._dynamo.reset()
             test_fn(*test_args, **test_kwargs, **subtest_kwargs)
@@ -1285,7 +1259,7 @@ def run_subtests(
         c10d.barrier()
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_efa() -> bool:
     """
     If shell command `fi_info -p efa -t FI_EP_RDM` returns exit code 0 then we assume that the machine has
@@ -1615,7 +1589,7 @@ class MultiThreadedTestCase(TestCase):
 class SaveForwardInputsModule(nn.Module):
     def __init__(
         self,
-        forward_inputs: dict[nn.Module, torch.Tensor],
+        forward_inputs: Dict[nn.Module, torch.Tensor],
         cast_forward_inputs: bool,
     ) -> None:
         super().__init__()
@@ -1631,7 +1605,7 @@ class SaveForwardInputsModule(nn.Module):
 class SaveForwardInputsModel(nn.Module):
     def __init__(
         self,
-        forward_inputs: dict[nn.Module, torch.Tensor],
+        forward_inputs: Dict[nn.Module, torch.Tensor],
         cast_forward_inputs: bool,
     ) -> None:
         super().__init__()
@@ -1754,7 +1728,7 @@ class MultiProcContinuousTest(TestCase):
     # rank of the current process
     rank: int = -2  # unset state
     # Rendezvous file
-    rdvz_file: str | None = None
+    rdvz_file: Optional[str]= None
     # timeout configured per class
     timeout: timedelta = timedelta(seconds=120)
     # Poison pill for rest of tests if one of them fails
@@ -1763,7 +1737,7 @@ class MultiProcContinuousTest(TestCase):
     _processes_spawned: bool = False
 
     @classmethod
-    def backend_str(cls) -> str | None:
+    def backend_str(cls) -> Optional[str]:
         """
         ProcessGroup backend str.
         To be customized by sub test classes, e.g. "nccl".
@@ -2138,72 +2112,3 @@ class MultiProcContinuousTest(TestCase):
                 raise ValueError(
                     f"no such test method in {self.__class__}: {methodName}"
                 ) from e
-
-
-class C10dTorchCommsTestBase(MultiProcContinuousTest):
-    world_size: int = DEFAULT_WORLD_SIZE
-
-    @staticmethod
-    def backend(device) -> str:
-        if "cuda" in device:
-            return "nccl"
-        elif "hpu" in device:
-            return "hccl"
-        elif "xpu" in device:
-            return "xccl"
-        else:
-            return "gloo"
-
-    @classmethod
-    def backend_str(cls) -> str:
-        device_type = cls.device_type
-        if callable(device_type):
-            device_type = device_type()
-        return cls.backend(device_type)
-
-    def _skip_if_backend_unavailable(self, device: str) -> None:
-        backend_flags = {
-            "gloo": TORCHCOMM_HAS_GLOO,
-            "xccl": TORCHCOMM_HAS_XCCL,
-            "nccl": TORCHCOMM_HAS_NCCL,
-            "rccl": TORCHCOMM_HAS_RCCL,
-            "ncclx": TORCHCOMM_HAS_NCCLX,
-            "rcclx": TORCHCOMM_HAS_RCCLX,
-        }
-        backend_name = self.backend(device)
-        if backend_name in backend_flags and not backend_flags[backend_name]:
-            self.skipTest(f"torchcomms {backend_name} backend is not available")
-
-    @classmethod
-    def _init_pg(cls, rank, world_size, rdvz_file):
-        torch.distributed.config.use_torchcomms = True
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = str(find_free_port())
-        os.environ["TORCHCOMM_RANK"] = str(rank)
-        os.environ["TORCHCOMM_SIZE"] = str(world_size)
-        os.environ["TORCHCOMM_STORE_PATH"] = rdvz_file
-        super()._init_pg(rank, world_size, rdvz_file)
-        # Set up accelerator device if using nccl/xccl backend
-        backend = cls.backend_str()
-        if "nccl" in backend or "xccl" in backend:
-            accelerator = torch.accelerator.current_accelerator()
-            if accelerator:
-                device = torch.device(f"{accelerator.type}:{rank}")
-                torch.set_default_device(device)
-                torch.accelerator.set_device_index(device)
-            else:
-                raise RuntimeError(
-                    f"Expected to find an accelerator when initializing process group with {backend} backend, but got None"
-                )
-
-    def setUp(self) -> None:
-        device_type = self.__class__.device_type
-        logger.debug("Setting up test: %s on device type: %s", self.id(), device_type)
-        if callable(device_type):
-            device_type = device_type()
-        self._skip_if_backend_unavailable(str(device_type))
-        super().setUp()
-
-    def rank_to_device(self, device):
-        num_visible_devices = torch.get_device_module(device).device_count()
-        return {i: [i % num_visible_devices] for i in range(self.world_size)}

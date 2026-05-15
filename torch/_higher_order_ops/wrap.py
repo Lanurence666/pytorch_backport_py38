@@ -1,10 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import inspect
 import itertools
 import logging
 import weakref
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, Optional, Set, Tuple, Type, Union, overload
 from typing_extensions import ParamSpec, TypeVar
 
 import torch
@@ -68,7 +70,7 @@ class InductorCompiledCode(HigherOrderOperator):
     def __init__(self) -> None:
         super().__init__("inductor_compiled_code")
 
-    def __call__(self, func, inputs, *, name: str | None = None):
+    def __call__(self, func, inputs, *, name: Optional[str] = None):
         # pyrefly: ignore [missing-attribute]
         return super().__call__(func, inputs, name=name)
 
@@ -92,7 +94,7 @@ class InductorCompiledCallable:
         self,
         compiled_callable,
         original_gm=None,
-        compile_region_name: str | None = None,
+        compile_region_name: Optional[str] = None,
     ):
         self.idx = next(_inductor_compiled_callable_id)
         self.compiled_callable = compiled_callable
@@ -149,7 +151,7 @@ inductor_code_side_table = InductorCodeSideTable()
 
 
 def _resolve_inductor_callable(
-    func: int | InductorCompiledCallable,
+    func: Union[int, InductorCompiledCallable],
 ) -> InductorCompiledCallable:
     """
     Resolve func to an InductorCompiledCallable.
@@ -261,9 +263,9 @@ class WrapWithAutocast(HigherOrderOperator):
     def __call__(
         self,
         device_type: str,
-        dtype: _dtype | None,
+        dtype: Optional[_dtype],
         enabled: bool,
-        cache_enabled: bool | None,
+        cache_enabled: Optional[bool],
         wrapped_func: Callable[_P, _R],
         *args: _P.args,
         **kwargs: _P.kwargs,
@@ -514,7 +516,7 @@ def proxy_mode_key(
     gmod: GraphModule,
     *args: Any,
     **kwargs: Any,
-) -> tuple[torch.Tensor]:
+) -> Tuple[torch.Tensor]:
     import torch.fx.traceback as fx_traceback
     from torch.fx import Interpreter
 

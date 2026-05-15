@@ -4,16 +4,27 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import math
 import os
 from enum import auto, Enum
 from typing import (
-    _eval_type,  # pyrefly: ignore [missing-module-attribute]
     Any,
+    Dict,
     Generic,
+    List,
     NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+    Type,
     TypeVar,
+    Union,
+    _eval_type,  # pyrefly: ignore [missing-module-attribute],
 )
+
+
 
 from torch.distributed.flight_recorder.components.fr_logger import FlightRecorderLogger
 
@@ -44,7 +55,7 @@ class Ref(Generic[T]):
 
 class TypeInfo(NamedTuple):
     name: str
-    fields: list[tuple[str, type]]  # type: ignore[type-arg]
+    fields: List[Tuple[str, type]]  # type: ignore[type-arg]
 
     @classmethod
     def from_type(cls, c: T) -> "TypeInfo":
@@ -86,7 +97,7 @@ class MatchInfo:
     or collective state that caused the mismatch.
     """
 
-    def __init__(self, state: MatchState, culprit: str | None = None) -> None:
+    def __init__(self, state: MatchState, culprit: Optional[str] = None) -> None:
         self._state = state
         self.culprit = culprit
 
@@ -147,16 +158,16 @@ class Collective(NamedTuple):
     record_id: int
     pg_desc: str
     collective_name: str
-    input_sizes: list[list[int]]
-    output_sizes: list[list[int]]
-    expected_ranks: set[int]
+    input_sizes: List[List[int]]
+    output_sizes: List[List[int]]
+    expected_ranks: Set[int]
     collective_state: str
-    collective_frames: list[dict[str, str]]
-    input_numel: int | None = None
-    output_numel: int | None = None
-    missing_ranks: set[int] | None = None
-    mismatch_collectives: dict[int, "Collective"] | None = None
-    type_of_mismatch: MatchInfo | None = None
+    collective_frames: List[Dict[str, str]]
+    input_numel: Optional[int]= None
+    output_numel: Optional[int]= None
+    missing_ranks: Optional[Set[int]]= None
+    mismatch_collectives: Optional[Dict[int, "Collective"]]= None
+    type_of_mismatch: Optional[MatchInfo]= None
 
 
 class NCCLCall(NamedTuple):
@@ -168,15 +179,15 @@ class NCCLCall(NamedTuple):
     # pyrefly: ignore [bad-specialization]
     traceback_id: Ref[Traceback]
     collective_type: str
-    sizes: list[list[int]]
+    sizes: List[List[int]]
 
 
 class Database(NamedTuple):
-    groups: list[Group]
-    memberships: list[Membership]
-    tracebacks: list[Traceback]
-    collectives: list[Collective]
-    ncclcalls: list[NCCLCall]
+    groups: List[Group]
+    memberships: List[Membership]
+    tracebacks: List[Traceback]
+    collectives: List[Collective]
+    ncclcalls: List[NCCLCall]
 
 
 # TODO: We need to add a schema for the following
@@ -245,7 +256,7 @@ class EntryState:
     log the error info during analysis.
     """
 
-    def __init__(self, entry: dict[str, Any], expected_ranks: set[int]) -> None:
+    def __init__(self, entry: Dict[str, Any], expected_ranks: Set[int]) -> None:
         self.pg_name = entry["process_group"][0]
         self.desc = entry["process_group"][1]
         self.pg_desc = (
@@ -260,19 +271,19 @@ class EntryState:
         self.collective_state = entry["state"]
         self.collective_frames = entry.get("frames", [])
         self.expected_ranks = expected_ranks
-        self.missing_ranks: set[int]
+        self.missing_ranks: Set[int]
         self.input_numel: int
         self.output_numel: int
-        self.errors: set[tuple[int, MatchInfo]]
+        self.errors: Set[Tuple[int, MatchInfo]]
 
     def log(
         self,
         logger: FlightRecorderLogger,
         logger_msg: str,
         frame_formatter: Any,
-        total_numel: tuple[int, int] | None = None,
-        errors: set[tuple[int, MatchInfo]] | None = None,
-        missing_ranks: set[int] | None = None,
+        total_numel: Optional[Tuple[int, int]]= None,
+        errors: Optional[Set[Tuple[int, MatchInfo]]]= None,
+        missing_ranks: Optional[Set[int]]= None,
     ) -> None:
         logger.info(
             logger_msg,
@@ -307,9 +318,9 @@ class EntryState:
     def to_collective(
         self,
         id: int,
-        errors: set[tuple[int, MatchInfo]] | None = None,
-        idx_map: dict[int, int] | None = None,
-        all_entries: dict[int, list[dict[str, Any]]] | None = None,
+        errors: Optional[Set[Tuple[int, MatchInfo]]]= None,
+        idx_map: Optional[Dict[int, int]]= None,
+        all_entries: Optional[Dict[int, List[Dict[str, Any]]]]= None,
     ) -> Collective:
         if not errors:
             return Collective(
@@ -381,11 +392,11 @@ class EntryState:
 
     def to_nccl_call(
         self,
-        all_entries: dict[int, list[dict[str, Any]]],
-        idx_map: dict[int, int],
+        all_entries: Dict[int, List[Dict[str, Any]]],
+        idx_map: Dict[int, int],
         nccl_call_id: int,
         collective_id: Any,
-    ) -> list[NCCLCall]:
+    ) -> List[NCCLCall]:
         result = []
         for i, k in idx_map.items():
             all_entries[i].pop(k)
@@ -414,7 +425,7 @@ class Op:
     """
 
     def __init__(
-        self, event: dict[Any, Any], memberships: dict[str, set[Any]], pg_name: str
+        self, event: Dict[Any, Any], memberships: Dict[str, Set[Any]], pg_name: str
     ):
         self.profiling_name = event["profiling_name"]
         comm_lib_backend, name = self.profiling_name.split(":")
@@ -429,7 +440,7 @@ class Op:
         # Store the hashed pg_name for accessing memberships, and original pg info for display
         self.pg_name = pg_name  # This is the hashed version used for memberships lookup
         self.original_pg_name, self.pg_desc = event["process_group"]
-        if type not in COLLECTIVES | P2P | {"coalesced"}:
+        if type not in Union[COLLECTIVES, P2P] | {"coalesced"}:
             raise AssertionError(f"{type} is not a supported operation")
         self.type = type
         if type == "send":
@@ -446,7 +457,7 @@ class Op:
             self._src, self._dst = -1, -1
         self._init_global_src_dst(memberships[pg_name])
         self.pg_size = len(memberships[pg_name])
-        if type in P2P | COLLECTIVES:
+        if type in Union[P2P, COLLECTIVES]:
             self.input_sizes = event["input_sizes"]
             self.output_sizes = event["output_sizes"]
         else:
@@ -460,7 +471,7 @@ class Op:
         self.collective_frames = event.get("frames", [])
         self.is_verbose = os.getenv("FR_TRACE_VERBOSE_OUTPUT", "0") == "1"
 
-    def _init_global_src_dst(self, pg_ranks: set[Any]) -> None:
+    def _init_global_src_dst(self, pg_ranks: Set[Any]) -> None:
         pg_ranks_sorted = sorted(pg_ranks)
         self._src_g = pg_ranks_sorted[self._src] if self._src is not None else None
         self._dst_g = pg_ranks_sorted[self._dst] if self._dst is not None else None
@@ -489,7 +500,7 @@ class Op:
                 f"output_sizes={self.output_sizes}",
                 f"input_dtypes={self.input_dtypes}",
                 f"output_dtypes={self.output_dtypes}",
-                "collective_seq_id | p2p_seq_id="
+                "Union[collective_seq_id, p2p_seq_id]="
                 f"{self.p2p_seq_id if self.type in P2P else self.collective_seq_id}",
                 f"pg_name={self.pg_name}",
                 f"pg_description={self.pg_desc}",
@@ -648,14 +659,14 @@ class Op:
 class MatchStateRecord:
     def __init__(
         self,
-        expected_ranks: set[int],
-        other_ranks: list[int],
+        expected_ranks: Set[int],
+        other_ranks: List[int],
         entry_state: EntryState,
-        candidate_ranks: set[int],
-        candidate_idx: dict[int, int],
-        found_ranks: set[int],
-        found_idx: dict[int, int],
-        errors: set[tuple[int, MatchInfo]],
+        candidate_ranks: Set[int],
+        candidate_idx: Dict[int, int],
+        found_ranks: Set[int],
+        found_idx: Dict[int, int],
+        errors: Set[Tuple[int, MatchInfo]],
     ) -> None:
         self.expected_ranks = expected_ranks
         self.other_ranks = other_ranks
@@ -668,7 +679,7 @@ class MatchStateRecord:
         self.has_undecided_case = False
 
     def reset_for_coalesced(
-        self, entry_state: EntryState, candidate_ranks: set[int]
+        self, entry_state: EntryState, candidate_ranks: Set[int]
     ) -> None:
         self.entry_state = entry_state
         self.candidate_ranks = candidate_ranks

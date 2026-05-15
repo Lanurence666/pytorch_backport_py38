@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import contextlib
 import functools
-from collections.abc import Callable, Generator, Sequence
+
 from dataclasses import dataclass
-from typing import Any, NamedTuple
+from typing import Any, Callable, Dict, FrozenSet, Generator, List, Mapping, Optional, Sequence, Set, Tuple, Type, Union
+from typing_extensions import NamedTuple
+
 
 import torch
 import torch.utils._pytree as pytree
@@ -15,7 +19,7 @@ from torch.fx.experimental.proxy_tensor import ProxyTorchDispatchMode, track_ten
 from torch.nn.utils.stateless import _reparametrize_module
 
 
-_leaf_function_module_retriever: Callable[[int], Any] | None = None
+_leaf_function_module_retriever: Optional[Callable[[int], Any]] = None
 
 # Separate storage for the make_fx / _invoke_leaf_function_python path.
 # We can't use Dynamo's register_user_object because it requires a Source
@@ -23,11 +27,11 @@ _leaf_function_module_retriever: Callable[[int], Any] | None = None
 # In the make_fx path we have neither a Source nor bytecode generation, so we
 # maintain our own dict keyed by negative indices to avoid collisions with
 # Dynamo's non-negative indices.
-_makefx_module_storage: dict[int, torch.nn.Module] = {}
+_makefx_module_storage: Dict[int, torch.nn.Module] = {}
 _makefx_next_index = 0
 
 
-def store_makefx_modules(modules: list[torch.nn.Module]) -> tuple[int, ...]:
+def store_makefx_modules(modules: List[torch.nn.Module]) -> Tuple[int, ...]:
     """Store modules for the make_fx path and return their assigned indices.
 
     Uses negative indices to avoid collisions with Dynamo's register_user_object
@@ -74,11 +78,11 @@ class LeafModuleState(NamedTuple):
     """
 
     nn_module_index: int
-    named_parameters: dict[str, torch.nn.Parameter]
-    named_buffers: dict[str, torch.Tensor]
+    named_parameters: Dict[str, torch.nn.Parameter]
+    named_buffers: Dict[str, torch.Tensor]
 
 
-def convert_modules_to_states(values: Any, module_to_index: dict[int, int]) -> Any:
+def convert_modules_to_states(values: Any, module_to_index: Dict[int, int]) -> Any:
     """Replace nn.Module instances in a pytree with LeafModuleState objects.
 
     Args:
@@ -100,7 +104,7 @@ def convert_modules_to_states(values: Any, module_to_index: dict[int, int]) -> A
 
 def _resolve_mutated_flat_indices(
     fn: Callable,
-    mutates_args: frozenset[str],
+    mutates_args: FrozenSet[str],
     num_flat_args: int,
     input_spec: pytree.TreeSpec,
 ) -> str:
@@ -147,7 +151,7 @@ def _resolve_mutated_flat_indices(
     )
     namespace = dict(sig.bind(*args_eval, **kwargs_eval).arguments)
 
-    indices: list[int] = []
+    indices: List[int] = []
     for expr in mutates_args:
         # Empty __builtins__ prevents access to builtins like __import__, open, exec.
         result = eval(expr, {"__builtins__": {}}, namespace)
@@ -176,7 +180,7 @@ class GradientInfo:
 
     edge: torch.autograd.graph.GradientEdge
     size: torch.Size
-    stride: tuple[int, ...]
+    stride: Tuple[int, ...]
     dtype: torch.dtype
     device: torch.device
 
@@ -206,7 +210,7 @@ def _retrieve_module_by_index(nn_module_index: int) -> torch.nn.Module:
 def check_escaped_gradients(
     outputs: Any,
     inputs: Sequence[Any],
-    requires_grad_indices: set[int],
+    requires_grad_indices: Set[int],
 ) -> None:
     """
     Check if autograd graph depends on tensors that not passed as explicit inputs.
@@ -221,7 +225,7 @@ def check_escaped_gradients(
     if not config.leaf_function_check_escaped_gradients:
         return
 
-    input_nodes: set[torch.autograd.graph.Node] = set()
+    input_nodes: Set[torch.autograd.graph.Node] = set()
     for i, inp in enumerate(inputs):
         if (
             isinstance(inp, torch.Tensor)
@@ -233,7 +237,7 @@ def check_escaped_gradients(
                 input_nodes.add(edge.node)
 
     flat_outputs = outputs if isinstance(outputs, tuple) else (outputs,)
-    start_nodes: set[torch.autograd.graph.Node] = {
+    start_nodes: Set[torch.autograd.graph.Node] = {
         out.grad_fn
         for out in flat_outputs
         if isinstance(out, torch.Tensor)
@@ -243,8 +247,8 @@ def check_escaped_gradients(
     if not start_nodes:
         return
 
-    escaped: set[torch.autograd.graph.Node] = set()
-    visited: set[torch.autograd.graph.Node] = set()
+    escaped: Set[torch.autograd.graph.Node] = set()
+    visited: Set[torch.autograd.graph.Node] = set()
     stack = list(start_nodes)
 
     while stack:
@@ -283,8 +287,8 @@ def check_escaped_gradients(
 
 @contextlib.contextmanager
 def unflatten_args_with_modules(
-    flat_args: tuple[Any, ...], input_spec: pytree.TreeSpec
-) -> Generator[tuple[list[Any] | tuple[Any, ...], dict[str, Any]], None, None]:
+    flat_args: Tuple[Any, ...], input_spec: pytree.TreeSpec
+) -> Union[Generator[Tuple[List[Any], Tuple[Any, ...]], Dict[str, Any]], None, None]:
     args, kwargs = pytree.tree_unflatten(flat_args, input_spec)
 
     with contextlib.ExitStack() as stack:
@@ -309,8 +313,8 @@ def unflatten_args_with_modules(
 
 
 def flatten_args_with_modules(
-    args_kwargs: tuple[Any, ...],
-) -> list[Any]:
+    args_kwargs: Tuple[Any, ...],
+) -> List[Any]:
     def expand_module(x: Any) -> Any:
         if isinstance(x, torch.nn.Module):
             return LeafModuleState(
@@ -327,8 +331,8 @@ def flatten_args_with_modules(
 def make_leaf_function_wrappers(
     real_fn: Callable[..., Any],
     fake_fn: Callable[..., Any],
-    captured_out_spec: list[pytree.TreeSpec | None],
-) -> tuple[Callable[..., tuple[Any, ...]], Callable[..., tuple[Any, ...]]]:
+    captured_out_spec: List[Optional[pytree.TreeSpec]],
+) -> Tuple[Callable[..., Tuple[Any, ...]], Callable[..., Tuple[Any, ...]]]:
     """Wrap real_fn and fake_fn to flatten outputs and capture the output TreeSpec.
 
     Both wrappers share the same captured output spec: the first call (typically
@@ -340,13 +344,13 @@ def make_leaf_function_wrappers(
     make_fx path (_invoke_leaf_function_python in decorators.py).
     """
 
-    def _wrap(fn: Callable[..., Any]) -> Callable[..., tuple[Any, ...]]:
+    def _wrap(fn: Callable[..., Any]) -> Callable[..., Tuple[Any, ...]]:
         if len(captured_out_spec) != 1:
             raise RuntimeError(
                 f"captured_out_spec must be a single-element list, got length {len(captured_out_spec)}"
             )
 
-        def wrapper(*args: Any, **kwargs: Any) -> tuple[Any, ...]:
+        def wrapper(*args: Any, **kwargs: Any) -> Tuple[Any, ...]:
             out = fn(*args, **kwargs)
 
             flat_out, out_spec = pytree.tree_flatten(out)
@@ -368,13 +372,13 @@ def make_leaf_function_wrappers(
 
 
 def autograd_grad_with_gradient_info(
-    output_infos: Sequence[GradientInfo | None],
-    input_infos: Sequence[GradientInfo | None],
-    grad_outputs: Sequence[Any] | None = None,
-    retain_graph: bool | None = None,
+    output_infos: Sequence[Optional[GradientInfo]],
+    input_infos: Sequence[Optional[GradientInfo]],
+    grad_outputs: Optional[Sequence[Any]] = None,
+    retain_graph: Optional[bool] = None,
     create_graph: bool = False,
     allow_unused: bool = False,
-) -> tuple[torch.Tensor | None, ...]:
+) -> Tuple[Optional[torch.Tensor], ...]:
     """
     Compute gradients using GradientInfo, it additionally handles the case
     where input and output infos are None.
@@ -430,7 +434,7 @@ def autograd_grad_with_gradient_info(
     # gradients. At runtime, if one leaf function doesn't actually use the input,
     # autograd.grad returns None for it, and the traced add(grad1, grad2) fails
     # because one operand is None. Returning zeros ensures the add always works.
-    result: list[torch.Tensor | None] = [None] * len(input_infos)
+    result: List[Optional[torch.Tensor]] = [None] * len(input_infos)
     for filtered_idx, original_idx in enumerate(input_indices):
         grad = grads[filtered_idx]
         if grad is None:
@@ -447,8 +451,8 @@ def _make_forward(
     fn: Callable,
     include_keys: DispatchKeySet,
     exclude_keys: DispatchKeySet,
-) -> tuple[Callable, dict[str, Any]]:
-    state: dict[str, Any] = {"inputs": None, "outputs": None}
+) -> Tuple[Callable, Dict[str, Any]]:
+    state: Dict[str, Any] = {"inputs": None, "outputs": None}
 
     @functools.wraps(fn)
     def forward(*args, **kwargs):
@@ -709,7 +713,7 @@ class InvokeLeafFunctionAutogradOp(torch.autograd.Function):
         hook_fake = getattr(real_fn_callable, "_leaf_hook_fake_fn", None)
         if hook_real is not None:
             assert hook_fake is not None  # noqa: S101
-            hook_captured_out_spec: list[pytree.TreeSpec | None] = [None]
+            hook_captured_out_spec: List[Optional[pytree.TreeSpec]] = [None]
             wrapped_hook_real, wrapped_hook_fake = make_leaf_function_wrappers(
                 hook_real, hook_fake, hook_captured_out_spec
             )
@@ -864,13 +868,13 @@ def _validate_outputs_match(
                 )
 
 
-def _parse_mutated_arg_indices(s: str) -> set[int]:
+def _parse_mutated_arg_indices(s: str) -> Set[int]:
     return {int(x) for x in s.split(",") if x}
 
 
 def _check_no_input_mutation(
-    flat_args: tuple[Any, ...],
-    version_before: list[int],
+    flat_args: Tuple[Any, ...],
+    version_before: List[int],
     mutated_arg_indices: str = "",
 ) -> None:
     mutated_set = _parse_mutated_arg_indices(mutated_arg_indices)

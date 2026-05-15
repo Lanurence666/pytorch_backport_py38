@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextlib
 import dataclasses
 import importlib
@@ -6,9 +8,9 @@ import itertools
 import pickle
 import weakref
 from abc import abstractmethod
-from collections.abc import Callable, Generator
-from typing import Any, NewType, TypeVar
-from typing_extensions import override, Self
+
+from typing import Any, Callable, Dict, Generator, Iterator, Optional, Set, Tuple, Type, TypeVar, Union
+from typing_extensions import NewType, Self, override
 
 from torch.utils._import_utils import import_dill
 
@@ -62,7 +64,7 @@ def _node_metadata_key_filter_safe(key: str) -> bool:
 class Options:
     # A filter for which ops will cause the pickler to raise a
     # BypassFxGraphCache exception. If None then all ops are allowed.
-    ops_filter: Callable[[str], bool] | None = _ops_filter_safe
+    ops_filter: Callable[[str], bool] | None = Union[_ops_filter_safe]
     node_metadata_key_filter: Callable[[str], bool] | None = (
         _node_metadata_key_filter_safe
     )
@@ -106,7 +108,7 @@ class GraphPickler(pickle.Pickler):
     GraphModule.
     """
 
-    def __init__(self, file: io.BytesIO, options: Options | None = None) -> None:
+    def __init__(self, file: io.BytesIO, options: Optional[Options] = None) -> None:
         if dill is not None:
             super().__init__(file, byref=True)
         else:
@@ -129,7 +131,7 @@ class GraphPickler(pickle.Pickler):
     # pyrefly: ignore [bad-override]
     def reducer_override(
         self, obj: object
-    ) -> tuple[Callable[..., Any], tuple[Any, ...]]:
+    ) -> Tuple[Callable[..., Any], Tuple[Any, ...]]:
         # This function is supposed to return either NotImplemented (meaning to
         # do the default pickle behavior) or a pair of (unpickle callable, data
         # to pass to unpickle).
@@ -195,14 +197,14 @@ class GraphPickler(pickle.Pickler):
 
     @override
     # pyrefly: ignore [bad-override]
-    def persistent_id(self, obj: object) -> str | None:
+    def persistent_id(self, obj: object) -> Optional[str]:
         if obj is self._unpickle_state:
             return "unpickle_state"
         else:
             return None
 
     @classmethod
-    def dumps(cls, obj: object, options: Options | None = None) -> bytes:
+    def dumps(cls, obj: object, options: Optional[Options] = None) -> bytes:
         """
         Pickle an object.
         """
@@ -228,12 +230,12 @@ class GraphPickler(pickle.Pickler):
     def debug_dumps(
         cls,
         obj: object,
-        options: "Options | None" = None,
+        options: "Optional[Options]" = None,
         *,
         max_depth: int = 80,
         max_iter_items: int = 50,
         verbose: bool = True,
-    ) -> str | None:
+    ) -> Optional[str]:
         """
         Find the first leaf that GraphPickler.dumps cannot serialize and return its path.
 
@@ -257,20 +259,20 @@ class GraphPickler(pickle.Pickler):
         options = options or Options()
         pickler = cls(io.BytesIO(), options)
 
-        visited: set[int] = set()
+        visited: Set[int] = set()
 
         def log(msg: str) -> None:
             if verbose:
                 print(msg)
 
-        def fail_exc(o: Any) -> BaseException | None:
+        def fail_exc(o: Any) -> Optional[BaseException]:
             try:
                 cls.dumps(o, options)
                 return None
             except Exception as e:
                 return e
 
-        def walk(o: Any, path: str, depth: int) -> str | None:
+        def walk(o: Any, path: str, depth: int) -> Optional[str]:
             if depth > max_depth:
                 log(f"{'  ' * depth}Depth limit at {path} ({type(o)})")
                 return path + " (depth_limit)"
@@ -440,13 +442,13 @@ class _GraphUnpickler(pickle.Unpickler):
 
 
 class _ShapeEnvPickleData:
-    data: dict[str, object]
+    data: Dict[str, object]
 
     @classmethod
     def reduce_helper(
         cls, pickler: GraphPickler, obj: ShapeEnv
-    ) -> tuple[
-        Callable[[Self, _UnpickleState], ShapeEnv], tuple[Self, _UnpickleStateToken]
+    ) -> Tuple[
+        Callable[[Self, _UnpickleState], ShapeEnv], Tuple[Self, _UnpickleStateToken]
     ]:
         return cls.unpickle, (cls(obj), pickler._unpickle_state)
 
@@ -479,8 +481,8 @@ class _SymNodePickleData:
         cls,
         pickler: GraphPickler,
         obj: _SymNodeT,
-    ) -> tuple[
-        Callable[[Self, _UnpickleState], _SymNodeT], tuple[Self, _UnpickleStateToken]
+    ) -> Tuple[
+        Callable[[Self, _UnpickleState], _SymNodeT], Tuple[Self, _UnpickleStateToken]
     ]:
         args = (cls(obj.node), pickler._unpickle_state)
         if isinstance(obj, torch.SymInt):
@@ -510,8 +512,8 @@ class _TensorPickleData:
     @classmethod
     def reduce_helper(
         cls, pickler: GraphPickler, obj: FakeTensor
-    ) -> tuple[
-        Callable[[Self, _UnpickleState], FakeTensor], tuple[Self, _UnpickleStateToken]
+    ) -> Tuple[
+        Callable[[Self, _UnpickleState], FakeTensor], Tuple[Self, _UnpickleStateToken]
     ]:
         return cls.unpickle, (
             cls(pickler._meta_tensor_describer, obj),
@@ -559,7 +561,7 @@ class _TensorPickleData:
             metadata = dataclasses.replace(metadata, base=new_base)
 
         def with_fake(
-            make_meta_t: Callable[[], torch.Tensor], device: torch.device | str
+            make_meta_t: Callable[[], torch.Tensor], device: Union[torch.device, str]
         ) -> FakeTensor:
             with no_dispatch():
                 return FakeTensor(
@@ -583,8 +585,8 @@ class _TorchNumpyPickleData:
     def reduce_helper(
         cls, pickler: GraphPickler, obj: object
     ) -> (
-        tuple[
-            Callable[[Self, _UnpickleState], object], tuple[Self, _UnpickleStateToken]
+        Tuple[
+            Callable[[Self, _UnpickleState], object], Tuple[Self, _UnpickleStateToken]
         ]
         | None
     ):
@@ -602,7 +604,7 @@ class _TorchNumpyPickleData:
         return torch._dynamo.variables.misc.get_np_to_tnp_map()[np]
 
     @classmethod
-    def from_object(cls, tnp: object) -> Self | None:
+    def from_object(cls, tnp: object) -> Optional[Self]:
         if not callable(tnp):
             return None
 
@@ -632,9 +634,9 @@ class _GraphModulePickleData:
     @classmethod
     def reduce_helper(
         cls, pickler: GraphPickler, obj: torch.fx.GraphModule
-    ) -> tuple[
+    ) -> Tuple[
         Callable[[Self, _UnpickleState], torch.fx.GraphModule],
-        tuple[Self, _UnpickleStateToken],
+        Tuple[Self, _UnpickleStateToken],
     ]:
         return cls.unpickle, (
             cls(obj, pickler.options),
@@ -665,7 +667,7 @@ class _NodePickleData:
     def __init__(
         self,
         node: torch.fx.Node,
-        mapping: dict[torch.fx.Node, "_NodePickleData"],
+        mapping: Dict[torch.fx.Node, "_NodePickleData"],
         options: Options,
     ) -> None:
         self.args = pytree.tree_map_only(torch.fx.Node, lambda n: mapping[n], node.args)
@@ -694,7 +696,7 @@ class _NodePickleData:
     def unpickle(
         self,
         graph: torch.fx.Graph,
-        mapping: dict["_NodePickleData", torch.fx.Node],
+        mapping: Dict["_NodePickleData", torch.fx.Node],
         unpickle_state: _UnpickleState,
     ) -> torch.fx.Node:
         args = pytree.tree_map_only(_NodePickleData, lambda n: mapping[n], self.args)
@@ -713,7 +715,7 @@ class _OpPickleData:
     @classmethod
     def reduce_helper(
         cls, pickler: GraphPickler, op: object
-    ) -> tuple[Callable[[_UnpickleState], object], tuple[_UnpickleStateToken]]:
+    ) -> Tuple[Callable[[_UnpickleState], object], Tuple[_UnpickleStateToken]]:
         result = cls.pickle(op, pickler.options)
         return (result.unpickle, (pickler._unpickle_state,))
 
@@ -748,7 +750,7 @@ class _OpPickleData:
     @staticmethod
     def _pickle_op(
         name: str,
-        datacls: type["_OpOverloadPickleData"] | type["_OpOverloadPacketPickleData"],
+        datacls: Union[Type["_OpOverloadPickleData"], Type["_OpOverloadPacketPickleData"]],
         options: Options,
     ) -> "_OpPickleData":
         if (ops_filter := options.ops_filter) and not ops_filter(name):
@@ -869,7 +871,7 @@ class _GraphPickleData:
         self.tracer_cls = graph._tracer_cls
         self.tracer_extras = graph._tracer_extras
 
-        nodes: dict[torch.fx.Node, _NodePickleData] = {}
+        nodes: Dict[torch.fx.Node, _NodePickleData] = {}
         for node in graph.nodes:
             nodes[node] = _NodePickleData(node, nodes, options)
         self.nodes = tuple(nodes.values())
@@ -889,7 +891,7 @@ class _GraphPickleData:
     ) -> torch.fx.Graph:
         graph = torch.fx.Graph(gm, self.tracer_cls, self.tracer_extras)
 
-        nodes: dict[_NodePickleData, torch.fx.Node] = {}
+        nodes: Dict[_NodePickleData, torch.fx.Node] = {}
         for nd in self.nodes:
             nodes[nd] = nd.unpickle(graph, nodes, unpickle_state)
         if hasattr(self, "_codegen"):
@@ -902,9 +904,9 @@ class _TracingContextPickleData:
     @classmethod
     def reduce_helper(
         cls, pickler: GraphPickler, obj: torch._guards.TracingContext
-    ) -> tuple[
+    ) -> Tuple[
         Callable[[Self, _UnpickleState], torch._guards.TracingContext],
-        tuple[Self, _UnpickleStateToken],
+        Tuple[Self, _UnpickleStateToken],
     ]:
         return (
             cls.unpickle,

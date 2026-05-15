@@ -1,11 +1,13 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
 import inspect
 import math
 import warnings
-from collections.abc import Sequence
+
 from itertools import chain
-from typing import Any
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, overload
 
 import sympy
 
@@ -37,6 +39,16 @@ from .exported_program import (
 )
 
 
+try:
+    from ast import unparse as _ast_unparse_compat
+except ImportError:
+    import ast as _ast_mod
+    def _ast_unparse_compat(node):
+        try:
+            import astunparse
+            return astunparse.unparse(node)
+        except ImportError:
+            return _ast_mod.dump(node)
 def eq_spec(self: pytree.TreeSpec, other: pytree.TreeSpec) -> bool:
     """
     Refinement of TreeSpec.__eq__ where, e.g., torch.Size(...) matches tuple(...).
@@ -86,7 +98,7 @@ def _check_inputs_match(args, kwargs, in_spec: pytree.TreeSpec) -> list:
     return flat_args_with_path
 
 
-def _force_ep_signature_match(ep_guards_code: list[str], input_paths):
+def _force_ep_signature_match(ep_guards_code: List[str], input_paths):
     # TODO (tmanlaibaatar)
     # This is band-aid solution to export new tracer replacing
     # shape env sources to flat_args. The real fix should be replacing
@@ -109,7 +121,7 @@ def _force_ep_signature_match(ep_guards_code: list[str], input_paths):
     return new_guards_code
 
 
-def _force_gm_signature_match(ep_guards_code: list[str], signature):
+def _force_gm_signature_match(ep_guards_code: List[str], signature):
     """
     The signature of the originally exported module may not match
     the signature of the unlifted graph module extracted from the
@@ -145,8 +157,8 @@ def _force_gm_signature_match(ep_guards_code: list[str], signature):
 
 
 def _convert_guards_code_to_fn(
-    guards_code: list[str],
-    paths_of_placeholders: list[pytree.KeyPath],
+    guards_code: List[str],
+    paths_of_placeholders: List[pytree.KeyPath],
 ):
     """
     Generates Python code given guards code and paths of placeholders.
@@ -199,7 +211,7 @@ def _convert_guards_code_to_fn(
         # printing guards code may potentially introduce redundant parens;
         # we can normalize them out for readability by parsing/unparsing
         # NOTE: this is not necessary for correctness, just deemed desirable
-        _shadow = ast.unparse(ast.parse(shadow, mode="eval"))
+        _shadow = _ast_unparse_compat(ast.parse(shadow, mode="eval"))
         # actual code and shadow error message
         code_str += f'  torch._assert({actual}, "Guard failed: {_shadow}")\n'
     code_str += "  return\n"
@@ -254,8 +266,8 @@ def _check_input_constraints_pre_hook(self, args, kwargs):
 
 def _unlift_inputs_as_getattr(
     gm: torch.fx.GraphModule,
-    lifted_inputs: Sequence[str | None],
-) -> tuple[dict[str, torch.fx.Node], dict[str, torch.fx.Node]]:
+    lifted_inputs: Sequence[Optional[str]],
+) -> Tuple[Dict[str, torch.fx.Node], Dict[str, torch.fx.Node]]:
     """
     Unlift inputs referring to params/buffers/constants as getattr nodes in the
     graph
@@ -299,9 +311,9 @@ def _unlift_inputs_as_getattr(
 
 def _insert_copy_for_mutations(
     gm: torch.fx.GraphModule,
-    mutated_outputs: Sequence[str | None],
-    unlifted_name_to_node: dict[str, torch.fx.Node],
-    input_name_to_node: dict[str, torch.fx.Node],
+    mutated_outputs: Sequence[Optional[str]],
+    unlifted_name_to_node: Dict[str, torch.fx.Node],
+    input_name_to_node: Dict[str, torch.fx.Node],
 ) -> None:
     """
     Find the all the buffers and inputs that were mutated and insert copy_
@@ -358,8 +370,8 @@ def _insert_copy_for_mutations(
 
 def _get_codegen(
     in_spec: pytree.TreeSpec,
-    out_spec: pytree.TreeSpec | None,
-    forward_arg_names: list[str] | None = None,
+    out_spec: Optional[pytree.TreeSpec],
+    forward_arg_names: Optional[List[str]] = None,
 ) -> _PyTreeCodeGen:
     """
     Create the codegen for the graph module based on the in/out specs
@@ -390,11 +402,11 @@ def _get_codegen(
 
 def _unlift(
     gm: torch.fx.GraphModule,
-    lifted_inputs: Sequence[str | None],
-    mutated_outputs: Sequence[str | None],
+    lifted_inputs: Sequence[Optional[str]],
+    mutated_outputs: Sequence[Optional[str]],
     in_spec: pytree.TreeSpec,
-    out_spec: pytree.TreeSpec | None,
-    forward_arg_names: list[str] | None = None,
+    out_spec: Optional[pytree.TreeSpec],
+    forward_arg_names: Optional[List[str]] = None,
 ):
     """
     Args:
@@ -426,8 +438,8 @@ def _unlift(
 def _register_attrs_to_new_gm(
     new_gm: torch.fx.GraphModule,
     graph_signature: ExportGraphSignature,
-    state_dict: dict[str, Any],
-    constants: dict[str, Any],
+    state_dict: Dict[str, Any],
+    constants: Dict[str, Any],
 ) -> None:
     non_persistent_buffers = set(graph_signature.non_persistent_buffers)
     for name in graph_signature.buffers:
@@ -609,7 +621,7 @@ def _get_input_paths(example_inputs, signature):
     return [path for path, _ in flat_example_inputs_with_paths]
 
 
-def _replace_sources(result_str: str, flat_input_paths: list[Any]):
+def _replace_sources(result_str: str, flat_input_paths: List[Any]):
     """
     Given user specified input paths, maybe fix up the guard string
     to reflect user path instead of tracer path.
@@ -625,9 +637,9 @@ def _replace_sources(result_str: str, flat_input_paths: list[Any]):
 
 
 def _get_input_guards_for_graph(
-    placeholders: list[torch.fx.Node],
-    range_constraints: dict[sympy.Symbol, ValueRanges],
-    paths_for_placeholders: list[pytree.KeyPath],
+    placeholders: List[torch.fx.Node],
+    range_constraints: Dict[sympy.Symbol, ValueRanges],
+    paths_for_placeholders: List[pytree.KeyPath],
 ):
     """
     Guards generated by the tracer include conditions observed in code, but
@@ -649,7 +661,7 @@ def _get_input_guards_for_graph(
 
     deferred_expressions = []
     new_guards_code = []
-    sources: dict[sympy.Expr, str] = {}
+    sources: Dict[sympy.Expr, str] = {}
 
     def handle_symint(expr, src):
         if len(expr.free_symbols) == 1:
@@ -704,7 +716,7 @@ def _get_input_guards_for_graph(
                     # range constraints and equalities
                     handle_symint(dim.node.expr, src)
 
-    unification_map: dict[sympy.Symbol, sympy.Expr] = {}
+    unification_map: Dict[sympy.Symbol, sympy.Expr] = {}
     py_printer = torch.utils._sympy.printers.PythonPrinter()
 
     # process complex equations (e.g., involving derived dims)
@@ -786,7 +798,7 @@ def _unlift_exported_program_lifted_states(
     forward_arg_names = (
         sig.forward_arg_names if (sig := ep.module_call_graph[0].signature) else None
     )
-    lifted_inputs: list[str | None] = [
+    lifted_inputs: List[Optional[str]] = [
         (
             in_spec.target
             if in_spec.kind
@@ -801,7 +813,7 @@ def _unlift_exported_program_lifted_states(
         for in_spec in ep.graph_signature.input_specs
     ]
 
-    mutated_outputs: list[str | None] = [
+    mutated_outputs: List[Optional[str]] = [
         (
             out_spec.target
             if out_spec.kind

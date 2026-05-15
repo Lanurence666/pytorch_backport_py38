@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: jit"]
 
+from __future__ import annotations
 from typing import NamedTuple, Tuple
 
 import torch

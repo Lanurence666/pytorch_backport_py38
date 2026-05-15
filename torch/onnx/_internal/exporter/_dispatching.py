@@ -1,7 +1,7 @@
 # mypy: allow-untyped-defs
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Callable, TYPE_CHECKING, Tuple, Union, overload
 
 import torch
 import torch.fx
@@ -29,7 +29,7 @@ def _arg_has_complex_dtype(arg) -> bool:
 
 def dispatch(
     node: torch.fx.Node, registry: _registration.ONNXRegistry
-) -> tuple[Callable | None, str]:
+) -> Union[Tuple[Callable, None, str]]:
     """Dispatch a node to an ONNX function based on the node's target and the ONNX registry.
 
     Args:

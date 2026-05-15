@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 This file includes private common utilities for FSDP.
@@ -8,11 +9,13 @@ import logging
 import traceback
 import warnings
 import weakref
-from collections.abc import Callable, Generator, Iterable, Iterator
+from collections.abc import Callable, Generator
 from enum import auto, Enum
 from functools import partial
 from itertools import chain
-from typing import Any, cast, no_type_check, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, Generator, Iterable, Iterator, List, Optional, Set, TYPE_CHECKING, Tuple, Type, cast, no_type_check
+from typing_extensions import NamedTuple
+
 
 import torch
 import torch.distributed as dist
@@ -56,7 +59,7 @@ def _is_namedtuple(obj: Any) -> bool:
     )
 
 
-def collect_grad_tensors(output: Any) -> tuple[torch.Tensor, ...]:
+def collect_grad_tensors(output: Any) -> Tuple[torch.Tensor, ...]:
     """
     Recursively collect tensors that require gradients from a nested structure.
 
@@ -65,13 +68,13 @@ def collect_grad_tensors(output: Any) -> tuple[torch.Tensor, ...]:
     ``tree_flatten``).  Uses the same traversal order as
     :func:`replace_grad_tensors`.
     """
-    tensors_list: list[torch.Tensor] = []
+    tensors_list: List[torch.Tensor] = []
     _collect_grad_tensors(output, tensors_list)
     return tuple(tensors_list)
 
 
 def _collect_grad_tensors(
-    output: Any, out: list[torch.Tensor], _depth: int = 0
+    output: Any, out: List[torch.Tensor], _depth: int = 0
 ) -> None:
     """Collect grad-requiring tensors in the same order as _replace_grad_tensors."""
     if _depth >= _MAX_TRAVERSE_DEPTH:
@@ -268,43 +271,43 @@ class _FSDPState(_State):
     def __init__(self) -> None:
         # TODO: Move all the attributes to this class to enable typing for
         # FSDP/fully_shard.
-        self._ignored_modules: set[nn.Module] = set()
-        self._ignored_params: set[nn.Parameter] = set()
+        self._ignored_modules: Set[nn.Module] = set()
+        self._ignored_params: Set[nn.Parameter] = set()
         # Buffer names are cleaned (without wrapper prefixes)
-        self._ignored_buffer_names: set[str] = set()
-        self.process_group: dist.ProcessGroup | None = None
+        self._ignored_buffer_names: Set[str] = set()
+        self.process_group: Optional[dist.ProcessGroup] = None
         self.rank: int = -1
         self.world_size: int = -1
-        self._device_mesh: DeviceMesh | None = None
+        self._device_mesh: Optional[DeviceMesh] = None
         self.sharding_strategy = ShardingStrategy.FULL_SHARD
         self._use_orig_params: bool = False
         self.training_state = TrainingState.IDLE
-        self._unshard_params_ctx: dict[nn.Module, Generator] = {}
+        self._unshard_params_ctx: Dict[nn.Module, Generator] = {}
         self._state_dict_type: StateDictType = StateDictType.FULL_STATE_DICT
         self._state_dict_config: StateDictConfig = FullStateDictConfig()
         self._optim_state_dict_config: OptimStateDictConfig = FullOptimStateDictConfig()
-        self._is_root: bool | None = None
-        self._handle: flat_param_file.FlatParamHandle | None = None
-        self._fully_sharded_module_to_handle: dict[
-            nn.Module, flat_param_file.FlatParamHandle | None
+        self._is_root: Optional[bool] = None
+        self._handle: Optional[flat_param_file.FlatParamHandle] = None
+        self._fully_sharded_module_to_handle: Dict[
+            nn.Module, Optional[flat_param_file.FlatParamHandle]
         ] = {}
-        self.compute_device: torch.device | None = None
+        self.compute_device: Optional[torch.device] = None
         self._gradient_predivide_factor: int = 0
         self._gradient_postdivide_factor: int = 0
-        self._comm_hook: Callable | None = None
-        self._comm_hook_state: Any | None = None
-        self._unshard_event: torch.Event | None = None
+        self._comm_hook: Optional[Callable] = None
+        self._comm_hook_state: Optional[Any] = None
+        self._unshard_event: Optional[torch.Event] = None
         # Abstract device handle for fsdp compute device. For now,
         # the compute device must implement cuda semantics used by fsdp
         self._device_handle: _FSDPDeviceHandle = _UninitializedDeviceHandle()
         # All following attributes should only be used for root states:
         # Save these static lists to avoid the repeated tree traversals
-        self._all_fsdp_states: list[_FSDPState] = []
-        self._all_handles: list[flat_param_file.FlatParamHandle] = []
-        self._fsdp_extension: FSDPExtensions | None = None
+        self._all_fsdp_states: List[_FSDPState] = []
+        self._all_handles: List[flat_param_file.FlatParamHandle] = []
+        self._fsdp_extension: Optional[FSDPExtensions] = None
 
 
-def _get_module_fsdp_state(module: nn.Module) -> _FSDPState | None:
+def _get_module_fsdp_state(module: nn.Module) -> Optional[_FSDPState]:
     state = _get_module_state(module)
     if state is None or not isinstance(state, _FSDPState):
         return None
@@ -313,7 +316,7 @@ def _get_module_fsdp_state(module: nn.Module) -> _FSDPState | None:
 
 def _get_module_fsdp_state_if_fully_sharded_module(
     module: nn.Module,
-) -> _FSDPState | None:
+) -> Optional[_FSDPState]:
     state = _get_module_fsdp_state(module)
     if state is None:
         return None
@@ -413,7 +416,7 @@ def _is_fsdp_flattened(tensor: torch.Tensor) -> bool:
 
 def _named_parameters_with_duplicates(
     module: nn.Module, **kwargs: Any
-) -> list[tuple[str, nn.Parameter]]:
+) -> List[Tuple[str, nn.Parameter]]:
     """
     This API is required as some modules overwrite `named_parameters()` but do not support
     `remove_duplicate`.
@@ -434,7 +437,7 @@ def _named_parameters_with_duplicates(
 def _get_param_to_fqns(
     model: torch.nn.Module,
     dedup_shared_params: bool = True,
-) -> dict[nn.Parameter, list[str]]:
+) -> Dict[nn.Parameter, List[str]]:
     """
     Constructs a mapping from parameter to a list of its \"canonical\" FQNs. Here,
     we use canonical to mean the fully-qualified name assigned to the parameter
@@ -505,7 +508,7 @@ def _get_param_to_fqns(
     def return_fn(param_to_fqns):
         return param_to_fqns
 
-    param_to_unflat_param_names: dict[torch.nn.Parameter, list[str]] = {}
+    param_to_unflat_param_names: Dict[torch.nn.Parameter, List[str]] = {}
     return _apply_to_modules(
         model,
         module_fn,
@@ -530,7 +533,7 @@ def _log_post_backward_hook(
 @no_type_check
 def _get_handle_fqns_from_root(
     state: _FSDPState, handle: "FlatParamHandle"
-) -> list[str] | None:
+) -> Optional[List[str]]:
     if handle is None:
         return None
     param_to_fqn = state._exec_order_data.param_to_fqn
@@ -543,7 +546,7 @@ def _apply_to_modules(
     root_module: torch.nn.Module,
     module_fn: Callable,
     return_fn: Callable,
-    filter_fqns: list[str] | None = None,
+    filter_fqns: Optional[List[str]]= None,
     *args,
     **kwargs,
 ):
@@ -561,7 +564,7 @@ def _apply_to_modules(
 
     # Precompute the set of all prefixes from filter_fqns so that the
     # "any FQN starts with new_prefix?" check is O(1) instead of O(N).
-    filter_prefixes: set[str] | None = None
+    filter_prefixes: Optional[Set[str]]= None
     if filter_fqns is not None:
         filter_prefixes = set()
         for fqn in filter_fqns:
@@ -602,7 +605,7 @@ def _apply_to_modules(
 @no_type_check
 def _assert_in_training_states(
     state: _FSDPState,
-    training_states: list[TrainingState],
+    training_states: List[TrainingState],
 ) -> None:
     """Asserts that FSDP is in the states ``_training_states``."""
     # Raise a `ValueError` instead of using `assert` to ensure that these
@@ -621,7 +624,7 @@ def _assert_in_training_states(
         raise ValueError(msg)
 
 
-def _get_root_modules(modules: set[nn.Module]) -> set[nn.Module]:
+def _get_root_modules(modules: Set[nn.Module]) -> Set[nn.Module]:
     """
     Returns:
         Set[nn.Module]: The subset of ``modules`` that are root modules (i.e.
@@ -629,7 +632,7 @@ def _get_root_modules(modules: set[nn.Module]) -> set[nn.Module]:
         words, these are the modules in ``modules`` that are not the child of
         any other module in ``modules``.
     """
-    root_modules: set[nn.Module] = set()
+    root_modules: Set[nn.Module] = set()
     module_to_submodules = {module: set(module.modules()) for module in modules}
     for candidate_module in modules:
         is_root_module = True
@@ -647,12 +650,12 @@ def _get_root_modules(modules: set[nn.Module]) -> set[nn.Module]:
 
 def _override_module_mixed_precision(
     root: torch.nn.Module,
-    module_classes_to_override: Iterable[type[nn.Module]],
-    wrap_override_dict: dict[str, Any] = {"mixed_precision": None},  # noqa: B006
-) -> set[type[nn.Module]]:
+    module_classes_to_override: Iterable[Type[nn.Module]],
+    wrap_override_dict: Dict[str, Any] = {"mixed_precision": None},  # noqa: B006
+) -> Set[Type[nn.Module]]:
     module_classes_to_override = tuple(set(module_classes_to_override))
     # Return a set of the actually overridden module classes
-    overridden_module_classes: set[type[nn.Module]] = set()
+    overridden_module_classes: Set[Type[nn.Module]] = set()
     for mod in root.modules():
         if isinstance(mod, module_classes_to_override):
             overridden_module_classes.add(type(mod))

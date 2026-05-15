@@ -1,3 +1,4 @@
+from __future__ import annotations
 """trace_wrapped(*args, fn) is equivalent to fn(*args), but with a twist:
 if you make_fx trace through this call, we will not actually trace into fn; instead,
 we will directly insert it as a call_function to fn in the graph.
@@ -28,7 +29,7 @@ the function call as is in the graph, and only when we Dynamo through the backwa
 compiled autograd do we inline into the function.
 """
 
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import torch.utils._pytree as pytree
@@ -51,8 +52,8 @@ __all__ = ["trace_wrapped"]
 
 @torch.library.custom_op("flex_lib::zeros_and_scatter", mutates_args=())  # type: ignore[misc]
 def zeros_and_scatter(
-    shape: list[int],
-    indices: list[Tensor],
+    shape: List[int],
+    indices: List[Tensor],
     vals: Tensor,
 ) -> Tensor:
     """Custom Op so that we can register a custom lowering for the new_output + scatter in the backwards pass"""
@@ -62,8 +63,8 @@ def zeros_and_scatter(
 
 @zeros_and_scatter.register_fake  # type: ignore[misc]
 def _(
-    shape: list[int],
-    indices: list[Tensor],
+    shape: List[int],
+    indices: List[Tensor],
     vals: Tensor,
 ) -> Tensor:
     return vals.new_empty(shape)
@@ -80,10 +81,7 @@ def _(info, indims, shape, indices, value):  # type: ignore[no-untyped-def]
             expanded_indices.append(idx.expand(value.shape))
         else:
             # the index is being part of the vmap batch, it should be the same size as val
-            if idx.shape != value.shape:
-                raise AssertionError(
-                    f"idx shape {idx.shape} must match value shape {value.shape}"
-                )
+            assert idx.shape == value.shape
             expanded_indices.append(idx)
 
     out = torch.ops.flex_lib.zeros_and_scatter(
@@ -99,11 +97,11 @@ class ModIndex(torch.autograd.Function):
 
     @staticmethod
     # pyrefly: ignore [bad-override]
-    def forward(x: Tensor, indices: list[Tensor]) -> Tensor:
+    def forward(x: Tensor, indices: List[Tensor]) -> Tensor:
         return torch.ops.aten.index(x, indices)
 
     @staticmethod
-    def setup_context(ctx: Any, inputs: tuple[Any, ...], output: Any) -> None:
+    def setup_context(ctx: Any, inputs: Tuple[Any, ...], output: Any) -> None:
         x, indices = inputs
         ctx.save_for_backward(*indices)
         ctx.input_shape = x.shape
@@ -142,16 +140,13 @@ class TransformGetItemToIndex(TorchFunctionMode):
     def __torch_function__(
         self,
         func: OpOverload,
-        types: tuple[torch._C._TensorMeta, ...],
-        args: tuple[object, ...] = (),
-        kwargs: dict[str, object] | None = None,
+        types: Tuple[torch._C._TensorMeta, ...],
+        args: Tuple[object, ...] = (),
+        kwargs: Optional[Dict[str, object]]= None,
     ) -> object:
         if func is torch.Tensor.__getitem__:
             tensor_to_index = args[0]
-            if not isinstance(tensor_to_index, torch.Tensor):
-                raise AssertionError(
-                    f"expected torch.Tensor, got {type(tensor_to_index)}"
-                )
+            assert isinstance(tensor_to_index, torch.Tensor)
             index_args = pytree.tree_leaves(args[1])
             if all(isinstance(x, (torch.Tensor, int)) for x in index_args):
                 converted_indices = [
@@ -184,16 +179,13 @@ _trace_wrapped_op = TraceWrapped()
 
 def _assert_meta(
     grad: torch.Tensor,
-    size: tuple[int, ...],
-    stride: tuple[int, ...],
+    size: Tuple[int, ...],
+    stride: Tuple[int, ...],
     dtype: torch.dtype,
 ) -> torch.Tensor:
-    if grad.size() != size:
-        raise AssertionError("size mismatch")
-    if grad.stride() != stride:
-        raise AssertionError("stride mismatch")
-    if grad.dtype != dtype:
-        raise AssertionError("dtype mismatch")
+    assert grad.size() == size, "size mismatch"
+    assert grad.stride() == stride, "stride mismatch"
+    assert grad.dtype == dtype, "dtype mismatch"
     return grad
 
 
@@ -201,7 +193,7 @@ def _assert_meta(
 def inner_trace(
     mode: ProxyTorchDispatchMode,
     *args: Any,
-    bw_state: BackwardState | None = None,
+    bw_state: Optional[BackwardState]= None,
     **kwargs: Any,
 ) -> Any:
     def self_invoke(*args: Any, **dyn_kwargs: Any) -> Any:
@@ -219,10 +211,7 @@ def inner_trace(
 
     proxy_kwargs = {}
     if bw_state is not None:
-        if not isinstance(bw_state, BackwardState):
-            raise AssertionError(f"expected BackwardState, got {type(bw_state)}")
-        if bw_state.proxy is None:
-            raise AssertionError("bw_state.proxy must not be None")
+        assert isinstance(bw_state, BackwardState) and bw_state.proxy is not None
         proxy_kwargs["bw_state"] = bw_state.proxy
     out_proxy = mode.tracer.create_proxy(
         "call_function",
@@ -249,8 +238,7 @@ def inner_fake(*args: Any, **kwargs: Any) -> None:
 @_trace_wrapped_op.py_impl(DispatchKey.CompositeExplicitAutograd)
 def _trace_wrapped_op_dense(*args: Any, fn: Any, **kwargs: Any) -> Any:
     mode = _get_current_dispatch_mode()
-    if mode is not None:
-        raise AssertionError("Mode should never be enabled for CPU/CUDA key")
+    assert mode is None, "Mode should never be enabled for CPU/CUDA key"
     return fn(*args, **kwargs)
 
 

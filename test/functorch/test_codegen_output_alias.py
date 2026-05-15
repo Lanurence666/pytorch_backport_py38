@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: functorch"]
 
 """
@@ -239,10 +240,7 @@ class TestCodegenOutputAlias(TestCase):
         outputs. Exercises non-differentiable output collection in
         _transform_raw_returns codegen and backward correctness.
         """
-        with (
-            self._capture_codegen_source("compiled_fn_wrapper") as xform_captured,
-            self._capture_codegen_source("output_alias_wrapper") as _alias_captured,
-        ):
+        with self._capture_codegen_source("compiled_fn_wrapper") as xform_captured, self._capture_codegen_source("output_alias_wrapper") as _alias_captured:
 
             @torch.compile(backend="aot_eager")
             def f(x, y):

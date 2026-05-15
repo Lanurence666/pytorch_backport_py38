@@ -44,6 +44,7 @@ void init_THPCaches() {}
 #undef NEED_OPCODE_METADATA
 #else
 #include <internal/pycore_opcode.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 #endif
 
 #undef NEED_OPCODE_TABLES

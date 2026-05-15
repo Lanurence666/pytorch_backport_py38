@@ -1,5 +1,9 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+from typing import Optional, Union
+
+
 import torch
 from torch import nan, Tensor
 from torch.distributions import constraints
@@ -49,9 +53,9 @@ class Kumaraswamy(TransformedDistribution):
 
     def __init__(
         self,
-        concentration1: Tensor | float,
-        concentration0: Tensor | float,
-        validate_args: bool | None = None,
+        concentration1: Union[Tensor, float],
+        concentration0: Union[Tensor, float],
+        validate_args: Optional[bool] = None,
     ) -> None:
         self.concentration1, self.concentration0 = broadcast_all(
             concentration1, concentration0

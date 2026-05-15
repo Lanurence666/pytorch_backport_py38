@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import itertools as itl
-from typing import Any, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, Generator, Iterable, Iterator, List, Optional, Set, TYPE_CHECKING, Tuple, Type, TypeVar
 from typing_extensions import deprecated
 from warnings import warn
 
@@ -38,7 +38,7 @@ class MDNotImplementedError(NotImplementedError):
 
 
 def ambiguity_warn(
-    dispatcher: Dispatcher, ambiguities: set[tuple[tuple[type, ...], tuple[type, ...]]]
+    dispatcher: Dispatcher, ambiguities: Set[Tuple[Tuple[type, ...], Tuple[type, ...]]]
 ) -> None:
     """Raise warning when ambiguity is detected.
 
@@ -75,7 +75,7 @@ def restart_ordering(on_ambiguity: Callable[..., None] = ambiguity_warn) -> None
 
 
 def variadic_signature_matches_iter(
-    types: tuple[type, ...], full_signature: tuple[type, ...]
+    types: Tuple[type, ...], full_signature: Tuple[type, ...]
 ) -> Generator[bool, None, None]:
     """Check if a set of input types matches a variadic signature.
 
@@ -119,7 +119,7 @@ def variadic_signature_matches_iter(
 
 
 def variadic_signature_matches(
-    types: tuple[type, ...], full_signature: tuple[type, ...]
+    types: Tuple[type, ...], full_signature: Tuple[type, ...]
 ) -> bool:
     # No arguments always matches a variadic signature
     if not full_signature:
@@ -148,12 +148,12 @@ class Dispatcher:
 
     __slots__ = "__name__", "name", "funcs", "_ordering", "_cache", "doc"
 
-    def __init__(self, name: str, doc: str | None = None) -> None:
+    def __init__(self, name: str, doc: Optional[str] = None) -> None:
         self.name = self.__name__ = name
-        self.funcs: dict[tuple[type, ...], Callable[..., object]] = {}
+        self.funcs: Dict[Tuple[type, ...], Callable[..., object]] = {}
         self.doc = doc
 
-        self._cache: dict[tuple[type, ...], Callable[..., object]] = {}
+        self._cache: Dict[Tuple[type, ...], Callable[..., object]] = {}
 
     def register(
         self, *types: type, **kwargs: object
@@ -188,7 +188,7 @@ class Dispatcher:
     @classmethod
     def get_func_params(
         cls, func: Callable[..., object]
-    ) -> Iterable[inspect.Parameter] | None:
+    ) -> Optional[Iterable[inspect.Parameter]]:
         if hasattr(inspect, "signature"):
             sig = inspect.signature(func)
             return sig.parameters.values()
@@ -196,7 +196,7 @@ class Dispatcher:
     @classmethod
     def get_func_annotations(
         cls, func: Callable[..., object]
-    ) -> tuple[type, ...] | None:
+    ) -> Optional[Tuple[type, ...]]:
         """get annotations of function positional parameters"""
         params = cls.get_func_params(func)
         if params:
@@ -214,7 +214,7 @@ class Dispatcher:
             if all(ann is not Parameter.empty for ann in annotations):
                 return annotations
 
-    def add(self, signature: tuple[type, ...], func: Callable[..., object]) -> None:
+    def add(self, signature: Tuple[type, ...], func: Callable[..., object]) -> None:
         """Add new types/method pair to dispatcher
         >>> # xdoctest: +SKIP
         >>> D = Dispatcher("add")
@@ -280,7 +280,7 @@ class Dispatcher:
             pass
 
     @property
-    def ordering(self) -> list[tuple[type, ...]]:
+    def ordering(self) -> List[Tuple[type, ...]]:
         try:
             return self._ordering
         except AttributeError:
@@ -288,7 +288,7 @@ class Dispatcher:
 
     def reorder(
         self, on_ambiguity: Callable[..., None] = ambiguity_warn
-    ) -> list[tuple[type, ...]]:
+    ) -> List[Tuple[type, ...]]:
         self._ordering = od = ordering(self.funcs)
         amb = ambiguities(self.funcs)
         if amb:
@@ -328,7 +328,7 @@ class Dispatcher:
 
     __repr__ = __str__
 
-    def dispatch(self, *types: type) -> Callable[..., object] | None:
+    def dispatch(self, *types: type) -> Optional[Callable[..., object]]:
         """Determine appropriate implementation for this type signature
         This method is internal.  Users should call this object as a function.
         Implementation resolution occurs within the ``__call__`` method.
@@ -370,17 +370,17 @@ class Dispatcher:
     @deprecated(
         "`resolve()` is deprecated, use `dispatch(*types)`", category=FutureWarning
     )
-    def resolve(self, types: tuple[type, ...]) -> Callable[..., object] | None:
+    def resolve(self, types: Tuple[type, ...]) -> Optional[Callable[..., object]]:
         """Determine appropriate implementation for this type signature
         .. deprecated:: 0.4.4
             Use ``dispatch(*types)`` instead
         """
         return self.dispatch(*types)
 
-    def __getstate__(self) -> dict[str, Any]:
+    def __getstate__(self) -> Dict[str, Any]:
         return {"name": self.name, "funcs": self.funcs}
 
-    def __setstate__(self, d: dict[str, Any]) -> None:
+    def __setstate__(self, d: Dict[str, Any]) -> None:
         self.name = d["name"]
         self.funcs = d["funcs"]
         self._ordering = ordering(self.funcs)
@@ -393,7 +393,7 @@ class Dispatcher:
         if self.doc:
             docs.append(self.doc)
 
-        other: list[str] = []
+        other: List[str] = []
         for sig in self.ordering[::-1]:
             func = self.funcs[sig]
             if func.__doc__:
@@ -409,7 +409,7 @@ class Dispatcher:
 
         return "\n\n".join(docs)
 
-    def _help(self, *args: object) -> str | None:
+    def _help(self, *args: object) -> Optional[str]:
         return self.dispatch(*map(type, args)).__doc__
 
     def help(self, *args: object, **kwargs: object) -> None:
@@ -444,12 +444,12 @@ class MethodDispatcher(Dispatcher):
     @classmethod
     def get_func_params(
         cls, func: Callable[..., object]
-    ) -> Iterator[inspect.Parameter] | None:
+    ) -> Optional[Iterator[inspect.Parameter]]:
         if hasattr(inspect, "signature"):
             sig = inspect.signature(func)
             return itl.islice(sig.parameters.values(), 1, None)
 
-    def __get__(self, instance: object | None, owner: type) -> MethodDispatcher:
+    def __get__(self, instance: Optional[object], owner: type) -> MethodDispatcher:
         self.obj = instance
         self.cls = owner
         return self
@@ -472,7 +472,7 @@ def str_signature(sig: Iterable[type]) -> str:
     return ", ".join(cls.__name__ for cls in sig)
 
 
-def warning_text(name: str, amb: set[tuple[tuple[type, ...], tuple[type, ...]]]) -> str:
+def warning_text(name: str, amb: Set[Tuple[Tuple[type, ...], Tuple[type, ...]]]) -> str:
     """The text for ambiguity warnings"""
     text = f"\nAmbiguities exist in dispatched function {name}\n\n"
     text += "The following signatures may result in ambiguous behavior:\n"

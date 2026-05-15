@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Implement various linear algebra algorithms for low rank matrices."""
 
 __all__ = ["svd_lowrank", "pca_lowrank"]
@@ -6,13 +7,14 @@ __all__ = ["svd_lowrank", "pca_lowrank"]
 import torch
 from torch import _linalg_utils as _utils, Tensor
 from torch.overrides import handle_torch_function, has_torch_function
+from typing import Optional, Tuple
 
 
 def get_approximate_basis(
     A: Tensor,
     q: int,
-    niter: int | None = 2,
-    M: Tensor | None = None,
+    niter: Optional[int]= 2,
+    M: Optional[Tensor]= None,
 ) -> Tensor:
     """Return tensor :math:`Q` with :math:`q` orthonormal columns such
     that :math:`Q Q^H A` approximates :math:`A`. If :math:`M` is
@@ -84,10 +86,10 @@ def get_approximate_basis(
 
 def svd_lowrank(
     A: Tensor,
-    q: int | None = 6,
-    niter: int | None = 2,
-    M: Tensor | None = None,
-) -> tuple[Tensor, Tensor, Tensor]:
+    q: Optional[int]= 6,
+    niter: Optional[int]= 2,
+    M: Optional[Tensor]= None,
+) -> Tuple[Tensor, Tensor, Tensor]:
     r"""Return the singular value decomposition ``(U, S, V)`` of a matrix,
     batches of matrices, or a sparse matrix :math:`A` such that
     :math:`A \approx U \operatorname{diag}(S) V^{\text{H}}`. In case :math:`M` is given, then
@@ -148,10 +150,10 @@ def svd_lowrank(
 
 def _svd_lowrank(
     A: Tensor,
-    q: int | None = 6,
-    niter: int | None = 2,
-    M: Tensor | None = None,
-) -> tuple[Tensor, Tensor, Tensor]:
+    q: Optional[int]= 6,
+    niter: Optional[int]= 2,
+    M: Optional[Tensor]= None,
+) -> Tuple[Tensor, Tensor, Tensor]:
     # Algorithm 5.1 in Halko et al., 2009
 
     q = 6 if q is None else q
@@ -182,10 +184,10 @@ def _svd_lowrank(
 
 def pca_lowrank(
     A: Tensor,
-    q: int | None = None,
+    q: Optional[int]= None,
     center: bool = True,
     niter: int = 2,
-) -> tuple[Tensor, Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor, Tensor]:
     r"""Performs linear Principal Component Analysis (PCA) on a low-rank
     matrix, batches of such matrices, or sparse matrix.
 

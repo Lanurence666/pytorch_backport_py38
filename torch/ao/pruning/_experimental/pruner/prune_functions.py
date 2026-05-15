@@ -1,11 +1,12 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 Collection of conversion functions for linear / conv2d structured pruning
 Also contains utilities for bias propagation
 """
 
-from collections.abc import Callable
-from typing import cast
+
+from typing import Callable, Dict, List, Optional, Tuple, Type, cast
 
 import torch
 from torch import nn, Tensor
@@ -18,7 +19,7 @@ from .parametrization import BiasHook, FakeStructuredSparsity
 # BIAS PROPAGATION
 def _remove_bias_handles(module: nn.Module) -> None:
     if hasattr(module, "_forward_hooks"):
-        bias_hooks: list[int] = []
+        bias_hooks: List[int] = []
         for key, hook in module._forward_hooks.items():
             if isinstance(hook, BiasHook):
                 bias_hooks.append(key)
@@ -89,7 +90,7 @@ def _prune_module_bias(module: nn.Module, mask: Tensor) -> None:
         delattr(module, "_bias")
 
 
-def _propagate_module_bias(module: nn.Module, mask: Tensor) -> Tensor | None:
+def _propagate_module_bias(module: nn.Module, mask: Tensor) -> Optional[Tensor]:
     r"""
     In the case that we need to propagate biases, this function will return the biases we need
     """
@@ -251,7 +252,7 @@ def prune_conv2d_activation_conv2d(
     prune_bias = getattr(conv2d_1, "prune_bias", False)
     if (
         hasattr(conv2d_2, "padding")
-        and cast(tuple[int], conv2d_2.padding) > (0, 0)
+        and cast(Tuple[int], conv2d_2.padding) > (0, 0)
         and (conv2d_1.bias is not None or getattr(conv2d_1, "_bias", None) is not None)
     ):
         prune_conv2d_padded(conv2d_1)
@@ -271,7 +272,7 @@ def prune_conv2d_activation_conv2d(
         if (
             not (
                 hasattr(conv2d_2, "padding")
-                and cast(tuple[int], conv2d_2.padding) > (0, 0)
+                and cast(Tuple[int], conv2d_2.padding) > (0, 0)
             )
             or conv2d_1.bias is None
         ):
@@ -377,7 +378,7 @@ def prune_lstm_output_linear(
 def prune_lstm_output_layernorm_linear(
     lstm: nn.LSTM,
     getitem: Callable,
-    layernorm: nn.LayerNorm | None,
+    layernorm: Optional[nn.LayerNorm],
     linear: nn.Linear,
 ) -> None:
     for i in range(lstm.num_layers):

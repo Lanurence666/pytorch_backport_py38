@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module provides functionality for tracking and managing regions in computational graphs.
 It supports graph optimization by identifying and grouping similar regions based on their
@@ -13,7 +14,6 @@ mappings between nodes and their duplicates, enabling efficient graph analysis a
 optimization operations.
 """
 
-from __future__ import annotations
 
 import copyreg
 import io
@@ -23,7 +23,7 @@ import operator
 import pickle
 from collections import defaultdict, deque
 from dataclasses import fields
-from typing import Any, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union
 
 import torch._logging
 import torch.fx
@@ -38,20 +38,20 @@ T = TypeVar("T")
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
 
     from .symbolic_convert import InstructionTranslatorBase
 
 
 Node = torch.fx.Node
-Region = list[Node]
-IdenticalNodes = list[Node]
-GlobalStateKey = tuple[
+Region = List[Node]
+IdenticalNodes = List[Node]
+GlobalStateKey = Tuple[
     bool,
     bool,
     int,
-    tuple[bool, bool],
-    tuple[bool, bool],
+    Tuple[bool, bool],
+    Tuple[bool, bool],
     torch.dtype,
     bool,
     bool,
@@ -71,7 +71,7 @@ def debug_log(msg: str, *args) -> None:  # type: ignore[no-untyped-def]
 
 def _extract_tensor_metadata_for_node_hash(
     x: torch.Tensor,
-) -> tuple[Callable[[T], T], tuple[Any, ...]]:
+) -> Tuple[Callable[[T], T], Tuple[Any, ...]]:
     from torch._inductor.codecache import _ident, extract_tensor_metadata_for_cache_key
 
     out = []
@@ -129,7 +129,7 @@ def _extract_args(arg: Any) -> Any:
 
 def _normalize_args(
     node: Node,
-) -> tuple[tuple[str, ...], tuple[Any | None, ...]]:
+) -> Union[Tuple[Tuple[str, ...], Tuple[Any, None, ...]]]:
     flat_args, _ = tree_flatten(node.args)
     sorted_kwargs = sorted(node.kwargs.items(), key=operator.itemgetter(0))
     sorted_keys = tuple(sorted(node.kwargs.keys()))
@@ -139,7 +139,7 @@ def _normalize_args(
 
 
 def _sort_with_ref_region(
-    index_to_rank: dict[int, int], regions: list[list[Any]]
+    index_to_rank: Dict[int, int], regions: List[List[Any]]
 ) -> None:
     # sort topologically
     # we need to handle edge cases where some nodes have no dependencies
@@ -174,8 +174,8 @@ def get_global_state_key() -> GlobalStateKey:
 # of a node
 class BackwardBfsArgIter:
     def __init__(self, origin: Node) -> None:
-        self._cur: Node | None = origin
-        self._queue: deque[Node | None] = deque()
+        self._cur: Optional[Node] = origin
+        self._queue: deque[Optional[Node]] = deque()
 
     @staticmethod
     def create(origin: Node) -> BackwardBfsArgIter:
@@ -183,11 +183,10 @@ class BackwardBfsArgIter:
         it.add_children(origin)
         # pop the origin node, since it is the origin of
         # the region and does not need to be considered for addition
-        if not it.next():
-            raise AssertionError("expected origin node to be popped from iterator")
+        assert it.next()
         return it
 
-    def next(self) -> Node | None:
+    def next(self) -> Optional[Node]:
         ret = self._cur
         if not self._queue:
             self._cur = None
@@ -195,7 +194,7 @@ class BackwardBfsArgIter:
             self._cur = self._queue.popleft()
         return ret
 
-    def peek(self) -> Node | None:
+    def peek(self) -> Optional[Node]:
         return self._cur
 
     def add_children(self, node: Node) -> None:
@@ -226,14 +225,14 @@ class GraphRegionTracker:
     """
 
     def __init__(self) -> None:
-        self.hash_to_duplicates: dict[str, IdenticalNodes] = defaultdict(list)
-        self.node_to_duplicates: dict[Node, IdenticalNodes] = {}
+        self.hash_to_duplicates: Dict[str, IdenticalNodes] = defaultdict(list)
+        self.node_to_duplicates: Dict[Node, IdenticalNodes] = {}
         # Note: position is in flattened args/kwargs list
-        self.node_to_mutated_arg_positions: dict[Node, OrderedSet[int]] = {}
+        self.node_to_mutated_arg_positions: Dict[Node, OrderedSet[int]] = {}
         self.input_pickler = InputPickler()
 
     def _hash_node(
-        self, filename: str, lineno: int, instruction_pointer: int | None, node: Node
+        self, filename: str, lineno: int, instruction_pointer: Optional[int], node: Node
     ) -> str:
         from torch._inductor.codecache import sha256_hash
 
@@ -277,8 +276,8 @@ class GraphRegionTracker:
     def track_node_mutations(
         self,
         node: Node,
-        flat_args_kwargs: list[Any],
-        id_to_initial_version: dict[int, int],
+        flat_args_kwargs: List[Any],
+        id_to_initial_version: Dict[int, int],
     ) -> None:
         """
         This function tracks which argument positions are mutated by the given node. Subgraph HOP does not support
@@ -306,7 +305,7 @@ class GraphRegionTracker:
         else:
             self.node_to_mutated_arg_positions[node] = OrderedSet([arg_pos])
 
-    def get_identical_regions(self, graph: torch.fx.Graph) -> list[list[Region]]:
+    def get_identical_regions(self, graph: torch.fx.Graph) -> List[List[Region]]:
         """
         This function is responsible for extracting the largest regions of identical nodes from the given graph.
         **Note**: This function assumes the nodes that have been tracked with track_node are in the provided graph argument.
@@ -351,7 +350,7 @@ class GraphRegionTracker:
         # We start from regions later in the graph and expand them earlier
         # as a result, we will create the largest regions first and they won't
         # overlap.
-        seen_nodes: set[Node] = set()
+        seen_nodes: Set[Node] = set()
         for region_group in region_groups:
             fully_expand_region_group(
                 region_group,
@@ -380,10 +379,9 @@ class RegionWrapper:
     """Holds state for regions e.g. ancestors and new candidate nodes for consideration"""
 
     def __init__(
-        self, region: Region, node_to_recursive_ancestors: dict[Node, set[Node]]
+        self, region: Region, node_to_recursive_ancestors: Dict[Node, Set[Node]]
     ) -> None:
-        if len(region) != 1:
-            raise AssertionError("all regions should start with one node")
+        assert len(region) == 1, "all regions should start with one node"
         node = region[0]
         self.node_to_recursive_ancestors = node_to_recursive_ancestors
         self.iter = BackwardBfsArgIter.create(node)
@@ -391,7 +389,7 @@ class RegionWrapper:
         self.ancestors = set(node_to_recursive_ancestors[node])
         self.region = region
 
-    def next_candidate(self) -> Node | None:
+    def next_candidate(self) -> Optional[Node]:
         return self.iter.next()
 
     def will_inclusion_create_cycle(self, node: Node) -> bool:
@@ -410,17 +408,16 @@ class RegionWrapper:
 
 
 def fully_expand_region_group(
-    regions: list[Region],
-    seen_nodes: set[Node],
-    node_to_recursive_ancestors: dict[Node, set[Node]],
+    regions: List[Region],
+    seen_nodes: Set[Node],
+    node_to_recursive_ancestors: Dict[Node, Set[Node]],
     is_identical_fn: Callable[[Node, Node], bool],
 ) -> None:
     debug_log("--------------------------------------------------")
     debug_log("expanding new region group: %s", regions)
 
     # All regions should start with 1 node
-    if not all(len(region) == 1 for region in regions):
-        raise AssertionError("all regions should start with one node")
+    assert all(len(region) == 1 for region in regions)
     region_wrappers = [
         RegionWrapper(region, node_to_recursive_ancestors) for region in regions
     ]
@@ -472,10 +469,9 @@ def fully_expand_region_group(
             debug_log("--------------------")
 
         if add_to_all_regions:
-            if len(region_wrappers) != len(nodes_to_add):
-                raise AssertionError(
-                    "Number of nodes to add must equal the number of regions"
-                )
+            assert len(region_wrappers) == len(nodes_to_add), (
+                "Number of nodes to add must equal the number of regions"
+            )
             for region_wrapper, node in zip(region_wrappers, nodes_to_add):
                 region_wrapper.add(node)
                 debug_log("adding %s's children", node)
@@ -492,8 +488,8 @@ def fully_expand_region_group(
     debug_log("--------------------------------------------------")
 
 
-def _populate_recursive_ancestor_map(graph: torch.fx.Graph) -> dict[Node, set[Node]]:
-    node_to_recursive_ancestors: dict[Node, set[Node]] = {}
+def _populate_recursive_ancestor_map(graph: torch.fx.Graph) -> Dict[Node, Set[Node]]:
+    node_to_recursive_ancestors: Dict[Node, Set[Node]] = {}
     for node in graph.nodes:
         node_to_recursive_ancestors[node] = set()
     for node in graph.nodes:

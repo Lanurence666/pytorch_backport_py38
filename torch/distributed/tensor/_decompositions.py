@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 Decomposition-based sharding propagation for DTensor.
@@ -7,10 +8,9 @@ tracing through its decomposition. The decomposed ops (which do have strategies)
 determine how placements propagate through the original op.
 """
 
-from __future__ import annotations
 
 import itertools
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, overload
 
 import torch
 from torch._decomp import decomposition_table
@@ -67,7 +67,7 @@ if TYPE_CHECKING:
     from torch.distributed.tensor._sharding_prop import ShardingPropagator
 
 
-def _extract_input_specs(op_schema: OpSchema) -> tuple[DTensorSpec | object, ...]:
+def _extract_input_specs(op_schema: OpSchema) -> Tuple[Union[DTensorSpec, object], ...]:
     return op_schema.args_schema + tuple(op_schema.kwargs_schema.values())
 
 
@@ -139,7 +139,7 @@ class PlacementTrackingMode(TorchDispatchMode):
         self._record_output_specs(out, output_sharding.output_spec)
         return out
 
-    def _record_output_specs(self, output: Any, output_spec: DTensorSpec | Any) -> None:
+    def _record_output_specs(self, output: Any, output_spec: Union[DTensorSpec, Any]) -> None:
         if isinstance(output, torch.Tensor) and output_spec is not None:
             output._spec = output_spec  # pyrefly: ignore [missing-attribute]
         elif isinstance(output, (tuple, list)) and isinstance(
@@ -165,7 +165,7 @@ class DecompShardingStrategy:
         # during decomposition tracing, avoiding potential SPMD divergence.
         # False negatives are avoided (all sizes % 1 == 0), while false positives
         # are caught on expansion to the real, multi-dim device mesh.
-        self._fake_meshes: dict[str, DeviceMesh] = {}
+        self._fake_meshes: Dict[str, DeviceMesh] = {}
 
     def _get_fake_mesh(self, device_type: str) -> DeviceMesh:
         fake_mesh = self._fake_meshes.get(device_type)
@@ -191,7 +191,7 @@ class DecompShardingStrategy:
     def propagate_strategy(
         self,
         op_schema: OpSchema,
-    ) -> OpStrategy | None:
+    ) -> Optional[OpStrategy]:
         if not tree_any(
             lambda x: isinstance(x, DTensorSpec),
             (op_schema.args_schema, op_schema.kwargs_schema),
@@ -206,7 +206,7 @@ class DecompShardingStrategy:
 
         fake_mesh = self._get_fake_mesh(mesh.device_type)
         single_dim_strategies = []
-        output_placements: list[Placement | tuple[Placement, ...]] = []
+        output_placements: List[Union[Placement, Tuple[Placement, ...]]] = []
         for input_placements in candidate_placements:
             try:
                 output = self._propagate_through_decomp(
@@ -245,9 +245,9 @@ class DecompShardingStrategy:
     def _propagate_through_decomp(
         self,
         op_schema: OpSchema,
-        placement: tuple[Placement | None],
+        placement: Tuple[Optional[Placement]],
         mesh: DeviceMesh,
-    ) -> Placement | tuple[Placement, ...]:
+    ) -> Union[Placement, Tuple[Placement, ...]]:
         op = op_schema.op
         if op in decomposition_table:
             decomp_fn = decomposition_table[op]
@@ -295,12 +295,12 @@ class DecompShardingStrategy:
     @staticmethod
     def _get_candidate_placements(
         op_schema: OpSchema,
-    ) -> list[tuple[Placement | None]]:
+    ) -> List[Tuple[Optional[Placement]]]:
         tensor_specs = _extract_input_specs(op_schema)
         flat_specs, _ = tree_flatten(list(tensor_specs))
 
         # Step 1: Collect unique placements across all DTensorSpec inputs
-        all_placements: set[Placement] = {Replicate()}
+        all_placements: Set[Placement] = {Replicate()}
         tree_map_only(
             DTensorSpec,
             lambda spec: all_placements.update(spec.placements),
@@ -308,7 +308,7 @@ class DecompShardingStrategy:
         )
 
         # Step 2: For each input, use the placement set, but expand Shard/StridedShard to all tensor dims
-        candidates: list[list[Placement | None]] = []
+        candidates: List[List[Optional[Placement]]] = []
         for spec in flat_specs:
             if not isinstance(spec, DTensorSpec):
                 candidates.append([None])

@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import contextlib
 import logging
 import re
@@ -17,6 +19,7 @@ from ..utils import parallel_num_threads
 from ..virtualized import V
 from .cpp_template import CppTemplate
 from .cpp_utils import GemmBlocking
+from typing import List, Optional, Set, Type
 
 
 log = logging.getLogger(__name__)
@@ -962,8 +965,8 @@ class CppFlexAttentionTemplate(CppTemplate):
     def render(  # type: ignore[override,return]
         self,
         kernel,
-        template_buffer_node: ir.CppTemplateBuffer | None = None,
-        epilogue_nodes: list[ir.IRNode] | None = None,
+        template_buffer_node: Optional[ir.CppTemplateBuffer]= None,
+        epilogue_nodes: Optional[List[ir.IRNode]]= None,
         **kwargs,
     ) -> str:
         if epilogue_nodes is not None and epilogue_nodes != []:

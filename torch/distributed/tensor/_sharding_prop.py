@@ -1,11 +1,15 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 import threading
-from collections.abc import Callable, Sequence
+
 from contextlib import nullcontext
 from functools import lru_cache
 from itertools import chain
-from typing import cast
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
+from typing_extensions import NamedTuple
+
 
 import torch
 from torch._guards import detect_fake_mode
@@ -56,7 +60,7 @@ def _propagate_use_strided_shard_flag(
     Strategy functions may forget to propagate the flag; this function fixes
     them up centrally after the strategy is produced.
     """
-    _use_strided: bool | None = None
+    _use_strided: Optional[bool]= None
     for spec in op_schema.args_spec:
         if any(isinstance(p, _StridedShard) for p in spec.placements):
             val = spec.use_strided_shard_as_shard_order
@@ -103,13 +107,13 @@ def _length(obj) -> int:
     return len(obj)
 
 
-def _get_expected_num_tensor_outputs(op: OpOverload) -> int | None:
+def _get_expected_num_tensor_outputs(op: OpOverload) -> Optional[int]:
     """
     Get the expected number of tensor outputs for an operator based on its schema.
 
     Returns:
         The number of tensor outputs expected. Returns 0 for ops that don't return tensors
-        (e.g., _linalg_check_errors). Returns 1 for single tensor return, and >1 for
+        (e.g., _linalg_check_errors)). Returns 1 for single tensor return, and >1 for
         tuple returns where each element is a tensor. Returns None for List[Tensor]
         returns where the length is unknown at schema time.
     """
@@ -131,7 +135,7 @@ def _get_expected_num_tensor_outputs(op: OpOverload) -> int | None:
 
 def _validate_tensor_meta_count(
     op_schema: OpSchema,
-    tensor_meta: TensorMeta | Sequence[TensorMeta | None] | None,
+    tensor_meta: Union[TensorMeta, Sequence[TensorMeta, None], None,]
 ) -> None:
     """
     Validate that the tensor_meta matches the expected number of outputs for the op.
@@ -157,7 +161,7 @@ def _validate_tensor_meta_count(
         # tensor_meta must be a list of TensorMeta.
         if not isinstance(tensor_meta, list):
             raise AssertionError(
-                f"Tensor meta for {op_schema.op} should be a list[TensorMeta] "
+                f"Tensor meta for {op_schema.op} should be a List[TensorMeta] "
                 f"(op returns List[Tensor]), but got {type(tensor_meta).__name__}"
             )
         return
@@ -203,7 +207,7 @@ class LocalLRUCache(threading.local):
 
 def _format_unbacked_hinting_log(
     op_schema: OpSchema,
-    strategies: list[OpSpec],
+    strategies: List[OpSpec],
     strategy_index: int,
     replacements: dict,
 ) -> str:
@@ -229,9 +233,9 @@ def _format_unbacked_hinting_log(
 
 
 def _select_min_redistribute_cost(
-    costs: list[torch.types.FloatLikeType],
-    strategies: list[OpSpec],
-    op_schema: OpSchema | None = None,
+    costs: List[torch.types.FloatLikeType],
+    strategies: List[OpSpec],
+    op_schema: Optional[OpSchema]= None,
 ) -> int:
     """
     Given a list of costs and corresponding op strategies, selects the minimum cost strategy, returning the index.
@@ -295,7 +299,7 @@ def _select_min_redistribute_cost(
 
 
 def _select_min_cost_strategy(
-    strategy: OpStrategy, op_schema: OpSchema | None = None
+    strategy: Optional[OpStrategy, op_schema: OpSchema]= None
 ) -> OpSpec:
     from torch.fx.experimental.symbolic_shapes import guard_or_false
 
@@ -303,7 +307,7 @@ def _select_min_cost_strategy(
         # short cut with only one possible OpSpec
         return strategy.strategies[0]
 
-    op_spec_costs: list[torch.types.FloatLikeType] = []
+    op_spec_costs: List[torch.types.FloatLikeType] = []
     no_redistribute_strategy_index: int = -1
     negative_cost_index: int = -1
     zero_cost_index: int = -1
@@ -369,19 +373,19 @@ class ShardingPropagator:
     _fake_mode_lock = nullcontext()
 
     def __init__(self) -> None:
-        self.op_to_rules: dict[OpOverload, Callable[[OpSchema], OutputSharding]] = {}
-        self.op_strategy_funcs: dict[
+        self.op_to_rules: Dict[OpOverload, Callable[[OpSchema], OutputSharding]] = {}
+        self.op_strategy_funcs: Dict[
             OpOverload,
             Callable[[OpSchema], StrategyType],
         ] = {}
-        self.op_single_dim_strategy_funcs: dict[
+        self.op_single_dim_strategy_funcs: Dict[
             OpOverload,
             _SingleDimStrategyInfo,
         ] = {}
         # op map to save static argnum to decide to reuse sharding prop cache or
         # re-run sharding prop
-        self.op_to_schema_info: dict[OpOverload, RuntimeSchemaInfo] = {}
-        self.op_to_schema_info_for_single_dim_strategy: dict[
+        self.op_to_schema_info: Dict[OpOverload, RuntimeSchemaInfo] = {}
+        self.op_to_schema_info_for_single_dim_strategy: Dict[
             OpOverload, RuntimeSchemaInfo
         ] = {}
         self.propagate_op_sharding = LocalLRUCache(
@@ -390,7 +394,7 @@ class ShardingPropagator:
         self.decomp_strategy = DecompShardingStrategy(self)
         # op map to save indices of shape (and stride) args which may need to be
         # modified in sharding prop
-        self.op_to_shape_and_stride_idx: dict[OpOverload, int | tuple[int, int]] = {
+        self.op_to_shape_and_stride_idx: Dict[OpOverload, Union[int, Tuple[int, int]]] = {
             # new factory ops
             aten.new_empty.default: 1,
             aten.new_full.default: 1,
@@ -406,28 +410,16 @@ class ShardingPropagator:
             aten._unsafe_view.default: 1,
             aten.select_backward.default: 1,
             aten.slice_backward.default: 1,
-            # upsample backward ops: input_size (arg 2) is the full [N,C,...] shape
-            aten.upsample_nearest1d_backward.default: 2,
-            aten.upsample_nearest2d_backward.default: 2,
-            aten.upsample_nearest3d_backward.default: 2,
-            aten._upsample_nearest_exact1d_backward.default: 2,
-            aten._upsample_nearest_exact2d_backward.default: 2,
-            aten._upsample_nearest_exact3d_backward.default: 2,
-            aten._upsample_bilinear2d_aa_backward.default: 2,
-            aten.upsample_bicubic2d_backward.default: 2,
-            aten.upsample_bilinear2d_backward.default: 2,
-            aten.upsample_linear1d_backward.default: 2,
-            aten.upsample_trilinear3d_backward.default: 2,
         }
         # ops with individual scalar shape args that need local adjustment
         # maps op -> callable(input_specs, schema) -> adjusted schema
         # populated by op modules (e.g. _math_ops.py) at registration time
-        self.op_to_scalar_shape_adjuster: dict[
+        self.op_to_scalar_shape_adjuster: Dict[
             OpOverload,
-            Callable[[list[DTensorSpec], OpSchema], OpSchema],
+            Callable[[List[DTensorSpec], OpSchema], OpSchema],
         ] = {}
         # squeeze ops that need dim arg rewritten to only globally-singleton dims
-        self.squeeze_op_to_dims_variant: dict[OpOverload, OpOverload] = {
+        self.squeeze_op_to_dims_variant: Dict[OpOverload, OpOverload] = {
             aten.squeeze.default: aten.squeeze.dims,
             aten.squeeze.dim: aten.squeeze.dims,
             aten.squeeze.dims: aten.squeeze.dims,
@@ -440,7 +432,7 @@ class ShardingPropagator:
         self,
         op_overload: OpOverload,
         rule_func: Callable[[OpSchema], OutputSharding],
-        schema_info: RuntimeSchemaInfo | None = None,
+        schema_info: Optional[RuntimeSchemaInfo]= None,
     ):
         """
         Register a sharding propagation rule for an operator.
@@ -453,7 +445,7 @@ class ShardingPropagator:
         self,
         op_overload: OpOverload,
         strategy_info: _SingleDimStrategyInfo,
-        schema_info: RuntimeSchemaInfo | None = None,
+        schema_info: Optional[RuntimeSchemaInfo]= None,
     ):
         """
         Register a strategy over a single mesh-dim, relying on infra to automatically expand to the full mesh.
@@ -466,7 +458,7 @@ class ShardingPropagator:
         self,
         op_overload: OpOverload,
         strategy_func: Callable[[OpSchema], StrategyType],
-        schema_info: RuntimeSchemaInfo | None = None,
+        schema_info: Optional[RuntimeSchemaInfo]= None,
     ):
         """
         Register a :class:`OpStrategy` generator for an operator.
@@ -519,7 +511,7 @@ class ShardingPropagator:
 
     def _propagate_tensor_meta_non_cached(
         self, op_schema: OpSchema
-    ) -> TensorMeta | Sequence[TensorMeta | None] | None:
+    ) -> Optional[Union[TensorMeta, Sequence[TensorMeta, None]]]:
         """
         Propagate the tensor metadata, it could either return a TensorMeta
         or a list/tuple of TensorMetas
@@ -546,7 +538,7 @@ class ShardingPropagator:
             )
 
         elif isinstance(fake_out, (tuple, list)):
-            tensor_meta_list: list[TensorMeta | None] = []
+            tensor_meta_list: Union[List[TensorMeta, None]]= []
             for fake_out_item in fake_out:
                 if isinstance(fake_out_item, torch.Tensor):
                     tensor_meta_list.append(
@@ -570,7 +562,7 @@ class ShardingPropagator:
     @lru_cache  # noqa: B019
     def _propagate_tensor_meta_cached(
         self, op_schema: OpSchema
-    ) -> TensorMeta | Sequence[TensorMeta | None] | None:
+    ) -> Optional[Union[TensorMeta, Sequence[TensorMeta, None]]]:
         """
         Cached version of _propagate_tensor_meta_non_cached
         Use _propagate_tensor_meta instead to handle dynamic shapes.
@@ -579,7 +571,7 @@ class ShardingPropagator:
 
     def _propagate_tensor_meta(
         self, op_schema: OpSchema
-    ) -> TensorMeta | Sequence[TensorMeta | None] | None:
+    ) -> Optional[Union[TensorMeta, Sequence[TensorMeta, None]]]:
         """
         Propagate the tensor metadata, it could either return a TensorMeta
         or a list/tuple of TensorMetas. Uses the cached version if not
@@ -594,7 +586,7 @@ class ShardingPropagator:
         self,
         op: OpOverload,
         output_specs: OutputSpecType,
-        output_tensor_meta: TensorMeta | Sequence[TensorMeta | None] | None,
+        output_tensor_meta: Union[TensorMeta, Sequence[TensorMeta, None], None,]
     ) -> OutputSpecType:
         """
         Wrap the output_specs with the tensor metadata from the output.
@@ -615,7 +607,7 @@ class ShardingPropagator:
                 )
             return output_specs.shallow_copy_with_tensor_meta(output_tensor_meta)
         elif isinstance(output_specs, (tuple, list)):
-            new_specs: list[DTensorSpec | None] = []
+            new_specs: Union[List[DTensorSpec, None]]= []
             if not isinstance(output_tensor_meta, (tuple, list)) or len(
                 output_specs
             ) != len(output_tensor_meta):
@@ -800,7 +792,7 @@ class ShardingPropagator:
                 needs_redistribute = False
                 # check if we want to use args value from redistribute_schema
                 use_val_from_redistribute_schema = False
-                expected_input_specs: list[DTensorSpec] = []
+                expected_input_specs: List[DTensorSpec] = []
 
                 # in case where the op does not specify input_specs and output_specs
                 # is a DTensorSpec, we use output_specs as the spec for each DTensor
@@ -830,14 +822,15 @@ class ShardingPropagator:
                     )
                     suggestion_schema._inplace_rewrap_schema_suggestion(op_schema)
 
-                # Rewrite shape/stride args from global to local when sharded.
-                # Covers view ops, new factory ops, and upsample backward ops
-                # whose shape args refer to global tensor dimensions.
+                # shape and stride args need to be modified for
+                # view ops and new factory ops, potentially
                 if op_schema.op in self.op_to_shape_and_stride_idx:
                     if not isinstance(output_strategy.output_spec, DTensorSpec):
                         raise AssertionError
+                    # It happens when the output has the same shape as the input
+                    # and the input placements are not all Replicate().
                     if any(
-                        isinstance(p, Shard | _StridedShard)
+                        isinstance(p, (Shard , _StridedShard))
                         for p in output_strategy.output_spec.placements
                     ):
                         schema = suggestion_schema or op_schema
@@ -852,7 +845,7 @@ class ShardingPropagator:
                 # adjust individual scalar shape args (e.g. N, C, HxW in group_norm)
                 if op_schema.op in self.op_to_scalar_shape_adjuster:
                     if any(
-                        isinstance(p, Shard | _StridedShard)
+                        isinstance(p, (Shard , _StridedShard))
                         for spec in expected_input_specs
                         for p in spec.placements
                     ):
@@ -906,8 +899,8 @@ class ShardingPropagator:
             elif isinstance(op_strategy, TupleStrategy):
                 # tuple strategy output sharding processing
                 # runtime select OpSpec for each TupleStrategy input arg
-                selected_strategies: list[OpSpec] = []
-                out_spec_list: list[DTensorSpec] = []
+                selected_strategies: List[OpSpec] = []
+                out_spec_list: List[DTensorSpec] = []
                 for strategy in op_strategy.children:
                     if not isinstance(strategy, OpStrategy):
                         raise AssertionError
@@ -918,7 +911,7 @@ class ShardingPropagator:
                         out_spec_list.append(selected_strategy.output_spec)
 
                 needs_redistribute = False
-                suggestion_args: list[object] = []
+                suggestion_args: List[object] = []
                 tensor_or_list_tensor_arg_idx = 0
 
                 for arg in op_schema.args_schema:
@@ -927,7 +920,7 @@ class ShardingPropagator:
                         and isinstance(arg, (list, tuple))
                         and isinstance(arg[0], DTensorSpec)
                     ):
-                        expected_input_spec_list: list[DTensorSpec] = []
+                        expected_input_spec_list: List[DTensorSpec] = []
                         for idx, arg_spec in enumerate(arg):
                             expected_input_spec = selected_strategies[idx].input_spec(
                                 tensor_or_list_tensor_arg_idx
@@ -1047,7 +1040,8 @@ class ShardingPropagator:
             stride_idx = None
 
         expected_input_schema = list(schema.args_schema)
-        # rewrite args[shape_idx] from the global output shape to the local output shape
+        # adjust shape to be the same as that of the _local_tensor
+        # of the DTensor input arg at index 0, which is inferred
         local_shape, _ = compute_local_shape_and_global_offset(
             out_tensor_meta.shape, spec.mesh, spec.placements, skip_offset=True
         )
@@ -1061,7 +1055,7 @@ class ShardingPropagator:
 
         return OpSchema(schema.op, tuple(expected_input_schema), schema.kwargs_schema)
 
-    def _adjust_squeeze_to_global_singletons(self, schema: OpSchema) -> OpSchema | None:
+    def _adjust_squeeze_to_global_singletons(self, schema: OpSchema) -> Optional[OpSchema]:
         """
         Rewrite squeeze ops to squeeze.dims with only globally-singleton dims.
         Fixes bug where sharded dims with local size 1 get incorrectly squeezed.

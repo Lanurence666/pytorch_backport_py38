@@ -1,5 +1,11 @@
-from collections.abc import Callable
-from typing import Any, overload, TypeAlias
+from __future__ import annotations
+
+
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Type, Union, overload
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 from typing_extensions import Never, ParamSpec, TypeIs, TypeVar
 
 import torch
@@ -17,10 +23,10 @@ from .._core import ComplexTensor
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
-OpType: TypeAlias = OpOverloadPacket | OpOverload
+OpType = Union[OpOverloadPacket, OpOverload]
 
 # pyrefly: ignore [implicit-any]
-TableType: TypeAlias = dict[OpType, Callable]
+TableType: TypeAlias = Dict[OpType, Callable]
 
 # Mapping from ops to implementations
 COMPLEX_OPS_TABLE: TableType = {}
@@ -62,18 +68,18 @@ def is_complex_tensor(obj: Any, /) -> TypeIs[ComplexTensor]:
 @overload
 def promote_tensors(
     *tensors: ComplexTensor,
-) -> tuple[torch.dtype, tuple[ComplexTensor, ...]]: ...
+) -> Tuple[torch.dtype, Tuple[ComplexTensor, ...]]: ...
 
 
 @overload
 def promote_tensors(
     *tensors: Tensor,
-) -> tuple[torch.dtype, tuple[Tensor, ...]]: ...
+) -> Tuple[torch.dtype, Tuple[Tensor, ...]]: ...
 
 
 def promote_tensors(
-    *tensors: Tensor | ComplexTensor,
-) -> tuple[torch.dtype, tuple[Tensor | ComplexTensor, ...]]:
+    *tensors: Union[Tensor, ComplexTensor],
+) -> Tuple[torch.dtype, Tuple[Union[Tensor, ComplexTensor], ...]]:
     """
     Promotes all tensors to a common dtype.
     Additionally promotes CPU tensors to at least `float32`.
@@ -93,7 +99,7 @@ def promote_tensors(
 
 def register_complex(
     op: OpType,
-    func_impl: Callable[..., Any] | None = None,
+    func_impl: Optional[Callable[..., Any]] = None,
 ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]] | Callable[..., Any]:
     """Decorator to register an implementation for some ops in some dispatch tables"""
 
@@ -109,11 +115,11 @@ def register_complex(
     return inner(func_impl)
 
 
-FORCE_TEST_LIST: list[OpType] = []
+FORCE_TEST_LIST: List[OpType] = []
 
 
 def register_force_test(
-    op: OpType, func_impl: Callable[..., Any] | None = None
+    op: OpType, func_impl: Optional[Callable[..., Any]] = None
 ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]] | Callable[..., Any]:
     """Will attempt to test these ops even if they err on "normal" inputs"""
     FORCE_TEST_LIST.append(op)
@@ -125,7 +131,7 @@ DECOMPOSITIONS = get_decompositions(list(torch.ops.aten))  # type: ignore[no-mat
 
 def lookup_complex(
     func: OpOverload, *args: Any, **kwargs: Any
-) -> Callable[..., Any] | None:
+) -> Optional[Callable[..., Any]]:
     """
     Lookup an impl from the table.
 
@@ -149,19 +155,19 @@ def is_complex(x: Any, /) -> bool:
 
 @overload
 def split_complex_arg(
-    arg: Tensor | ComplexTensor,
-) -> tuple[Tensor, Tensor]: ...
+    arg: Union[Tensor, ComplexTensor],
+) -> Tuple[Tensor, Tensor]: ...
 
 
 @overload
 def split_complex_arg(
-    arg: complex | Number,
-) -> tuple[Number, Number]: ...
+    arg: Union[complex, Number],
+) -> Tuple[Number, Number]: ...
 
 
 def split_complex_arg(
-    arg: Tensor | ComplexTensor | complex | Number,
-) -> tuple[Tensor, Tensor] | tuple[Number, Number]:
+    arg: Union[Union[Tensor, ComplexTensor], Union[complex, Number]],
+) -> Union[Tuple[Tensor, Tensor], Tuple[Number, Number]]:
     """
     Split a complex argument into a real/imaginary component.
 
@@ -176,16 +182,16 @@ def split_complex_arg(
     # TODO (hameerabbasi): Should there be a `torch.SymComplex`?
     if isinstance(arg, complex):
         return arg.real, arg.imag
-    if isinstance(arg, float | torch.SymFloat):
+    if isinstance(arg, (float , torch.SymFloat)):
         return arg, 0.0
-    if isinstance(arg, int | torch.SymInt):
+    if isinstance(arg, (int , torch.SymInt)):
         return arg, 0
-    if isinstance(arg, bool | torch.SymBool):
+    if isinstance(arg, (bool , torch.SymBool)):
         return arg, False
     raise TypeError(f"Expected tensor or number got, {type(arg)}")
 
 
-def split_complex_tensor(complex_tensor: ComplexTensor) -> tuple[Tensor, Tensor]:
+def split_complex_tensor(complex_tensor: ComplexTensor) -> Tuple[Tensor, Tensor]:
     """Split a ComplexTensor into its real and imaginary parts."""
     return complex_tensor.re, complex_tensor.im
 
@@ -208,7 +214,7 @@ def _get_func_name(op: OpType) -> str:
 
 
 def register_error(
-    op: OpType, exc_type: type[Exception] = NotImplementedError
+    op: OpType, exc_type: Type[Exception] = NotImplementedError
 ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]] | Callable[..., Any]:
     msg = f"`aten.{_get_op_name(op)}` not implemented for `{ComplexTensor.__name__}`."
 
@@ -250,7 +256,7 @@ def register_simple(
     """Register an op which can be applied independently to the real and complex parts to get the result."""
 
     def impl(
-        self: ComplexTensor, *args: Any, dtype: torch.dtype | None = None, **kwargs: Any
+        self: ComplexTensor, *args: Any, dtype: Optional[torch.dtype] = None, **kwargs: Any
     ) -> ComplexTensor:
         x, y = split_complex_tensor(self)
         if dtype is not None and dtype not in COMPLEX_TO_REAL:
@@ -271,7 +277,7 @@ def register_simple(
         if u_spec != v_spec:
             raise AssertionError(f"Tree specs must match: {u_spec} != {v_spec}")
         out_flat = [
-            ComplexTensor(ui, vi) for ui, vi in zip(u_flat, v_flat, strict=False)
+            ComplexTensor(ui, vi) for ui, vi in zip(u_flat, v_flat)
         ]
         return tree_unflatten(out_flat, u_spec)
 
@@ -282,7 +288,7 @@ def register_simple(
     return register_complex(op, impl)
 
 
-def _as_complex_tensor(arg: Tensor | Any) -> Tensor | ComplexTensor | Any:
+def _as_complex_tensor(arg: Union[Tensor, Any]) -> Union[Union[Tensor, ComplexTensor], Any]:
     """Convert a Tensor with complex dtypes to a ComplexTensor. Pass along other args as-is."""
     if (
         not isinstance(arg, ComplexTensor)
@@ -293,7 +299,7 @@ def _as_complex_tensor(arg: Tensor | Any) -> Tensor | ComplexTensor | Any:
     return arg
 
 
-def _as_interleaved(arg: ComplexTensor | Any) -> Tensor | Any:
+def _as_interleaved(arg: Union[ComplexTensor, Any]) -> Union[Tensor, Any]:
     """Convert a ComplexTensor to a Tensor with a complex dtype. Pass other arguments as-is."""
     if isinstance(arg, ComplexTensor):
         return arg.as_interleaved()
@@ -318,9 +324,9 @@ class ComplexTensorMode(TorchDispatchMode):
     def __torch_dispatch__(
         self,
         func: OpOverload,
-        types: tuple[type, ...],
-        args: tuple[Any, ...] = (),
-        kwargs: dict[str, Any] | None = None,
+        types: Tuple[type, ...],
+        args: Tuple[Any, ...] = (),
+        kwargs: Optional[Dict[str, Any]] = None,
     ) -> Any:
         if kwargs is None:
             kwargs = {}

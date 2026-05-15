@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Unit tests for the _core module."""
 
-from __future__ import annotations
 
 import io
 import os

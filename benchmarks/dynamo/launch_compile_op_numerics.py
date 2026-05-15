@@ -1,3 +1,4 @@
+from __future__ import annotations
 import argparse
 import asyncio
 import datetime
@@ -167,9 +168,9 @@ async def reserve_gpu(gpu):
     log.info(
         "Hostname: %s, Reservation ID: %s",
         hostname,
-        hostname.removeprefix("gpu-dev-"),
+        (hostname[len("gpu-dev-"):] if hostname.startswith("gpu-dev-") else hostname),
     )
-    return hostname, hostname.removeprefix("gpu-dev-")
+    return hostname, (hostname[len("gpu-dev-"):] if hostname.startswith("gpu-dev-") else hostname)
 
 
 async def cancel_reservation(reservation_id):

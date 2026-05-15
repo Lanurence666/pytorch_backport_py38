@@ -28,6 +28,7 @@
 #include <ATen/ops/_softmax_backward_data_native.h>
 #include <ATen/ops/softmax.h>
 #include <ATen/ops/_softmax_backward_data.h>
+#include <ATen/OpMathType.h>
 #endif
 
 namespace at::native {
@@ -218,11 +219,13 @@ struct Add {
 template<typename T>
 struct Max {
   __device__ __forceinline__ T operator()(T a, T b) const {
-    return a < b ? b : a;
+    using opmath_t = at::opmath_type<T>;
+    return static_cast<opmath_t>(a) < static_cast<opmath_t>(b) ? b : a;
   }
 
   __device__ __forceinline__ T combine(T a, T b) const {
-    return a < b ? b : a;
+    using opmath_t = at::opmath_type<T>;
+    return static_cast<opmath_t>(a) < static_cast<opmath_t>(b) ? b : a;
   }
 
   // Needed to allow warp level reduction as a first step in the

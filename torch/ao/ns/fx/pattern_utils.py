@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, Dict, List, Set, Tuple, Type
 
 import torch
 import torch.nn as nn
@@ -18,12 +20,12 @@ toq = torch.ops.quantized
 
 
 def get_type_a_related_to_b(
-    base_name_to_sets_of_related_ops: dict[str, set[NSNodeTargetType]],
-) -> set[tuple[NSNodeTargetType, NSNodeTargetType]]:
+    base_name_to_sets_of_related_ops: Dict[str, Set[NSNodeTargetType]],
+) -> Set[Tuple[NSNodeTargetType, NSNodeTargetType]]:
     # TODO(future PR): allow customizations
     # TODO(future PR): reuse existing quantization mappings
     # TODO(future PR): add the rest of modules and ops here
-    type_a_related_to_b: set[tuple[NSNodeTargetType, NSNodeTargetType]] = set()
+    type_a_related_to_b: Set[Tuple[NSNodeTargetType, NSNodeTargetType]] = set()
 
     for s in base_name_to_sets_of_related_ops.values():
         s_list = list(s)
@@ -39,17 +41,17 @@ def get_type_a_related_to_b(
 NSFusionElType = (
     Callable  # call_function or call_module type, example: F.linear or nn.Conv2d
     | str  # call_method name, example: "dequantize"
-    | tuple[
+    | Tuple[
         str, Any
     ]  # call_method name and first argument, example: ("to", torch.float16)
 )
 NSFusionType = (
-    tuple[NSFusionElType, NSFusionElType]
-    | tuple[NSFusionElType, NSFusionElType, NSFusionElType, NSFusionElType]
+    Tuple[NSFusionElType, NSFusionElType]
+    | Tuple[NSFusionElType, NSFusionElType, NSFusionElType, NSFusionElType]
 )
 
 
-def get_reversed_fusions() -> list[tuple[NSFusionType, int]]:
+def get_reversed_fusions() -> List[Tuple[NSFusionType, int]]:
     """
     Set of potential fusions, in reverse order.  The order is reversed
     to match how fusion patterns are defined in quantization code.
@@ -62,7 +64,7 @@ def get_reversed_fusions() -> list[tuple[NSFusionType, int]]:
     of 0 represents the first op in regular (non-reverse) order, 1 represents the
     second op, etc.
     """
-    results: list[tuple[NSFusionType, int]] = []
+    results: List[Tuple[NSFusionType, int]] = []
 
     # Possible syntaxes:
     # * single op: torch.nn.Conv2d
@@ -137,7 +139,7 @@ def end_node_matches_reversed_fusion(
     end_node: Node,
     reversed_fusion: NSFusionType,
     gm: GraphModule,
-    seen_nodes: set[Node],
+    seen_nodes: Set[Node],
 ) -> bool:
     """
     Returns true if a pattern ending with `end_node` matches

@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 from enum import Enum
-from typing import NamedTuple
+from typing import List, NamedTuple, Union
 
 
 LINTER_CODE = "ACTIONLINT"
@@ -24,15 +24,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 RESULTS_RE: re.Pattern[str] = re.compile(
@@ -49,7 +49,7 @@ RESULTS_RE: re.Pattern[str] = re.compile(
 
 
 def run_command(
-    args: list[str],
+    args: List[str],
 ) -> subprocess.CompletedProcess[bytes]:
     logging.debug("$ %s", " ".join(args))
     start_time = time.monotonic()
@@ -66,7 +66,7 @@ def run_command(
 def check_file(
     binary: str,
     file: str,
-) -> list[LintMessage]:
+) -> List[LintMessage]:
     try:
         proc = run_command(
             [

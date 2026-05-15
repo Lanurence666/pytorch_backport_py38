@@ -1,5 +1,5 @@
 import asyncio
-from typing import TypeVar
+from typing import Type, TypeVar
 
 import torch._inductor.config as config
 from torch._inductor import ir
@@ -8,7 +8,7 @@ from torch._inductor import ir
 _T = TypeVar("_T")
 
 
-def gen_best_config(mat1: ir.StorageBox, mat2: ir.StorageBox) -> asyncio.Task[_T]:
+def gen_best_config(mat1: ir.StorageBox, mat2: ir.StorageBox) -> "asyncio.Task[_T]":
     """
     Generate the best GEMM autotune config for the given matrices.
     """

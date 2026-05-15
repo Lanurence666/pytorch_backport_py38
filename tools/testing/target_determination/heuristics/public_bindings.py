@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, List
+from warnings import warn
 
 from tools.testing.target_determination.heuristics.interface import (
     HeuristicInterface,
@@ -16,12 +17,16 @@ class PublicBindings(HeuristicInterface):
     test_public_bindings = "test_public_bindings"
     additional_files = ["test/allowlist_for_publicAPI.json"]
 
-    def __init__(self, **kwargs: dict[str, Any]) -> None:
+    def __init__(self, **kwargs: Dict[str, Any]) -> None:
         super().__init__(**kwargs)
 
-    def get_prediction_confidence(self, tests: list[str]) -> TestPrioritizations:
+    def get_prediction_confidence(self, tests: List[str]) -> TestPrioritizations:
         test_ratings = {}
-        changed_files = query_changed_files()
+        try:
+            changed_files = query_changed_files()
+        except Exception as e:
+            warn(f"Can't query changed test files due to {e}")
+            changed_files = []
 
         if any(
             file.startswith("torch/") or file in self.additional_files

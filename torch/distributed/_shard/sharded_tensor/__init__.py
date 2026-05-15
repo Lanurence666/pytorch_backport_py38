@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
-from typing import TYPE_CHECKING
+from typing import Callable, List, TYPE_CHECKING
 
 import torch
 from torch.distributed._shard.op_registry_utils import _decorator_func
@@ -356,7 +358,7 @@ def randn(
 
 
 def init_from_local_shards(
-    local_shards: list[Shard], *global_size, process_group=None, init_rrefs=False
+    local_shards: List[Shard], *global_size, process_group=None, init_rrefs=False
 ) -> ShardedTensor:
     """
     Creates an :class:`ShardedTensor` from local shards and the global metadata.

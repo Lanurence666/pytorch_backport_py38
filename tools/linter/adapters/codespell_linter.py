@@ -15,7 +15,7 @@ import subprocess
 import sys
 from enum import Enum
 from pathlib import Path
-from typing import NamedTuple
+from typing import List, NamedTuple, Union
 
 
 REPO_ROOT = Path(__file__).absolute().parents[3]
@@ -37,22 +37,22 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 def format_error_message(
     filename: str,
-    error: Exception | None = None,
+    error: Union[Exception, None] = None,
     *,
-    message: str | None = None,
+    message: Union[str, None] = None,
 ) -> LintMessage:
     if message is None and error is not None:
         message = (
@@ -92,7 +92,7 @@ def run_codespell(path: Path) -> str:
         raise ValueError(exc.output) from exc
 
 
-def check_file(filename: str) -> list[LintMessage]:
+def check_file(filename: str) -> List[LintMessage]:
     path = Path(filename).absolute()
 
     # Check if file is too large
@@ -134,7 +134,7 @@ def check_file(filename: str) -> list[LintMessage]:
     return []
 
 
-def check_dictionary(filename: str) -> list[LintMessage]:
+def check_dictionary(filename: str) -> List[LintMessage]:
     """Check the dictionary file for duplicates."""
     path = Path(filename).absolute()
     try:

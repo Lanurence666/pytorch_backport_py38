@@ -15,9 +15,10 @@ The scope ID increments when entering a new context and decrements when exiting,
 allowing proper tracking of nested tracing operations across different threads.
 """
 
+from typing import Generator
 import contextlib
 import threading
-from collections.abc import Generator
+
 
 
 # Global variable to identify which SubgraphTracer we are in.

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import Dict, Iterator, List, Sequence, TYPE_CHECKING, Tuple, Type, Union
 from typing_extensions import TypeVarTuple, Unpack
 
 from .dispatch import dispatch
@@ -25,7 +25,7 @@ __all__ = ["reify", "unify"]
 
 
 @dispatch(Iterator, dict)
-def _reify(t: Iterator[object], s: dict[Var, object]) -> Iterator[object]:
+def _reify(t: Iterator[object], s: Dict[Var, object]) -> Iterator[object]:
     return map(partial(reify, s=s), t)
     # return (reify(arg, s) for arg in t)
 
@@ -34,7 +34,7 @@ _reify
 
 
 @dispatch(tuple, dict)  # type: ignore[no-redef]
-def _reify(t: tuple[Unpack[_Ts]], s: dict[Var, object]) -> tuple[Unpack[_Ts]]:
+def _reify(t: Tuple[Unpack[_Ts]], s: Dict[Var, object]) -> Tuple[Unpack[_Ts]]:
     return tuple(reify(iter(t), s))  # pyrefly: ignore[bad-argument-type, bad-return]
 
 
@@ -42,7 +42,7 @@ _reify
 
 
 @dispatch(list, dict)  # type: ignore[no-redef]
-def _reify(t: list[object], s: dict[Var, object]) -> list[object]:
+def _reify(t: List[object], s: Dict[Var, object]) -> List[object]:
     return list(reify(iter(t), s))  # pyrefly: ignore[bad-argument-type]
 
 
@@ -50,7 +50,7 @@ _reify
 
 
 @dispatch(dict, dict)  # type: ignore[no-redef]
-def _reify(d: dict[object, object], s: dict[Var, object]) -> dict[object, object]:
+def _reify(d: Dict[object, object], s: Dict[Var, object]) -> Dict[object, object]:
     return {k: reify(v, s) for k, v in d.items()}
 
 
@@ -58,11 +58,11 @@ _reify
 
 
 @dispatch(object, dict)  # type: ignore[no-redef]
-def _reify(o: object, s: dict[Var, object]) -> object:
+def _reify(o: object, s: Dict[Var, object]) -> object:
     return o  # catch all, just return the object
 
 
-def reify(e: object, s: dict[Var, object]) -> object:
+def reify(e: object, s: Dict[Var, object]) -> object:
     """Replace variables of expression with substitution
     >>> # xdoctest: +SKIP
     >>> x, y = var(), var()
@@ -88,8 +88,8 @@ seq = tuple, list, Iterator
 
 @dispatch(seq, seq, dict)  # type: ignore[arg-type]
 def _unify(
-    u: Sequence[object], v: Sequence[object], s: dict[Var, object]
-) -> dict[Var, object] | bool:
+    u: Sequence[object], v: Sequence[object], s: Dict[Var, object]
+) -> Union[Dict[Var, object], bool]:
     if len(u) != len(v):
         return False
     for uu, vv in zip(u, v):  # avoiding recursion
@@ -128,8 +128,8 @@ def _unify(
 
 @dispatch(object, object, dict)
 def unify(
-    u: object, v: object, s: dict[Var, object]
-) -> dict[Var, object] | bool:  # no check at the moment
+    u: object, v: object, s: Dict[Var, object]
+) -> Union[Dict[Var, object], bool]:  # no check at the moment
     """Find substitution so that u == v while satisfying s
     >>> x = var("x")
     >>> unify((1, x), (1, 2), {})
@@ -150,5 +150,5 @@ unify
 
 
 @dispatch(object, object)  # type: ignore[no-redef]
-def unify(u: object, v: object) -> dict[Var, object] | bool:
+def unify(u: object, v: object) -> Union[Dict[Var, object], bool]:
     return unify(u, v, {})

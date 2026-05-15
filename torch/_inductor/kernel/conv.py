@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, TypedDict
+from typing import Dict, Optional, Sequence, TYPE_CHECKING, Tuple, Type, TypedDict
 
 import torch
 from torch._inductor.codegen.rocm.ck_conv_template import CKGroupedConvFwdTemplate
@@ -33,7 +33,7 @@ from .mm_common import load_kernel_template
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    
 
     from ..ir import TensorBox
 
@@ -365,23 +365,23 @@ aten_conv1x1_via_mm = ExternKernelChoice(conv1x1_via_mm, None)
 
 
 class ConvLayoutParams(TypedDict):
-    stride: tuple[int, ...]
-    padding: tuple[int, ...]
-    dilation: tuple[int, ...]
+    stride: Tuple[int, ...]
+    padding: Tuple[int, ...]
+    dilation: Tuple[int, ...]
     transposed: bool
-    output_padding: tuple[int, ...]
+    output_padding: Tuple[int, ...]
     groups: int
 
 
 def conv_layout(
     x: TensorBox,
     weight: TensorBox,
-    bias: TensorBox | None,
+    bias: Optional[TensorBox],
     stride: Sequence[int],
-    padding: tuple[int, ...],
-    dilation: tuple[int, ...],
+    padding: Tuple[int, ...],
+    dilation: Tuple[int, ...],
     transposed: bool,
-    output_padding: tuple[int, ...],
+    output_padding: Tuple[int, ...],
     groups: int,
 ) -> ir.Layout:
     """Determine output layout for a convolution"""
@@ -449,7 +449,7 @@ def convert_1x1_conv_to_mm(x, weight, bias):
 def convolution(
     x: TensorBox,
     weight: TensorBox,
-    bias: TensorBox | None,
+    bias: Optional[TensorBox],
     stride: Sequence[int],
     padding: Sequence[int],
     dilation: Sequence[int],

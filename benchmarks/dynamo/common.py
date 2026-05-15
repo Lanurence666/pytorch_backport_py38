@@ -536,7 +536,7 @@ def nothing(f):
     return f
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def patch_torch_manual_seed():
     """Make torch manual seed deterministic. Helps with accuracy testing."""
 
@@ -1128,10 +1128,7 @@ def speedup_experiment(args, model_iter_fn, model, example_inputs, **kwargs):
     if args.export_profiler_trace:
         inputs = example_inputs
         with maybe_profile(True, **args.profile_details) as p:
-            with (
-                maybe_mark_profile(p=p, mark="expected"),
-                torch.compiler.set_stance("force_eager"),
-            ):
+            with maybe_mark_profile(p=p, mark="expected"), torch.compiler.set_stance("force_eager"):
                 timed(
                     model,
                     model_iter_fn,

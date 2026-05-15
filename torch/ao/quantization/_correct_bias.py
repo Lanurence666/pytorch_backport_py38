@@ -1,3 +1,4 @@
+from typing import Set
 # mypy: allow-untyped-defs
 import torch
 import torch.ao.nn.quantized as nnq

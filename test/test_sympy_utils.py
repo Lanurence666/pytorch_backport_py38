@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: pt2"]
 
+from __future__ import annotations
 import functools
 import itertools
 import math

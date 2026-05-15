@@ -1,4 +1,6 @@
 # mypy: ignore-errors
+from __future__ import annotations
+from typing import Dict, List, Tuple, Union
 import logging
 import multiprocessing as mp
 import os
@@ -24,15 +26,15 @@ from torchfuzz.runner import ProgramRunner
 from torchfuzz.visualize_graph import visualize_operation_graph
 
 
-def _parse_supported_ops_with_weights(spec: str) -> tuple[list[str], dict[str, float]]:
+def _parse_supported_ops_with_weights(spec: str) -> Tuple[List[str], Dict[str, float]]:
     """Parse --supported-ops string.
 
     Format: comma-separated fully-qualified torch ops, each optionally with =weight.
     Example: "torch.matmul=5,torch.nn.functional.rms_norm=5,torch.add"
     Returns (ops_list, weights_dict)
     """
-    ops: list[str] = []
-    weights: dict[str, float] = {}
+    ops: List[str] = []
+    weights: Dict[str, float] = {}
     if not spec:
         return ops, weights
     for entry in spec.split(","):
@@ -54,12 +56,12 @@ def _parse_supported_ops_with_weights(spec: str) -> tuple[list[str], dict[str, f
 
 
 def fuzz_and_execute(
-    seed: int | None = None,
-    max_depth: int | None = None,
+    seed: Union[int, None] = None,
+    max_depth: Union[int, None] = None,
     log_at_faluire: bool = False,
     template: str = "default",
-    supported_ops: list[str] | None = None,
-    op_weights: dict[str, float] | None = None,
+    supported_ops: Union[List[str], None] = None,
+    op_weights: Union[Dict[str, float], None] = None,
 ) -> None:
     """
     Generate a fuzzed operation stack, convert it to Python code, and execute it.
@@ -340,8 +342,8 @@ def main():
         # Single seed execution mode
         print("Running single fuzz_and_execute...")
         # Parse supported ops and any inline weights from that flag
-        parsed_supported_ops: list[str] | None = None
-        parsed_weights: dict[str, float] = {}
+        parsed_supported_ops: Union[List[str], None] = None
+        parsed_weights: Dict[str, float] = {}
         if args.supported_ops:
             parsed_supported_ops, parsed_weights = _parse_supported_ops_with_weights(
                 args.supported_ops

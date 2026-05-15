@@ -7,7 +7,13 @@ import logging
 import warnings
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import cast, Literal, overload, Protocol, TYPE_CHECKING, TypeAlias
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, cast, overload
+from typing_extensions import Literal, Protocol
+
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 import torch
 from torch import fx
@@ -29,8 +35,8 @@ class GetMeshCallback(Protocol):
 
     def __call__(
         self,
-        mesh_dim_names: tuple[str, ...],
-        mesh_layout: _MeshLayout | None,
+        mesh_dim_names: Tuple[str, ...],
+        mesh_layout: Optional[_MeshLayout],
     ) -> DeviceMesh: ...
 
 
@@ -38,14 +44,14 @@ class GetMeshCallback(Protocol):
 # mesh_layout is the _MeshLayout object containing shape and stride (not actual ranks).
 # This uniquely identifies a mesh within the same "universe" where all stages share
 # the same rank tensor.
-MeshCacheKey: TypeAlias = tuple[tuple[str, ...], _MeshLayout | None]
+MeshCacheKey = Tuple[Tuple[str, ...], Optional[_MeshLayout]]
 
 
 class PipeliningMetadataError(RuntimeError):
     """Raised on metadata mismatches during pipeline communication."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _TensorMeta:
     """Tensor metadata for recv buffer allocation and validation.
 
@@ -55,7 +61,7 @@ class _TensorMeta:
     """
 
     shape: torch.Size
-    stride: tuple[int, ...]
+    stride: Tuple[int, ...]
     dtype: torch.dtype
     requires_grad: bool
 
@@ -83,7 +89,7 @@ class _TensorMeta:
             requires_grad=tensor.requires_grad,
         )
 
-    def to_tensor(self, device: torch.device | str) -> torch.Tensor:
+    def to_tensor(self, device: Union[torch.device, str]) -> torch.Tensor:
         """Reconstruct a tensor on ``device`` from this metadata.
 
         Args:
@@ -96,7 +102,7 @@ class _TensorMeta:
         t.requires_grad_(self.requires_grad)
         return t
 
-    def get_diff(self, other: _TensorMeta) -> list[str]:
+    def get_diff(self, other: _TensorMeta) -> List[str]:
         """Return field-by-field differences with ``other``.
 
         Args:
@@ -120,7 +126,7 @@ class _TensorMeta:
         return diffs
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _DTensorMeta(_TensorMeta):
     """DTensor metadata extending :class:`_TensorMeta` with distribution info.
 
@@ -135,16 +141,16 @@ class _DTensorMeta(_TensorMeta):
 
     # Global DTensor properties (for reconstruction)
     global_shape: torch.Size = field(default_factory=lambda: torch.Size([]))
-    global_stride: tuple[int, ...] = field(default=())
+    global_stride: Tuple[int, ...] = field(default=())
 
     # DTensor distribution properties
-    placements: tuple[Placement, ...] = field(
+    placements: Tuple[Placement, ...] = field(
         default=()
     )  # e.g., (Shard(0), Replicate())
 
     # Mesh identification - used to look up the correct DeviceMesh from cache
-    mesh_dim_names: tuple[str, ...] = field(default=())  # e.g., ("tp",) or ("dp", "tp")
-    mesh_layout: _MeshLayout | None = field(
+    mesh_dim_names: Tuple[str, ...] = field(default=())  # e.g., ("tp",) or ("dp", "tp")
+    mesh_layout: Optional[_MeshLayout] = field(
         default=None
     )  # _MeshLayout with shape/stride - uniquely identifies mesh within the same universe
 
@@ -182,7 +188,7 @@ class _DTensorMeta(_TensorMeta):
         """Cache key ``(mesh_dim_names, mesh_layout)`` for mesh lookup."""
         return (self.mesh_dim_names, self.mesh_layout)
 
-    def to_dtensor(self, device: torch.device | str, mesh: DeviceMesh) -> DTensor:
+    def to_dtensor(self, device: Union[torch.device, str], mesh: DeviceMesh) -> DTensor:
         """Reconstruct a DTensor on ``device`` with placements.
 
         Args:
@@ -207,7 +213,7 @@ class _DTensorMeta(_TensorMeta):
             ).requires_grad_(self.requires_grad),
         )
 
-    def get_diff(self, other: _TensorMeta) -> list[str]:
+    def get_diff(self, other: _TensorMeta) -> List[str]:
         """Return field-by-field differences, including DTensor-specific fields.
 
         Args:
@@ -221,7 +227,7 @@ class _DTensorMeta(_TensorMeta):
 
         # Get base class differences (compares local shape/stride/dtype/requires_grad)
         # NOTE: Use explicit class call instead of super() because
-        # @dataclass(slots=True) on both parent and child can break super().
+        # @dataclass() on both parent and child can break super().
         diffs = _TensorMeta.get_diff(self, other)
 
         # Add DTensor-specific comparisons if other is also _DTensorMeta
@@ -253,19 +259,19 @@ class _DTensorMeta(_TensorMeta):
 
 
 # Type alias for union of tensor metadata types
-TensorMeta: TypeAlias = _TensorMeta | _DTensorMeta
+TensorMeta = Union[_TensorMeta, _DTensorMeta]
 
 
 # Not frozen: fields are populated incrementally during forward and
 # backward metadata inference or from user provided static metadata
-@dataclass(slots=True)
+@dataclass
 class _StageMeta:
     """Consolidated tensor metadata for a pipeline stage's forward and backward passes."""
 
-    inputs: tuple[TensorMeta, ...] | None = None
-    outputs: tuple[TensorMeta, ...] | None = None
-    input_grads: tuple[TensorMeta | None, ...] | None = None
-    output_grads: tuple[TensorMeta | None, ...] | None = None
+    inputs: Optional[Tuple[TensorMeta, ...]] = None
+    outputs: Optional[Tuple[TensorMeta, ...]] = None
+    input_grads: Optional[Tuple[Union[TensorMeta, None], ...]] = None
+    output_grads: Optional[Tuple[Union[TensorMeta, None], ...]] = None
 
     def has_any(self) -> bool:
         """Check if any metadata field is populated."""
@@ -286,14 +292,14 @@ class _StageMeta:
         return self.inputs is not None and self.outputs is not None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _StageForwardMeta:
     """Forward metadata transmitted from stage *i* to stage *i+1* during inference."""
 
-    forward_metas: tuple[TensorMeta, ...]  # Stage i's outputs → Stage i+1's inputs
+    forward_metas: Tuple[TensorMeta, ...]  # Stage i's outputs → Stage i+1's inputs
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _StageBackwardMeta:
     """Backward metadata transmitted from stage *i* to stage *i-1* during inference.
 
@@ -301,14 +307,14 @@ class _StageBackwardMeta:
     (e.g., ``Replicate`` → ``Partial``).
     """
 
-    backward_metas: tuple[
-        TensorMeta | None, ...
+    backward_metas: Tuple[
+        Optional[TensorMeta], ...
     ]  # Stage i's input_grads → Stage i-1's output_grads
 
 
 def _make_tensor_from_meta(
     meta: _TensorMeta,
-    device: torch.device | str,
+    device: Union[torch.device, str],
 ) -> torch.Tensor:
     """Create a tensor from metadata.
 
@@ -328,8 +334,8 @@ def _make_tensor_from_meta(
 
 
 def _derive_grad_metas(
-    tensor_metas: tuple[TensorMeta, ...],
-) -> tuple[_TensorMeta | None, ...]:
+    tensor_metas: Tuple[TensorMeta, ...],
+) -> Tuple[Optional[_TensorMeta], ...]:
     """Derive gradient metadata from tensor metadata.
 
     Returns metadata with the same shape/stride/dtype but ``requires_grad=False``.
@@ -350,8 +356,8 @@ class _MeshCache:
     TorchTitan-style frameworks where meshes derive from a common world).
     """
 
-    def __init__(self, get_mesh_cb: GetMeshCallback | None = None) -> None:
-        self._cache: dict[MeshCacheKey, DeviceMesh] = {}
+    def __init__(self, get_mesh_cb: Optional[GetMeshCallback] = None) -> None:
+        self._cache: Dict[MeshCacheKey, DeviceMesh] = {}
         self._get_mesh_cb = get_mesh_cb
 
     def get_mesh(self, key: MeshCacheKey) -> DeviceMesh:
@@ -392,7 +398,7 @@ class _MeshCache:
         """Add a mesh to the cache."""
         self._cache[key] = mesh
 
-    def update_from_tensors(self, tensors: tuple[torch.Tensor | None, ...]) -> None:
+    def update_from_tensors(self, tensors: Tuple[Optional[torch.Tensor], ...]) -> None:
         """Extract and cache meshes from any :class:`DTensor` instances in *tensors*."""
         for tensor in tensors:
             if isinstance(tensor, DTensor):
@@ -505,7 +511,7 @@ def flatten_args_detach(args):
 
 def generate_stage_to_rank_mapping(
     pp_size: int, num_stages: int, style: str = "loop"
-) -> dict[int, int]:
+) -> Dict[int, int]:
     """
     Compute the stage id to rank mapping for either a looped or V-style schedule.
 
@@ -539,7 +545,7 @@ def generate_stage_to_rank_mapping(
 
 def generate_rank_to_stage_mapping(
     pp_size: int, num_stages: int, style: str = "loop"
-) -> dict[int, list[int]]:
+) -> Dict[int, List[int]]:
     """
     Compute the rank to stage id mapping for either a looped or V-style schedule.
 
@@ -550,7 +556,7 @@ def generate_rank_to_stage_mapping(
     stage_to_rank = generate_stage_to_rank_mapping(pp_size, num_stages, style)
 
     # Invert the mapping: rank -> list of stages
-    rank_to_stages: dict[int, list[int]] = {}
+    rank_to_stages: Dict[int, List[int]] = {}
     for stage_id, rank in stage_to_rank.items():
         if rank not in rank_to_stages:
             rank_to_stages[rank] = []
@@ -563,7 +569,7 @@ def generate_rank_to_stage_mapping(
     return rank_to_stages
 
 
-@dataclass(slots=True)
+@dataclass
 class PipeInfo:
     """
     Captures information for a pipeline (`Pipe` object).
@@ -601,25 +607,25 @@ def extract_tensor_meta(tensor: torch.Tensor) -> TensorMeta:
 
 @overload
 def extract_tensor_metas(
-    tensors: tuple[torch.Tensor, ...] | None,
+    tensors: Optional[Tuple[torch.Tensor, ...]],
     *,
     allow_none: Literal[False] = ...,
-) -> tuple[TensorMeta, ...] | None: ...
+) -> Optional[Tuple[TensorMeta, ...]]: ...
 
 
 @overload
 def extract_tensor_metas(
-    tensors: tuple[torch.Tensor | None, ...] | None,
+    tensors: Union[Tuple[torch.Tensor, None, ...], None],
     *,
     allow_none: Literal[True],
-) -> tuple[TensorMeta | None, ...] | None: ...
+) -> Union[Tuple[TensorMeta, None, ...], None]: ...
 
 
 def extract_tensor_metas(
-    tensors: tuple[torch.Tensor | None, ...] | tuple[torch.Tensor, ...] | None,
+    tensors: Union[Tuple[torch.Tensor, None, ...], Optional[Tuple[torch.Tensor, ...]]],
     *,
     allow_none: bool = False,
-) -> tuple[TensorMeta | None, ...] | None:
+) -> Union[Tuple[TensorMeta, None, ...], None]:
     """Extract metadata from a tuple of tensors.
 
     Args:
@@ -635,7 +641,7 @@ def extract_tensor_metas(
     if tensors is None:
         return None
 
-    metas_with_none: list[TensorMeta | None] = []
+    metas_with_none: List[Optional[TensorMeta]] = []
     has_none = False
     for t in tensors:
         if isinstance(t, torch.Tensor):
@@ -673,30 +679,30 @@ def to_local_if_dtensor(tensor: torch.Tensor, detach: bool = False) -> torch.Ten
 
 @overload
 def validate_and_normalize_to_tuple(
-    args: torch.Tensor | tuple[torch.Tensor, ...] | list[torch.Tensor] | None,
+    args: Union[torch.Tensor, Tuple[torch.Tensor, ...]] | Optional[List[torch.Tensor]],
     allow_none: Literal[False] = ...,
-) -> tuple[torch.Tensor, ...] | None: ...
+) -> Optional[Tuple[torch.Tensor, ...]]: ...
 
 
 @overload
 def validate_and_normalize_to_tuple(
     args: torch.Tensor
-    | tuple[torch.Tensor | None, ...]
-    | list[torch.Tensor | None]
+    | Tuple[Optional[torch.Tensor], ...]
+    | List[Optional[torch.Tensor]]
     | None,
     allow_none: Literal[True] = ...,
-) -> tuple[torch.Tensor | None, ...] | None: ...
+) -> Union[Tuple[torch.Tensor, None, ...], None]: ...
 
 
 def validate_and_normalize_to_tuple(
     args: torch.Tensor
-    | tuple[torch.Tensor, ...]
-    | tuple[torch.Tensor | None, ...]
-    | list[torch.Tensor]
-    | list[torch.Tensor | None]
+    | Tuple[torch.Tensor, ...]
+    | Tuple[Optional[torch.Tensor], ...]
+    | List[torch.Tensor]
+    | List[Optional[torch.Tensor]]
     | None,
     allow_none: bool = False,
-) -> tuple[torch.Tensor | None, ...] | tuple[torch.Tensor, ...] | None:
+) -> Union[Tuple[torch.Tensor, None, ...], Optional[Tuple[torch.Tensor, ...]]]:
     """Normalize ``args`` to a tuple and validate that all elements are tensors.
 
     Args:
@@ -744,11 +750,11 @@ def validate_and_normalize_to_tuple(
 def validate_metadata(
     desc: str,
     expected: TensorMeta,
-    actual: torch.Tensor | TensorMeta,
+    actual: Union[torch.Tensor, TensorMeta],
     *,
     raise_on_mismatch: bool = False,
     warn_on_mismatch: bool = False,
-) -> list[str]:
+) -> List[str]:
     """
     Compare expected metadata against actual tensor or metadata.
 
@@ -812,12 +818,12 @@ def validate_metadata(
 
 def validate_tensors_metadata(
     desc: str,
-    expected: tuple[TensorMeta | None, ...],
-    actual: tuple[torch.Tensor | TensorMeta | None, ...],
+    expected: Tuple[Optional[TensorMeta], ...],
+    actual: Optional[Tuple[Union[torch.Tensor, TensorMeta]], ...],
     *,
     raise_on_mismatch: bool = True,
     warn_on_mismatch: bool = False,
-) -> list[str]:
+) -> List[str]:
     """Validate metadata for a tuple of tensors element-wise.
 
     Args:
@@ -841,8 +847,8 @@ def validate_tensors_metadata(
             warnings.warn(msg, UserWarning, stacklevel=2)
         return [msg]
 
-    all_diffs: list[str] = []
-    for i, (exp, act) in enumerate(zip(expected, actual, strict=True)):
+    all_diffs: List[str] = []
+    for i, (exp, act) in enumerate(_zip_strict(expected, actual)):
         if exp is None and act is None:
             continue
         if exp is None or act is None:
@@ -869,8 +875,8 @@ def validate_tensors_metadata(
 
 def validate_static_arg_grad_correspondence(
     stage_index: int,
-    args: tuple[torch.Tensor, ...],
-    grads: tuple[torch.Tensor | None, ...],
+    args: Tuple[torch.Tensor, ...],
+    grads: Tuple[Optional[torch.Tensor], ...],
     is_input: bool,
 ) -> None:
     """
@@ -905,7 +911,7 @@ def validate_static_arg_grad_correspondence(
             f"corresponding gradient entry (use None for tensors that don't require grad)."
         )
 
-    for i, (arg, grad) in enumerate(zip(args, grads, strict=True)):
+    for i, (arg, grad) in enumerate(_zip_strict(args, grads)):
         # Rule 2: no grad for a non-differentiable arg
         if not arg.requires_grad and grad is not None:
             raise PipeliningMetadataError(

@@ -11,7 +11,11 @@ import tempfile
 import warnings
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING, TypeGuard
+from typing import Any, Dict, Generator, List, Mapping, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union
+try:
+    from typing import TypeGuard
+except ImportError:
+    from typing_extensions import TypeGuard
 from typing_extensions import final, override, Self
 
 import torch._inductor.async_compile
@@ -37,7 +41,7 @@ from .virtualized import V
 
 if TYPE_CHECKING:
     import types
-    from collections.abc import Generator, Mapping, Sequence
+    
     from concurrent.futures import Future
 
     from torch._inductor.utils import InputType
@@ -119,7 +123,7 @@ class _VirtualizedSerializerContextManager(contextlib.ExitStack):
             if not set_name.startswith("set_"):
                 continue
             name = set_name[4:]
-            name = name.removesuffix("_handler")
+            name = name[:-len("_handler")] if name.endswith("_handler") else name
             set_handler = getattr(V, set_name)
             if hasattr(self.virtualized, name):
                 value = getattr(self.virtualized, name)
@@ -214,11 +218,11 @@ class _WireProtocolInput:
     example_inputs: Sequence[InputType]
     inputs_to_check: Sequence[int]
     graph_kwargs: _CompileFxKwargs
-    tracing_context: torch._guards.TracingContext | None
-    config: dict[str, object]
+    tracing_context: Optional[torch._guards.TracingContext]
+    config: Dict[str, object]
     virtualized: _VirtualizedSerializer
     deterministic_guard_for_testing: (  # type: ignore[name-defined]  # mypy bug
-        torch.testing._internal.common_utils.DeterministicGuard | None
+        Optional[torch.testing._internal.common_utils.DeterministicGuard]
     )
     logger_state: _LoggerState
     lowering: _LoweringSerializer
@@ -270,9 +274,9 @@ class _WireProtocolOutput:
 
     graph: OutputCode
     metrics: CachedMetricsDeltas
-    logs: list[logging.LogRecord]
-    warning_replay: list[warnings.WarningMessage] | None
-    shape_env: torch.fx.experimental.symbolic_shapes.ShapeEnv | None
+    logs: List[logging.LogRecord]
+    warning_replay: Optional[List[warnings.WarningMessage]]
+    shape_env: Optional[torch.fx.experimental.symbolic_shapes.ShapeEnv]
 
     def serialize(self) -> _WireProtocolPickledOutput:
         """
@@ -311,17 +315,17 @@ class _LoggerState:
     a context manager which returns the captured logs (object).
     """
 
-    loggers: dict[str, int]
+    loggers: Dict[str, int]
     # The actual log capturing mechanism - this should be None when we're not
     # actively capturing logs.
-    captured_logs: _CapturedLogs | None = None
+    captured_logs: Optional[_CapturedLogs] = None
 
     def __init__(self) -> None:
         # Mapping from logger name to level.
         self.loggers = {}
 
         def filter(
-            logger: logging.Logger | logging.PlaceHolder,
+            logger: Union[logging.Logger, logging.PlaceHolder],
         ) -> TypeGuard[logging.Logger]:
             if not isinstance(logger, logging.Logger):
                 # Assume that Placeholders propagate
@@ -360,9 +364,9 @@ class _LoggerState:
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: types.TracebackType | None,
+        exc_type: Optional[Type[BaseException]],
+        exc_value: Optional[BaseException],
+        traceback: Optional[types.TracebackType],
     ) -> None:
         assert self.captured_logs is not None
         self.captured_logs.remove()
@@ -376,7 +380,7 @@ class _CapturedLogs:
 
     state: _LoggerState
     queue: queue.Queue[logging.LogRecord]
-    handlers: dict[str, logging.Handler] | None
+    handlers: Optional[Dict[str, logging.Handler]]
 
     def __init__(self, state: _LoggerState) -> None:
         self.state = state
@@ -386,7 +390,7 @@ class _CapturedLogs:
         # Mapping from name to handler (only valid when applied)
         self.handlers = None
 
-    def finish(self) -> list[logging.LogRecord]:
+    def finish(self) -> List[logging.LogRecord]:
         assert self.handlers is None
         logs = []
         try:
@@ -463,7 +467,7 @@ class _SerializedFxCompile(FxCompile):
         example_inputs: Sequence[InputType],
         inputs_to_check: Sequence[int],
         graph_kwargs: _CompileFxKwargs,
-    ) -> tuple[_WireProtocolPickledInput, CompiledFxGraphConstantsWithGm] | None:
+    ) -> Optional[Tuple[_WireProtocolPickledInput, CompiledFxGraphConstantsWithGm]]:
         """
         Prepare a _WireProtocolInput to compile. If None is returned then it
         wasn't possible to serialize and we should fallback to in-process.
@@ -492,7 +496,7 @@ class _SerializedFxCompile(FxCompile):
         # If we're running tests then grab the DeterministicGuard (don't want to
         # import this if it isn't already imported because it has side-effects)
         deterministic_guard_for_testing: (  # type: ignore[name-defined]  # mypy bug
-            torch.testing._internal.common_utils.DeterministicGuard | None
+            Optional[torch.testing._internal.common_utils.DeterministicGuard]
         ) = None
         try:
             deterministic_guard_for_testing = (
@@ -545,7 +549,7 @@ class _SerializedFxCompile(FxCompile):
     def _run_in_child(
         cls,
         pickled_input: _WireProtocolPickledInput,
-        extra_env: Mapping[str, str] | None = None,
+        extra_env: Optional[Mapping[str, str]] = None,
     ) -> _WireProtocolPickledOutput:
         metrics = CachedMetricsHelper()
 
@@ -652,7 +656,7 @@ class _OutOfProcessFxCompile(_SerializedFxCompile):
 
         # And forward our collected logs. The cache is cleared when the outer
         # function exits.
-        @functools.cache
+        @functools.lru_cache(maxsize=None)
         def getLogger(name: str) -> logging.Logger:
             return logging.getLogger(name)
 

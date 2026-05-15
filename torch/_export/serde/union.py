@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 from collections.abc import Hashable
 from dataclasses import dataclass, fields
-from typing import TypeVar
+from typing import Set, Type, TypeVar, Union
 from typing_extensions import dataclass_transform
 
 
@@ -35,8 +37,8 @@ class _UnionTag(str):
         return hash(str(self))
 
 
-@functools.cache
-def _get_field_names(cls) -> set[str]:
+@functools.lru_cache(maxsize=None)
+def _get_field_names(cls) -> Set[str]:
     return {f.name for f in fields(cls)}
 
 
@@ -47,7 +49,7 @@ def _get_field_names(cls) -> set[str]:
 # and value property instead of default implementation of dataclass which goes
 # through every field in the dataclass.
 @dataclass_transform(eq_default=False)
-def _union_dataclass(cls: type[T]) -> type[T]:
+def _union_dataclass(cls: Type[T]) -> Type[T]:
     if not issubclass(cls, _Union):
         raise AssertionError(f"{cls} must inherit from {_Union}.")
     return dataclass(repr=False, eq=False)(cls)

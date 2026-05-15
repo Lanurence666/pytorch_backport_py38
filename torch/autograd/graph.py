@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import abc
 import contextlib
 import contextvars
@@ -5,24 +7,25 @@ import functools
 import logging
 import threading
 from collections import defaultdict, deque
-from collections.abc import (
+from typing import (
+    Any,
     Callable,
+    Dict,
     Generator,
     Iterable,
     Iterator,
+    List,
     MutableMapping,
-    Sequence,
-)
-from typing import (
-    Any,
-    cast,
-    Literal,
-    NamedTuple,
     Optional,
+    Sequence,
     TYPE_CHECKING,
-    TypeAlias,
+    Tuple,
     Union,
+    cast,
 )
+
+
+from typing_extensions import Literal, NamedTuple, TypeAlias
 from weakref import WeakKeyDictionary, WeakValueDictionary
 
 import torch
@@ -71,7 +74,7 @@ class Node(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def next_functions(self) -> tuple[tuple[Optional["Node"], int], ...]:
+    def next_functions(self) -> Tuple[Tuple[Optional["Node"], int], ...]:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -85,7 +88,7 @@ class Node(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def _input_metadata(self) -> list[Any]:
+    def _input_metadata(self) -> List[Any]:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -210,7 +213,7 @@ class GradientEdge(NamedTuple):
     output_nr: int
     # This token can be used to ensure the graph stays alive when it cannot be
     # done via the node field
-    ownership_token: Node | None = None
+    ownership_token: Optional[Node] = None
 
 
 def get_gradient_edge(tensor: torch.Tensor) -> GradientEdge:
@@ -241,7 +244,7 @@ def get_gradient_edge(tensor: torch.Tensor) -> GradientEdge:
     return GradientEdge(grad_fn, tensor.output_nr, ownership_token=token)
 
 
-def increment_version(tensor: torch.Tensor | Iterable[torch.Tensor]) -> None:
+def increment_version(tensor: Union[torch.Tensor, Iterable[torch.Tensor]]) -> None:
     """Update autograd metadata tracking whether the given Tensor was modified in place.
 
     This is to enable more accurate error checking within the autograd engine.
@@ -399,7 +402,7 @@ class save_on_cpu(saved_tensors_hooks):
     def __init__(self, pin_memory: bool = False, device_type: str = "cuda") -> None:
         device_module = getattr(torch, device_type, torch.cuda)
 
-        def pack_to_cpu(tensor: torch.Tensor) -> tuple[torch.device, torch.Tensor]:
+        def pack_to_cpu(tensor: torch.Tensor) -> Tuple[torch.device, torch.Tensor]:
             if not pin_memory:
                 return (tensor.device, tensor.cpu())
             is_pinnable = device_module.is_available() and not tensor.is_sparse
@@ -412,7 +415,7 @@ class save_on_cpu(saved_tensors_hooks):
             packed.copy_(tensor, non_blocking=is_pinnable)
             return (tensor.device, packed)
 
-        def unpack_from_cpu(packed: tuple[torch.device, torch.Tensor]) -> torch.Tensor:
+        def unpack_from_cpu(packed: Tuple[torch.device, torch.Tensor]) -> torch.Tensor:
             device, tensor = packed
             return tensor.to(device, non_blocking=pin_memory)
 
@@ -493,25 +496,25 @@ def set_override_stale_capture_stream(enabled: bool) -> None:
 
 
 class _MultiHandle(RemovableHandle):
-    handles: tuple[RemovableHandle, ...]
+    handles: Tuple[RemovableHandle, ...]
 
-    def __init__(self, handles: tuple[RemovableHandle, ...]) -> None:
+    def __init__(self, handles: Tuple[RemovableHandle, ...]) -> None:
         self.handles = handles
 
     def remove(self) -> None:
         for handle in self.handles:
             handle.remove()
 
-    def __getstate__(self) -> tuple[RemovableHandle, ...]:
+    def __getstate__(self) -> Tuple[RemovableHandle, ...]:
         return self.handles
 
-    def __setstate__(self, state: tuple[RemovableHandle, ...]) -> None:
+    def __setstate__(self, state: Tuple[RemovableHandle, ...]) -> None:
         self.handles = state
 
 
 def register_multi_grad_hook(
     tensors: Sequence[torch.Tensor],
-    fn: Callable[[Sequence[torch.Tensor | None]], None]
+    fn: Callable[[Sequence[Optional[torch.Tensor]]], None]
     | Callable[[torch.Tensor], None],
     *,
     mode: Literal["all", "any"] = "all",
@@ -570,9 +573,9 @@ def register_multi_grad_hook(
         raise ValueError(f"Expects mode to be one of {supported_modes} but got {mode}")
 
     if mode == "all":
-        count: dict[int, int] = {}
+        count: Dict[int, int] = {}
         nb_calls = None
-        buffer: dict[int, list[torch.Tensor | None]] = {}
+        buffer: Dict[int, List[Optional[torch.Tensor]]] = {}
 
         grad_fns = list(map(_get_grad_fn_or_grad_acc, tensors))
         len_tensors = len(tensors)
@@ -603,7 +606,7 @@ def register_multi_grad_hook(
                 if nb_calls is None:
                     raise AssertionError("Expected nb_calls to be set")
                 if curr_count == nb_calls - 1:
-                    fn = cast(Callable[[Sequence[torch.Tensor | None]], None], fn)
+                    fn = cast(Callable[[Sequence[Optional[torch.Tensor]]], None], fn)
                     fn(buffer[id])
                     del count[id]
                     del buffer[id]
@@ -615,7 +618,7 @@ def register_multi_grad_hook(
         )
     elif mode == "any":
         fn = cast(Callable[[torch.Tensor], None], fn)
-        ran_hook: dict[int, bool] = defaultdict(bool)
+        ran_hook: Dict[int, bool] = defaultdict(bool)
 
         @functools.wraps(fn)
         def wrapped_fn(grad: torch.Tensor) -> None:
@@ -656,8 +659,8 @@ def register_multi_grad_hook(
 _allow_mutation_on_saved_tensors_enabled: bool = False
 
 
-_TID: TypeAlias = tuple[int, int, int]
-_SID: TypeAlias = tuple[int, int]
+_TID: TypeAlias = Tuple[int, int, int]
+_SID: TypeAlias = Tuple[int, int]
 
 
 def _get_tid(tensor: torch.Tensor) -> _TID:
@@ -700,7 +703,7 @@ class _swap_with_cloned(saved_tensors_hooks):
             tid = _get_tid(tensor)
             sid = _get_sid(tensor)
             # Tensors saved for backward have an entry in _tid_to_weakhandle
-            handle: _Handle | None = None
+            handle: Optional[_Handle] = None
 
             # Save aliasing information
             ctx.sid_to_tid[sid].add(tid)
@@ -741,8 +744,8 @@ class _CloneArgBeforeMutateMode(TorchDispatchMode):
         self,
         func: "OpOverload",
         types: Iterable[type],
-        args: tuple[Any, ...] = (),
-        kwargs: dict[Any, Any] | None = None,
+        args: Tuple[Any, ...] = (),
+        kwargs: Optional[Dict[Any, Any]] = None,
     ) -> Any:
         kwargs = kwargs or {}
 
@@ -790,7 +793,7 @@ class _AllowMutationOnSavedContext:
         self.cloned: MutableMapping[_Handle, torch.Tensor] = WeakKeyDictionary()
         self.original: MutableMapping[_Handle, torch.Tensor] = WeakKeyDictionary()
         self.tid_to_weakhandle: MutableMapping[_TID, _Handle] = WeakValueDictionary()
-        self.sid_to_tid: dict[_SID, set[_TID]] = defaultdict(set)
+        self.sid_to_tid: Dict[_SID, Set[_TID]] = defaultdict(set)
 
     def clear(self) -> None:
         self.cloned.clear()
@@ -850,14 +853,14 @@ def allow_mutation_on_saved_tensors() -> Generator[
 
 
 def _register_logging_hooks_on_whole_graph(
-    t_outputs: Sequence[torch.Tensor | GradientEdge],
+    t_outputs: Sequence[Union[torch.Tensor, GradientEdge]],
 ) -> Callable[[], None]:
     grad_fns = list(map(_get_grad_fn_or_grad_acc, t_outputs))
 
-    def iter_graph(roots: list[Node]) -> Iterator[Node]:
+    def iter_graph(roots: List[Node]) -> Iterator[Node]:
         if not roots:
             return
-        seen: set[Node] = set()
+        seen: Set[Node] = set()
         q: deque[Node] = deque()
         for node in roots:
             if node is not None:
@@ -874,7 +877,7 @@ def _register_logging_hooks_on_whole_graph(
 
             yield node
 
-    def fmt(t: torch.Tensor | None) -> str:
+    def fmt(t: Optional[torch.Tensor]) -> str:
         # Avoid circular import
         from torch.utils._dtype_abbrs import dtype_abbrs
 
@@ -882,7 +885,7 @@ def _register_logging_hooks_on_whole_graph(
             return "None"
         return f"{dtype_abbrs[t.dtype]}[{', '.join(map(str, t.shape))}]"
 
-    def prehook(grad_outputs: Sequence[torch.Tensor | None]) -> None:
+    def prehook(grad_outputs: Sequence[Optional[torch.Tensor]]) -> None:
         node = torch._C._current_autograd_node()
         grad_outputs_str = f"[{','.join(fmt(t) for t in grad_outputs)}]"
         log_str = f"Executing: {node} with grad_outputs: {grad_outputs_str}"
@@ -898,10 +901,10 @@ def _register_logging_hooks_on_whole_graph(
 
 
 def _engine_run_backward(
-    t_outputs: Sequence[torch.Tensor | GradientEdge],
+    t_outputs: Sequence[Union[torch.Tensor, GradientEdge]],
     *args: Any,
     **kwargs: Any,
-) -> tuple[torch.Tensor, ...]:
+) -> Tuple[torch.Tensor, ...]:
     attach_logging_hooks = log.getEffectiveLevel() <= logging.DEBUG
     if attach_logging_hooks:
         unregister_hooks = _register_logging_hooks_on_whole_graph(t_outputs)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import operator
 from collections import deque
 from collections.abc import Callable
@@ -25,10 +27,10 @@ class KnapsackEvaluator:
     def _get_backward_memory_from_topologically_sorted_graph(
         self,
         node_graph: nx.DiGraph,
-        node_memories: dict[str, float],
-        saved_nodes_set: set[str],
+        node_memories: Dict[str, float],
+        saved_nodes_set: Set[str],
         peak_memory_after_forward_pass: float,
-    ) -> list[tuple[float, str]]:
+    ) -> List[Tuple[float, str]]:
         """
         Simulates the backward pass and keeps track of the peak memory usage.
 
@@ -40,9 +42,9 @@ class KnapsackEvaluator:
                 If full graph is defined then will sort the full graph and only process the subset
                 of nodes in the node_graph.
             3. Iterate through the sorted graph nodes.
-                If the node is saved then just drop its memory from current memory.
-                If the node is not saved then add its memory to current memory and then traverse its
-                predecessors to simulate recomputation chain. Will check if new peak memory after all
+                If the node is saved then just drop it's memory from current memory.
+                If the node is not saved then add it's memory to current memory and then traverse it's
+                predecessors to simulate recomuptation chain. Will check if new peak memory after all
                 predecessors are processed.
 
         Args:
@@ -110,7 +112,7 @@ class KnapsackEvaluator:
         return current_memory
 
     def _validate_all_indexes_accounted_for_in_provided_output(
-        self, saved_nodes_idxs: list[int], recomputable_node_idxs: list[int]
+        self, saved_nodes_idxs: List[int], recomputable_node_idxs: List[int]
     ) -> None:
         """
         Validate that all indexes are accounted for in the provided output.
@@ -141,10 +143,10 @@ class KnapsackEvaluator:
 
     def evaluate_knapsack_output(
         self,
-        saved_nodes_idxs: list[int],
-        recomputable_node_idxs: list[int],
+        saved_nodes_idxs: List[int],
+        recomputable_node_idxs: List[int],
         account_for_backward_pass: bool = False,
-    ) -> dict[str, float]:
+    ) -> Dict[str, float]:
         """
         Evaluate the theoretical runtime and peak memory usage of a given checkpointing strategy.
         Args:
@@ -197,10 +199,10 @@ class KnapsackEvaluator:
     def evaluate_distribution_of_results_for_knapsack_algo(
         self,
         knapsack_algo: Callable[
-            [list[float], list[float], float], tuple[float, list[int], list[int]]
+            [List[float], List[float], float], Tuple[float, List[int], List[int]]
         ],
-        memory_budget_values: list[float],
-    ) -> list[dict[str, float]]:
+        memory_budget_values: List[float],
+    ) -> List[Dict[str, float]]:
         """
         Evaluates the distribution of results for a given knapsack algorithm.
         Args:
@@ -225,7 +227,7 @@ class KnapsackEvaluator:
     def get_knee_point_memory_budget(
         self,
         knapsack_algo: Callable[
-            [list[float], list[float], float], tuple[float, list[int], list[int]]
+            [List[float], List[float], float], Tuple[float, List[int], List[int]]
         ],
         max_mem_budget: float = 0.1,
         min_mem_budget: float = 0.001,

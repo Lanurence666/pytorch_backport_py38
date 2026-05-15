@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import numpy as np
 
 import torch
+from typing import Tuple
 
 
 def unpack_float4x2_as_uint8(tensor: torch.Tensor) -> np.ndarray:
@@ -19,7 +22,7 @@ def unpack_float4x2_as_uint8(tensor: torch.Tensor) -> np.ndarray:
     return result
 
 
-def get_float4_shape(tensor: torch.Tensor) -> tuple[int, ...]:
+def get_float4_shape(tensor: torch.Tensor) -> Tuple[int, ...]:
     """Get the shape of an unpacked float4 tensor.
 
     The float4_e2m1fn_x2 type is a shell type described in

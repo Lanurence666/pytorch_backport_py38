@@ -1,10 +1,13 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch import Tensor
 from torch.distributions import Categorical, constraints
 from torch.distributions.constraints import MixtureSameFamilyConstraint
 from torch.distributions.distribution import Distribution
+from typing import Dict, Optional
 
 
 __all__ = ["MixtureSameFamily"]
@@ -53,14 +56,14 @@ class MixtureSameFamily(Distribution):
             instance. Right-most batch dimension indexes component.
     """
 
-    arg_constraints: dict[str, constraints.Constraint] = {}
+    arg_constraints: Dict[str, constraints.Constraint] = {}
     has_rsample = False
 
     def __init__(
         self,
         mixture_distribution: Categorical,
         component_distribution: Distribution,
-        validate_args: bool | None = None,
+        validate_args: Optional[bool]= None,
     ) -> None:
         self._mixture_distribution = mixture_distribution
         self._component_distribution = component_distribution

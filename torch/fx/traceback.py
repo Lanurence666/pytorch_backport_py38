@@ -1,12 +1,17 @@
+from __future__ import annotations
+
 import copy
 import logging
-import threading
 import traceback
 from collections import defaultdict
-from collections.abc import Callable, Iterator
+
 from contextlib import contextmanager
 from enum import Enum
-from typing import Any, Optional, ParamSpec, TypeVar, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Type, TypeVar, Union
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec
 
 from torch._utils_internal import signpost_event
 
@@ -39,14 +44,8 @@ __all__ = [
     "get_current_replay_node",
 ]
 
-current_meta: dict[str, Any] = {}
-current_replay_node: Node | None = None
-# Thread-local holder for the optional name of the subgraph being compiled by a
-# nested/regional inductor compile (e.g. a regional inductor scooped-out region
-# or an invoke_subgraph submodule). Used to disambiguate trace_structured
-# records emitted from sub-compiles within a single frame. Used for debugging
-# only!
-_regional_inductor_subgraph_name_tls = threading.local()
+current_meta: Dict[str, Any] = {}
+current_replay_node: Optional[Node] = None
 # Preserve the node meta fields in torch.fx.proxy._COPY_META_FIELDS
 should_preserve_node_meta = False
 # Preserve the "seq_nr" node meta field
@@ -60,10 +59,10 @@ GRADIENT_ACC_SPECIAL_STACK = (
 # =============================================================================
 # Global in-memory registry for FX metadata
 # Maps module_name -> metadata dict containing lineno_map and node_metadata
-_FX_METADATA_REGISTRY: dict[str, dict[str, Any]] = {}
+_FX_METADATA_REGISTRY: Dict[str, Dict[str, Any]] = {}
 
 
-def _register_fx_metadata(module_name: str, metadata: dict[str, Any]) -> None:
+def _register_fx_metadata(module_name: str, metadata: Dict[str, Any]) -> None:
     """
     Register FX metadata in the global in-memory registry.
 
@@ -100,17 +99,17 @@ class NodeSource:
             self.graph_id = graph_id
 
     pass_name: str
-    action: list["NodeSourceAction"]
-    from_node: list["NodeSource"]
+    action: List["NodeSourceAction"]
+    from_node: List["NodeSource"]
     node_info: Optional["NodeInfo"]
-    _dict: dict[str, Any] | None
-    _action_string: str | None
+    _dict: Optional[Dict[str, Any]]
+    _action_string: Optional[str]
 
     def __init__(
         self,
-        node: Node | None,
+        node: Optional[Node],
         pass_name: str = "",
-        action: Union["NodeSourceAction", list["NodeSourceAction"]] | None = None,
+        action: Union["NodeSourceAction", List["NodeSourceAction"]] | None = None,
     ) -> None:
         self.pass_name = pass_name
 
@@ -136,8 +135,8 @@ class NodeSource:
             self.from_node = []
 
         # cache the action string and dict representation for performance.
-        self._action_string: str | None = None
-        self._dict: dict[str, Any] | None = None
+        self._action_string: Optional[str] = None
+        self._dict: Optional[Dict[str, Any]] = None
 
     @property
     def name(self) -> str:
@@ -172,7 +171,7 @@ class NodeSource:
             result += item.print_readable(indent + 1)
         return result
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         if self._dict is None:
             # Convert the object to a dictionary
             action_string = self._get_action_string()
@@ -208,7 +207,7 @@ class NodeSource:
         return hash(_make_hashable(self.to_dict()))
 
     @classmethod
-    def _from_dict(cls, d: dict[str, Any] | None) -> Optional["NodeSource"]:
+    def _from_dict(cls, d: Optional[Dict[str, Any]]) -> Optional["NodeSource"]:
         """
         Recursively deserialize from_node metadata from dictionary data.
         It is used to deserialize the from_node field from serialized metadata.
@@ -296,7 +295,7 @@ def _preserve_node_seq_nr(preserve_seq_nr: bool = True) -> Iterator[None]:
 
 
 @compatibility(is_backward_compatible=False)
-def set_stack_trace(stack: list[str]) -> None:
+def set_stack_trace(stack: List[str]) -> None:
     global current_meta
 
     if should_preserve_node_meta:
@@ -310,7 +309,7 @@ def set_stack_trace(stack: list[str]) -> None:
 
 @compatibility(is_backward_compatible=False)
 @contextmanager
-def annotate(annotation_dict: dict[str, Any]) -> Iterator[None]:
+def annotate(annotation_dict: Dict[str, Any]) -> Iterator[None]:
     """
     Temporarily adds custom annotations to the current tracing context.
     The fx_node produced from this tracing context will have the
@@ -350,7 +349,7 @@ def annotate(annotation_dict: dict[str, Any]) -> Iterator[None]:
 
     try:
         if not has_custom:
-            current_meta["custom"] = dict[str, Any]()
+            current_meta["custom"] = Dict[str, Any]()
 
         # Update with all key-value pairs from the input dict
         current_meta["custom"].update(annotation_dict)
@@ -365,7 +364,7 @@ def annotate(annotation_dict: dict[str, Any]) -> Iterator[None]:
 
 @compatibility(is_backward_compatible=False)
 def annotate_fn(
-    annotation_dict: dict[str, Any],
+    annotation_dict: Dict[str, Any],
 ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     """
     A decorator that wraps a function with the annotate context manager.
@@ -391,16 +390,7 @@ def annotate_fn(
     """
     from functools import wraps
 
-    from torch.fx.proxy import _register_stack_trace_anchor
-
     def decorator(func: Callable[_P, _R]) -> Callable[_P, _R]:
-        # Register the wrapped function as a stack-trace anchor so make_fx
-        # preserves its frame in node.meta["stack_trace"]. The user
-        # explicitly opted into annotating this function, so its frame is a
-        # meaningful attribution point even though it isn't an
-        # ``nn.Module.forward``.
-        _register_stack_trace_anchor(func)
-
         @wraps(func)
         # NB: Do not annotate with _P.args/_P.kwargs here. Dynamo guards on
         # the identity of ParamSpec annotation objects, causing guard failures.
@@ -475,7 +465,7 @@ def reset_grad_fn_seq_nr() -> None:
 
 
 @compatibility(is_backward_compatible=False)
-def format_stack() -> list[str]:
+def format_stack() -> List[str]:
     if should_preserve_node_meta:
         return [current_meta.get("stack_trace", "")]
     else:
@@ -516,13 +506,13 @@ def set_current_meta(node: Node, pass_name: str = "") -> Iterator[None]:
 
 
 @compatibility(is_backward_compatible=False)
-def get_current_meta() -> dict[str, Any]:
+def get_current_meta() -> Dict[str, Any]:
     return current_meta
 
 
 @compatibility(is_backward_compatible=False)
 @contextmanager
-def set_current_replay_node(node: Node | None) -> Iterator[None]:
+def set_current_replay_node(node: Optional[Node]) -> Iterator[None]:
     """
     Set the currently replay node. If `current_replay_node` is not None,
     then we're re-generating the `current_replay_node` in FunctionalTensorMode.
@@ -538,7 +528,7 @@ def set_current_replay_node(node: Node | None) -> Iterator[None]:
 
 
 @compatibility(is_backward_compatible=False)
-def get_current_replay_node() -> Node | None:
+def get_current_replay_node() -> Optional[Node]:
     """
     Get the currently replay node
     """
@@ -546,33 +536,7 @@ def get_current_replay_node() -> Node | None:
 
 
 @compatibility(is_backward_compatible=False)
-@contextmanager
-def _set_regional_inductor_subgraph_name(name: str | None) -> Iterator[None]:
-    """
-    Set the name of the subgraph currently being sub-compiled by regional
-    inductor (a scooped-out region or an invoke_subgraph submodule). Used to
-    tag trace_structured records so artifacts emitted from different
-    sub-compiles within the same frame can be distinguished.
-    """
-    saved = getattr(_regional_inductor_subgraph_name_tls, "value", None)
-    try:
-        _regional_inductor_subgraph_name_tls.value = name
-        yield
-    finally:
-        _regional_inductor_subgraph_name_tls.value = saved
-
-
-@compatibility(is_backward_compatible=False)
-def _get_regional_inductor_subgraph_name() -> str | None:
-    """
-    Get the name of the subgraph currently being sub-compiled by regional
-    inductor, or None.
-    """
-    return getattr(_regional_inductor_subgraph_name_tls, "value", None)
-
-
-@compatibility(is_backward_compatible=False)
-def get_graph_provenance_json(graph: Graph) -> dict[str, Any]:
+def get_graph_provenance_json(graph: Graph) -> Dict[str, Any]:
     """
     Given an fx.Graph, return a json that contains the provenance information of each node.
     """
@@ -605,7 +569,7 @@ def _get_custom_metadata(gm: GraphModule) -> str:
     if not isinstance(gm, GraphModule):
         raise AssertionError(f"Expected GraphModule, got {type(gm)}")
 
-    def helper(gm: GraphModule) -> list[Any]:
+    def helper(gm: GraphModule) -> List[Any]:
         custom_metadata = []
         for node in gm.graph.nodes:
             if hasattr(node, "meta") and node.meta.get("custom", None):
@@ -623,8 +587,8 @@ def _get_custom_metadata(gm: GraphModule) -> str:
 
 
 def _get_ordered_seq_nr_groups(
-    gm: GraphModule | list[GraphModule],
-) -> list[list[str]]:
+    gm: Union[GraphModule, List[GraphModule]],
+) -> List[List[str]]:
     """
     Group call_function nodes by seq_nr, order by seq_nr value,
     and return a list of lists of node names (sorted alphabetically).
@@ -643,12 +607,12 @@ def _get_ordered_seq_nr_groups(
     else:
         gms = gm
 
-    seq_nr_dict: dict[int, list[str]] = defaultdict(list)
+    seq_nr_dict: Dict[int, List[str]] = defaultdict(list)
     for graph_module in gms:
         for node in graph_module.graph.nodes:
             if node.op == "call_function":
                 seq_nr = node.meta.get("seq_nr")
                 if seq_nr is not None:
-                    seq_nr_dict[seq_nr].append(node.name)
+                    seq_nr_Dict[seq_nr].append(node.name)
     # Sort by seq_nr and return list of sorted lists
-    return [sorted(seq_nr_dict[k]) for k in sorted(seq_nr_dict.keys())]
+    return [sorted(seq_nr_Dict[k]) for k in sorted(seq_nr_dict.keys())]

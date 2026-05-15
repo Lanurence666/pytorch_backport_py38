@@ -19,6 +19,7 @@
 #endif
 
 #include <c10/macros/Macros.h>
+#include <ATen/OpMathType.h>
 
 namespace at::native {
 
@@ -57,7 +58,8 @@ struct dists {
   // Special case backward when p is less than two
   struct lt_two {
     static __forceinline__ __device__ scalar_t backward(const scalar_t diff, const scalar_t grad, const scalar_t dist, const scalar_t p) {
-      return (dist == 0.0 || (diff == 0.0 && p < 1)) ? 0 : (sign(diff) * std::pow(std::abs(diff), p - 1) * grad / std::pow(dist, p - 1));
+      using opmath_t = at::opmath_type<scalar_t>;
+      return (static_cast<opmath_t>(dist) == opmath_t(0) || (static_cast<opmath_t>(diff) == opmath_t(0) && static_cast<opmath_t>(p) < opmath_t(1))) ? scalar_t(0) : static_cast<scalar_t>(static_cast<opmath_t>(sign(diff)) * std::pow(std::abs(static_cast<opmath_t>(diff)), static_cast<opmath_t>(p) - opmath_t(1)) * static_cast<opmath_t>(grad) / std::pow(static_cast<opmath_t>(dist), static_cast<opmath_t>(p) - opmath_t(1)));
     }
   };
 
@@ -66,7 +68,7 @@ struct dists {
     static __forceinline__ __device__ void inc(scalar_t& agg, const scalar_t diff, const scalar_t /*p*/) { agg += diff * diff; }
     static __forceinline__ __device__ scalar_t finish(const scalar_t agg, const scalar_t /*p*/) { return device_sqrt<scalar_t>(agg); }
     static __forceinline__ __device__ void agg(scalar_t& update, const scalar_t other) { update += other; }
-    static __forceinline__ __device__ scalar_t backward(const scalar_t diff, const scalar_t grad, const scalar_t dist, const scalar_t /*p*/) { return dist == 0.0 ? 0 : grad * diff / dist; }
+    static __forceinline__ __device__ scalar_t backward(const scalar_t diff, const scalar_t grad, const scalar_t dist, const scalar_t p) { using opmath_t = at::opmath_type<scalar_t>; return static_cast<opmath_t>(dist) == opmath_t(0) ? scalar_t(0) : static_cast<scalar_t>(static_cast<opmath_t>(grad) * static_cast<opmath_t>(diff) / static_cast<opmath_t>(dist)); }
   };
 
   // General p norm
@@ -74,15 +76,15 @@ struct dists {
     static __forceinline__ __device__ void inc(scalar_t& agg, const scalar_t diff, const scalar_t p) { agg += std::pow(diff, p); }
     static __forceinline__ __device__ scalar_t finish(const scalar_t agg, const scalar_t p) { return std::pow(agg, static_cast<scalar_t>(1) / p); }
     static __forceinline__ __device__ void agg(scalar_t& update, const scalar_t other) { update += other; }
-    static __forceinline__ __device__ scalar_t backward(const scalar_t diff, const scalar_t grad, const scalar_t dist, const scalar_t p) { return dist == 0.0 ? 0 : diff * std::pow(std::abs(diff), p - 2) * grad / std::pow(dist, p - 1); }
+    static __forceinline__ __device__ scalar_t backward(const scalar_t diff, const scalar_t grad, const scalar_t dist, const scalar_t p) { using opmath_t = at::opmath_type<scalar_t>; return static_cast<opmath_t>(dist) == opmath_t(0) ? scalar_t(0) : static_cast<scalar_t>(static_cast<opmath_t>(diff) * std::pow(std::abs(static_cast<opmath_t>(diff)), static_cast<opmath_t>(p) - opmath_t(2)) * static_cast<opmath_t>(grad) / std::pow(static_cast<opmath_t>(dist), static_cast<opmath_t>(p) - opmath_t(1))); }
   };
 
   // Inf norm
   struct inf {
-    static __forceinline__ __device__ void inc(scalar_t& agg, const scalar_t diff, const scalar_t /*p*/) { if (diff > agg) { agg = diff; } }
+    static __forceinline__ __device__ void inc(scalar_t& agg, const scalar_t diff, const scalar_t /*p*/) { using opmath_t = at::opmath_type<scalar_t>; if (static_cast<opmath_t>(diff) > static_cast<opmath_t>(agg)) { agg = diff; } }
     static __forceinline__ __device__ scalar_t finish(const scalar_t agg, const scalar_t /*p*/) { return agg; }
-    static __forceinline__ __device__ void agg(scalar_t& update, const scalar_t other) { if (other > update) { update = other; } }
-    static __forceinline__ __device__ scalar_t backward(const scalar_t diff, const scalar_t grad, const scalar_t dist, const scalar_t /*p*/) { return grad * sign(diff) * (std::abs(diff) == dist); }
+    static __forceinline__ __device__ void agg(scalar_t& update, const scalar_t other) { using opmath_t = at::opmath_type<scalar_t>; if (static_cast<opmath_t>(other) > static_cast<opmath_t>(update)) { update = other; } }
+    static __forceinline__ __device__ scalar_t backward(const scalar_t diff, const scalar_t grad, const scalar_t dist, const scalar_t /*p*/) { using opmath_t = at::opmath_type<scalar_t>; return grad * sign(diff) * (static_cast<opmath_t>(std::abs(diff)) == static_cast<opmath_t>(dist)); }
   };
 
 };

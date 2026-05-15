@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import List, Set, TYPE_CHECKING, Tuple, Union
 
 from torchgen.api.types.types_base import Binding, CType, Expr
 
@@ -45,7 +45,7 @@ class CppSignature:
     symint: bool
 
     # The set of C++ arguments which should not have defaults applied to them
-    cpp_no_default_args: set[str]
+    cpp_no_default_args: Set[str]
 
     # Is this a fallback C++ binding?  Fallback bindings are enabled by
     # manual_cpp_binding: True and are alternate, non-public API that
@@ -79,7 +79,7 @@ class CppSignature:
     def decl(
         self,
         *,
-        name: str | None = None,
+        name: Union[str, None] = None,
         prefix: str = "",
         is_redispatching_fn: bool = False,
         suppress_symint_suffix: bool = False,
@@ -100,7 +100,7 @@ class CppSignature:
     def defn(
         self,
         *,
-        name: str | None = None,
+        name: Union[str, None] = None,
         prefix: str = "",
         is_redispatching_fn: bool = False,
     ) -> str:
@@ -133,9 +133,9 @@ class CppSignature:
 class CppSignatureGroup:
     func: FunctionSchema
     signature: CppSignature
-    faithful_signature: CppSignature | None
-    symint_signature: CppSignature | None
-    symint_faithful_signature: CppSignature | None
+    faithful_signature: Union[CppSignature, None]
+    symint_signature: Union[CppSignature, None]
+    symint_faithful_signature: Union[CppSignature, None]
 
     def most_faithful_signature(self) -> CppSignature:
         if self.faithful_signature:
@@ -169,16 +169,16 @@ class CppSignatureGroup:
                 cpp_no_default_args=f.cpp_no_default_args,
             )
 
-        def make_sigs(*, symint: bool) -> tuple[CppSignature, CppSignature | None]:
-            faithful_signature: CppSignature | None = None
+        def make_sigs(*, symint: bool) -> Tuple[CppSignature, Union[CppSignature, None]]:
+            faithful_signature: Union[CppSignature, None] = None
             if func.arguments.tensor_options is not None or len(func.arguments.out) > 0:
                 faithful_signature = make_sig(faithful=True, symint=symint)
             signature = make_sig(faithful=False, symint=symint)
             return signature, faithful_signature
 
         signature, faithful_signature = make_sigs(symint=False)
-        symint_signature: CppSignature | None = None
-        symint_faithful_signature: CppSignature | None = None
+        symint_signature: Union[CppSignature, None] = None
+        symint_faithful_signature: Union[CppSignature, None] = None
         if func.has_symint():
             symint_signature, symint_faithful_signature = make_sigs(symint=True)
 
@@ -203,20 +203,20 @@ class DispatcherSignature:
 
     symint: bool = True
 
-    def arguments(self) -> list[Binding]:
+    def arguments(self) -> List[Binding]:
         return dispatcher.arguments(self.func, symint=self.symint)
 
     def name(self) -> str:
         return self.prefix + dispatcher.name(self.func)
 
-    def decl(self, name: str | None = None) -> str:
+    def decl(self, name: Union[str, None] = None) -> str:
         args_str = ", ".join(a.decl() for a in self.arguments())
         if name is None:
             name = self.name()
         return f"{self.returns_type().cpp_type()} {name}({args_str})"
 
     def defn(
-        self, name: str | None = None, *, is_redispatching_fn: bool = False
+        self, name: Union[str, None] = None, *, is_redispatching_fn: bool = False
     ) -> str:
         args = [a.defn() for a in self.arguments()]
         if is_redispatching_fn:
@@ -226,7 +226,7 @@ class DispatcherSignature:
             name = self.name()
         return f"{self.returns_type().cpp_type()} {name}({args_str})"
 
-    def exprs(self) -> list[Expr]:
+    def exprs(self) -> List[Expr]:
         return [Expr(a.name, a.nctype) for a in self.arguments()]
 
     def returns_type(self) -> CType:
@@ -260,13 +260,13 @@ class NativeSignature:
     def name(self) -> str:
         return self.prefix + native.name(self.func)
 
-    def decl(self, name: str | None = None) -> str:
+    def decl(self, name: Union[str, None] = None) -> str:
         args_str = ", ".join(a.decl() for a in self.arguments())
         if name is None:
             name = self.name()
         return f"{native.returns_type(self.func.returns, symint=self.symint).cpp_type()} {name}({args_str})"
 
-    def defn(self, name: str | None = None) -> str:
+    def defn(self, name: Union[str, None] = None) -> str:
         args_str = ", ".join(a.defn() for a in self.arguments())
         if name is None:
             name = self.name()
@@ -277,13 +277,13 @@ class NativeSignature:
         args_str = ", ".join(a.defn() for a in self.arguments())
         return f"{native.returns_type(self.func.returns, symint=self.symint).cpp_type()} (*)({args_str})"
 
-    def arguments(self) -> list[Binding]:
+    def arguments(self) -> List[Binding]:
         return native.arguments(self.func, symint=self.symint)
 
     def returns_type(self) -> CType:
         return native.returns_type(self.func.returns, symint=self.symint)
 
-    def dispatcher_exprs(self) -> list[Expr]:
+    def dispatcher_exprs(self) -> List[Expr]:
         return translate.translate(
             self.arguments(), dispatcher.arguments(self.func), method=False
         )
@@ -310,11 +310,11 @@ class StructuredImplSignature:
     g: NativeFunctionsGroup
     name: str
 
-    def defn(self, name: str | None = None) -> str:
+    def defn(self, name: Union[str, None] = None) -> str:
         args_str = ", ".join(a.defn() for a in self.arguments())
         return f"TORCH_IMPL_FUNC({self.name})({args_str})"
 
-    def arguments(self) -> list[Binding]:
+    def arguments(self) -> List[Binding]:
         return structured.impl_arguments(self.g)
 
 
@@ -323,7 +323,7 @@ class StructuredImplSignature:
 
 def kernel_signature(
     f: NativeFunction, backend_index: BackendIndex, *, prefix: str = ""
-) -> NativeSignature | DispatcherSignature:
+) -> Union[NativeSignature, DispatcherSignature]:
     # Note [External Backends Follow Dispatcher API]
     # Kernel signatures for in-tree backends follow the "native" API,
     # while kernels for out-of-tree backends follow the dispatcher API.

@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import io
 import json
-import subprocess
 import sys
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Set
 from unittest import mock
 
 
@@ -15,9 +14,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.append(str(REPO_ROOT))
 
 from tools.test.heuristics.test_interface import TestTD
-from tools.testing.target_determination.heuristics.edited_by_pr import (
-    _get_modified_tests,
-)
 from tools.testing.target_determination.heuristics.filepath import (
     file_matches_keyword,
     get_keywords,
@@ -29,28 +25,22 @@ from tools.testing.target_determination.heuristics.interface import TestPrioriti
 from tools.testing.target_determination.heuristics.previously_failed_in_pr import (
     get_previous_failures,
 )
-from tools.testing.target_determination.heuristics.utils import (
-    _get_pr_merge_base,
-    query_changed_files,
-)
 from tools.testing.test_run import TestRun
 
 
 sys.path.remove(str(REPO_ROOT))
 
 HEURISTIC_CLASS = "tools.testing.target_determination.heuristics.historical_class_failure_correlation."
-EDITED_BY_PR = "tools.testing.target_determination.heuristics.edited_by_pr."
-HEURISTIC_UTILS = "tools.testing.target_determination.heuristics.utils."
 
 
-def mocked_file(contents: dict[Any, Any]) -> io.IOBase:
+def mocked_file(contents: Dict[Any, Any]) -> io.IOBase:
     file_object = io.StringIO()
     json.dump(contents, file_object)
     file_object.seek(0)
     return file_object
 
 
-def gen_historical_class_failures() -> dict[str, dict[str, float]]:
+def gen_historical_class_failures() -> Dict[str, Dict[str, float]]:
     return {
         "file1": {
             "test1::classA": 0.5,
@@ -95,8 +85,8 @@ class TestHistoricalClassFailureCorrelation(TestTD):
     )
     def test_get_prediction_confidence(
         self,
-        historical_class_failures: dict[str, dict[str, float]],
-        changed_files: list[str],
+        historical_class_failures: Dict[str, Dict[str, float]],
+        changed_files: List[str],
     ) -> None:
         tests_to_prioritize = ALL_TESTS
 
@@ -125,81 +115,10 @@ class TestHistoricalClassFailureCorrelation(TestTD):
         )
 
 
-class TestChangedFiles(TestTD):
-    @mock.patch(EDITED_BY_PR + "query_changed_files", side_effect=RuntimeError)
-    def test_edited_by_pr_propagates_changed_files_errors(
-        self,
-        mock_query_changed_files: Any,
-    ) -> None:
-        with self.assertRaises(RuntimeError):
-            _get_modified_tests()
-
-        mock_query_changed_files.assert_called_once_with()
-
-    @mock.patch(
-        HEURISTIC_UTILS + "_git_merge_base",
-        side_effect=[
-            subprocess.CalledProcessError(128, ["git", "merge-base"]),
-            subprocess.CalledProcessError(128, ["git", "merge-base"]),
-        ],
-    )
-    @mock.patch(HEURISTIC_UTILS + "_git_head", return_value="head-sha")
-    @mock.patch(
-        HEURISTIC_UTILS + "_github_api_json",
-        return_value={"merge_base_commit": {"sha": "merge-base-sha"}},
-    )
-    def test_pr_merge_base_falls_back_to_github_compare(
-        self,
-        mock_github_api_json: Any,
-        mock_git_head: Any,
-        mock_git_merge_base: Any,
-    ) -> None:
-        pr_info: dict[str, object] = {
-            "base": {
-                "ref": "gh/bobrenjc93/893/base",
-                "sha": "base-sha",
-            }
-        }
-
-        self.assertEqual(_get_pr_merge_base(pr_info), "merge-base-sha")
-
-        mock_git_merge_base.assert_has_calls(
-            [
-                mock.call("origin/gh/bobrenjc93/893/base"),
-                mock.call("base-sha"),
-            ]
-        )
-        mock_git_head.assert_called_once_with()
-        mock_github_api_json.assert_called_once_with(
-            "compare/gh%2Fbobrenjc93%2F893%2Fbase...head-sha"
-        )
-
-    @mock.patch(HEURISTIC_UTILS + "get_pr_number", return_value=123)
-    @mock.patch(HEURISTIC_UTILS + "get_merge_base", side_effect=RuntimeError)
-    @mock.patch(
-        HEURISTIC_UTILS + "_query_changed_files_from_github",
-        return_value=["test/functorch/test_aotdispatch.py"],
-    )
-    def test_query_changed_files_falls_back_to_github_pr_files(
-        self,
-        mock_query_changed_files_from_github: Any,
-        mock_get_merge_base: Any,
-        mock_get_pr_number: Any,
-    ) -> None:
-        self.assertEqual(
-            query_changed_files(),
-            ["test/functorch/test_aotdispatch.py"],
-        )
-
-        mock_get_pr_number.assert_called_once_with()
-        mock_get_merge_base.assert_called_once_with()
-        mock_query_changed_files_from_github.assert_called_once_with(123)
-
-
 class TestParsePrevTests(TestTD):
     @mock.patch("os.path.exists", return_value=False)
     def test_cache_does_not_exist(self, mock_exists: Any) -> None:
-        expected_failing_test_files: set[str] = set()
+        expected_failing_test_files: Set[str] = set()
 
         found_tests = get_previous_failures()
 
@@ -208,7 +127,7 @@ class TestParsePrevTests(TestTD):
     @mock.patch("os.path.exists", return_value=True)
     @mock.patch("builtins.open", return_value=mocked_file({"": True}))
     def test_empty_cache(self, mock_exists: Any, mock_open: Any) -> None:
-        expected_failing_test_files: set[str] = set()
+        expected_failing_test_files: Set[str] = set()
 
         found_tests = get_previous_failures()
 

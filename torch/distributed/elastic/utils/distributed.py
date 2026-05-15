@@ -6,6 +6,8 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+from __future__ import annotations
+
 import datetime
 import os
 import socket
@@ -14,6 +16,7 @@ from contextlib import closing
 import torch.distributed as dist
 from torch.distributed.elastic.utils.logging import get_logger
 from torch.distributed.elastic.utils.store import barrier
+from typing import Optional, Set
 
 
 __all__ = ["create_c10d_store", "get_free_port", "get_socket_with_port"]
@@ -34,7 +37,7 @@ def create_c10d_store(
     timeout: float = (60 * 10),  # 10 min
     wait_for_workers: bool = True,
     retries=3,
-    use_libuv: bool | None = None,
+    use_libuv: Optional[bool] = None
 ):
     if use_libuv is not None:
         logger.warning(

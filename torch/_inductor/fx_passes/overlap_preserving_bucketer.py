@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import itertools
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Literal, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
+from typing_extensions import Literal
+
 
 import torch
 import torch.fx as fx
@@ -38,7 +42,7 @@ class WhyNoBucket:
     name1: str
     name2: str
     reason: str
-    args: tuple[Any, ...]
+    args: Tuple[Any, ...]
 
     def __init__(self, node1: fx.Node, node2: fx.Node) -> None:
         self.name1 = node1.name
@@ -102,7 +106,7 @@ class PGEvent:
     def is_compute(self) -> bool:
         return self.event_type == "compute"
 
-    def unlink(self) -> tuple[Optional["PGEvent"], Optional["PGEvent"]]:
+    def unlink(self) -> Tuple[Optional["PGEvent"], Optional["PGEvent"]]:
         """Remove this event from the linked list, return (prev, next)."""
         prev_event, next_event = self.prev, self.next
         if self.prev:
@@ -135,15 +139,15 @@ class OverlapPreservingBucketer:
     def __init__(
         self,
         graph: fx.Graph,
-        collective_info: dict[fx.Node, CollectiveInfo],
+        collective_info: Dict[fx.Node, CollectiveInfo],
         scheduled: OrderedSet[fx.Node],
         max_bucket_memory_gb: float = 1.0,
         max_coll_distance: int = 1000,
         insert_overlap_deps: bool = False,
         collective_bucketing: bool = True,
-        bucket_mode: BucketMode | None = None,
-        bucket_exposed_first: bool | None = None,
-        region_of: dict[fx.Node, Any] | None = None,
+        bucket_mode: Optional[BucketMode] = None,
+        bucket_exposed_first: Optional[bool] = None,
+        region_of: Optional[Dict[fx.Node, Any]] = None,
         bucket_only_internode_comms: bool = False,
     ):
         self.graph = graph
@@ -157,8 +161,8 @@ class OverlapPreservingBucketer:
         self.bucket_only_internode_comms = bucket_only_internode_comms
         self.bucket_mode = bucket_mode or _default_bucket_mode()
         self.collective_bucketing = collective_bucketing
-        self.region_of: dict[fx.Node, Any] = region_of or {}
-        self.node_to_event: dict[fx.Node, PGEvent] = {}
+        self.region_of: Dict[fx.Node, Any] = region_of or {}
+        self.node_to_event: Dict[fx.Node, PGEvent] = {}
         self.all_hiding_nodes: OrderedSet[fx.Node] = OrderedSet()
 
         # Compute ancestors including original graph edges and hiding interval dependencies
@@ -166,16 +170,16 @@ class OverlapPreservingBucketer:
         self.aug_graph = AugmentedGraphHelper(self.graph, self.node_ancestors)
 
         # Build timelines and add constraints to aug_graph
-        self.pg_to_timeline_head: dict[str, PGEvent | None] = self.build_timelines()
+        self.pg_to_timeline_head: Dict[str, Optional[PGEvent]] = self.build_timelines()
         self._add_hiding_interval_constraints()
 
-    def _compute_node_ancestors(self) -> dict[fx.Node, OrderedSet[fx.Node]]:
+    def _compute_node_ancestors(self) -> Dict[fx.Node, OrderedSet[fx.Node]]:
         """
         Compute ancestor sets for all nodes including:
         1. Original graph edges
         2. Hiding interval deps: collective_start -> hiding_node -> wait
         """
-        augmented_inputs: dict[fx.Node, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
+        augmented_inputs: Dict[fx.Node, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
         for start, info in self.collective_info.items():
             if info.is_exposed:
                 continue
@@ -183,7 +187,7 @@ class OverlapPreservingBucketer:
                 augmented_inputs[hiding_node].add(start)
                 augmented_inputs[info.wait_node].add(hiding_node)
 
-        node_ancestors: dict[fx.Node, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
+        node_ancestors: Dict[fx.Node, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
         for node in self.scheduled:
             for input_node in itertools.chain(
                 augmented_inputs[node], node.all_input_nodes
@@ -193,20 +197,20 @@ class OverlapPreservingBucketer:
 
         return node_ancestors
 
-    def build_timelines(self) -> dict[str, PGEvent | None]:
+    def build_timelines(self) -> Dict[str, Optional[PGEvent]]:
         "Construct each process groups ordered series of event"
         all_pgs: OrderedSet[str] = OrderedSet()
         for start in self.collective_info:
             pg = get_group_name(start)
             all_pgs.add(pg)
 
-        pg_timeline: dict[str, PGEvent | None] = {}
+        pg_timeline: Dict[str, Optional[PGEvent]] = {}
         for pg in all_pgs:
             pg_timeline[pg] = self.build_timeline(pg)
 
         return pg_timeline
 
-    def build_timeline(self, pg: str) -> PGEvent | None:
+    def build_timeline(self, pg: str) -> Optional[PGEvent]:
         """
         Build a timeline of important events (starts, waits, hiding compute) for this process group
         and constrain this ordering in the augmented graph.
@@ -292,16 +296,16 @@ class OverlapPreservingBucketer:
                 checked_pgs.add(pg)
         return internode_pgs
 
-    def _bucket_collectives_impl(self) -> list[CollBucket]:
+    def _bucket_collectives_impl(self) -> List[CollBucket]:
         """Find and apply bucket transformations for collectives."""
-        pg_collectives: dict[str, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
+        pg_collectives: Dict[str, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
         internode_pgs = self.identify_internode_group_names()
 
         for start in self.collective_info:
             pg = get_group_name(start)
             pg_collectives[pg].add(start)
 
-        all_buckets: list[CollBucket] = []
+        all_buckets: List[CollBucket] = []
         for pg, collectives in pg_collectives.items():
             if self.bucket_only_internode_comms and pg not in internode_pgs:
                 continue
@@ -309,7 +313,7 @@ class OverlapPreservingBucketer:
             # Populate node_to_event for this PG's timeline
             self._populate_node_to_event(pg)
 
-            grouped_collectives: dict[object, OrderedSet[fx.Node]] = defaultdict(
+            grouped_collectives: Dict[object, OrderedSet[fx.Node]] = defaultdict(
                 OrderedSet
             )
             for start in collectives:
@@ -357,7 +361,7 @@ class OverlapPreservingBucketer:
 
         if self.insert_overlap_deps:
             # Filter out collective-to-collective deps (handled by NCCL stream ordering)
-            filtered_deps: dict[fx.Node, OrderedSet[fx.Node]] = {}
+            filtered_deps: Dict[fx.Node, OrderedSet[fx.Node]] = {}
             for node, deps in additional_deps.items():
                 filtered_node_deps: OrderedSet[fx.Node] = OrderedSet()
                 for dep in deps:
@@ -386,12 +390,12 @@ class OverlapPreservingBucketer:
         reference the final inlined nodes, not the erased fusion modules.
         """
         # Step 1: Bucket collectives
-        all_buckets: list[CollBucket] | None = None
+        all_buckets: Optional[List[CollBucket]] = None
         if self.collective_bucketing:
             all_buckets = self._bucket_collectives_impl()
 
         # Step 2: Inline fusion regions (expand call_module -> original nodes)
-        replaced: dict[fx.Node, fx.Node | None] = {}
+        replaced: Dict[fx.Node, Optional[fx.Node]] = {}
         if self.region_of:
             from torch._inductor.fx_passes.fusion_regions import expand_fusion_regions
 
@@ -412,7 +416,7 @@ class OverlapPreservingBucketer:
             overlap_scheduling_log.isEnabledFor(logging.DEBUG)
             and all_buckets is not None
         ):
-            log_strs: list[str] = []
+            log_strs: List[str] = []
             stats_num_buckets_per_key = defaultdict(int)
             stats_num_bucketed_collectives_per_key = defaultdict(int)
             stats_num_total_collectives_per_key = defaultdict(int)
@@ -437,7 +441,7 @@ class OverlapPreservingBucketer:
                     hns = info.hiding_nodes
                     log_strs.append(f"coll:{coll} hiding_nodes:{hns}")
 
-            bucket_log_strs: list[str] = []
+            bucket_log_strs: List[str] = []
             for key, num_buckets in stats_num_buckets_per_key.items():
                 num_colls = stats_num_bucketed_collectives_per_key[key]
                 bucket_log_strs.append(
@@ -483,7 +487,7 @@ class OverlapPreservingBucketer:
         self,
         collective_group: OrderedSet[fx.Node],
         internode_pgs: OrderedSet[str],
-    ) -> list[CollBucket]:
+    ) -> List[CollBucket]:
         """Find valid buckets within a group of similar collectives."""
         max_bucket_bytes = int(self.max_bucket_memory_gb * 1024 * 1024 * 1024)
         buckets = []
@@ -576,7 +580,7 @@ class OverlapPreservingBucketer:
 
     def _get_intervals(
         self, event: PGEvent
-    ) -> tuple[tuple[int, int] | None, list[tuple[int, int]]]:
+    ) -> Optional[Tuple[Tuple[int, int]], List[Tuple[int, int]]]:
         """Get (execution_interval, hiding_intervals) for a collective event.
 
         Returns:
@@ -717,7 +721,7 @@ class OverlapPreservingBucketer:
             curr_event = curr_event.prev
 
         # Check: no hiding interval should be enclosed by any execution interval
-        def enclosed_interval(inner: tuple[int, int], outer: tuple[int, int]) -> bool:
+        def enclosed_interval(inner: Tuple[int, int], outer: Tuple[int, int]) -> bool:
             return outer[0] < inner[0] and inner[1] < outer[1]
 
         for hiding_interval in hiding_intervals:
@@ -732,7 +736,7 @@ class OverlapPreservingBucketer:
 
         return True
 
-    def remove_from_event(self, node: fx.Node) -> tuple[PGEvent | None, PGEvent | None]:
+    def remove_from_event(self, node: fx.Node) -> Tuple[Optional[PGEvent], Optional[PGEvent]]:
         """Remove node from timeline and return (prev_event, next_event)."""
         event = self.node_to_event[node]
         assert not event.is_compute, "Cannot remove compute events from timeline"
@@ -754,8 +758,8 @@ class OverlapPreservingBucketer:
     def restore_to_event(
         self,
         node: fx.Node,
-        prev_event: PGEvent | None,
-        next_event: PGEvent | None,
+        prev_event: Optional[PGEvent],
+        next_event: Optional[PGEvent],
     ) -> None:
         """Restore node to timeline after failed merge attempt."""
         event = self.node_to_event[node]
@@ -1032,7 +1036,7 @@ class OverlapPreservingBucketer:
         new_waits = list(wait_to_start)
 
         # Create mapping of all erased nodes to their replacements
-        erased_to_new: dict[fx.Node, fx.Node | None] = {}
+        erased_to_new: Dict[fx.Node, Optional[fx.Node]] = {}
         new_start = wait_to_start[new_waits[0]]
         if len(new_waits) == 1:
             # Standard bucketing: single start + single wait
@@ -1072,17 +1076,17 @@ class OverlapPreservingBucketer:
 
 def finalize_overlap_scheduling(
     gm: fx.GraphModule,
-    collective_info: dict[fx.Node, CollectiveInfo],
+    collective_info: Dict[fx.Node, CollectiveInfo],
     scheduled: OrderedSet[fx.Node],
     *,
     collective_bucketing: bool = False,
     insert_overlap_deps: bool = False,
     max_bucket_memory_gb: float = 2.0,
     max_coll_distance: int = 1000,
-    region_of: dict[fx.Node, Any] | None = None,
-    bucket_exposed_first: bool | None = None,
+    region_of: Optional[Dict[fx.Node, Any]] = None,
+    bucket_exposed_first: Optional[bool] = None,
     bucket_only_internode_comms: bool = False,
-    bucket_mode: BucketMode | None = None,
+    bucket_mode: Optional[BucketMode] = None,
 ) -> None:
     """
     Finalize overlap scheduling by applying deps, inlining fusions, and optionally bucketing.

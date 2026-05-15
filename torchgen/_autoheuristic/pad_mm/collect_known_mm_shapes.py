@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Tuple
 import argparse
 import csv
 import sys
@@ -34,7 +36,7 @@ def is_aligned(dim: int, align_size: int) -> bool:
 
 def extract_mm_shapes_from_loader(
     loader: OperatorInputsLoader,
-) -> list[tuple[int, int, int, torch.dtype, torch.dtype]]:
+) -> List[Tuple[int, int, int, torch.dtype, torch.dtype]]:
     """Extract matrix multiplication shapes from an OperatorInputsLoader using deserialize_args with FakeTensorMode."""
     shapes = []
 
@@ -116,8 +118,8 @@ def extract_mm_shapes_from_loader(
 
 
 def filter_unaligned_shapes(
-    shapes: list[tuple[int, int, int, torch.dtype, torch.dtype]],
-) -> list[tuple[int, int, int, torch.dtype, torch.dtype]]:
+    shapes: List[Tuple[int, int, int, torch.dtype, torch.dtype]],
+) -> List[Tuple[int, int, int, torch.dtype, torch.dtype]]:
     """Filter shapes to keep only those that are not completely aligned (so padding is relevant)."""
     filtered_shapes = []
 
@@ -138,7 +140,7 @@ def filter_unaligned_shapes(
     return filtered_shapes
 
 
-def collect_known_mm_shapes() -> list[tuple[int, int, int, torch.dtype, torch.dtype]]:
+def collect_known_mm_shapes() -> List[Tuple[int, int, int, torch.dtype, torch.dtype]]:
     """
     Collect known matrix multiplication shapes from HuggingFace, TIMM, and TorchBench datasets.
 

@@ -2,7 +2,6 @@
 # flake8: noqa: E731
 
 import contextlib
-import re
 import unittest
 import unittest.mock as mock
 
@@ -241,9 +240,7 @@ class TestInvokeSubgraphCompile(TestCase):
         for node in invoke_subgraph_nodes:
             stack_trace = node.meta["stack_trace"]
             if not TEST_WITH_CROSSREF:
-                # Strip caret lines (e.g. "  ~~~^^^^") that 3.13+ appends
-                clean = re.sub(r"\n[ ~^]*[~^][ ~^]*(?=\n|\Z)", "", stack_trace)
-                self.assertTrue(clean.endswith("return mod(x, y) + mod(x, y)\n"))
+                self.assertTrue(stack_trace.endswith("return mod(x, y) + mod(x, y)\n"))
 
     def test_gen_schema(self):
         class Mod(torch.nn.Module):
@@ -319,9 +316,7 @@ class TestInvokeSubgraphCompile(TestCase):
         x_clone = x.detach().clone().requires_grad_(True)
         y_clone = y.detach().clone().requires_grad_(True)
         backend = EagerAndRecordGraphs()
-        with (
-            torch.no_grad(),
-        ):
+        with torch.no_grad():
             res = torch.compile(fn, backend=backend, fullgraph=True)(
                 mod, x_clone, y_clone
             )
@@ -1322,9 +1317,7 @@ class GraphModule(torch.nn.Module):
 
         opt_fn = torch.compile(fn, backend="inductor", fullgraph=True)
 
-        with (
-            torch.no_grad(),
-        ):
+        with torch.no_grad():
             out = opt_fn(x, y)
         exp_out = fn(x_clone, y)
         self.assertEqual(exp_out, out)
@@ -1356,13 +1349,7 @@ class GraphModule(torch.nn.Module):
             fake_prop_count += 1
             return (operands[0].clone(),)
 
-        with (
-            mock.patch(
-                "torch._higher_order_ops.utils.registered_hop_fake_fns",
-                {torch.ops.higher_order.invoke_subgraph: _mock_invoke_subgraph},
-            ),
-            torch.no_grad(),
-        ):
+        with mock.patch( "torch._higher_order_ops.utils.registered_hop_fake_fns", {torch.ops.higher_order.invoke_subgraph: _mock_invoke_subgraph}, ), torch.no_grad():
             out = opt_fn(x, y)
 
         # Fake propagation occurs only twice, with subsequent calls using cached results.

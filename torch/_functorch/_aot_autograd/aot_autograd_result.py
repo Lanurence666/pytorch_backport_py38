@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module provides result classes for AOT Autograd compilation.
 
@@ -16,15 +17,14 @@ The main result types are:
 - BundledAOTAutogradResult: Result that bundles the entire compiled code directly
 """
 
-from __future__ import annotations
 
 import json
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+
 from copy import copy
 from dataclasses import dataclass
-from typing import Any, cast, Generic, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, Generic, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type, TypeVar
 
 import torch
 from torch._dynamo.precompile_context import BackendCacheArtifact
@@ -49,14 +49,14 @@ from .runtime_wrappers import (
     SerializableCompiledFunction,
     SubclassMeta,
 )
-from .schemas import AOTAutogradCacheInfo, AOTConfig  # noqa: F401
+from .schemas import AOTAutogradCacheInfo  # noqa: F401
 from .utils import simple_wraps
 
 
 if TYPE_CHECKING:
     from torch._inductor.compile_fx import _CompileFxKwargs
 
-    from .schemas import CacheableAOTConfig, ViewAndMutationMeta
+    from .schemas import AOTConfig, ViewAndMutationMeta
 
 log = logging.getLogger(__name__)
 aot_graphs_log = getArtifactLogger(__name__, "aot_graphs")
@@ -145,15 +145,15 @@ class BundledOutputCodeLoadable(InductorOutput[TOutputCode], Generic[TOutputCode
 
 
 # Backwards compatibility alias
-CompiledFxGraphLoadable: type[BundledOutputCodeLoadable[CompiledFxGraph]] = (
+CompiledFxGraphLoadable: Type[BundledOutputCodeLoadable[CompiledFxGraph]] = (
     BundledOutputCodeLoadable[CompiledFxGraph]
 )
 
 
 @dataclass
 class FxGraphCacheLoadable(InductorOutput[CompiledFxGraph]):
-    fx_graph_cache_info: tuple[str, list[str]]
-    fx_graph_guard_expr: str | None
+    fx_graph_cache_info: Tuple[str, List[str]]
+    fx_graph_guard_expr: Optional[str]
 
     def pre_save(self) -> None:
         return
@@ -259,7 +259,7 @@ class CompiledForward(FxGraphCacheLoadable):
 @dataclass
 class GenericCompiledBackward(InductorOutput[TOut]):
     # Used by AOTDispatchAutograd.post_compile
-    backward_state_indices: list[int]
+    backward_state_indices: List[int]
     num_symints_saved_for_bw_: int
 
     def post_compile(self, result: TOut, fx_config: _CompileFxKwargs) -> TOut:
@@ -310,8 +310,8 @@ class BundledCompiledBackward(
 
 @dataclass
 class SerializedGraphModule:
-    fn: Callable[[dict[Any, Any], str], torch.nn.Module]
-    args: tuple[Any, ...]
+    fn: Callable[[Dict[Any, Any], str], torch.nn.Module]
+    args: Tuple[Any, ...]
 
     def __init__(self, gm: torch.fx.GraphModule) -> None:
         self.fn, self.args = gm.__reduce__()
@@ -353,27 +353,27 @@ class GenericAOTAutogradResult(Generic[TForward, TBackward]):
 
     # Forward and Backward info
     compiled_fw: TForward
-    compiled_bw: TBackward | None
+    compiled_bw: Optional[TBackward]
 
     # Code of the joint graph using print_readable()
     # Used for logging purposes
-    aot_joint_graph_str: str | None
-    aot_forward_graph_str: str | None
-    aot_backward_graph_str: str | None
-    min_cut_info_str: str | None
+    aot_joint_graph_str: Optional[str]
+    aot_forward_graph_str: Optional[str]
+    aot_backward_graph_str: Optional[str]
+    min_cut_info_str: Optional[str]
 
     # Runtime_metadata saved right before compilation
     runtime_metadata: ViewAndMutationMeta
 
     # Wrappers that run after each aot_dispatch_* function
-    dispatch_wrappers: list[CompilerWrapper]
+    dispatch_wrappers: List[CompilerWrapper]
 
     # Used by AOTSubclassWrapper
-    maybe_subclass_meta: SubclassMeta | None
-    num_fw_outs_saved_for_bw: int | None
+    maybe_subclass_meta: Optional[SubclassMeta]
+    num_fw_outs_saved_for_bw: Optional[int]
 
     # Used by RuntimeWrapper
-    indices_of_inps_to_detach: list[int]
+    indices_of_inps_to_detach: List[int]
 
     # Time taken to trace/compile the forward
     # forward_time_taken includes AOTAutograd tracing time + inductor compilation time
@@ -382,12 +382,12 @@ class GenericAOTAutogradResult(Generic[TForward, TBackward]):
     backward_time_taken_ns: int
 
     # Used by standalone_compile
-    sanitized_aot_config: CacheableAOTConfig
+    sanitized_aot_config: AOTConfig
 
-    guards_expr: str | None
+    guards_expr: Optional[str]
 
     # Used by Compiled Autograd
-    serialized_bw_module: SerializedGraphModule | None
+    serialized_bw_module: Optional[SerializedGraphModule]
 
     def pre_save(self) -> None:
         """
@@ -397,7 +397,7 @@ class GenericAOTAutogradResult(Generic[TForward, TBackward]):
         if self.compiled_bw is not None:
             self.compiled_bw.pre_save()
 
-    def _log_cached_graphs(self, aot_config: AOTConfig | CacheableAOTConfig) -> None:
+    def _log_cached_graphs(self, aot_config: AOTConfig) -> None:
         if not aot_config.enable_log:
             return
 
@@ -462,9 +462,9 @@ class GenericAOTAutogradResult(Generic[TForward, TBackward]):
 
     def _load_and_post_compile(
         self,
-        args: list[torch.Tensor],
+        args: List[torch.Tensor],
         fx_config: _CompileFxKwargs,
-    ) -> tuple[Callable[..., Any], Callable[..., Any] | None, bool]:
+    ) -> Tuple[Callable[..., Any], Optional[Callable[..., Any]], bool]:
         from torch._dynamo.utils import CompileEventLogger
 
         compiled_fw_func = self.compiled_fw.load(args)
@@ -510,7 +510,7 @@ class GenericAOTAutogradResult(Generic[TForward, TBackward]):
     def _apply_runtime_wrappers(
         self,
         compiled_fw_func: Callable[..., Any],
-        compiled_bw_func: Callable[..., Any] | None,
+        compiled_bw_func: Optional[Callable[..., Any]],
         needs_autograd: bool,
         aot_config: AOTConfig,
     ) -> Callable[..., Any]:
@@ -588,7 +588,7 @@ class GenericAOTAutogradResult(Generic[TForward, TBackward]):
         )
         return compiled_function
 
-    def _check_guards(self, args: list[torch.Tensor]) -> None:
+    def _check_guards(self, args: List[torch.Tensor]) -> None:
         if self.guards_expr:
             from .autograd_cache import AOTAutogradCache
 
@@ -600,8 +600,8 @@ class GenericAOTAutogradResult(Generic[TForward, TBackward]):
     # Turn result into the original callable
     def wrap_post_compile(
         self,
-        args: list[torch.Tensor],
-        aot_config: AOTConfig | CacheableAOTConfig,
+        args: List[torch.Tensor],
+        aot_config: AOTConfig,
         fx_config: _CompileFxKwargs,
     ) -> Callable[..., Any]:
         """
@@ -623,20 +623,13 @@ class GenericAOTAutogradResult(Generic[TForward, TBackward]):
         from torch._dynamo.utils import dynamo_timed
 
         self._log_cached_graphs(aot_config)
-        # Cache hits only retain the cacheable subset of AOTConfig. Narrow once
-        # here so the existing post-compile wrapper stack can keep its compile-time
-        # AOTConfig annotations.
-        runtime_aot_config = cast(AOTConfig, aot_config)
         with dynamo_timed("AOTAutogradCache.inductor_load"):
             compiled_fw_func, compiled_bw_func, needs_autograd = (
                 self._load_and_post_compile(args, fx_config)
             )
 
         compiled_function = self._apply_runtime_wrappers(
-            compiled_fw_func,
-            compiled_bw_func,
-            needs_autograd,
-            runtime_aot_config,
+            compiled_fw_func, compiled_bw_func, needs_autograd, aot_config
         )
         # Now that we're pretty sure it's a successful load, add guards
         # to the existing shape environment from the cache.

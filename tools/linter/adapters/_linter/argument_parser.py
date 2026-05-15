@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from typing import Any, TYPE_CHECKING
+from typing import Union, Any, TYPE_CHECKING
 
 
 if TYPE_CHECKING:
@@ -16,10 +16,10 @@ class ArgumentParser(argparse.ArgumentParser):
 
     def __init__(
         self,
-        prog: str | None = None,
-        usage: str | None = None,
-        description: str | None = None,
-        epilog: str | None = None,
+        prog: Union[str, None] = None,
+        usage: Union[str, None] = None,
+        description: Union[str, None] = None,
+        epilog: Union[str, None] = None,
         is_fixer: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -39,7 +39,7 @@ class ArgumentParser(argparse.ArgumentParser):
         help = "Print more debug info"
         self.add_argument("-v", "--verbose", action="store_true", help=help)
 
-    def exit(self, status: int = 0, message: str | None = None) -> Never:
+    def exit(self, status: int = 0, message: Union[str, None] = None) -> Never:
         """
         Overriding this method is a workaround for argparse throwing away all
         line breaks when printing the `epilog` section of the help message.

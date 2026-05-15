@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import time
 from concurrent.futures import Future
 from dataclasses import dataclass, field

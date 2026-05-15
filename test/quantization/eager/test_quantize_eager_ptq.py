@@ -1,6 +1,7 @@
 # Owner(s): ["oncall: quantization"]
 # ruff: noqa: F841
 
+from __future__ import annotations
 from hypothesis import given, strategies as st
 
 import torch

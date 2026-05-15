@@ -10,7 +10,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Tuple, Union
 
 
 PYTORCH_ROOTDIR = Path(__file__).resolve().parent.parent
@@ -20,7 +20,7 @@ BUILD_DIR = PYTORCH_ROOTDIR / "build"
 BUILD_LIB_DIR = BUILD_DIR / "lib"
 
 
-def check_output(args: list[str], cwd: str | None = None) -> str:
+def check_output(args: List[str], cwd: Union[str, None] = None) -> str:
     return subprocess.check_output(args, cwd=cwd).decode("utf-8")
 
 
@@ -66,7 +66,7 @@ def is_devel_setup() -> bool:
     return output.strip() == str(TORCH_DIR / "__init__.py")
 
 
-def create_build_plan() -> list[tuple[str, str]]:
+def create_build_plan() -> List[Tuple[str, str]]:
     output = check_output(
         ["ninja", "-j1", "-v", "-n", "torch_python"], cwd=str(BUILD_DIR)
     )

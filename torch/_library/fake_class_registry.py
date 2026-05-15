@@ -1,7 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
 import logging
-from typing import Any, Protocol
+from typing import Any, Dict, Optional, Set, Tuple, Type, Union
+from typing_extensions import Protocol
+
 
 import torch
 from torch._library.utils import parse_namespace
@@ -13,7 +17,7 @@ log = logging.getLogger(__name__)
 
 class FakeScriptObject:
     def __init__(
-        self, wrapped_obj: Any, script_class_name: str, x: torch.ScriptObject | None
+        self, wrapped_obj: Any, script_class_name: str, x: Optional[torch.ScriptObject]
     ):
         # Use object.__setattr__ to bypass our custom __setattr__ during initialization
         object.__setattr__(self, "wrapped_obj", wrapped_obj)
@@ -95,7 +99,7 @@ class FakeScriptObject:
             # Object is not hashable, use identity-based hash
             return id(real_obj)
 
-    def __deepcopy__(self, memo: dict[int, Any]) -> "FakeScriptObject":
+    def __deepcopy__(self, memo: Dict[int, Any]) -> "FakeScriptObject":
         if id(self) in memo:
             return memo[id(self)]
         new_obj = FakeScriptObject.__new__(FakeScriptObject)
@@ -141,7 +145,7 @@ class FakeScriptMethod:
         self,
         self_fake_obj: FakeScriptObject,
         method_name: str,
-        schema: torch.FunctionSchema | None,
+        schema: Union[torch.FunctionSchema, None,]
     ):
         self.self_fake_obj = self_fake_obj
         self.method_name = method_name
@@ -161,7 +165,7 @@ class HasStaticMethodFromReal(Protocol):
 
 class FakeClassRegistry:
     def __init__(self) -> None:
-        self._registered_class: dict[str, Any] = {}
+        self._registered_class: Dict[str, Any] = {}
 
     def has_impl(self, full_qualname: str) -> bool:
         return full_qualname in self._registered_class
@@ -231,7 +235,7 @@ def tracing_with_real(x: torch.ScriptObject) -> bool:
 def maybe_to_fake_obj(
     fake_mode,
     x: Any,
-) -> FakeScriptObject | torch.ScriptObject:
+) -> Union[FakeScriptObject, torch.ScriptObject]:
     import torch.utils._pytree as pytree
 
     # When tracing with real mode, people should implement meta kernels that can
@@ -329,7 +333,7 @@ def maybe_to_fake_obj(
             real_attr = getattr(x, name)  # type: ignore[attr-defined]
 
             # real attr sometimes is not torch.ScriptMethod thus doesn't have schema e.g. __init___ or __eq__
-            method_schema: torch.FunctionSchema | None = None
+            method_schema: Optional[torch.FunctionSchema]= None
             if isinstance(real_attr, torch.ScriptMethod):
                 method_schema = real_attr.schema  # type: ignore[attr-defined]
 
@@ -346,7 +350,7 @@ def maybe_to_fake_obj(
     return fake_x_wrapped
 
 
-def register_fake_class(qualname, fake_class: HasStaticMethodFromReal | None = None):
+def register_fake_class(qualname, fake_class: Optional[HasStaticMethodFromReal] = None):
     r"""Register a fake implementation for this class.
 
     It's in the same spirit of registering a fake implementation for
@@ -446,7 +450,7 @@ def has_fake_class(full_qualname) -> bool:
     return global_fake_class_registry.has_impl(full_qualname)
 
 
-def find_fake_class(full_qualname) -> Any | None:
+def find_fake_class(full_qualname) -> Optional[Any]:
     if not has_fake_class(full_qualname):
         return None
     return global_fake_class_registry.get_impl(full_qualname)
@@ -466,7 +470,7 @@ def _is_script_object(obj: Any) -> bool:
 
 
 # Return the namespace and class name from fully qualified name.
-def _ns_and_class_name(full_qualname: str) -> tuple[str, str]:
+def _ns_and_class_name(full_qualname: str) -> Tuple[str, str]:
     splits = full_qualname.split(".")
     if len(splits) != 5:
         raise AssertionError(f"Could not split {full_qualname=}, expected 5 parts")

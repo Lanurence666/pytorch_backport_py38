@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
 # The Tensor classes are added to this module by python_tensor.cpp
 # A workaround to support both TorchScript and MyPy:
-from typing import Any, TYPE_CHECKING
+from __future__ import annotations
+
+from typing import Any, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, overload
 
 import torch
 from torch import Tensor
@@ -19,11 +21,11 @@ from .semi_structured import (
 if TYPE_CHECKING:
     from torch.types import _dtype as DType
 
-    DimOrDims = int | tuple[int, ...] | list[int] | None
+    DimOrDims = Optional[Union[int, Tuple[int, ...], List[int]]]
 else:
     # The JIT doesn't understand Union, nor torch.dtype here
     DType = int
-    DimOrDims = tuple[int] | None
+    DimOrDims = Optional[Tuple[int]]
 
 
 __all__ = [
@@ -214,7 +216,7 @@ Examples::
 )
 
 
-def sum(input: Tensor, dim: DimOrDims = None, dtype: DType | None = None) -> Tensor:
+def sum(input: Tensor, dim: DimOrDims = None, dtype: Optional[DType] = None) -> Tensor:
     r"""Return the sum of each row of the given sparse tensor.
 
     Returns the sum of each row of the sparse tensor :attr:`input` in the given
@@ -537,7 +539,7 @@ class check_sparse_tensor_invariants:
     # context manager support
     def __init__(self, enable=True):
         self.state = enable
-        self.saved_state: bool | None = None
+        self.saved_state: Optional[bool] = None
 
     def __enter__(self):
         if self.saved_state is not None:
@@ -612,7 +614,7 @@ def as_sparse_gradcheck(gradcheck):
             """Convert differentiable non-strided tensors to a representation containing differentiable strided tensors."""
             if not isinstance(args, (list, tuple)):
                 args = (args,)
-            new_args: list[Any] = []
+            new_args: List[Any] = []
             for obj in args:
                 if (
                     isinstance(obj, torch.Tensor)

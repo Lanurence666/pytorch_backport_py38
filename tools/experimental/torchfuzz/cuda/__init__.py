@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Dict, Type
 """CUDA device plugin for torchfuzz.
 
 This is the reference device plugin loaded by ``torchfuzz.codegen`` when
@@ -84,7 +86,6 @@ should follow the same pattern (return a *new* dict, do not mutate the caller's
 environment in place).
 """
 
-from __future__ import annotations
 
 import logging
 import random
@@ -102,7 +103,7 @@ from torchfuzz.cuda._codegen import (
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-def register_codegen() -> dict[str, type[FuzzTemplate]]:
+def register_codegen() -> Dict[str, Type[FuzzTemplate]]:
     """Return the CUDA plugin's template registry."""
     return {
         "default": DefaultFuzzTemplate,
@@ -114,10 +115,10 @@ def register_codegen() -> dict[str, type[FuzzTemplate]]:
 
 
 def _select_cuda_device(
-    env: dict[str, str],
+    env: Dict[str, str],
     *,
     exclude_primary_device: bool = False,
-) -> dict[str, str]:
+) -> Dict[str, str]:
     """Pick a random CUDA device and narrow CUDA_VISIBLE_DEVICES to it.
 
     Returns a new env mapping (does not mutate ``env``).

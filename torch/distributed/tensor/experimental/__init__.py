@@ -1,5 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
-from collections.abc import Iterator
+
+from typing import Iterator, Set
 from contextlib import contextmanager
 
 from torch.distributed.tensor._api import DTensor

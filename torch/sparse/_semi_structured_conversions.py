@@ -1,3 +1,4 @@
+from typing import Union, cast
 # mypy: allow-untyped-defs
 import torch
 
@@ -133,7 +134,7 @@ def sparse_semi_structured_from_dense_cutlass(dense):
     expr2 = ~m0 & ~m1
     bit0 = expr1
     bit1 = expr2
-    bit2 = expr0 | expr2 | m3
+    bit2 = Union[expr0, expr2, m3]
     bit3 = expr1 | ~m1
     idxs0 = bit0 | (bit1.to(torch.int64) << 1)
     idxs1 = bit2 | (bit3.to(torch.int64) << 1)
@@ -325,9 +326,9 @@ def _compute_compressed_swizzled_bitmask(dense):
     # Each thread is responsible for an 8x8 tile, which contains 4 4x4 tiles:
     # A, B, C and D, as displayed in the following schema:
     # +---+---+
-    # | A | B |
+    # | Union[A, B] |
     # +---+---+
-    # | C | D |
+    # | Union[C, D] |
     # +---+---+
 
     # we first need to split into the 8x8 tiles

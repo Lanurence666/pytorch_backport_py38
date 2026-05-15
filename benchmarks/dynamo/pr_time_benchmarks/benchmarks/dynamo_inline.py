@@ -93,9 +93,7 @@ class Benchmark(BenchmarkBase):
     def _work(self):
         # enable_cpp_symbolic_shape_guards has impact on this benchmark
         # Keep using False value for consistency.
-        with (
-            fresh_cache(),
-        ):
+        with fresh_cache():
             opt_m = torch.compile(backend=self.backend(), dynamic=self.is_dynamic())(
                 self.m.cuda() if self._is_gpu else self.m
             )

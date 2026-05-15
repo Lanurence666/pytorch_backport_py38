@@ -1,9 +1,13 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import ast
 import functools
 import inspect
 from textwrap import dedent
-from typing import Any, NamedTuple
+from typing import Any, List, Optional, Tuple, Union
+from typing_extensions import NamedTuple
+
 
 from torch._C import ErrorReport
 from torch._C._jit_tree_views import SourceRangeFactory
@@ -11,8 +15,8 @@ from torch._C._jit_tree_views import SourceRangeFactory
 
 def get_source_lines_and_file(
     obj: Any,
-    error_msg: str | None = None,
-) -> tuple[list[str], int, str | None]:
+    error_msg: Optional[str] = None
+) -> Union[Tuple[List[str], int, str, None]]:
     """
     Wrapper around inspect.getsourcelines and inspect.getsourcefile.
 
@@ -35,7 +39,7 @@ def get_source_lines_and_file(
     return sourcelines, file_lineno, filename
 
 
-def normalize_source_lines(sourcelines: list[str]) -> list[str]:
+def normalize_source_lines(sourcelines: List[str]) -> List[str]:
     """
     This helper function accepts a list of source lines. It finds the
     indentation level of the function definition (`def`), then it indents
@@ -100,7 +104,7 @@ class SourceContext(SourceRangeFactory):
         self.funcname = funcname
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def make_source_context(*args):
     return SourceContext(*args)
 
@@ -113,7 +117,7 @@ class ParsedDef(NamedTuple):
     ast: ast.Module
     ctx: SourceContext
     source: str
-    filename: str | None
+    filename: Optional[str]
     file_lineno: int
 
 

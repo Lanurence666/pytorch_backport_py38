@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 from enum import Enum
-from typing import NamedTuple
+from typing import List, NamedTuple, Union
 
 
 class LintSeverity(str, Enum):
@@ -18,18 +18,18 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
-def check_file(filename: str) -> list[LintMessage]:
+def check_file(filename: str) -> List[LintMessage]:
     with open(filename, "rb") as f:
         original = f.read().decode("utf-8")
     replacement = ""

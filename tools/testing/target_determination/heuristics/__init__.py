@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 
 from tools.testing.target_determination.heuristics.correlated_with_historical_failures import (
     CorrelatedWithHistoricalFailures,
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 # All currently running heuristics.
 # To add a heurstic in trial mode, specify the keyword argument `trial_mode=True`.
-HEURISTICS: list[HeuristicInterface] = [
+HEURISTICS: List[HeuristicInterface] = [
     PreviouslyFailedInPR(),
     EditedByPR(),
     MentionedInPR(),

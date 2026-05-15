@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 import re
 import textwrap
-from typing import TYPE_CHECKING
+from typing import Union, TYPE_CHECKING
 
 
 if TYPE_CHECKING:
@@ -37,7 +37,7 @@ class CodeTemplate:
         self.filename = filename
 
     def substitute(
-        self, env: Mapping[str, object] | None = None, **kwargs: object
+        self, env: Union[Mapping[str, object], None] = None, **kwargs: object
     ) -> str:
         if env is None:
             env = {}

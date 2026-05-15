@@ -3,6 +3,7 @@ import os
 
 import torch
 from torch.jit._serialization import validate_map_location
+from typing import Dict, Optional, overload
 
 
 def _load_for_lite_interpreter(f, map_location=None):

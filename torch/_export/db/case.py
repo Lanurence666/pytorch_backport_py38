@@ -1,15 +1,17 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import inspect
 import re
 import string
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Tuple, Type
 from types import ModuleType
 
 import torch
 
-_TAGS: dict[str, dict[str, Any]] = {
+_TAGS: Dict[str, Dict[str, Any]] = {
     "torch": {
         "cond": {},
         "dynamic-shape": {},
@@ -42,7 +44,7 @@ class SupportLevel(Enum):
     NOT_SUPPORTED_YET = 0
 
 
-ArgsType = tuple[Any, ...]
+ArgsType = Tuple[Any, ...]
 
 
 def check_inputs_type(args, kwargs):
@@ -78,12 +80,12 @@ class ExportCase:
     description: str  # A description of the use case.
     model: torch.nn.Module
     name: str
-    example_kwargs: dict[str, Any] = field(default_factory=dict)
-    extra_args: ArgsType | None = None  # For testing graph generalization.
+    example_kwargs: Dict[str, Any] = field(default_factory=dict)
+    extra_args: Optional[ArgsType]= None  # For testing graph generalization.
     # Tags associated with the use case. (e.g dynamic-shape, escape-hatch)
-    tags: set[str] = field(default_factory=set)
+    tags: Set[str] = field(default_factory=set)
     support_level: SupportLevel = SupportLevel.SUPPORTED
-    dynamic_shapes: dict[str, Any] | None = None
+    dynamic_shapes: Optional[Dict[str, Any]]= None
 
     def __post_init__(self):
         check_inputs_type(self.example_args, self.example_kwargs)
@@ -97,10 +99,10 @@ class ExportCase:
             raise ValueError(f'Invalid description: "{self.description}"')
 
 
-_EXAMPLE_CASES: dict[str, ExportCase] = {}
-_MODULES: set[ModuleType] = set()
-_EXAMPLE_CONFLICT_CASES: dict[str, list[ExportCase]] = {}
-_EXAMPLE_REWRITE_CASES: dict[str, list[ExportCase]] = {}
+_EXAMPLE_CASES: Dict[str, ExportCase] = {}
+_MODULES: Set[ModuleType] = set()
+_EXAMPLE_CONFLICT_CASES: Dict[str, List[ExportCase]] = {}
+_EXAMPLE_REWRITE_CASES: Dict[str, List[ExportCase]] = {}
 
 
 def register_db_case(case: ExportCase) -> None:

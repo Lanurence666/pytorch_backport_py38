@@ -1,8 +1,11 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 
 from .expanded_weights_impl import ExpandedWeight
+from typing import Optional
 
 
 def is_batch_first(expanded_args_and_kwargs):
@@ -31,7 +34,7 @@ def standard_kwargs(kwarg_names, expanded_args):
     expanded_args_without_kwargs = expanded_args[
         : len(expanded_args) - len(kwarg_names)
     ]
-    expanded_kwargs = dict(zip(kwarg_names, kwarg_values, strict=True))
+    expanded_kwargs = dict(_zip_strict(kwarg_names, kwarg_values))
     return expanded_args_without_kwargs, expanded_kwargs
 
 
@@ -93,7 +96,7 @@ def _check_and_unexpand_args(func, expanded_args, expanded_kwargs):
                 f"input batch size of {batch_size} with ExpandedWeight of batch size {arg.batch_size}"
             )
 
-    loss_reduction: str | None = None
+    loss_reduction: Optional[str]= None
     for arg in expanded_args + tuple(expanded_kwargs.values()):
         if isinstance(arg, ExpandedWeight):
             if loss_reduction is None:

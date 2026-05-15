@@ -1,14 +1,17 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 import sys
 import traceback
 import typing
 from datetime import timedelta
+from typing import Dict, Set, Type, Union
 
 import torch
 
 
-RankType = int | torch.SymInt
+RankType = Union[int, torch.SymInt]
 
 
 log = logging.getLogger(__name__)
@@ -89,7 +92,7 @@ if is_available():
 
         return _DistributedPdb()
 
-    _breakpoint_cache: dict[int, typing.Any] = {}
+    _breakpoint_cache: Dict[int, typing.Any] = {}
 
     def breakpoint(rank: int = 0, skip: int = 0, timeout_s=3600):
         """

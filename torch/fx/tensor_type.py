@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
+from typing import Any, Sequence, TYPE_CHECKING, Type, Union
 
 from torch.fx.experimental.unification import Var  # type: ignore[attr-defined]
 
@@ -8,7 +8,7 @@ from ._compatibility import compatibility
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    
 
     from torch.fx.experimental.migrate_gradual_types.constraint import DVar
 
@@ -26,7 +26,7 @@ class TensorType:
                 return torch.add(x, y)
     """
 
-    __args__: Sequence[DVar | int | _DynType]
+    __args__: Union[Sequence[DVar, int, _DynType]]
 
     def __init__(self, dim: Sequence[Any]) -> None:
         self.__origin__ = TensorType

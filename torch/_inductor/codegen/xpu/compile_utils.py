@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import logging
 import os
 import shutil
@@ -9,6 +11,7 @@ from torch._inductor.codegen.xpu.xpu_env import get_xpu_arch
 from torch._inductor.utils import is_linux
 
 from ..cuda.compile_utils import _cutlass_include_paths
+from typing import List, Optional
 
 
 log = logging.getLogger(__name__)
@@ -41,7 +44,7 @@ def _sycl_compiler() -> str:
         raise RuntimeError("Can not find Intel compiler.")
 
 
-def _sycl_lib_options() -> list[str]:
+def _sycl_lib_options() -> List[str]:
     """
     Util function for CUTLASS backend to find the correct XPU libraries.
     """
@@ -49,7 +52,7 @@ def _sycl_lib_options() -> list[str]:
     from torch.utils import cpp_extension
 
     lpaths = cpp_extension.library_paths(device_type="xpu")
-    extra_ldflags: list[str] = []
+    extra_ldflags: List[str] = []
     if is_linux():
         for path in lpaths:
             if "torch/lib" in path:
@@ -73,7 +76,7 @@ def _sycl_arch_as_compile_option() -> str:
     return arc_option_map.get(arch, "intel_gpu_pvc")
 
 
-def _sycl_compiler_options() -> list[str]:
+def _sycl_compiler_options() -> List[str]:
     options = [
         "-DCUTLASS_ENABLE_SYCL",
         "-DSYCL_INTEL_TARGET",
@@ -102,10 +105,10 @@ def _sycl_compiler_options() -> list[str]:
 
 
 def xpu_compile_command(
-    src_files: list[str],
+    src_files: List[str],
     dst_file: str,
     dst_file_ext: str,
-    extra_args: list[str] | None = None,
+    extra_args: Optional[List[str]] = None
 ) -> str:
     if extra_args is None:
         extra_args = []

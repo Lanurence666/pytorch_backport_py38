@@ -4,7 +4,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import Union, Any, cast
 
 import yaml
 
@@ -22,10 +22,10 @@ TAGS_PATH = "aten/src/ATen/native/tags.yaml"
 
 def generate_code(
     gen_dir: Path,
-    native_functions_path: str | None = None,
-    tags_path: str | None = None,
-    install_dir: str | None = None,
-    subset: str | None = None,
+    native_functions_path: Union[str, None] = None,
+    tags_path: Union[str, None] = None,
+    install_dir: Union[str, None] = None,
+    subset: Union[str, None] = None,
     disable_autograd: bool = False,
     force_schema_registration: bool = False,
     operator_selector: Any = None,
@@ -107,8 +107,8 @@ def get_selector_from_legacy_operator_selection_list(
 
 
 def get_selector(
-    selected_op_list_path: str | None,
-    operators_yaml_path: str | None,
+    selected_op_list_path: Union[str, None],
+    operators_yaml_path: Union[str, None],
 ) -> Any:
     # cwrap depends on pyyaml, so we can't import it earlier
     REPO_ROOT = Path(__file__).absolute().parents[2]

@@ -1,4 +1,5 @@
 # Owner(s): ["module: fx"]
+from __future__ import annotations
 import copy
 import unittest
 

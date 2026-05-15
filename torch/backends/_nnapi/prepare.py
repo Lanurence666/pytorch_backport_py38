@@ -1,7 +1,9 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
 
-from typing import Optional
+from __future__ import annotations
+
+from typing import List, Optional
 
 import torch
 from torch.backends._nnapi.serializer import _NnapiSerializer
@@ -22,16 +24,16 @@ class NnapiModule(torch.nn.Module):
 
     # _nnapi.Compilation is defined
     comp: Optional[torch.classes._nnapi.Compilation]  # type: ignore[name-defined]  # noqa: UP045
-    weights: list[torch.Tensor]
-    out_templates: list[torch.Tensor]
+    weights: List[torch.Tensor]
+    out_templates: List[torch.Tensor]
 
     def __init__(
         self,
         shape_compute_module: torch.nn.Module,
         ser_model: torch.Tensor,
-        weights: list[torch.Tensor],
-        inp_mem_fmts: list[int],
-        out_mem_fmts: list[int],
+        weights: List[torch.Tensor],
+        inp_mem_fmts: List[int],
+        out_mem_fmts: List[int],
         compilation_preference: int,
         relax_f32_to_f16: bool,
     ):
@@ -47,7 +49,7 @@ class NnapiModule(torch.nn.Module):
         self.relax_f32_to_f16 = relax_f32_to_f16
 
     @torch.jit.export
-    def init(self, args: list[torch.Tensor]):
+    def init(self, args: List[torch.Tensor]):
         if self.comp is not None:
             raise AssertionError("comp must be None before initialization")
         self.out_templates = self.shape_compute_module.prepare(self.ser_model, args)  # type: ignore[operator]
@@ -62,7 +64,7 @@ class NnapiModule(torch.nn.Module):
 
         self.comp = comp
 
-    def forward(self, args: list[torch.Tensor]) -> list[torch.Tensor]:
+    def forward(self, args: List[torch.Tensor]) -> List[torch.Tensor]:
         if self.comp is None:
             self.init(args)
         comp = self.comp

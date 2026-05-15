@@ -1,6 +1,9 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
+from typing import Optional, Type, Union
 
 
 class _remote_device:
@@ -21,14 +24,14 @@ class _remote_device:
                     and "cuda:1", just represent local devices.
     """
 
-    def __init__(self, remote_device: str | torch.device):
+    def __init__(self, remote_device: Union[str, torch.device]):
         PARSE_ERROR = (
             f"Could not parse remote_device: {remote_device}. The valid format is "
             "'<workername>/<device>' or 'rank:<rank>/<device>' or '<device>'"
         )
         self._worker_name = None
         self._rank = None
-        self._device: str | int | torch.device | None = None
+        self._device: Union[Union[str, int], Optional[torch.device]] = None
 
         if isinstance(remote_device, torch.device):
             self._device = remote_device
@@ -77,11 +80,11 @@ class _remote_device:
         except Exception:
             return False
 
-    def worker_name(self) -> str | None:
+    def worker_name(self) -> Optional[str]:
         """Return the name of remote worker representing the remote device and ``None`` if no worker name is available."""
         return self._worker_name
 
-    def rank(self) -> int | None:
+    def rank(self) -> Optional[int]:
         """
         Returns the rank of remote worker representing the remote device.
         Returns ``None`` if no rank is available.

@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: cpp"]
 
 """
@@ -126,7 +127,6 @@ if not IS_WINDOWS:
                 *self.cuda_includes,
             ]
 
-            cmd.extend(["-DUSE_CUDA"])
             if ROCM_HOME:
                 cmd.extend(["-DUSE_ROCM=1"])
 
@@ -211,8 +211,8 @@ if not IS_WINDOWS:
                 f"Error: {error_msg}",
             )
 
-        def test_cuda_kernel_works_with_2_9(self):
-            """Test that cuda_kernel.cu compiles successfully with 2.9.0.
+        def test_mv_tensor_accessor_cuda_works_with_2_9(self):
+            """Test that mv_tensor_accessor_cuda.cu compiles successfully with 2.9.0.
 
             This is a negative test - it ensures that a .cu file we expect to work with 2.9.0
             actually does compile. This validates that our test infrastructure correctly
@@ -220,13 +220,15 @@ if not IS_WINDOWS:
             that don't.
             """
             if not self.cuda_available:
-                self.skipTest("CUDA not available, skipping cuda_kernel.cu test")
+                self.skipTest(
+                    "CUDA not available, skipping mv_tensor_accessor_cuda.cu test"
+                )
 
             cu_file = (
                 Path(self.csrc_dir).parent
                 / "libtorch_agn_2_9_extension"
                 / "csrc"
-                / "cuda_kernel.cu"
+                / "mv_tensor_accessor_cuda.cu"
             )
 
             if not cu_file.exists():
@@ -241,13 +243,15 @@ if not IS_WINDOWS:
             if not success:
                 relevant_errors = self._extract_relevant_errors(error_msg)
                 if relevant_errors:
-                    print("\n  Unexpected compilation errors for cuda_kernel.cu:")
+                    print(
+                        "\n  Unexpected compilation errors for mv_tensor_accessor_cuda.cu:"
+                    )
                     for err in relevant_errors:
                         print(f"{err}")
 
             self.assertTrue(
                 success,
-                f"cuda_kernel.cu failed to compile with TORCH_TARGET_VERSION=2.9.0. "
+                f"mv_tensor_accessor_cuda.cu failed to compile with TORCH_TARGET_VERSION=2.9.0. "
                 f"This file is expected to work with 2.9.0 since it doesn't use 2.10+ features. "
                 f"Error: {error_msg}",
             )
@@ -296,7 +300,7 @@ if not IS_WINDOWS:
     # already defined above
     _source_files = sorted(
         [f for f in _csrc_dir.rglob("*.cpp") if f.name != "mv_tensor_accessor_cpu.cpp"]
-        + list(_csrc_dir.rglob("*.cu"))
+        + [f for f in _csrc_dir.rglob("*.cu") if f.name != "mv_tensor_accessor_cuda.cu"]
     )
 
     for _source_file in _source_files:

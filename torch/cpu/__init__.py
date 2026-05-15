@@ -1,14 +1,16 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 r"""
 This package implements abstractions found in ``torch.cuda``
 to facilitate writing device-agnostic code.
 """
 
-from collections.abc import Mapping
+
 from contextlib import AbstractContextManager
 from functools import lru_cache
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Mapping, Optional, Set, Type
 
 import torch
 
@@ -188,7 +190,7 @@ class StreamContext(AbstractContextManager):
 
     """
 
-    cur_stream: Stream | None
+    cur_stream: Optional[Stream]
 
     def __init__(self, stream):
         self.stream = stream

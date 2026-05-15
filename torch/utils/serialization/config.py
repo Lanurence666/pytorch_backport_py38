@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import sys
-from typing import Optional as _Optional, TYPE_CHECKING as _TYPE_CHECKING
+from typing import Optional, Optional as _Optional, TYPE_CHECKING, TYPE_CHECKING as _TYPE_CHECKING
 
 
 if _TYPE_CHECKING:
@@ -12,7 +14,7 @@ class load:
     mmap: bool = False
     endianness: _Optional["_LoadEndianess"] = None
     # MAP_PRIVATE = 2
-    mmap_flags: int | None = None if sys.platform == "win32" else 2
+    mmap_flags: Optional[int] = None if sys.platform == "win32" else 2
     calculate_storage_offsets: bool = False
 
 

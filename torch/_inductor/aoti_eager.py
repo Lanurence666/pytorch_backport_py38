@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import json
 import logging
 import os
-from collections.abc import Callable
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from unittest import mock
 
 import torch
@@ -20,16 +22,16 @@ log = logging.getLogger(__name__)
 @dataclass
 class AOTICompileBackend:
     compile_fn: Callable[..., str]
-    load_fn: Callable[[str, str, str], list[dict[str, Any] | None]]
+    load_fn: Union[Callable[[str, str, str], List[Dict[str, Any], None]]]
 
 
-_aoti_compile_backends: dict[str, AOTICompileBackend] = {}
+_aoti_compile_backends: Dict[str, AOTICompileBackend] = {}
 
 
 def register_aoti_compile_backend(
     device_type: str,
     compile_fn: Callable[..., str],
-    load_fn: Callable[[str, str, str], list[dict[str, Any] | None]],
+    load_fn: Union[Callable[[str, str, str], List[Dict[str, Any], None]],]
 ) -> None:
     _aoti_compile_backends[device_type] = AOTICompileBackend(
         compile_fn=compile_fn,
@@ -53,7 +55,7 @@ def aoti_eager_op_conf_lock(op_func_name_with_overload: str) -> Any:
 
 def load_aoti_eager_cache(
     ns: str, op_func_name_with_overload: str, device_type: str
-) -> list[dict[str, Any] | None]:
+) -> Union[List[Dict[str, Any], None]]:
     backend = _aoti_compile_backends.get(device_type)
     if backend:
         return backend.load_fn(ns, op_func_name_with_overload, device_type)
@@ -107,17 +109,17 @@ def load_aoti_eager_cache(
         return []
 
 
-def supported_builtin_dtype_torch_dtype() -> dict[type, torch.dtype]:
+def supported_builtin_dtype_torch_dtype() -> Dict[type, torch.dtype]:
     return {int: torch.int32, float: torch.float, bool: torch.bool}
 
 
-def supported_scalar_types() -> tuple[type, ...]:
+def supported_scalar_types() -> Tuple[type, ...]:
     type_to_torch_dtype = supported_builtin_dtype_torch_dtype()
     return tuple(type_to_torch_dtype.keys())
 
 
-def extract_tensor_metadata(dynamic: bool, input: torch.Tensor) -> dict[str, Any]:
-    metadata: dict[str, Any] = {}
+def extract_tensor_metadata(dynamic: bool, input: torch.Tensor) -> Dict[str, Any]:
+    metadata: Dict[str, Any] = {}
     metadata["is_dynamic"] = dynamic
 
     assert isinstance(input, torch.Tensor)
@@ -136,21 +138,21 @@ def extract_tensor_metadata(dynamic: bool, input: torch.Tensor) -> dict[str, Any
 
 def extract_tensor_list_metadata(
     dynamic: bool,
-    input: list[torch.Tensor],
-) -> dict[str, Any]:
+    input: List[torch.Tensor],
+) -> Dict[str, Any]:
     metadata_list = []
     for item in input:
         assert isinstance(item, torch.Tensor)
         metadata_list.append(extract_tensor_metadata(dynamic, item))
 
-    metadata: dict[str, Any] = {}
+    metadata: Dict[str, Any] = {}
     metadata["tensor_list"] = metadata_list
     return metadata
 
 
-def extract_scalar_metadata(device_type: str, input: Any) -> dict[str, Any]:
+def extract_scalar_metadata(device_type: str, input: Any) -> Dict[str, Any]:
     assert isinstance(input, supported_scalar_types())
-    metadata: dict[str, Any] = {}
+    metadata: Dict[str, Any] = {}
     metadata["is_dynamic"] = False
     # Scalar tensor
     metadata["device_type"] = device_type
@@ -161,31 +163,31 @@ def extract_scalar_metadata(device_type: str, input: Any) -> dict[str, Any]:
     return metadata
 
 
-def extract_string_metadata(input: str) -> dict[str, Any]:
+def extract_string_metadata(input: str) -> Dict[str, Any]:
     assert isinstance(input, str)
-    metadata: dict[str, Any] = {}
+    metadata: Dict[str, Any] = {}
     metadata["string_value"] = input
     return metadata
 
 
-def extract_dtype_metadata(input: torch.dtype) -> dict[str, Any]:
+def extract_dtype_metadata(input: torch.dtype) -> Dict[str, Any]:
     assert isinstance(input, torch.dtype)
-    metadata: dict[str, Any] = {}
+    metadata: Dict[str, Any] = {}
     metadata["dtype_value"] = f"{input}"
     return metadata
 
 
-def extract_device_metadata(input: torch.device) -> dict[str, Any]:
+def extract_device_metadata(input: torch.device) -> Dict[str, Any]:
     assert isinstance(input, torch.device)
-    metadata: dict[str, Any] = {}
+    metadata: Dict[str, Any] = {}
     metadata["device_type_value"] = f"{input.type}"
     metadata["device_index_value"] = input.index
     return metadata
 
 
-def extract_layout_metadata(input: torch.layout) -> dict[str, Any]:
+def extract_layout_metadata(input: torch.layout) -> Dict[str, Any]:
     assert isinstance(input, torch.layout)
-    metadata: dict[str, Any] = {}
+    metadata: Dict[str, Any] = {}
     metadata["layout_value"] = f"{input}"
     return metadata
 
@@ -196,11 +198,11 @@ def aoti_compile_with_persistent_cache(
     device_type: str,
     dynamic: bool,
     f: Callable[..., Any],
-    args: tuple[Any],
-    kwargs: dict[str, Any],
+    args: Tuple[Any],
+    kwargs: Dict[str, Any],
     *,
-    dynamic_shapes: dict[str, Any] | None = None,
-    options: dict[str, Any] | None = None,
+    dynamic_shapes: Optional[Dict[str, Any]]= None,
+    options: Optional[Dict[str, Any]]= None,
     remove_runtime_assertions: bool = False,
     disable_constraint_solver: bool = False,
 ) -> str:
@@ -303,7 +305,7 @@ def aoti_compile_with_persistent_cache(
                 metadata["arg_order"] = idx
                 kernel_metadata_items.append(metadata)
 
-            kernel_meta_info: dict[str, Any] = {}
+            kernel_meta_info: Dict[str, Any] = {}
             kernel_meta_info["meta_info"] = kernel_metadata_items
             kernel_meta_info["kernel_path"] = (
                 Path(kernel_lib_path).relative_to(persistent_cache).as_posix()

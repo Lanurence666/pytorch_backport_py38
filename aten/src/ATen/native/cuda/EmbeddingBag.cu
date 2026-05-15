@@ -1,6 +1,7 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/core/Tensor.h>
 #include <ATen/AccumulateType.h>
+#include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/Dispatch.h>
 #include <ATen/cuda/Atomic.cuh>
@@ -30,6 +31,8 @@
 #include <ATen/native/cuda/block_reduce.cuh>
 
 #include <c10/macros/Macros.h>
+
+#include <thrust/iterator/reverse_iterator.h>
 
 namespace at::native {
 
@@ -90,7 +93,7 @@ __global__ void EmbeddingBag_updateOutputKernel_max(
         bool pad = (input[emb] == padding_idx);
         const int64_t weightRow = input[emb] * weight_stride0;
         scalar_t weightValue = weightFeat[weightRow];
-        if (bag_size_ == 0 || weightValue > weightFeatMax) {
+        if (bag_size_ == 0 || static_cast<at::opmath_type<scalar_t>>(weightValue) > static_cast<at::opmath_type<scalar_t>>(weightFeatMax)) {
           weightFeatMax = pad ? weightFeatMax : weightValue;
           maxWord = pad ? maxWord : input[emb];
         }
@@ -228,9 +231,9 @@ Tensor embedding_bag_backward_cuda_sum_avg(
       // sorted: 2 5 5 5 7 7 8 9 9
       //  count: 1 3 3 3 2 2 1 2 2
       cuda::cub::inclusive_scan_by_key(
-        cccl_make_reverse_iterator(sorted_data + num_indices),
-        cccl_make_reverse_iterator(count_data + num_indices),
-        cccl_make_reverse_iterator(count_data + num_indices),
+        thrust::make_reverse_iterator(sorted_data + num_indices),
+        thrust::make_reverse_iterator(count_data + num_indices),
+        thrust::make_reverse_iterator(count_data + num_indices),
         ATEN_CUB_MAXIMUM(),
         num_indices
       );

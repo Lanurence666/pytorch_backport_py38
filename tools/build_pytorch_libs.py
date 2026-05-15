@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Dict, Union
 import os
 import platform
 import subprocess
@@ -8,7 +9,7 @@ from .setup_helpers.cmake import CMake, USE_NINJA
 from .setup_helpers.env import check_negative_env_flag, IS_64BIT, IS_WINDOWS
 
 
-def _get_vc_env(vc_arch: str) -> dict[str, str]:
+def _get_vc_env(vc_arch: str) -> Dict[str, str]:
     try:
         from setuptools import distutils  # type: ignore[import,attr-defined]
 
@@ -21,7 +22,7 @@ def _get_vc_env(vc_arch: str) -> dict[str, str]:
         return _msvccompiler._get_vc_env(vc_arch)  # type: ignore[no-any-return,attr-defined]
 
 
-def _overlay_windows_vcvars(env: dict[str, str]) -> dict[str, str]:
+def _overlay_windows_vcvars(env: Dict[str, str]) -> Dict[str, str]:
     vc_arch = "x64" if IS_64BIT else "x86"
 
     if platform.machine() == "ARM64":
@@ -57,7 +58,7 @@ def _overlay_windows_vcvars(env: dict[str, str]) -> dict[str, str]:
     return vc_env
 
 
-def _create_build_env() -> dict[str, str]:
+def _create_build_env() -> Dict[str, str]:
     # XXX - our cmake file sometimes looks at the system environment
     # and not cmake flags!
     # you should NEVER add something to this list. It is bad practice to
@@ -73,8 +74,8 @@ def _create_build_env() -> dict[str, str]:
 
 
 def build_pytorch(
-    version: str | None,
-    cmake_python_library: str | None,
+    version: Union[str, None],
+    cmake_python_library: Union[str, None],
     build_python: bool,
     rerun_cmake: bool,
     cmake_only: bool,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Union
 import contextlib
 import os
 import typing
@@ -86,7 +87,7 @@ class TestCMake(unittest.TestCase):
 
 
 @contextlib.contextmanager
-def env_var(key: str, value: str | None) -> Iterator[None]:
+def env_var(key: str, value: Union[str, None]) -> Iterator[None]:
     """Sets/clears an environment variable within a Python context."""
     # Get the previous value and then override it.
     previous_value = os.environ.get(key)
@@ -98,7 +99,7 @@ def env_var(key: str, value: str | None) -> Iterator[None]:
         set_env_var(key, previous_value)
 
 
-def set_env_var(key: str, value: str | None) -> None:
+def set_env_var(key: str, value: Union[str, None]) -> None:
     """Sets/clears an environment variable."""
     if value is None:
         os.environ.pop(key, None)

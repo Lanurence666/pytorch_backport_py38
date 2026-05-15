@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Tools to help with tensor property propagation.
 
@@ -5,14 +6,14 @@ This is not intended to be imported directly; please use the exposed
 functionalities in `torch.jit`.
 """
 
-from typing import Any
+from typing import Any, List, Type
 
 import torch
 from torch import TensorType
 from torch._C import Graph
 
 
-def apply_input_props_using_example(graph: Graph, example_input: list[Any]) -> None:
+def apply_input_props_using_example(graph: Graph, example_input: List[Any]) -> None:
     """
     Applies properties for each tensor in the graph inputs
     using the example supplied.

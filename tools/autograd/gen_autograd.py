@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List
 """
 To run this file by hand from the root of the PyTorch
 repository, run:
@@ -22,7 +24,6 @@ torch/csrc/autograd/generated/
 #  gen_python_functions.py: generates Python bindings to THPVariable
 #
 
-from __future__ import annotations
 
 import argparse
 import os
@@ -70,7 +71,7 @@ def gen_autograd(
         ),
         key=lambda f: cpp.name(f.func),
     )
-    fns_with_diff_infos: list[NativeFunctionWithDifferentiabilityInfo] = (
+    fns_with_diff_infos: List[NativeFunctionWithDifferentiabilityInfo] = (
         match_differentiability_info(fns, differentiability_infos)
     )
 

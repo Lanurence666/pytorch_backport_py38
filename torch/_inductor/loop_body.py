@@ -6,7 +6,9 @@ import functools
 import itertools
 import re
 from enum import auto, Enum
-from typing import Any, NamedTuple, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type, TypeVar
+from typing_extensions import NamedTuple
+
 
 import sympy
 
@@ -38,7 +40,7 @@ T = TypeVar("T")
 
 class InterpreterShim(torch.fx.Interpreter):
     @staticmethod
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def _dummy_gm():
         return torch.fx.symbolic_trace(identity)
 
@@ -75,8 +77,8 @@ class LightTracer(TracerBase):
 
 class MemoryEntry(NamedTuple):
     index_name: str  # LoopBody.indexing_exprs[index_name]
-    buffer_name: str | None
-    mode: str | None  # V.ops.store(..., mode=mode)
+    buffer_name: Optional[str]
+    mode: Optional[str]  # V.ops.store(..., mode=mode)
 
 
 class MemoryUsageType(Enum):
@@ -96,17 +98,17 @@ class LoopBody:
     indexing simplifications and makes it easier to analyze loop bodies.
     """
 
-    indexing_exprs: dict[str, sympy.Expr]
-    submodules: dict[str, Any]
-    subblocks: dict[str, LoopBodyBlock]
-    indirect_vars: list[sympy.Symbol]
-    indirect_var_ranges: dict[sympy.Symbol, sympy.Expr]
+    indexing_exprs: Dict[str, sympy.Expr]
+    submodules: Dict[str, Any]
+    subblocks: Dict[str, LoopBodyBlock]
+    indirect_vars: List[sympy.Symbol]
+    indirect_var_ranges: Dict[sympy.Symbol, sympy.Expr]
     root_block: LoopBodyBlock
-    memory_usage: dict[MemoryUsageType, list[MemoryEntry]]
+    memory_usage: Dict[MemoryUsageType, List[MemoryEntry]]
     op_counts: collections.Counter[str]
 
     # defined only temporarily
-    indexing_exprs_name: dict[sympy.Expr, str]
+    indexing_exprs_name: Dict[sympy.Expr, str]
 
     def __init__(
         self,
@@ -159,7 +161,7 @@ class LoopBody:
         self.submodules = {"get_index": self.get_index}
         self.subblocks = {}
         self.indirect_vars = []
-        self.indirect_var_ranges: dict[sympy.Symbol, sympy.Expr] = {}
+        self.indirect_var_ranges: Dict[sympy.Symbol, sympy.Expr] = {}
         self.memory_usage = {t: [] for t in MemoryUsageType}
         self.op_counts = collections.Counter()
         self.root_block = LoopBodyBlock(self, fn, args)  # traces
@@ -320,7 +322,7 @@ class LoopBody:
             for v, s in zip(new_iter_idx, new_iter_sizes):
                 flat = flat * s + v
             # Express old iter vars from flat index
-            old_iter_idx: list[sympy.Expr] = []
+            old_iter_idx: List[sympy.Expr] = []
             for i, old_size in enumerate(old_iter_sizes):
                 tail = sympy_product(old_iter_sizes[i + 1 :])
                 old_iter_idx.append(ModularIndexing(flat, tail, old_size))
@@ -483,8 +485,8 @@ class LoopBody:
         self,
         expr: sympy.Expr,
         mtype: MemoryUsageType,
-        buffer_name: str | None = None,
-        mode: str | None = None,
+        buffer_name: Optional[str] = None,
+        mode: Optional[str] = None,
     ):
         name = self.indexing_exprs_name.get(expr)
         if not name:
@@ -579,7 +581,7 @@ class LoopBodyBlock:
     operations will manifest as an extra LoopBodyBlock.
     """
 
-    def __init__(self, body: LoopBody, fn: Callable[..., Any], args: list[Any]):
+    def __init__(self, body: LoopBody, fn: Callable[..., Any], args: List[Any]):
         self.body = body
 
         tracer = LightTracer()
@@ -668,7 +670,7 @@ class CountOps(DefaultHandler):
         self._inner = inner
         self._counts = counts
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         self._counts[name] += 1
         return getattr(self._inner, name)(*args, **kwargs)
 
@@ -746,12 +748,12 @@ class CaptureIndexing(WrapperHandler):
     def bucketize(
         self,
         values: T,
-        boundaries: tuple[str, sympy.Expr, sympy.Expr, sympy.Expr],
+        boundaries: Tuple[str, sympy.Expr, sympy.Expr, sympy.Expr],
         boundary_indices: T,
         indexing_dtype: torch.dtype,
         right: bool,
-        sorter: tuple[str, sympy.Expr] | None = None,
-        sorter_indices: T | None = None,
+        sorter: Optional[Tuple[str, sympy.Expr]] = None,
+        sorter_indices: Optional[T] = None,
     ) -> T:
         """
         See [Note: Inductor bucketize op]
@@ -806,7 +808,7 @@ class CaptureIndexing(WrapperHandler):
     def scan(
         self,
         dtype_proxy,
-        combine_fn: Callable[[tuple[Any, ...], tuple[Any, ...]], tuple[Any, ...]],
+        combine_fn: Callable[[Tuple[Any, ...], Tuple[Any, ...]], Tuple[Any, ...]],
         value_proxy,
     ):
         shim = self.body.bind_scan_shim(combine_fn)

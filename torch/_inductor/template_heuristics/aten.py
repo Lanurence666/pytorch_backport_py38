@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Generator, TYPE_CHECKING
 
 from torch._inductor import config as inductor_config
 
@@ -20,7 +20,7 @@ from .registry import register_template_heuristic
 
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    
 
     from ..kernel_inputs import KernelInputs
 
@@ -50,7 +50,7 @@ class ATenConfigHeuristics(TemplateConfigHeuristics):
         self,
         kernel_inputs: KernelInputs,
         op_name: str,
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         yield dict()
 
 
@@ -63,7 +63,7 @@ class ATenAddMMConfigHeuristics(ATenConfigHeuristics):
         self,
         kernel_inputs: KernelInputs,
         op_name: str,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         kwargs = super().get_extra_kwargs(kernel_inputs, op_name)
         alpha = kernel_inputs.get_scalar("alpha")
         beta = kernel_inputs.get_scalar("beta")
@@ -82,7 +82,7 @@ class ATenBiasAddMMConfigHeuristics(
         self,
         kernel_inputs: KernelInputs,
         op_name: str,
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         nodes = kernel_inputs.nodes()
         # for addmm, bias is the first input
         bias = nodes[0]

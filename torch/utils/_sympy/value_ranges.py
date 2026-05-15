@@ -7,8 +7,12 @@ import itertools
 import logging
 import math
 import operator
-from collections.abc import Callable
-from typing import Generic, overload, SupportsFloat, TYPE_CHECKING, TypeGuard, TypeVar
+
+from typing import Callable, Dict, Generic, Optional, SupportsFloat, TYPE_CHECKING, Type, TypeVar, Union, cast, overload
+try:
+    from typing import TypeGuard
+except ImportError:
+    from typing_extensions import TypeGuard
 from typing_extensions import TypeIs
 
 import sympy
@@ -107,15 +111,15 @@ def is_sympy_integer(value) -> TypeIs[sympy.Integer]:
     return isinstance(value, sympy.Integer)
 
 
-ExprIn = int | float | sympy.Expr
-BoolIn = bool | SympyBoolean
-AllIn = ExprIn | BoolIn
+ExprIn = Union[int, float, sympy.Expr]
+BoolIn = Union[bool, SympyBoolean]
+AllIn = Union[ExprIn, BoolIn]
 ExprFn = Callable[[sympy.Expr], sympy.Expr]
 ExprFn2 = Callable[[sympy.Expr, sympy.Expr], sympy.Expr]
 BoolFn = Callable[[SympyBoolean], SympyBoolean]
 BoolFn2 = Callable[[SympyBoolean, SympyBoolean], SympyBoolean]
-AllFn = ExprFn | BoolFn
-AllFn2 = ExprFn2 | BoolFn2
+AllFn = Union[ExprFn, BoolFn]
+AllFn2 = Union[ExprFn2, BoolFn2]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -126,7 +130,7 @@ class ValueRanges(Generic[_T]):
         ExprVR = ValueRanges[sympy.Expr]  # noqa: F821
         # pyrefly: ignore [unbound-name]
         BoolVR = ValueRanges[SympyBoolean]  # noqa: F821
-        AllVR = ExprVR | BoolVR
+        AllVR = Union[ExprVR, BoolVR]
 
     # Although the type signature here suggests you can pass any
     # sympy expression, in practice the analysis here only works
@@ -304,33 +308,33 @@ class ValueRanges(Generic[_T]):
         return self.lower == self.upper
 
     @staticmethod
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def unknown() -> ValueRanges[sympy.Expr]:
         return ValueRanges(-sympy.oo, sympy.oo)
 
     @staticmethod
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def unknown_int() -> ValueRanges[sympy.Expr]:
         return ValueRanges(-int_oo, int_oo)
 
     @staticmethod
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def unknown_bool() -> ValueRanges[SympyBoolean]:
         return ValueRanges(sympy.false, sympy.true)
 
     @overload
     @staticmethod
     # work around the fact that bool and int overlap
-    def wrap(arg: ExprIn | ExprVR) -> ExprVR:  # type: ignore[overload-overlap]
+    def wrap(arg: Union[ExprIn, ExprVR]) -> ExprVR:  # type: ignore[overload-overlap]
         ...
 
     @overload
     @staticmethod
-    def wrap(arg: BoolIn | BoolVR) -> BoolVR:  # type: ignore[misc]
+    def wrap(arg: Union[BoolIn, BoolVR]) -> BoolVR:  # type: ignore[misc]
         ...
 
     @staticmethod
-    def wrap(arg: AllIn | AllVR) -> AllVR:
+    def wrap(arg: Union[AllIn, AllVR]) -> AllVR:
         if isinstance(arg, ValueRanges):
             return arg
         if isinstance(arg, float) and math.isnan(arg):
@@ -339,29 +343,29 @@ class ValueRanges(Generic[_T]):
         return ValueRanges(arg, arg)  # type: ignore[arg-type]
 
     @staticmethod
-    def increasing_map(x: ExprIn | ExprVR, fn: ExprFn) -> ExprVR:
+    def increasing_map(x: Union[ExprIn, ExprVR], fn: ExprFn) -> ExprVR:
         """Increasing: x <= y => f(x) <= f(y)."""
         x = ValueRanges.wrap(x)
         return ValueRanges(fn(x.lower), fn(x.upper))
 
     @overload
     @staticmethod
-    def decreasing_map(x: ExprIn | ExprVR, fn: ExprFn) -> ExprVR: ...
+    def decreasing_map(x: Union[ExprIn, ExprVR], fn: ExprFn) -> ExprVR: ...
 
     @overload
     @staticmethod
-    def decreasing_map(x: BoolIn | BoolVR, fn: BoolFn) -> BoolVR:  # type: ignore[misc]
+    def decreasing_map(x: Union[BoolIn, BoolVR], fn: BoolFn) -> BoolVR:  # type: ignore[misc]
         ...
 
     @staticmethod
-    def decreasing_map(x: AllIn | AllVR, fn: AllFn) -> AllVR:
+    def decreasing_map(x: Union[AllIn, AllVR], fn: AllFn) -> AllVR:
         """Decreasing: x <= y => f(x) >= f(y)."""
         x = ValueRanges.wrap(x)
         # consistently either Expr or Bool, but we don't know it here
         return ValueRanges(fn(x.upper), fn(x.lower))  # type: ignore[arg-type]
 
     @staticmethod
-    def monotone_map(x: ExprIn | ExprVR, fn: ExprFn) -> ExprVR:
+    def monotone_map(x: Union[ExprIn, ExprVR], fn: ExprFn) -> ExprVR:
         """It's increasing or decreasing."""
         x = ValueRanges.wrap(x)
         l = fn(x.lower)
@@ -369,7 +373,7 @@ class ValueRanges(Generic[_T]):
         return ValueRanges(min(l, u), max(l, u))
 
     @staticmethod
-    def convex_min_zero_map(x: ExprIn | ExprVR, fn: ExprFn) -> ExprVR:
+    def convex_min_zero_map(x: Union[ExprIn, ExprVR], fn: ExprFn) -> ExprVR:
         """Fn is convex and has a minimum at 0."""
         x = ValueRanges.wrap(x)
         if 0 in x:
@@ -383,23 +387,23 @@ class ValueRanges(Generic[_T]):
     @overload
     @staticmethod
     def coordinatewise_increasing_map(
-        x: ExprIn | ExprVR,
-        y: ExprIn | ExprVR,
+        x: Union[ExprIn, ExprVR],
+        y: Union[ExprIn, ExprVR],
         fn: ExprFn2,
     ) -> ExprVR: ...
 
     @overload
     @staticmethod
     def coordinatewise_increasing_map(  # type: ignore[misc]
-        x: BoolIn | BoolVR,
-        y: BoolIn | BoolVR,
+        x: Union[BoolIn, BoolVR],
+        y: Union[BoolIn, BoolVR],
         fn: BoolFn2,
     ) -> BoolVR: ...
 
     @staticmethod
     def coordinatewise_increasing_map(
-        x: AllIn | AllVR,
-        y: AllIn | AllVR,
+        x: Union[AllIn, AllVR],
+        y: Union[AllIn, AllVR],
         fn: AllFn2,
     ) -> AllVR:
         """
@@ -1023,7 +1027,7 @@ class SymPyValueRangeAnalysis:
                 if init_range is None:
                     init_range = expr_range
                 else:
-                    init_range = init_range | expr_range
+                    init_range = Union[init_range, expr_range]
         return init_range
 
     @staticmethod
@@ -1097,7 +1101,7 @@ class SymPyValueRangeAnalysis:
 
 
 def bound_sympy(
-    expr: sympy.Expr, ranges: dict[sympy.Symbol, ValueRanges] | None = None
+    expr: sympy.Expr, ranges: Optional[Dict[sympy.Symbol, ValueRanges]] = None
 ) -> ValueRanges:
     log.debug(
         "bound_sympy(%s)%s",

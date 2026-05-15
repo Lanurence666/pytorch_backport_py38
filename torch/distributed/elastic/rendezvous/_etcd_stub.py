@@ -4,7 +4,9 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Optional
 
 
 """
@@ -65,11 +67,11 @@ class Client:
         raise EtcdStubError
 
     def write(
-        self, key: str, value: Any, ttl: int | None = None, **kwargs: Any
+        self, key: str, value: Any, ttl: Optional[int] = None, **kwargs: Any
     ) -> None:
         raise EtcdStubError
 
     def test_and_set(
-        self, key: str, value: Any, prev_value: Any, ttl: int | None = None
+        self, key: str, value: Any, prev_value: Any, ttl: Optional[int] = None
     ) -> None:
         raise EtcdStubError

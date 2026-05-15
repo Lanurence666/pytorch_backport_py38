@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import abc
 import typing as t
 
@@ -7,6 +9,7 @@ from torch.fx._compatibility import compatibility
 
 from .shape_prop import TensorMetadata
 from .tools_common import CALLABLE_NODE_OPS, get_node_target
+from typing import Dict, Optional, Set, Tuple, Type
 
 
 __all__ = [
@@ -22,13 +25,12 @@ __all__ = [
 TargetTypeName = str
 
 # Arguments' dtypes for a given node, see `OperatorSupport`
-SupportedArgumentDTypes = (
-    tuple[
+SupportedArgumentDTypes = Optional[
+    Tuple[
         t.Sequence[t.Sequence[torch.dtype]],
-        dict[str, t.Sequence[torch.dtype]],
+        Dict[str, t.Sequence[torch.dtype]],
     ]
-    | None
-)
+]
 
 SupportDict = t.Mapping[TargetTypeName, SupportedArgumentDTypes]
 
@@ -66,7 +68,7 @@ class OperatorSupport(OperatorSupportBase):
 
     _support_dict: SupportDict
 
-    def __init__(self, support_dict: SupportDict | None = None) -> None:
+    def __init__(self, support_dict: Optional[SupportDict] = None) -> None:
         self._support_dict = support_dict or {}
 
     def is_node_supported(
@@ -206,7 +208,7 @@ class OpSupports:
         return create_op_support(_decline_if_input_dtype)
 
     @classmethod
-    def decline_if_node_in_names(cls, disallow_set: set[str]) -> OperatorSupportBase:
+    def decline_if_node_in_names(cls, disallow_set: Set[str]) -> OperatorSupportBase:
         """
         If a node has a name that is in the disallow set, reported it as non-supported.
         """

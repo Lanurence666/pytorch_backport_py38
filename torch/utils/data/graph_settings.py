@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import inspect
 import warnings
-from typing import Any
+from typing import Any, List, Optional, Set
 from typing_extensions import deprecated
 
 import torch
@@ -21,14 +23,14 @@ __all__ = [
 ]
 
 
-def get_all_graph_pipes(graph: DataPipeGraph) -> list[DataPipe]:
+def get_all_graph_pipes(graph: DataPipeGraph) -> List[DataPipe]:
     return _get_all_graph_pipes_helper(graph, set())
 
 
 def _get_all_graph_pipes_helper(
-    graph: DataPipeGraph, id_cache: set[int]
-) -> list[DataPipe]:
-    results: list[DataPipe] = []
+    graph: DataPipeGraph, id_cache: Set[int]
+) -> List[DataPipe]:
+    results: List[DataPipe] = []
     for dp_id, (datapipe, sub_graph) in graph.items():
         if dp_id in id_cache:
             continue
@@ -94,7 +96,7 @@ def _is_shuffle_datapipe(datapipe: DataPipe) -> bool:
     )
 
 
-def apply_shuffle_settings(datapipe: DataPipe, shuffle: bool | None = None) -> DataPipe:
+def apply_shuffle_settings(datapipe: DataPipe, shuffle: Optional[bool] = None) -> DataPipe:
     r"""
     Traverse the graph of ``DataPipes`` to find and set shuffle attribute.
 

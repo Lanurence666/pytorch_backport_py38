@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 import torch
 from torchfuzz.operators.base import Operator
 from torchfuzz.tensor_fuzzer import Spec, TensorSpec
@@ -10,7 +12,7 @@ class GatherOperator(Operator):
         super().__init__("gather")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.gather"
 
@@ -21,7 +23,7 @@ class GatherOperator(Operator):
         # gather requires at least one dimension
         return len(output_spec.size) > 0
 
-    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 2) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 2) -> List[Spec]:
         """Generate input specs for gather operation.
 
         torch.gather(input, dim, index) returns a tensor with:
@@ -80,7 +82,7 @@ class GatherOperator(Operator):
         return [input_tensor_spec, index_spec]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for gather.
 

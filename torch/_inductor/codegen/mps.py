@@ -7,7 +7,7 @@ import itertools
 import logging
 import math
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, cast
 
 import sympy
 from sympy.printing.precedence import PRECEDENCE
@@ -51,7 +51,7 @@ DTYPE_TO_METAL = {
 }
 
 
-def value_to_metal(val: float | int | bool | str | CSEVariable) -> str:
+def value_to_metal(val: Union[Union[float, int], Union[bool, str]] | CSEVariable) -> str:
     if isinstance(val, float):
         if val == torch.inf:
             return "HUGE_VALF"
@@ -189,7 +189,7 @@ class MetalOverrides(OpOverrides):
     def to_dtype(
         x: CSEVariable,
         dtype: torch.dtype,
-        src_dtype: torch.dtype | None = None,
+        src_dtype: Optional[torch.dtype] = None,
         use_compute_types: bool = True,
     ) -> str:
         if dtype == torch.double:
@@ -206,7 +206,7 @@ class MetalOverrides(OpOverrides):
         return f"as_type<{DTYPE_TO_METAL[dtype]}>(static_cast<{DTYPE_TO_METAL[src_dtype]}>({x}))"
 
     @staticmethod
-    def constant(val: bool | float | int, dtype: torch.dtype) -> str:
+    def constant(val: Union[Union[bool, float], int], dtype: torch.dtype) -> str:
         return value_to_metal(val)
 
     @staticmethod
@@ -540,11 +540,11 @@ class MetalKernel(SIMDKernel):
     sexpr = MetalExprPrinter().doprint
     kexpr = sexpr
     headers: OrderedSet[str] = OrderedSet(["utils"])
-    multistage_reduction_entry: list[IterationRangesEntry] = []
+    multistage_reduction_entry: List[IterationRangesEntry] = []
 
     def __init__(
         self,
-        tiling: dict[str, sympy.Expr],
+        tiling: Dict[str, sympy.Expr],
         **kwargs: Any,
     ) -> None:
         super().__init__(tiling, **kwargs)
@@ -601,9 +601,9 @@ class MetalKernel(SIMDKernel):
 
     def _new_idxvar(
         self,
-        dtype: str | torch.dtype,
-        elem_count: int | None = None,
-        default_value: Any | None = None,
+        dtype: Union[str, torch.dtype],
+        elem_count: Optional[int] = None,
+        default_value: Optional[Any] = None,
         is_threadgroup: bool = True,
         bounds: ValueRanges[Any] = ValueRanges.unknown(),
     ) -> CSEVariable:
@@ -626,8 +626,8 @@ class MetalKernel(SIMDKernel):
         dtype: torch.dtype,
         src_dtype: torch.dtype,
         reduction_type: ReductionType,
-        value: CSEVariable | tuple[CSEVariable, ...],
-    ) -> CSEVariable | tuple[CSEVariable, ...]:
+        value: Union[CSEVariable, Tuple[CSEVariable, ...]],
+    ) -> Union[CSEVariable, Tuple[CSEVariable, ...]]:
         "Caching wrapper around _reduction_nocache"
         cache_key = (src_dtype, reduction_type, value)
         # Return cached reduction
@@ -642,14 +642,14 @@ class MetalKernel(SIMDKernel):
         dtype: torch.dtype,
         src_dtype: torch.dtype,
         reduction_type: ReductionType,
-        value: CSEVariable | tuple[CSEVariable, ...],
-    ) -> CSEVariable | tuple[CSEVariable, ...]:
+        value: Union[CSEVariable, Tuple[CSEVariable, ...]],
+    ) -> Union[CSEVariable, Tuple[CSEVariable, ...]]:
         """Codegen a reduction operation.
         Only sum and prod operations are somewhat reasonable optimized"""
         assert self.inside_reduction
         assert not self._load_mask
 
-        def _unwrap_helper(res3: CSEVariable) -> tuple[CSEVariable, ...]:
+        def _unwrap_helper(res3: CSEVariable) -> Tuple[CSEVariable, ...]:
             # Uwraps vec3 dtype into individual components
             return OpsWrapper._unwrap(
                 [CSEVariable(f"{res3}.{t}", res3.bounds, res3.dtype) for t in "xyz"]
@@ -1072,7 +1072,7 @@ class MetalKernel(SIMDKernel):
 
         expr_printer = self.cexpr if V.graph.cpp_wrapper else self.pexpr
 
-        def format_threads(threads: list[str], kwarg: str) -> str:
+        def format_threads(threads: List[str], kwarg: str) -> str:
             if V.graph.cpp_wrapper:
                 threads = [f"static_cast<uint64_t>({t})" for t in threads]
                 return f"{{{', '.join(threads)}}}"
@@ -1183,11 +1183,11 @@ class MetalScheduling(SIMDScheduling):
     kernel_type = MetalKernel  # type: ignore[assignment]
     _kernel_fn_counter: int = 0
 
-    def __init__(self, scheduler: Scheduler | None) -> None:
+    def __init__(self, scheduler: Optional[Scheduler]) -> None:
         super().__init__(scheduler)
 
     def define_kernel(
-        self, src_code: str, node_schedule: list[SchedulerNode], kernel: MetalKernel
+        self, src_code: str, node_schedule: List[SchedulerNode], kernel: MetalKernel
     ) -> str:
         wrapper = V.graph.wrapper_code
         if src_code in wrapper.src_to_kernel:

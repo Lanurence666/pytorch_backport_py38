@@ -2,6 +2,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/ceil_div.h>
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/cuda/CUDAContext.h>
 #include <ATen/native/BucketizationUtils.h>
 #include <ATen/native/Resize.h>
@@ -24,13 +25,12 @@ namespace {
 
 template<typename input_t>
 __device__ int64_t lower_bound(const input_t *data_ss, int64_t start, int64_t end, const input_t val, const int64_t *data_sort) {
-  // sorter gives relative ordering for ND tensors, so we need to save and add the non-updated start as an offset
-  // i.e. the second row of a 3x3 tensors starts at element 3 but sorter's second row only contains 0, 1, or 2
+  using opmath_t = at::opmath_type<input_t>;
   const int64_t orig_start = start;
   while (start < end) {
     const int64_t mid = start + ((end - start) >> 1);
     const input_t mid_val = data_sort ? data_ss[orig_start + data_sort[mid]] : data_ss[mid];
-    if (!(mid_val >= val)) {
+    if (!(static_cast<opmath_t>(mid_val) >= static_cast<opmath_t>(val))) {
       start = mid + 1;
     }
     else {
@@ -42,13 +42,12 @@ __device__ int64_t lower_bound(const input_t *data_ss, int64_t start, int64_t en
 
 template<typename input_t>
 __device__ int64_t upper_bound(const input_t *data_ss, int64_t start, int64_t end, const input_t val, const int64_t *data_sort) {
-  // sorter gives relative ordering for ND tensors, so we need to save and add the non-updated start as an offset
-  // i.e. the second row of a 3x3 tensors starts at element 3 but sorter's second row only contains 0, 1, or 2
+  using opmath_t = at::opmath_type<input_t>;
   const int64_t orig_start = start;
   while (start < end) {
     const int64_t mid = start + ((end - start) >> 1);
     const input_t mid_val = data_sort ? data_ss[orig_start + data_sort[mid]] : data_ss[mid];
-    if (!(mid_val > val)) {
+    if (!(static_cast<opmath_t>(mid_val) > static_cast<opmath_t>(val))) {
       start = mid + 1;
     }
     else {

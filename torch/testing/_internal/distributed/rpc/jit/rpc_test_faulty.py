@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
 
 
+from __future__ import annotations
+
 import torch
 import torch.distributed.rpc as rpc
 from torch import Tensor
@@ -27,7 +29,7 @@ def two_args_two_kwargs(
 
 @torch.jit.script
 def script_rpc_async_call(
-    dst_worker_name: str, args: tuple[Tensor, Tensor], kwargs: dict[str, Tensor]
+    dst_worker_name: str, args: Tuple[Tensor, Tensor], kwargs: Dict[str, Tensor]
 ):
     fut = rpc.rpc_async(dst_worker_name, two_args_two_kwargs, args, kwargs)
     ret = fut.wait()
@@ -37,8 +39,8 @@ def script_rpc_async_call(
 @torch.jit.script
 def rpc_async_call_with_timeout(
     dst_worker_name: str,
-    args: tuple[Tensor, Tensor],
-    kwargs: dict[str, Tensor],
+    args: Tuple[Tensor, Tensor],
+    kwargs: Dict[str, Tensor],
     timeout: float,
 ):
     fut = rpc.rpc_async(dst_worker_name, two_args_two_kwargs, args, kwargs, timeout)
@@ -49,8 +51,8 @@ def rpc_async_call_with_timeout(
 @torch.jit.script
 def rpc_async_call_with_timeout_future_ret(
     dst_worker_name: str,
-    args: tuple[Tensor, Tensor],
-    kwargs: dict[str, Tensor],
+    args: Tuple[Tensor, Tensor],
+    kwargs: Dict[str, Tensor],
     timeout: float,
 ):
     fut = rpc.rpc_async(dst_worker_name, two_args_two_kwargs, args, kwargs, timeout)
@@ -59,7 +61,7 @@ def rpc_async_call_with_timeout_future_ret(
 
 @torch.jit.script
 def rpc_async_call_future_ret(
-    dst_worker_name: str, args: tuple[Tensor, Tensor], kwargs: dict[str, Tensor]
+    dst_worker_name: str, args: Tuple[Tensor, Tensor], kwargs: Dict[str, Tensor]
 ):
     fut = rpc.rpc_async(dst_worker_name, two_args_two_kwargs, args, kwargs)
     return fut
@@ -76,7 +78,7 @@ def rref_to_here_with_timeout(rref_var: RRef[Tensor], timeout: float) -> Tensor:
 
 
 @torch.jit.script
-def rpc_async_with_rref_arg(dst_worker_name: str, args: tuple[RRef[Tensor]]) -> Tensor:
+def rpc_async_with_rref_arg(dst_worker_name: str, args: Tuple[RRef[Tensor]]) -> Tensor:
     fut = rpc.rpc_async(dst_worker_name, rref_to_here, args)
     ret = fut.wait()
     return ret

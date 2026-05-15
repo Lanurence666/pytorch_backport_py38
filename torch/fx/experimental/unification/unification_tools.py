@@ -4,7 +4,7 @@ import collections
 import operator
 from collections.abc import Mapping
 from functools import reduce
-from typing import TYPE_CHECKING, TypeVar
+from typing import Callable, Dict, Iterable, List, Mapping, TYPE_CHECKING, Tuple, Type, TypeVar
 
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ __all__ = [
 ]
 
 
-def _get_factory(f: Callable[..., object], kwargs: dict[str, object]) -> type:
+def _get_factory(f: Callable[..., object], kwargs: Dict[str, object]) -> type:
     factory: type = kwargs.pop("factory", dict)  # type: ignore[assignment]
     if kwargs:
         raise TypeError(
@@ -100,7 +100,7 @@ def merge_with(
 
 def valmap(
     func: Callable[[_V], _V2], d: Mapping[_K, _V], factory: type = dict
-) -> dict[_K, _V2]:
+) -> Dict[_K, _V2]:
     """Apply function to values of dictionary
 
     >>> bills = {"Alice": [20, 15, 30], "Bob": [10, 35]}
@@ -118,7 +118,7 @@ def valmap(
 
 def keymap(
     func: Callable[[_K], _K2], d: Mapping[_K, _V], factory: type = dict
-) -> dict[_K2, _V]:
+) -> Dict[_K2, _V]:
     """Apply function to keys of dictionary
 
     >>> bills = {"Alice": [20, 15, 30], "Bob": [10, 35]}
@@ -135,8 +135,8 @@ def keymap(
 
 
 def itemmap(
-    func: Callable[[tuple[_K, _V]], object], d: Mapping[_K, _V], factory: type = dict
-) -> dict[object, object]:
+    func: Callable[[Tuple[_K, _V]], object], d: Mapping[_K, _V], factory: type = dict
+) -> Dict[object, object]:
     """Apply function to items of dictionary
 
     >>> accountids = {"Alice": 10, "Bob": 20}
@@ -154,7 +154,7 @@ def itemmap(
 
 def valfilter(
     predicate: Callable[[_V], bool], d: Mapping[_K, _V], factory: type = dict
-) -> dict[_K, _V]:
+) -> Dict[_K, _V]:
     """Filter items in dictionary by value
 
     >>> iseven = lambda x: x % 2 == 0
@@ -176,7 +176,7 @@ def valfilter(
 
 def keyfilter(
     predicate: Callable[[_K], bool], d: Mapping[_K, _V], factory: type = dict
-) -> dict[_K, _V]:
+) -> Dict[_K, _V]:
     """Filter items in dictionary by key
 
     >>> iseven = lambda x: x % 2 == 0
@@ -197,8 +197,8 @@ def keyfilter(
 
 
 def itemfilter(
-    predicate: Callable[[tuple[_K, _V]], bool], d: Mapping[_K, _V], factory: type = dict
-) -> dict[_K, _V]:
+    predicate: Callable[[Tuple[_K, _V]], bool], d: Mapping[_K, _V], factory: type = dict
+) -> Dict[_K, _V]:
     """Filter items in dictionary by item
 
     >>> def isvalid(item):
@@ -224,7 +224,7 @@ def itemfilter(
 
 def assoc(
     d: Mapping[_K, _V], key: object, value: object, factory: type = dict
-) -> dict[_K, _V]:
+) -> Dict[_K, _V]:
     """Return a new dict with new key value pair
 
     New dict has d[key] set to value. Does not modify the initial dictionary.
@@ -417,7 +417,7 @@ def getter(index: object) -> Callable[..., object]:
         return operator.itemgetter(index)
 
 
-def groupby(key: object, seq: Iterable[object]) -> dict[object, list[object]]:
+def groupby(key: object, seq: Iterable[object]) -> Dict[object, List[object]]:
     """Group a collection by a key function
 
     >>> names = ["Alice", "Bob", "Charlie", "Dan", "Edith", "Frank"]
@@ -452,7 +452,7 @@ def groupby(key: object, seq: Iterable[object]) -> dict[object, list[object]]:
     d = collections.defaultdict(lambda: [].append)  # type: ignore[var-annotated]
     for item in seq:
         d[key(item)](item)
-    rv: dict[object, list[object]] = {}
+    rv: Dict[object, List[object]] = {}
     for k, v in d.items():
         rv[k] = v.__self__  # type: ignore[attr-defined]
     return rv

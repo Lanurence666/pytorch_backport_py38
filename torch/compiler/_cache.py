@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 import copy
 import dataclasses
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from collections.abc import Generator
+
 from contextlib import contextmanager
 from itertools import chain
-from typing import Any
+from typing import Any, Dict, Generator, List, Optional, Set, Tuple, Type
 
 from torch.utils._appending_byte_serializer import (
     AppendingByteSerializer,
@@ -65,10 +67,10 @@ class CacheArtifactFactory:
     Factory for creating CacheArtifact objects based on their type
     """
 
-    _artifact_types: dict[str, type[CacheArtifact]] = {}
+    _artifact_types: Dict[str, Type[CacheArtifact]] = {}
 
     @classmethod
-    def register(cls, artifact_cls: type[CacheArtifact]) -> type[CacheArtifact]:
+    def register(cls, artifact_cls: Type[CacheArtifact]) -> Type[CacheArtifact]:
         artifact_type_key = artifact_cls.type()
         if artifact_cls.type() in cls._artifact_types:
             raise AssertionError(
@@ -83,7 +85,7 @@ class CacheArtifactFactory:
         return artifact_cls
 
     @classmethod
-    def _get_artifact_type(cls, artifact_type_key: str) -> type[CacheArtifact]:
+    def _get_artifact_type(cls, artifact_type_key: str) -> Type[CacheArtifact]:
         if artifact_type_key not in cls._artifact_types:
             raise AssertionError(
                 f"Artifact of type={artifact_type_key} not registered in mega-cache artifact factory"
@@ -112,29 +114,29 @@ class CacheInfo:
     instrumentation
     """
 
-    artifacts: defaultdict[str, list[str]] = dataclasses.field(
+    artifacts: defaultdict[str, List[str]] = dataclasses.field(
         default_factory=lambda: defaultdict(list)
     )
 
     # Methods set by CacheArtifactFactory.register based on CacheArtifact.type()
     @property
-    def inductor_artifacts(self) -> list[str]:  # type: ignore[empty-body]
+    def inductor_artifacts(self) -> List[str]:  # type: ignore[empty-body]
         ...
 
     @property
-    def autotune_artifacts(self) -> list[str]:  # type: ignore[empty-body]
+    def autotune_artifacts(self) -> List[str]:  # type: ignore[empty-body]
         ...
 
     @property
-    def aot_autograd_artifacts(self) -> list[str]:  # type: ignore[empty-body]
+    def aot_autograd_artifacts(self) -> List[str]:  # type: ignore[empty-body]
         ...
 
     @property
-    def pgo_artifacts(self) -> list[str]:  # type: ignore[empty-body]
+    def pgo_artifacts(self) -> List[str]:  # type: ignore[empty-body]
         ...
 
     @property
-    def precompile_artifacts(self) -> list[str]:  # type: ignore[empty-body]
+    def precompile_artifacts(self) -> List[str]:  # type: ignore[empty-body]
         ...
 
     def add(self, artifact: CacheArtifact) -> None:
@@ -148,7 +150,7 @@ class CacheInfo:
 
 
 def _serialize_single_cache(
-    writer: BytesWriter, cls: "tuple[str, list[CacheArtifact]]"
+    writer: BytesWriter, cls: "Tuple[str, List[CacheArtifact]]"
 ) -> None:
     writer.write_str(cls[0])
     writer.write_uint64(len(cls[1]))
@@ -158,7 +160,7 @@ def _serialize_single_cache(
 
 def _deserialize_single_cache(
     reader: BytesReader,
-) -> "tuple[str, list[CacheArtifact]]":
+) -> "Tuple[str, List[CacheArtifact]]":
     artifacts = []
     artifact_type_key = reader.read_str()
     num_artifacts = reader.read_uint64()
@@ -168,7 +170,7 @@ def _deserialize_single_cache(
     return artifact_type_key, artifacts
 
 
-CacheArtifactsResult = dict[str, list[CacheArtifact]]
+CacheArtifactsResult = Dict[str, List[CacheArtifact]]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -183,7 +185,7 @@ class CacheArtifactRecorder:
     def record(self, content: Any) -> None:
         CacheArtifactManager.record_artifact(self.artifact_type, self.key, content)
 
-    def record_if_present(self, content: Any | None) -> None:
+    def record_if_present(self, content: Optional[Any]) -> None:
         if content is not None:
             self.record(content)
 
@@ -213,7 +215,7 @@ class CacheArtifactManager:
     # When serialize() is called, artifacts are transferred from _cache_artifacts to
     # internal data structure of the _serializer
     # This allows us to only pay the cost of serialization if serialize() is called
-    _serializer: AppendingByteSerializer[tuple[str, list[CacheArtifact]]] = (
+    _serializer: AppendingByteSerializer[Tuple[str, List[CacheArtifact]]] = (
         AppendingByteSerializer(serialize_fn=_serialize_single_cache)
     )
     _cache_info: CacheInfo = CacheInfo()
@@ -271,7 +273,7 @@ class CacheArtifactManager:
         return len(cls._new_cache_artifacts) != 0
 
     @classmethod
-    def serialize(cls) -> tuple[bytes, CacheInfo] | None:
+    def serialize(cls) -> Optional[Tuple[bytes, CacheInfo]]:
         """
         Converts the "mega" list into portable format
         """
@@ -297,7 +299,7 @@ class CacheArtifactManager:
         return None
 
     @staticmethod
-    def deserialize(serialized_artifacts: bytes) -> CacheArtifactsResult | None:
+    def deserialize(serialized_artifacts: bytes) -> Optional[CacheArtifactsResult]:
         """
         Converts the portable format back into CacheArtifacts
         """

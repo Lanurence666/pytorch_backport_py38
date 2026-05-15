@@ -4,13 +4,15 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+from __future__ import annotations
+
 import logging
 import multiprocessing as mp
 import os
 import signal
 import time
 from queue import Empty
-from typing import Any
+from typing import Any, Dict, List, Set, Tuple
 
 from .api import RequestQueue, TimerClient, TimerRequest, TimerServer
 
@@ -56,7 +58,7 @@ class MultiprocessingRequestQueue(RequestQueue):
     def size(self) -> int:
         return self._mp_queue.qsize()
 
-    def get(self, size, timeout: float) -> list[TimerRequest]:
+    def get(self, size, timeout: float) -> List[TimerRequest]:
         requests = []
         wait = timeout
         for _ in range(size):
@@ -88,9 +90,9 @@ class LocalTimerServer(TimerServer):
         self, mp_queue: mp.Queue, max_interval: float = 60, daemon: bool = True
     ):
         super().__init__(MultiprocessingRequestQueue(mp_queue), max_interval, daemon)
-        self._timers: dict[tuple[Any, str], TimerRequest] = {}
+        self._timers: Dict[Tuple[Any, str], TimerRequest] = {}
 
-    def register_timers(self, timer_requests: list[TimerRequest]) -> None:
+    def register_timers(self, timer_requests: List[TimerRequest]) -> None:
         for request in timer_requests:
             pid = request.worker_id
             scope_id = request.scope_id
@@ -102,14 +104,14 @@ class LocalTimerServer(TimerServer):
             else:
                 self._timers[(pid, scope_id)] = request
 
-    def clear_timers(self, worker_ids: set[int]) -> None:
+    def clear_timers(self, worker_ids: Set[int]) -> None:
         for pid, scope_id in list(self._timers.keys()):
             if pid in worker_ids:
                 self._timers.pop((pid, scope_id))
 
-    def get_expired_timers(self, deadline: float) -> dict[Any, list[TimerRequest]]:
+    def get_expired_timers(self, deadline: float) -> Dict[Any, List[TimerRequest]]:
         # pid -> [timer_requests...]
-        expired_timers: dict[Any, list[TimerRequest]] = {}
+        expired_timers: Dict[Any, List[TimerRequest]] = {}
         for request in self._timers.values():
             if request.expiration_time <= deadline:
                 expired_scopes = expired_timers.setdefault(request.worker_id, [])

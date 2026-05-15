@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Tests the performance of torch.nn.MultiheadAttention's fast path (BetterTransformer)
 vs the slow path (torch.nn.functional.multi_head_attention)

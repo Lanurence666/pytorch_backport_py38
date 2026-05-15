@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import torch
+from typing import Dict
 
 
-ONNX_DTYPE_TO_TORCH_DTYPE: dict[int, torch.dtype] = {
+ONNX_DTYPE_TO_TORCH_DTYPE: Dict[int, torch.dtype] = {
     1: torch.float32,  # FLOAT
     2: torch.uint8,  # UINT8
     3: torch.int8,  # INT8

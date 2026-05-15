@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 
 import torch
@@ -9,11 +11,12 @@ from torch._export.pass_base import (
 from torch._export.pass_infra.node_metadata import NodeMetadata
 from torch._export.pass_infra.proxy_value import ProxyValue
 from torch._ops import OpOverload
+from typing import Dict, List, Optional, Tuple
 
 
 aten = torch.ops.aten
 
-_NON_FUNCTIONAL_TO_FUNCTIONAL_SIDE_EFFECTFUL_FUNCS: dict[OpOverload, OpOverload] = {
+_NON_FUNCTIONAL_TO_FUNCTIONAL_SIDE_EFFECTFUL_FUNCS: Dict[OpOverload, OpOverload] = {
     aten.sym_constrain_range.default: aten._functional_sym_constrain_range.default,
     aten._assert_async.msg: aten._functional_assert_async.msg,
 }
@@ -44,8 +47,8 @@ class _FunctionalizeSideEffectfulOpsPass(_ExportPassBaseDeprecatedDoNotUse):
 
     def __init__(self) -> None:
         super().__init__()
-        self._dep_token: ProxyValue | None = None
-        self._next_dep_token_index: int | None = None
+        self._dep_token: Optional[ProxyValue] = None
+        self._next_dep_token_index: Optional[int] = None
 
     def call(self, graph_module: torch.fx.GraphModule) -> PassResult:
         # Early return if no non-functional assertions.
@@ -63,8 +66,8 @@ class _FunctionalizeSideEffectfulOpsPass(_ExportPassBaseDeprecatedDoNotUse):
     def call_operator(
         self,
         op: OpOverload,
-        args: tuple[Argument, ...],
-        kwargs: dict[str, Argument],
+        args: Tuple[Argument, ...],
+        kwargs: Dict[str, Argument],
         meta: NodeMetadata,
     ) -> ProxyValue:
         if op not in _NON_FUNCTIONAL_TO_FUNCTIONAL_SIDE_EFFECTFUL_FUNCS:
@@ -93,7 +96,7 @@ class _FunctionalizeSideEffectfulOpsPass(_ExportPassBaseDeprecatedDoNotUse):
 
         return self._dep_token
 
-    def output(self, results: list[Argument], meta: NodeMetadata) -> ProxyValue:
+    def output(self, results: List[Argument], meta: NodeMetadata) -> ProxyValue:
         if self._dep_token is None:
             raise AssertionError("_dep_token must not be None")
 

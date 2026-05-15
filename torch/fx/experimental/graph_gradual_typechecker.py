@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import itertools
 import operator
-from collections.abc import Callable
+
 from functools import reduce
-from typing import Any, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 from typing_extensions import ParamSpec
 
 import sympy
@@ -19,9 +21,9 @@ from torch.nn.modules.conv import Conv2d
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
-_INFERENCE_RULES: dict[Target, Callable[..., Any]] = {}
-_REFINEMENT_RULES: dict[Target, Callable[..., Any]] = {}
-_RULES: dict[Target, Callable[..., Any]] = {}
+_INFERENCE_RULES: Dict[Target, Callable[..., Any]] = {}
+_REFINEMENT_RULES: Dict[Target, Callable[..., Any]] = {}
+_RULES: Dict[Target, Callable[..., Any]] = {}
 
 __all__ = [
     "GraphTypeChecker",
@@ -59,7 +61,7 @@ __all__ = [
 ]
 
 
-# TODO: narrow t to TensorType | _DynType once Node.type is narrowed
+# TODO: narrow t to Union[TensorType, _DynType] once Node.type is narrowed
 def expand_to_tensor_dim(t: Any, n: int) -> TensorType:
     """
     Expand a type to the desired tensor dimension if possible
@@ -80,7 +82,7 @@ def expand_to_tensor_dim(t: Any, n: int) -> TensorType:
         raise TypeError(f"Cannot match the type {t}")
 
 
-def broadcast_types(t1: Any, t2: Any) -> tuple[Any, Any]:
+def broadcast_types(t1: Any, t2: Any) -> Tuple[Any, Any]:
     """
     Applies broadcasting to both given types such that they
     become consistent with each other and returns two new
@@ -405,7 +407,7 @@ def calculate_out_dimension(d_in: Any, module_instance: Any, index: int) -> Any:
         )
 
 
-# TODO: narrow params/return to TensorType | _DynType once Node.type is narrowed
+# TODO: narrow params/return to Union[TensorType, _DynType] once Node.type is narrowed
 def get_greatest_upper_bound(type1: Any, type2: Any) -> Any:
     """
     Get the most precise type that's consistent with the given types
@@ -647,7 +649,7 @@ def flatten_inference_rule(n: Node) -> Any:
 
 
 class GraphTypeChecker:
-    def __init__(self, env: dict[str, Any], traced: torch.fx.GraphModule) -> None:
+    def __init__(self, env: Dict[str, Any], traced: torch.fx.GraphModule) -> None:
         self.env = env
         self.traced = traced
 
@@ -728,12 +730,12 @@ class GraphTypeChecker:
 
 
 @register_refinement_rule(Conv2d)
-def conv_refinement_rule(n: Node) -> list[Any] | None:
+def conv_refinement_rule(n: Node) -> Optional[List[Any]]:
     """
     The equality constraints are between the first dimension of
     the input and output
     """
-    res: list[Any] = []
+    res: List[Any] = []
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
     arg_type = n.args[0].type
@@ -743,12 +745,12 @@ def conv_refinement_rule(n: Node) -> list[Any] | None:
 
 
 @register_refinement_rule(torch.nn.Linear)
-def linear_refinement_rule(n: Node) -> list[Any]:
+def linear_refinement_rule(n: Node) -> List[Any]:
     """
     The equality constraints are between the first dimension of
     the input and output
     """
-    res: list[Any] = []
+    res: List[Any] = []
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
     arg_type = n.args[0].type
@@ -759,11 +761,11 @@ def linear_refinement_rule(n: Node) -> list[Any]:
 
 @register_refinement_rule(BatchNorm2d)
 @register_refinement_rule(torch.nn.ReLU)
-def all_eq(n: Node) -> list[Any]:
+def all_eq(n: Node) -> List[Any]:
     """
     For operations where the input shape is equal to the output shape
     """
-    res: list[Any] = []
+    res: List[Any] = []
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
     arg_type = n.args[0].type
@@ -776,12 +778,12 @@ def all_eq(n: Node) -> list[Any]:
 
 @register_refinement_rule(torch.nn.AdaptiveAvgPool2d)
 @register_refinement_rule(torch.nn.MaxPool2d)
-def first_two_eq(n: Node) -> list[Any]:
+def first_two_eq(n: Node) -> List[Any]:
     """
     For operations where the first two dimensions of the input and output shape
     are equal
     """
-    res: list[Any] = []
+    res: List[Any] = []
     if not isinstance(n.args[0], Node):
         raise AssertionError(f"Expected Node, got {type(n.args[0])}")
     arg_type = n.args[0].type
@@ -794,7 +796,7 @@ def first_two_eq(n: Node) -> list[Any]:
 
 @register_refinement_rule(torch.add)
 @register_refinement_rule(operator.add)
-def element_wise_eq(n: Node) -> list[Any]:
+def element_wise_eq(n: Node) -> List[Any]:
     """
     For element-wise operations and handles broadcasting.
     Note that after applying broadcasting to the arguments
@@ -809,7 +811,7 @@ def element_wise_eq(n: Node) -> list[Any]:
     including unification) and another iteration to establish equality between the operands
     and the resulting type, requiring another round of constraint generation and unification.
     """
-    res: list[Any] = []
+    res: List[Any] = []
     if isinstance(n.args[0], Node) and isinstance(n.args[1], Node):
         arg_type1 = n.args[0].type
         arg_type2 = n.args[1].type
@@ -835,7 +837,7 @@ def element_wise_eq(n: Node) -> list[Any]:
 
 
 @register_refinement_rule(torch.flatten)
-def flatten_refinement_rule(n: Node) -> list[Any]:
+def flatten_refinement_rule(n: Node) -> List[Any]:
     """
     Generates equality constraints between the dimensions of the input and output
     that will not be involved in the flatten operation
@@ -873,7 +875,7 @@ def flatten_refinement_rule(n: Node) -> list[Any]:
 
 
 @register_algebraic_expressions_inference_rule(Conv2d)
-def conv_rule(n: Node, module_instance: Any) -> TensorType | None:
+def conv_rule(n: Node, module_instance: Any) -> Optional[TensorType]:
     """
     Represents the output in terms of an algrbraic expression w.r.t
     the input when possible

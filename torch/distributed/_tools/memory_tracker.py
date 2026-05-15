@@ -1,10 +1,12 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import operator
 import pickle
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from itertools import chain
-from typing import Any, no_type_check, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Sequence, Set, TYPE_CHECKING, no_type_check
 
 import torch
 import torch.nn as nn
@@ -73,12 +75,12 @@ class MemoryTracker:
 
     def __init__(self) -> None:
         torch._C._log_api_usage_once("torch.distributed.memory_tracker")
-        self._hooks: list[RemovableHandle] = []
-        self._operator_names: dict[str, int] = defaultdict(int)
-        self.memories_allocated: dict[int, dict[str, float]] = defaultdict()
-        self.memories_active: dict[int, dict[str, float]] = defaultdict()
-        self.memories_reserved: dict[int, dict[str, float]] = defaultdict()
-        self._markers: dict[str, int] = defaultdict(int)
+        self._hooks: List[RemovableHandle] = []
+        self._operator_names: Dict[str, int] = defaultdict(int)
+        self.memories_allocated: Dict[int, Dict[str, float]] = defaultdict()
+        self.memories_active: Dict[int, Dict[str, float]] = defaultdict()
+        self.memories_reserved: Dict[int, Dict[str, float]] = defaultdict()
+        self._markers: Dict[str, int] = defaultdict(int)
         self._cur_module_name: str = ""
         self._op_index: int = 0
         self._num_alloc_retries: int = 0
@@ -139,7 +141,7 @@ class MemoryTracker:
 
         The number of the top operators can be configured.
         """
-        op_diff: dict[str, float] = defaultdict(float)
+        op_diff: Dict[str, float] = defaultdict(float)
         op_name, previous_allocated_memory = self.memories_allocated[0]
         for i in range(1, self._op_index):
             op_name, current_allocated_memory = self.memories_allocated[i]

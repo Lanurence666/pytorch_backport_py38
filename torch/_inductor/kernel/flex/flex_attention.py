@@ -1,14 +1,14 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Triton Implementation of the flex_attention Kernel"""
 
-from __future__ import annotations
 
 import logging
 import math
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, cast, TYPE_CHECKING
+from typing import Any, Dict, List, Sequence, TYPE_CHECKING, Tuple, Union, cast
 
 import sympy
 
@@ -35,7 +35,6 @@ from .common import (
     infer_dense_strides,
     load_flex_template,
     maybe_realize,
-    realize_captures_for_cutedsl,
     set_head_dim_values,
     SubgraphResults,
 )
@@ -62,8 +61,8 @@ Expr = sympy.Expr
 
 
 def _sanitize_kernel_options_for_triton(
-    kernel_options: dict[str, Any],
-) -> tuple[dict[str, Any], _Backend]:
+    kernel_options: Dict[str, Any],
+) -> Tuple[Dict[str, Any], _Backend]:
     """We always strip quotes around str values, we only need this in lowering, so we pop it here
     to avoid passing to triton constexpr dict
     """
@@ -115,7 +114,7 @@ def flex_attention(
     subgraph,
     block_mask,
     scale,
-    kernel_options: dict[str, Any],
+    kernel_options: Dict[str, Any],
     score_mod_other_buffers,
     mask_mod_other_buffers,
 ):
@@ -180,10 +179,6 @@ def flex_attention(
                 "Workarounds: use BACKEND='TRITON', compile with dynamic=False, or pass the "
                 "value as a tensor on device instead of capturing a Python scalar."
             )
-
-    if backend == "FLASH":
-        score_mod_other_buffers = realize_captures_for_cutedsl(score_mod_other_buffers)
-        mask_mod_other_buffers = realize_captures_for_cutedsl(mask_mod_other_buffers)
 
     placeholder_inps = [
         create_placeholder(name, dtype, query.get_device())
@@ -379,11 +374,11 @@ def flex_attention(
 
     set_head_dim_values(kernel_options, qk_head_dim, v_head_dim, V.graph.sizevars)
 
-    choices: list[Any] = []
+    choices: List[Any] = []
 
     dtype = query.get_dtype()
     head_dim = V.graph.sizevars.guard_int(query.get_size()[-1])
-    configs: list[FlexConfig] = V.choices.get_flex_attention_fwd_configs(
+    configs: List[FlexConfig] = V.choices.get_flex_attention_fwd_configs(
         head_dim, dtype, query.get_device().type
     )
 
@@ -576,9 +571,9 @@ class JointOutputResult:
     """Results from processing joint outputs."""
 
     grad_input: ComputedBuffer
-    captured_grads_compute: list[ComputedBuffer]
-    captured_grads: list[TensorBox | None]
-    mutated_grads: list[TensorBox]
+    captured_grads_compute: List[ComputedBuffer]
+    captured_grads: Union[List[TensorBox, None]]
+    mutated_grads: List[TensorBox]
 
 
 def process_joint_outputs(
@@ -703,10 +698,6 @@ def flex_attention_backward(*args, **kwargs):
     )
 
     kernel_options, backend = _sanitize_kernel_options_for_triton(kernel_options)
-    if backend == "FLASH":
-        score_mod_other_buffers = realize_captures_for_cutedsl(score_mod_other_buffers)
-        mask_mod_other_buffers = realize_captures_for_cutedsl(mask_mod_other_buffers)
-
     # Add check for mixed dtypes
     if query.dtype != key.dtype or query.dtype != value.dtype:
         raise ValueError(
@@ -906,11 +897,11 @@ def flex_attention_backward(*args, **kwargs):
     SPARSE_Q_BLOCK_SIZE = V.graph.sizevars.guard_int(SPARSE_Q_BLOCK_SIZE)
     SPARSE_KV_BLOCK_SIZE = V.graph.sizevars.guard_int(SPARSE_KV_BLOCK_SIZE)
 
-    choices: list[Any] = []
+    choices: List[Any] = []
 
     dtype = query.get_dtype()
     head_dim = V.graph.sizevars.guard_int(query.get_size()[-1])
-    configs: list[FlexBwDConfig] = V.choices.get_flex_attention_bwd_configs(
+    configs: List[FlexBwDConfig] = V.choices.get_flex_attention_bwd_configs(
         head_dim, dtype, query.get_device().type
     )
 
@@ -1080,7 +1071,7 @@ def get_bwd_subgraph_outputs(
     subgraph_buffer: SubgraphResults,
     mask_graph_buffer: SubgraphResults,
     joint_outputs: JointOutputResult,
-) -> list[ComputedBuffer | TensorBox | None]:
+) -> Union[List[ComputedBuffer, TensorBox, None]]:
     subgraph_buffer = (
         subgraph_buffer if isinstance(subgraph_buffer, Sequence) else [subgraph_buffer]
     )

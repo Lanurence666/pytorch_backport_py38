@@ -5,7 +5,7 @@ import dataclasses
 import re
 import sys
 from itertools import count, zip_longest
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast, overload
 from typing_extensions import Self
 
 import sympy
@@ -26,7 +26,6 @@ from ..ir import (
 )
 from ..utils import (
     cache_on_self,
-    DeferredLineBase,
     get_gpu_type,
     GPU_ALIGN_BYTES,
     IndentedBuffer,
@@ -67,7 +66,7 @@ TRITON_SIGNATURE_TO_CPP = {
 }
 
 
-def signature_is_tma_desc(sig: str | None) -> bool:
+def signature_is_tma_desc(sig: Optional[str]) -> bool:
     """Check if a Triton signature represents a TMA descriptor."""
     if not sig:
         return False
@@ -78,7 +77,7 @@ def signature_is_tma_desc(sig: str | None) -> bool:
     return False
 
 
-def _unpack_tma_descriptor_args(var_name: str, sig_type: str) -> list[str]:
+def _unpack_tma_descriptor_args(var_name: str, sig_type: str) -> List[str]:
     """Unpack a StableTMADescriptor into kernel launch args.
 
     Given a variable name holding a StableTMADescriptor and its tensordesc<...>
@@ -96,18 +95,6 @@ def _unpack_tma_descriptor_args(var_name: str, sig_type: str) -> list[str]:
     return result
 
 
-class _LazyTritonCompileKickoffLine(DeferredLineBase):
-    def __init__(self, lazy_kernel_names: list[str], line: str):
-        super().__init__(line)
-        self.lazy_kernel_names = lazy_kernel_names
-
-    def __call__(self) -> str | None:
-        return self.line if self.lazy_kernel_names else None
-
-    def _new_line(self, line: str) -> Self:
-        return _LazyTritonCompileKickoffLine(self.lazy_kernel_names, line)
-
-
 @dataclasses.dataclass
 class DeferredTritonCallWrapper:
     """
@@ -118,14 +105,14 @@ class DeferredTritonCallWrapper:
 
     wrapper_name: str
     kernel_name: str
-    kernel_name_to_body: dict[str, str]
-    arg_types: list[Any]
-    triton_meta: dict[str, Any] | None = None
-    inductor_meta: dict[str, Any] | None = None
-    tma_tensor_args: dict[str, str] = dataclasses.field(default_factory=dict)
+    kernel_name_to_body: Dict[str, str]
+    arg_types: List[Any]
+    triton_meta: Optional[Dict[str, Any]] = None
+    inductor_meta: Optional[Dict[str, Any]] = None
+    tma_tensor_args: Dict[str, str] = dataclasses.field(default_factory=dict)
 
     @cache_on_self
-    def _get_tma_args(self) -> dict[str, str]:
+    def _get_tma_args(self) -> Dict[str, str]:
         """Get mapping of TMA descriptor arg names to their signature types."""
         triton_meta = self.triton_meta or {}
         signature = triton_meta.get("signature", {})
@@ -142,7 +129,7 @@ class DeferredTritonCallWrapper:
         }
 
     def _get_cpp_param_type(
-        self, name: str, arg_type: Any, signature: dict[str, str] | None = None
+        self, name: str, arg_type: Any, signature: Optional[Dict[str, str]] = None
     ) -> str:
         """Get the C++ parameter declaration for a given arg type."""
         if isinstance(arg_type, (torch_dtype, UnwrapUnspecArg)):
@@ -164,9 +151,9 @@ class DeferredTritonCallWrapper:
         self,
         prefix: IndentedBuffer,
         wrapper: CppWrapperGpu,
-        arg_names: list[str],
-        arg_types: list[Any] | None = None,
-        signature: dict[str, str] | None = None,
+        arg_names: List[str],
+        arg_types: Optional[List[Any]] = None,
+        signature: Optional[Dict[str, str]] = None,
     ) -> None:
         """Write the wrapper function signature including template and parameters."""
         if arg_types is None:
@@ -267,7 +254,7 @@ class DeferredTritonCallWrapper:
                 params[get_cpp_wrapper_cubin_path_name()]
             )
 
-    def _resolve_lazy_arg_names(self) -> tuple[list[str], list[str]]:
+    def _resolve_lazy_arg_names(self) -> Tuple[List[str], List[str]]:
         """Compute wrapper and kernel arg names from triton_meta signature.
 
         Returns (wrapper_arg_names, kernel_arg_names) where:
@@ -383,9 +370,9 @@ class DeferredTritonCallWrapper:
         self,
         prefix: IndentedBuffer,
         call_args_str: str,
-        kernel_arg_names: list[str],
+        kernel_arg_names: List[str],
         tma_arg_names: OrderedSet[str],
-        signature: dict[str, str],
+        signature: Dict[str, str],
     ) -> str:
         """Unpack TMA descriptor args into kernel launch args."""
         for arg_name in kernel_arg_names:
@@ -438,8 +425,8 @@ class DeferredTritonCallWrapper:
         self,
         prefix: IndentedBuffer,
         wrapper: CppWrapperGpu,
-        wrapper_arg_names: list[str],
-        kernel_arg_names: list[str],
+        wrapper_arg_names: List[str],
+        kernel_arg_names: List[str],
     ) -> None:
         """Generate kernel launch code for lazy-compiled kernels."""
         kernel_name = self.kernel_name
@@ -533,7 +520,7 @@ class DeferredTritonCallWrapper:
         # Track which args need scalar extraction for the autotune call.
         # UnwrapUnspecArg args are 0-dim tensors in C++ that Triton expects
         # as Python scalars; we use codegen_tensor_item to extract them.
-        scalar_extractions: list[tuple[str, str, torch_dtype]] = []
+        scalar_extractions: List[Tuple[str, str, torch_dtype]] = []
         for idx, name in enumerate(wrapper_arg_names[:num_autotune_args]):
             if name in tma_signature_types:
                 autotune_arg_list.append(f"_tma_tensor_{name}")
@@ -580,8 +567,8 @@ class DeferredTritonCallWrapper:
     def generate_grid(
         self,
         prefix: IndentedBuffer,
-        inductor_meta: dict[str, Any],
-        params: dict[str, Any],
+        inductor_meta: Dict[str, Any],
+        params: Dict[str, Any],
     ):
         from ..runtime.triton_heuristics import GridExpr
 
@@ -824,17 +811,17 @@ class CppWrapperGpu(CppWrapperCpu):
         self.device_codegen = get_device_op_overrides(self.device)
         super().__init__()
         self.grid_id = count()
-        self._kernel_name_to_body: dict[str, str] = {}
-        self._triton_call_wrappers: dict[str, DeferredTritonCallWrapper] = {}
+        self._kernel_name_to_body: Dict[str, str] = {}
+        self._triton_call_wrappers: Dict[str, DeferredTritonCallWrapper] = {}
         self.autotune_input_prefix = "_REAL_AUTOTUNE_INPUT"
-        self._lazy_kernel_names: list[str] = []
+        self._lazy_kernel_names: List[str] = []
 
     @staticmethod
     def create(
         is_subgraph: bool,
-        subgraph_name: str | None,
-        parent_wrapper: PythonWrapperCodegen | None,
-        partition_signatures: GraphPartitionSignature | None = None,
+        subgraph_name: Optional[str],
+        parent_wrapper: Optional[PythonWrapperCodegen],
+        partition_signatures: Optional[GraphPartitionSignature] = None,
     ):
         # TODO - support subgraph codegen by lifting functions. Check the
         # comment at CppWrapperCpu `codegen_subgraph` function.
@@ -912,9 +899,9 @@ class CppWrapperGpu(CppWrapperCpu):
         self,
         kernel_name: str,
         kernel_body: str,
-        metadata: str | None = None,
+        metadata: Optional[str] = None,
         gpu: bool = True,
-        cpp_definition: str | None = None,
+        cpp_definition: Optional[str] = None,
     ):
         if gpu:
             self._kernel_name_to_body[kernel_name] = kernel_body
@@ -932,13 +919,6 @@ class CppWrapperGpu(CppWrapperCpu):
         with dynamo_timed("CppWrapperGpu.generate", log_pt2_compile_event=True):
             return super().generate(is_inference)
 
-    def _codegen_entry_impl_prologue(self):
-        self.prefix.writeline(
-            _LazyTritonCompileKickoffLine(
-                self._lazy_kernel_names, "ensure_triton_kernel_compiles_started();"
-            )
-        )
-
     def finalize_prefix(self):
         """Define the triton kernels now that autotuning is finished"""
         old_prefix = self.prefix  # new content should go at start of prefix
@@ -951,33 +931,28 @@ class CppWrapperGpu(CppWrapperCpu):
             self.prefix.writeline("\n")
             kernel.generate(self)
 
+        # Generate parallel kernel compilation initialization function
         if self._lazy_kernel_names:
-            start_compile_body = (
-                "loadLazyCompileFuncs();\n"
-                "    _module_pending_kernels = PyDict_New();\n"
-                '    AOTI_TORCH_CHECK(_module_pending_kernels, "Failed to create pending kernels dict");\n'
-                "    "
-                + "\n    ".join(
-                    f'startKernelCompile(_module_pending_kernels, "{name}", {name}_source);'
-                    for name in self._lazy_kernel_names
-                )
+            start_compile_calls = "\n    ".join(
+                f'startKernelCompile(_module_pending_kernels, "{name}", {name}_source);'
+                for name in self._lazy_kernel_names
             )
-            self.include_extra_header("mutex")
             self.prefix.splice(
                 f"""\
-// Start parallel compilation of all Triton kernels.
+// Start parallel compilation of all Triton kernels
 static inline void start_all_triton_kernel_compiles() {{
-    {start_compile_body}
+    loadLazyCompileFuncs();
+    _module_pending_kernels = PyDict_New();
+    AOTI_TORCH_CHECK(_module_pending_kernels, "Failed to create pending kernels dict");
+    {start_compile_calls}
 }}
 
-// inductor_entry_impl calls this on every forward;
-// std::call_once makes the first call do the work.
-static std::once_flag _triton_kernel_compile_init_flag;
-static inline void ensure_triton_kernel_compiles_started() {{
-    std::call_once(_triton_kernel_compile_init_flag, [] {{
+// Static initializer to start kernel compilation on module load
+static struct TritonKernelCompileInit {{
+    TritonKernelCompileInit() {{
         start_all_triton_kernel_compiles();
-    }});
-}}
+    }}
+}} __triton_kernel_compile_init;
 """
             )
 
@@ -1070,12 +1045,12 @@ static inline void ensure_triton_kernel_compiles_started() {{
 
     def generate_args_decl(
         self,
-        code: IndentedBuffer | Self,
+        code: Union[IndentedBuffer, Self],
         call_args,
         arg_types,
         arg_signatures,
         is_triton_kernel=True,
-        scratch_spaces: dict[str, int] | None = None,
+        scratch_spaces: Optional[Dict[str, int]] = None,
     ):
         """
         Generates any declarations of args to pass into a kernel call, and then returns the arg names.
@@ -1091,7 +1066,7 @@ static inline void ensure_triton_kernel_compiles_started() {{
                           calls to triton kernels will have an additional global scratch space
                           arg injected at the front of the arg list.
         """
-        new_args: list[str] = []
+        new_args: List[str] = []
 
         def process_tma_stable_arg(arg, arg_type, arg_signature, var_name):
             # [Note: AOTI TMA Stable handling]
@@ -1259,7 +1234,7 @@ static inline void ensure_triton_kernel_compiles_started() {{
             )
 
             # For lazy compile mode with TMA, extract underlying tensor names
-            tma_tensor_args: dict[str, str] = {}
+            tma_tensor_args: Dict[str, str] = {}
             is_lazy_compile = (
                 not V.graph.aot_mode and config.triton.autotune_at_compile_time is False
             )
@@ -1321,8 +1296,8 @@ static inline void ensure_triton_kernel_compiles_started() {{
             self.writeline(f"kernels.{kernel_name}({call_args_str}, {stream});")
 
     def prepare_triton_wrapper_args(
-        self, call_args: list[Any], arg_types: list[Any]
-    ) -> tuple[list[Any], list[Any]]:
+        self, call_args: List[Any], arg_types: List[Any]
+    ) -> Tuple[List[Any], List[Any]]:
         assert len(call_args) == len(arg_types), (call_args, arg_types)
         new_args = []
         new_args_types = []

@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import base64
 import io
 import json
@@ -10,7 +12,7 @@ import sys
 import warnings
 from functools import lru_cache
 from itertools import groupby
-from typing import Any
+from typing import Any, Dict, List, Set, Type
 
 
 cache = lru_cache(None)
@@ -27,7 +29,7 @@ def _frame_fmt(f, full_filename=False):
     return f"{fname}:{i}:{func}"
 
 
-@cache
+@lru_cache(maxsize=None)
 def _frame_filter(name, filename):
     omit_functions = [
         "unwind::unwind",
@@ -539,7 +541,7 @@ def _profile_to_snapshot(profile):
                 allocation_stacks[key] = python_parents
 
     device_count = torch.cuda.device_count()
-    snapshot: dict[str, list[Any]] = {
+    snapshot: Dict[str, List[Any]] = {
         "device_traces": [[] for _ in range(device_count + 1)],
         "segments": [
             {

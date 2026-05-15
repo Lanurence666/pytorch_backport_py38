@@ -6,21 +6,21 @@ __all__ = ["InputObserver"]
 import contextlib
 import inspect
 import time
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import torch
 from torch.onnx._internal.exporter import _onnx_program
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    
 
     import onnxruntime as ort
 
 
 def _flatten_unflatten_for_dynamic_shapes(
     obj: Any,
-    change_function: Callable[[torch.Tensor], Any] | None = None,
+    change_function: Callable[[torch.Optional[Tensor], Any]] = None
 ) -> Any:
     """Returns the object in a different structure similar to what
     the definition of the dynamic shapes should use.
@@ -70,8 +70,8 @@ def _flatten_unflatten_for_dynamic_shapes(
 
 
 def _infer_dynamic_dimensions(
-    shape_list: Sequence[tuple[int, ...]], set_batch_dimension: bool = False
-) -> list[int]:
+    shape_list: Sequence[Tuple[int, ...]], set_batch_dimension: bool = False
+) -> List[int]:
     """Returns the list of dynamic dimensions given a list of shapes
     corresponding to the same tensor.
 
@@ -118,16 +118,16 @@ class InputCandidate:
 
     def __init__(
         self,
-        args: tuple[Any, ...],
-        kwargs: dict[str, Any],
+        args: Tuple[Any, ...],
+        kwargs: Dict[str, Any],
         clone: bool,
-        cst_kwargs: dict[str, int | str | float | bool],
+        cst_kwargs: Union[Dict[str, Union[int, str], Union[float, bool]]],
     ):
         self.args = args
         self.kwargs = kwargs
         self.flat_list, self.spec = torch.utils._pytree.tree_flatten((args, kwargs))
-        self._position_to_args_kwargs: list[int | str] | None = None
-        self._n_tensors_for_args_kwargs: dict[int | str, int] | None = None
+        self._position_to_args_kwargs: Union[List[int, str], None] = None
+        self._n_tensors_for_args_kwargs: Union[Dict[int, str, int], None] = None
         self.cst_kwargs = cst_kwargs.copy()
 
         if clone:
@@ -139,8 +139,8 @@ class InputCandidate:
                 self.flat_list, self.spec
             )
 
-        self.aligned_spec: torch.utils._pytree.PyTreeSpec | None = None
-        self.aligned_flat_list: list[torch.Tensor | None] | None = None
+        self.aligned_spec: Optional[torch.utils._pytree.PyTreeSpec] = None
+        self.aligned_flat_list: Union[List[torch.Tensor, None], None] = None
 
     def __str__(self) -> str:
         return (
@@ -160,12 +160,12 @@ class InputCandidate:
             f"kwargs=#{len(self.kwargs)}{{...}}, cst_kwargs={self.cst_kwargs})"
         )
 
-    def build_mappings(self) -> list[int | str]:
+    def build_mappings(self) -> List[Union[int, str]]:
         if self._position_to_args_kwargs is not None:
             return self._position_to_args_kwargs
         self._n_tensors_for_args_kwargs = {}
 
-        flat_index_to_args: list[int | str] = []
+        flat_index_to_args: List[Union[int, str]] = []
         for index_args, a in enumerate(self.args):
             size = len(torch.utils._pytree.tree_flatten(a)[0])
             self._n_tensors_for_args_kwargs[index_args] = size
@@ -179,7 +179,7 @@ class InputCandidate:
         return self._position_to_args_kwargs
 
     @property
-    def position_to_args_kwargs(self) -> list[int | str]:
+    def position_to_args_kwargs(self) -> List[Union[int, str]]:
         """Returns the corresponding args or kwargs
         for every tensor in the flattened inputs.
         """
@@ -189,7 +189,7 @@ class InputCandidate:
         return self._position_to_args_kwargs
 
     @property
-    def n_tensors_for_args_kwargs(self) -> dict[int | str, int]:
+    def n_tensors_for_args_kwargs(self) -> Dict[Union[int, str], int]:
         """Returns the number of flat tensors in every args or kwargs."""
         if self._n_tensors_for_args_kwargs is None:
             self.build_mappings()
@@ -198,7 +198,7 @@ class InputCandidate:
 
     def _set_aligned_flat_list(
         self,
-        aligned_flat_list: list[torch.Tensor | None],
+        aligned_flat_list: List[Optional[torch.Tensor]],
         aligned_spec: torch.utils._pytree.PyTreeSpec,
     ):
         self.aligned_flat_list = aligned_flat_list
@@ -207,8 +207,8 @@ class InputCandidate:
     def align_with(
         self,
         best_candidate: InputCandidate,
-        captured_inputs: dict[int | str, int],
-        signature_names: list[str],
+        captured_inputs: Dict[Union[int, str], int],
+        signature_names: List[str],
     ):
         """Two candidates are considered as aligned if after being flattened
         if they have the same number of tensors (None allowed)."""
@@ -303,29 +303,29 @@ class InputObserverInfo:
 
     def __init__(
         self,
-        signature_names: list[str],
-        default_values: dict[str, int | bool | str | float],
-        value_if_missing: dict[str | int, Any],
-        args_name_and_position: tuple[str, int] | None,
-        kwargs_name: str | None,
+        signature_names: List[str],
+        default_values: Union[Dict[str, Union[int, bool], Union[str, float]]],
+        value_if_missing: Dict[Union[str, int], Any],
+        args_name_and_position: Optional[Tuple[str, int]],
+        kwargs_name: Optional[str],
     ):
         self.default_values = default_values
         self.value_if_missing = value_if_missing
-        self.inputs: list[InputCandidate] = []
-        self.outputs_specs: list[torch.utils._pytree.PyTreeSpec] = []
-        self.flat_outputs: list[list[torch.Tensor | None]] = []
-        self.latencies: list[float] = []
+        self.inputs: List[InputCandidate] = []
+        self.outputs_specs: List[torch.utils._pytree.PyTreeSpec] = []
+        self.flat_outputs: List[List[Optional[torch.Tensor]]] = []
+        self.latencies: List[float] = []
         self.args_name_and_position = args_name_and_position
         self.kwargs_name = kwargs_name
         self.signature_names = signature_names
-        self._best_candidate: InputCandidate | None = None
-        self._captured_inputs: dict[int | str, int] | None = None
+        self._best_candidate: Optional[InputCandidate] = None
+        self._captured_inputs: Union[Dict[int, str, int], None] = None
 
     def __len__(self) -> int:
         """Returns the number of collected set of inputs/outputs."""
         return len(self.inputs)
 
-    def add_inputs(self, args: tuple[Any, ...], kwargs: dict[str, Any]):
+    def add_inputs(self, args: Tuple[Any, ...], kwargs: Dict[str, Any]):
         """Stores one set of inputs. They are deepcopied.
 
         Args:
@@ -406,7 +406,7 @@ class InputObserverInfo:
         if self._best_candidate is None or len(self._best_candidate) < len(candidate):
             self._best_candidate = candidate
 
-    def add_outputs(self, res: torch.Tensor | tuple[torch.Tensor, ...], latency: float):
+    def add_outputs(self, res: Union[torch.Tensor, Tuple[torch.Tensor, ...]], latency: float):
         """Stores outputs. They are deepcopied."""
         flat_res, spec = torch.utils._pytree.tree_flatten(res)
         self.outputs_specs.append(spec)
@@ -446,9 +446,9 @@ class InputObserverInfo:
 
     def infer_dynamic_shapes(
         self,
-        set_batch_dimension_for: set[int | str] | bool | None = None,
+        set_batch_dimension_for: Union[Set[int, str], bool] | None = None,
         return_flat: bool = False,
-    ) -> tuple[dict[int, Any] | None, ...] | dict[str, dict[int, Any] | None]:
+    ) -> Optional[Tuple[Dict[int, Any]], ...] | Optional[Dict[str, Dict[int, Any]]]:
         """Infers dynamic shapes based on the collected tensors.
         Most of the time, models do support a batch dimension
         but this batch dimension has the same value for every input sample.
@@ -457,7 +457,7 @@ class InputObserverInfo:
         set of inputs referenced by their name (str) or their position (int).
 
         Args:
-            set_batch_dimension_for (set[int | str] | bool | None): Set of input identifiers,
+            set_batch_dimension_for (Union[Set[int, str], bool] | None): Set of input identifiers,
                 by name (``str``) or position (``int``), for which the first dimension
                 should be treated as a dynamic batch dimension. If ``None`` or empty,
                 no additional batch dimensions are marked as dynamic.
@@ -642,15 +642,15 @@ class InputObserverInfo:
 
     def infer_arguments(
         self,
-        index_or_candidate: InputCandidate | int | None = None,
+        index_or_candidate: Optional[Union[InputCandidate, int]] = None,
         /,
         flat: bool = False,
         as_args_kwargs: bool = False,
     ) -> (
-        list[torch.Tensor | None]
-        | tuple[torch.Tensor, ...]
-        | dict[str, torch.Tensor]
-        | tuple[list[torch.Tensor] | tuple[torch.Tensor, ...], dict[str, torch.Tensor]]
+        List[Optional[torch.Tensor]]
+        | Tuple[torch.Tensor, ...]
+        | Dict[str, torch.Tensor]
+        | Union[Tuple[List[torch.Tensor], Tuple[torch.Tensor, ...]], Dict[str, torch.Tensor]]
     ):
         """Infers arguments based on the collected tensors.
 
@@ -783,7 +783,7 @@ class InputObserverInfo:
         # Generic case.
         return tuple(args), kwargs
 
-    def _post_process_for_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+    def _post_process_for_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """:func:`torch.export.export` requires dynamic shapes and keyword arguments
         that are not part of the explicit function signature but are collected via
         ``**<kwargs_name>`` to be wrapped under the corresponding parameter name
@@ -896,14 +896,14 @@ class InputObserver:
     .. versionadded:: 2.11.0
     """
 
-    def __init__(self, value_if_missing: dict[str | int, Any] | None = None):
-        self.info: InputObserverInfo | None = None
+    def __init__(self, value_if_missing: Union[Dict[str, int, Any], None] = None):
+        self.info: Optional[InputObserverInfo] = None
         self.value_if_missing = value_if_missing or {}
 
     def _replaced_method(
         self,
         *args,
-        _captured_method: Callable | None = None,
+        _captured_method: Optional[Callable] = None,
         _store_n_calls: int = 3,
         **kwargs,
     ):
@@ -997,8 +997,8 @@ class InputObserver:
             raise RuntimeError("No inputs were captured.")
 
     def infer_dynamic_shapes(
-        self, set_batch_dimension_for: set[int | str] | bool | None = None
-    ) -> tuple[dict[int, Any] | None, ...] | dict[str, dict[int, Any] | None]:
+        self, set_batch_dimension_for: Union[Set[int, str], bool] | None = None
+    ) -> Optional[Tuple[Dict[int, Any]], ...] | Optional[Dict[str, Dict[int, Any]]]:
         """
         Infers dynamic shapes. Most of the time, models do support a batch dimension
         but this batch dimension has the same value for every input sample.
@@ -1007,7 +1007,7 @@ class InputObserver:
         set of inputs referenced by their name (str) or their position (int).
 
         Args:
-            set_batch_dimension_for (set[int | str] | bool | None): A set of input
+            set_batch_dimension_for (Union[Set[int, str], bool] | None): A set of input
                 identifiers (by position as ``int`` or by name as ``str``) for
                 which the first dimension should be treated as a dynamic batch
                 dimension. If ``None``, no dimensions are explicitly marked as
@@ -1022,14 +1022,14 @@ class InputObserver:
 
     def infer_arguments(
         self,
-        index_or_args_or_kwargs: tuple[Any] | dict[str, Any] | int | None = None,
+        index_or_args_or_kwargs: Union[Tuple[Any], Dict[str, Any]] | Optional[int] = None,
         flat: bool = False,
         as_args_kwargs: bool = False,
     ) -> (
-        list[torch.Tensor | None]
-        | tuple[torch.Tensor, ...]
-        | dict[str, torch.Tensor]
-        | tuple[list[torch.Tensor] | tuple[torch.Tensor, ...], dict[str, torch.Tensor]]
+        List[Optional[torch.Tensor]]
+        | Tuple[torch.Tensor, ...]
+        | Dict[str, torch.Tensor]
+        | Union[Tuple[List[torch.Tensor], Tuple[torch.Tensor, ...]], Dict[str, torch.Tensor]]
     ):
         """Infers arguments based on the collected tensors.
 
@@ -1056,7 +1056,7 @@ class InputObserver:
         """
         self._check_captured()
         assert self.info is not None  # noqa: S101
-        index_or_candidate: int | InputCandidate | None = None
+        index_or_candidate: Optional[Union[int, InputCandidate]] = None
         if index_or_args_or_kwargs is None or isinstance(index_or_args_or_kwargs, int):
             index_or_candidate = index_or_args_or_kwargs
         else:
@@ -1105,10 +1105,10 @@ class InputObserver:
         rtol: float = 0.1,
         progress_bar: bool = False,
         initializer: Callable[
-            [str | bytes], ort.InferenceSession
+            [Union[str, bytes]], ort.InferenceSession
         ] = _onnx_program._ort_session_initializer,
         skip_none: bool = True,
-    ) -> list[dict[str, str | int | float | bool]]:
+    ) -> Union[List[Dict[str, Union[str, int], Union[float, bool]]]]:
         """Computes the discrepancies between the saved inputs and outputs
         with the saved onnx model.
 
@@ -1145,7 +1145,7 @@ class InputObserver:
             loop = tqdm(io_sets)
         else:
             loop = io_sets
-        data: list[dict[str, Any]] = []
+        data: List[Dict[str, Any]] = []
         for inputs, outputs, latency in loop:
             assert inputs.aligned_flat_list is not None  # noqa: S101
             if len(input_names) != len(inputs.aligned_flat_list):
@@ -1168,7 +1168,7 @@ class InputObserver:
 
             duration = time.perf_counter() - begin
             if error:
-                diff: dict[str, str | int | float | bool] = dict(
+                diff: Union[Dict[str, Union[str, int], Union[float, bool]]] = dict(
                     error=error, SUCCESS=False
                 )
             elif ort_outputs is None or len(outputs) != len(ort_outputs):

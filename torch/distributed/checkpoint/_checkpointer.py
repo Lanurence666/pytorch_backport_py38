@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from concurrent.futures import Future
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 import torch.distributed as dist
 import torch.distributed.checkpoint.state_dict_loader as loader
@@ -13,7 +15,7 @@ from torch.distributed.checkpoint.storage import (
 )
 
 
-__all__: list[str] = []
+__all__: List[str] = []
 
 
 class _Checkpointer:
@@ -34,11 +36,11 @@ class _Checkpointer:
         storage_writer: StorageWriter,
         storage_reader: StorageReader,
         *,
-        process_group: dist.ProcessGroup | None = None,
+        process_group: Optional[dist.ProcessGroup]= None,
         coordinator_rank: int = 0,
         no_dist: bool = False,
-        load_planner: LoadPlanner | None = None,
-        save_planner: SavePlanner | None = None,
+        load_planner: Optional[LoadPlanner]= None,
+        save_planner: Optional[SavePlanner]= None,
     ):
         """Initializes the Checkpointer instance.
 
@@ -93,7 +95,7 @@ class _Checkpointer:
             raise AssertionError("response should be a Future instance")
         return response
 
-    def load(self, state_dict: dict[str, Any]) -> None:
+    def load(self, state_dict: Dict[str, Any]) -> None:
         """Calls :py:meth: `torch.distributed.state_dict_loader.load`. Utilizing values passed during initialization."""
         loader.load(
             state_dict,

@@ -1,6 +1,7 @@
 # Owner(s): ["module: sparse"]
 # ruff: noqa: F841
 
+from __future__ import annotations
 import torch
 import itertools
 import functools

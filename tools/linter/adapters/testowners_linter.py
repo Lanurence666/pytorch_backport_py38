@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Test ownership was introduced in https://github.com/pytorch/pytorch/issues/66232.
 
@@ -9,13 +10,12 @@ has valid ownership information in a comment header. Valid means:
   - Each owner label starts with "module: " or "oncall: " or is in ACCEPTABLE_OWNER_LABELS
 """
 
-from __future__ import annotations
 
 import argparse
 import json
 import urllib.error
 from enum import Enum
-from typing import Any, NamedTuple
+from typing import Any, List, NamedTuple, Union
 from urllib.request import urlopen
 
 
@@ -30,15 +30,15 @@ class LintSeverity(str, Enum):
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 def get_pytorch_labels() -> Any:
@@ -65,8 +65,8 @@ GLOB_EXCEPTIONS = ["**/test/run_test.py"]
 
 
 def check_labels(
-    labels: list[str], filename: str, line_number: int
-) -> list[LintMessage]:
+    labels: List[str], filename: str, line_number: int
+) -> List[LintMessage]:
     lint_messages = []
     for label in labels:
         if label not in PYTORCH_LABELS:
@@ -111,7 +111,7 @@ def check_labels(
     return lint_messages
 
 
-def check_file(filename: str) -> list[LintMessage]:
+def check_file(filename: str) -> List[LintMessage]:
     lint_messages = []
     has_ownership_info = False
 

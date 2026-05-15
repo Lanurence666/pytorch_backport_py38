@@ -1,5 +1,5 @@
 from types import ModuleType
-from typing import Any
+from typing import Any, Type
 
 from .._mangling import is_mangled
 

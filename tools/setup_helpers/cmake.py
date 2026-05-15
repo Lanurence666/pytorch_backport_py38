@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 """Manages CMake."""
 
-from __future__ import annotations
+from typing import Dict, List, Union
 
 import functools
 import json
@@ -31,9 +33,10 @@ except ImportError:
     try:
         from setuptools.dist import Version  # type: ignore[attr-defined,no-redef]
     except ImportError:
-        from distutils.version import (  # type: ignore[assignment,no-redef]
-            LooseVersion as Version,
-        )
+        try:
+            from distutils.version import LooseVersion as Version  # type: ignore[assignment,no-redef]
+        except ImportError:
+            from setuptools.dist import Version  # type: ignore[attr-defined,no-redef]
 
 
 def _mkdir_p(d: str) -> None:
@@ -92,8 +95,8 @@ class CMake:
         if IS_WINDOWS:
             return "cmake"
 
-        cmake_versions: list[str] = []
-        valid_cmake_versions: dict[str, Version] = {}
+        cmake_versions: List[str] = []
+        valid_cmake_versions: Dict[str, Version] = {}
         for cmd in ("cmake", "cmake3"):
             command = shutil.which(cmd)
             ver = CMake._get_version(command)
@@ -115,7 +118,7 @@ class CMake:
         return max(valid_cmake_versions, key=valid_cmake_versions.get)  # type: ignore[arg-type]
 
     @staticmethod
-    def _get_version(cmd: str | None) -> Version | None:
+    def _get_version(cmd: Union[str, None]) -> Union[Version, None]:
         """Returns cmake version."""
 
         if cmd is None:
@@ -136,7 +139,7 @@ class CMake:
             return Version(cmake_version)
         raise RuntimeError(f"Failed to get CMake version from command: {cmd}")
 
-    def run(self, args: list[str], env: dict[str, str]) -> None:
+    def run(self, args: List[str], env: Dict[str, str]) -> None:
         """Executes cmake with arguments and an environment."""
 
         command = [self._cmake_command] + args
@@ -150,13 +153,13 @@ class CMake:
             sys.exit(1)
 
     @staticmethod
-    def defines(args: list[str], **kwargs: CMakeValue) -> None:
+    def defines(args: List[str], **kwargs: CMakeValue) -> None:
         """Adds definitions to a cmake argument list."""
         for key, value in sorted(kwargs.items()):
             if value is not None:
                 args.append(f"-D{key}={value}")
 
-    def get_cmake_cache_variables(self) -> dict[str, CMakeValue]:
+    def get_cmake_cache_variables(self) -> Dict[str, CMakeValue]:
         r"""Gets values in CMakeCache.txt into a dictionary.
         Returns:
           dict: A ``dict`` containing the value of cached CMake variables.
@@ -166,11 +169,11 @@ class CMake:
 
     def generate(
         self,
-        version: str | None,
-        cmake_python_library: str | None,
+        version: Union[str, None],
+        cmake_python_library: Union[str, None],
         build_python: bool,
         build_test: bool,
-        my_env: dict[str, str],
+        my_env: Dict[str, str],
         rerun: bool,
     ) -> None:
         """Runs cmake to generate native build files."""
@@ -181,7 +184,7 @@ class CMake:
         cmake_cache_file_available = os.path.exists(self._cmake_cache_file)
         if cmake_cache_file_available:
             cmake_cache_variables = self.get_cmake_cache_variables()
-            make_program: str | None = cmake_cache_variables.get("CMAKE_MAKE_PROGRAM")  # type: ignore[assignment]
+            make_program: Union[str, None] = cmake_cache_variables.get("CMAKE_MAKE_PROGRAM")  # type: ignore[assignment]
             if make_program and not shutil.which(make_program):
                 # CMakeCache.txt exists, but the make program (e.g., ninja) does not.
                 # See also: https://github.com/astral-sh/uv/issues/14269
@@ -281,7 +284,7 @@ class CMake:
         # the top-level CMakeLists.txt. Only options that require Python-side
         # detection are passed here.
 
-        build_options: dict[str, CMakeValue] = {
+        build_options: Dict[str, CMakeValue] = {
             "CMAKE_INSTALL_PREFIX": install_dir,
             "BUILD_PYTHON": build_python,
             "BUILD_TEST": build_test,
@@ -336,7 +339,7 @@ class CMake:
         args.append(base_dir)
         self.run(args, env=my_env)
 
-    def build(self, my_env: dict[str, str]) -> None:
+    def build(self, my_env: Dict[str, str]) -> None:
         """Runs cmake to build binaries."""
 
         from .env import build_type
@@ -387,13 +390,13 @@ class CMake:
     # variable name may be quoted if it contains punctuation.
     _CACHE_LINE_RE = re.compile(r'^("?)([^:=]+?)\1[:=]')
 
-    def _cache_variable_names(self) -> list[str]:
+    def _cache_variable_names(self) -> List[str]:
         """All variable names in CMakeCache.txt, including INTERNAL ones
         (which `get_cmake_cache_variables` skips)."""
         with open(self._cmake_cache_file) as f:
             return [m.group(2) for line in f if (m := self._CACHE_LINE_RE.match(line))]
 
-    def _remove_cache_entries(self, names: list[str]) -> None:
+    def _remove_cache_entries(self, names: List[str]) -> None:
         """Remove the given variable names from CMakeCache.txt in place.
 
         CMake writes each entry as a blank line, one or more ``//`` help
@@ -404,8 +407,8 @@ class CMake:
         to_remove = set(names)
         with open(self._cmake_cache_file) as f:
             lines = f.readlines()
-        kept: list[str] = []
-        preamble: list[str] = []
+        kept: List[str] = []
+        preamble: List[str] = []
         for line in lines:
             stripped = line.lstrip()
             if not stripped.strip() or stripped.startswith("//"):

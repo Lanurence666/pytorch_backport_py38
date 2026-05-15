@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Any
+from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -36,7 +38,7 @@ class ParallelStyle(ABC):
     flexibility for different kind of style implementations.
     """
 
-    src_data_rank: int | None = 0
+    src_data_rank: Optional[int] = Union[0]
 
     @abstractmethod
     def _apply(self, module: nn.Module, device_mesh: DeviceMesh) -> nn.Module: ...
@@ -82,8 +84,8 @@ class ColwiseParallel(ParallelStyle):
     def __init__(
         self,
         *,
-        input_layouts: Placement | None = None,
-        output_layouts: Placement | None = None,
+        input_layouts: Optional[Placement] = None,
+        output_layouts: Optional[Placement] = None,
         use_local_output: bool = True,
     ):
         super().__init__()
@@ -219,8 +221,8 @@ class RowwiseParallel(ParallelStyle):
     def __init__(
         self,
         *,
-        input_layouts: Placement | None = None,
-        output_layouts: Placement | None = None,
+        input_layouts: Optional[Placement] = None,
+        output_layouts: Optional[Placement] = None,
         use_local_output: bool = True,
     ):
         super().__init__()
@@ -303,7 +305,7 @@ class RowwiseParallel(ParallelStyle):
         if isinstance(module, nn.Linear):
             partition_fn = self._partition_linear_fn
             # rowwise linear runtime sharding requires input tensor shard on last dim
-            self.desired_input_layouts: tuple[Placement, ...] = (Shard(-1),)
+            self.desired_input_layouts: Tuple[Placement, ...] = (Shard(-1),)
         elif isinstance(module, nn.Embedding):
             partition_fn = self._partition_embedding_fn
             # rowwise embedding runtime sharding requires input tensor replicated
@@ -488,10 +490,10 @@ class PrepareModuleInput(ParallelStyle):
     def __init__(
         self,
         *,
-        input_layouts: Placement | tuple[Placement | None, ...] | None = None,
-        desired_input_layouts: Placement | tuple[Placement | None, ...] | None = None,
-        input_kwarg_layouts: dict[str, Placement] | None = None,
-        desired_input_kwarg_layouts: dict[str, Placement] | None = None,
+        input_layouts: Union[Placement, Tuple[Placement, None, ...]] | None = None,
+        desired_input_layouts: Union[Placement, Tuple[Placement, None, ...]] | None = None,
+        input_kwarg_layouts: Optional[Dict[str, Placement]] = None,
+        desired_input_kwarg_layouts: Optional[Dict[str, Placement]] = None,
         use_local_output: bool = False,
     ):
         self.input_layouts = (
@@ -523,8 +525,8 @@ class PrepareModuleInput(ParallelStyle):
         self,
         input: Any,
         mesh: DeviceMesh,
-        input_layout: Placement | None,
-        desired_layout: Placement | None,
+        input_layout: Optional[Placement],
+        desired_layout: Optional[Placement],
     ):
         if input_layout is not None:
             if isinstance(input, DTensor):
@@ -645,8 +647,8 @@ class PrepareModuleOutput(ParallelStyle):
     def __init__(
         self,
         *,
-        output_layouts: Placement | tuple[Placement | None, ...],
-        desired_output_layouts: Placement | tuple[Placement, ...],
+        output_layouts: Union[Placement, Tuple[Placement, None, ...]],
+        desired_output_layouts: Union[Placement, Tuple[Placement, ...]],
         use_local_output: bool = True,
     ):
         self.output_layouts = (
@@ -777,13 +779,13 @@ class PrepareModuleInputOutput(ParallelStyle):
     def __init__(
         self,
         *,
-        input_layouts: Placement | tuple[Placement | None, ...] | None = None,
-        desired_input_layouts: Placement | tuple[Placement | None, ...] | None = None,
-        input_kwarg_layouts: dict[str, Placement] | None = None,
-        desired_input_kwarg_layouts: dict[str, Placement] | None = None,
+        input_layouts: Union[Placement, Tuple[Placement, None, ...]] | None = None,
+        desired_input_layouts: Union[Placement, Tuple[Placement, None, ...]] | None = None,
+        input_kwarg_layouts: Optional[Dict[str, Placement]] = None,
+        desired_input_kwarg_layouts: Optional[Dict[str, Placement]] = None,
         use_local_input: bool = False,
-        output_layouts: Placement | tuple[Placement | None, ...],
-        desired_output_layouts: Placement | tuple[Placement, ...],
+        output_layouts: Union[Placement, Tuple[Placement, None, ...]],
+        desired_output_layouts: Union[Placement, Tuple[Placement, ...]],
         use_local_output: bool = True,
     ):
         self.prepare_module_input = PrepareModuleInput(

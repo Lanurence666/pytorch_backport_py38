@@ -3,13 +3,21 @@ from __future__ import annotations
 import pickle
 from abc import ABC, abstractmethod
 from ast import literal_eval
-from functools import cached_property
+try:
+    from functools import lru_cached_property
+except ImportError:
+    from functools import cached_property as lru_cached_property
+
+try:
+    from functools import cached_property
+except ImportError:
+    from functools import lru_cached_property as cached_property
 from hashlib import sha256
 from os import getenv
 from pathlib import Path
 from tempfile import gettempdir
 from threading import Lock
-from typing import Any, Generic, TYPE_CHECKING, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union
 from typing_extensions import assert_never, override, Self
 
 from torch.utils._filelock import FileLock
@@ -21,10 +29,10 @@ if TYPE_CHECKING:
 
 # TypeVars can't be recursive, so generic types that fall within
 # Key or Value can't be bound properly; for example, Key should
-# only take tuples of other Key types: tuple[Key, ...]. this is
+# only take tuples of other Key types: Tuple[Key, ...]. this is
 # a known shortcoming of torch's typing
-Key = TypeVar("Key", str, int, tuple[Any, ...])
-Value = TypeVar("Value", str, int, tuple[Any, ...], bytes, dict[Any, Any], list[Any])
+Key = TypeVar("Key", str, int, Tuple[Any, ...])
+Value = TypeVar("Value", str, int, Tuple[Any, ...], bytes, Dict[Any, Any], List[Any])
 
 
 class CacheError(ValueError):
@@ -40,13 +48,13 @@ class Cache(ABC, Generic[Key, Value]):
     """
 
     @abstractmethod
-    def get(self: Self, key: Key) -> Value | None:
+    def get(self: Self, key: Key) -> Optional[Value]:
         """
         Retrieve a value from the cache.
         Args:
             key (Key): The key to look up.
         Returns:
-            Value | None: The cached value if present, else None.
+            Optional[Value]: The cached value if present, else None.
         """
 
     @abstractmethod
@@ -70,16 +78,16 @@ class InMemoryCache(Cache[Key, Value]):
         """
         Initialize an empty in-memory cache.
         """
-        self._cache: dict[Key, Value] = {}
+        self._cache: Dict[Key, Value] = {}
         self._lock: Lock = Lock()
 
-    def get(self: Self, key: Key) -> Value | None:
+    def get(self: Self, key: Key) -> Optional[Value]:
         """
         Retrieve a value from the cache.
         Args:
             key (Key): The key to look up.
         Returns:
-            Value | None: The cached value if present, else None.
+            Optional[Value]: The cached value if present, else None.
         """
         with self._lock:
             if (value := self._cache.get(key)) is not None:
@@ -207,7 +215,7 @@ class InMemoryCache(Cache[Key, Value]):
 
         if not isinstance(cache._cache, dict):
             raise CacheError(
-                f"Failed to create cache from file path {fpath}, file contents not pickled dict[Key, Value]."
+                f"Failed to create cache from file path {fpath}, file contents not pickled Dict[Key, Value]."
             )
 
         return cache
@@ -220,14 +228,14 @@ class AsyncCache(Cache[Key, Value]):
 
     def get_async(
         self: Self, key: Key, executor: ThreadPoolExecutor
-    ) -> Future[Value | None]:
+    ) -> Union[Future[Value, None]]:
         """
         Retrieve a value from the cache asynchronously.
         Args:
             key (Key): The key to look up.
             executor (ThreadPoolExecutor): Executor for async execution.
         Returns:
-            Future[Value | None]: Future for the cached value or None.
+            Future[Optional[Value]]: Future for the cached value or None.
         """
         return executor.submit(self.get, key)
 
@@ -258,11 +266,11 @@ class OnDiskCache(AsyncCache[Key, Value]):
 
     version: int = 0
 
-    def __init__(self: Self, name: str | None = None) -> None:
+    def __init__(self: Self, name: Optional[str] = None) -> None:
         """
         Initialize an on-disk cache instance.
         Args:
-            name (str | None, optional): The name of the cache directory. If None,
+            name (Optional[str], optional): The name of the cache directory. If None,
                 defaults to "on_disk_cache".
         """
         self.name = name or "on_disk_cache"
@@ -320,13 +328,13 @@ class OnDiskCache(AsyncCache[Key, Value]):
         return sha256(str(OnDiskCache.version).encode()).digest()[:4]
 
     @override
-    def get(self: Self, key: Key) -> Value | None:
+    def get(self: Self, key: Key) -> Optional[Value]:
         """
         Retrieve a value from the cache.
         Args:
             key (Key): The key to look up.
         Returns:
-            Value | None: The cached value if present and version matches, else None.
+            Optional[Value]: The cached value if present and version matches, else None.
         Raises:
             CacheError: If the value is corrupted or cannot be unpickled.
         Side Effects:

@@ -34,15 +34,9 @@ from functools import lru_cache, partial
 from pathlib import Path
 from tempfile import _TemporaryFileWrapper
 from time import time, time_ns
-from types import (
-    BuiltinFunctionType,
-    BuiltinMethodType,
-    FunctionType,
-    MethodType,
-    ModuleType,
-)
-from typing import Any, cast, Generic, Literal, NoReturn, TYPE_CHECKING, TypeVar
-from typing_extensions import override, Self
+from types import ModuleType
+from typing import Any, Callable, Dict, Generator, Generic, List, NoReturn, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union, cast, overload
+from typing_extensions import Literal, Self, override
 
 import torch
 import torch._library.opaque_object as opaque_object
@@ -134,7 +128,7 @@ from .cache_key import (
     SYSTEM_CACHE_KEY_STRATEGY,
 )
 from .output_code import CompiledFxGraph
-from .remote_cache import cache_stats, create_cache
+from .remote_cache import create_cache
 from .runtime import autotune_cache
 from .runtime.autotune_cache import AutotuneCacheBundler
 from .triton_bundler import TritonBundler
@@ -181,11 +175,11 @@ def get_kernel_bin_format(device: str) -> str:
         return ""
 
 
-def get_device_information(device_type: str) -> dict[str, str]:
+def get_device_information(device_type: str) -> Dict[str, str]:
     """
     Gets all the current device information used to compile the .so.
     """
-    metadata: dict[str, str] = {
+    metadata: Dict[str, str] = {
         "AOTI_PLATFORM": sys.platform,
         "AOTI_MACHINE": platform.machine(),
         "AOTI_CPU_ISA": str(torch._inductor.cpu_vec_isa.pick_vec_isa()).upper(),
@@ -198,8 +192,8 @@ def get_device_information(device_type: str) -> dict[str, str]:
 
 class CacheBase:
     @staticmethod
-    @functools.cache
-    def get_system() -> dict[str, Any]:
+    @functools.lru_cache(maxsize=None)
+    def get_system() -> Dict[str, Any]:
         from torch._inductor.runtime.triton_compat import HAS_TRITON, triton_key
 
         if HAS_TRITON:
@@ -210,7 +204,7 @@ class CacheBase:
             triton_version = None
 
         try:
-            system: dict[str, Any] = {
+            system: Dict[str, Any] = {
                 "device": {"name": None},
                 "version": {
                     "triton": triton_version,
@@ -235,14 +229,14 @@ class CacheBase:
 
     @staticmethod
     @clear_on_fresh_cache
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def get_local_cache_path() -> Path:
         return Path(os.path.join(cache_dir(), "cache", CacheBase.get_system()["hash"]))
 
     def __init__(self) -> None:
         self.system = CacheBase.get_system()
 
-    def get_local_cache(self) -> dict[str, Any]:
+    def get_local_cache(self) -> Dict[str, Any]:
         local_cache_path = self.get_local_cache_path()
         if not local_cache_path.is_file():
             return {}
@@ -250,7 +244,7 @@ class CacheBase:
             local_cache = json.load(local_cache_fp)
         return local_cache["cache"]
 
-    def update_local_cache(self, local_cache: dict[str, Any]) -> None:
+    def update_local_cache(self, local_cache: Dict[str, Any]) -> None:
         local_cache_path = self.get_local_cache_path()
         write_atomic(
             str(local_cache_path),
@@ -260,7 +254,7 @@ class CacheBase:
 
 
 class LocalCache(CacheBase):
-    def lookup(self, *keys: str) -> dict[str, Any] | None:
+    def lookup(self, *keys: str) -> Optional[Dict[str, Any]]:
         cache = self.get_local_cache()
 
         sub_cache = cache
@@ -287,12 +281,12 @@ class LocalCache(CacheBase):
 class PersistentCache(CacheBase):
     def lookup(
         self,
-        choices: list[ChoiceCaller],
+        choices: List[ChoiceCaller],
         op: str,
         inputs: str,
-        benchmark: Callable[[Any], dict[ChoiceCaller, float]] | None,
-        hint_override: int | None = None,
-    ) -> dict[ChoiceCaller, float]:
+        benchmark: Callable[[Any], Dict[ChoiceCaller, float]] | None,
+        hint_override: Optional[int] = None,
+    ) -> Dict[ChoiceCaller, float]:
         """
         Check to see if we have benchmarked the given choice callers. For each
         choice caller:
@@ -308,7 +302,7 @@ class PersistentCache(CacheBase):
 
         timings = {}
 
-        def check_cache(cache: dict[str, Any]) -> bool:
+        def check_cache(cache: Dict[str, Any]) -> bool:
             """Check if `cache` contains data for all the choices"""
             hit = True
             for choice in choices:
@@ -350,7 +344,7 @@ def sha256_hash(data: bytes) -> str:
     return COMPACT_CACHE_KEY_STRATEGY.key(data)
 
 
-def code_hash(code: str | bytes, extra: str | bytes = "") -> str:
+def code_hash(code: Union[str, bytes], extra: Union[str, bytes] = "") -> str:
     if extra:
         return CODE_CACHE_KEY_STRATEGY.key(code, extra)
     return CODE_CACHE_KEY_STRATEGY.key(code)
@@ -358,7 +352,7 @@ def code_hash(code: str | bytes, extra: str | bytes = "") -> str:
 
 def get_path(
     basename: str, extension: str, specified_dir: str = ""
-) -> tuple[str, str, str]:
+) -> Tuple[str, str, str]:
     if specified_dir:
         if os.path.isabs(specified_dir):
             subdir = specified_dir
@@ -370,7 +364,7 @@ def get_path(
     return basename, subdir, path
 
 
-def get_hash(content: str | bytes, extra: str = "", hash_type: str = "code") -> str:
+def get_hash(content: Union[str, bytes], extra: str = "", hash_type: str = "code") -> str:
     if hash_type in {"amdgcn", "code", "ptx", "spv"}:
         return code_hash(content, extra)
     if hash_type in {"cubin", "hsaco", XPU_KERNEL_FORMAT}:
@@ -416,13 +410,13 @@ class WritableTempFile:
 
 
 def write(
-    content: str | bytes,
+    content: Union[str, bytes],
     extension: str,
     extra: str = "",
     hash_type: str = "code",
     specified_dir: str = "",
-    key: str | None = None,
-) -> tuple[str, str]:
+    key: Optional[str] = None,
+) -> Tuple[str, str]:
     if key is None:
         # use striped content to compute hash so we don't end up with different
         # hashes just because the content begins/ends with different number of
@@ -443,7 +437,7 @@ def write_text(text: str) -> str:
 
 def write_atomic(
     path_: str,
-    content: str | bytes,
+    content: Union[str, bytes],
     make_dirs: bool = False,
     encode_utf_8: bool = False,
 ) -> None:
@@ -480,18 +474,11 @@ class TensorMetadataAndValues:
     """
 
     tensor_metadata: TensorMetadata
-    values: list[Any]
+    values: List[Any]
 
 
 def _ident(x: T) -> T:
     return x
-
-
-def _unpicklable_error(key: str) -> NoReturn:
-    raise RuntimeError(
-        f"Attempted to unpickle an object that was pickled only for cache-key "
-        f"hashing and cannot be reconstructed (key={key!r})"
-    )
 
 
 def extract_tensor_metadata_for_cache_key(t: Tensor) -> TensorMetadata:
@@ -506,48 +493,6 @@ def extract_tensor_metadata_for_cache_key(t: Tensor) -> TensorMetadata:
     return meta
 
 
-# Types that pickle handles natively via GLOBAL/INST opcodes even though their
-# __reduce_ex__ may raise TypeError. We must not treat these as unpicklable in
-# reducer_override to avoid infinite recursion.
-# We use a tuple for isinstance() checks so subclasses are also matched
-# (e.g. ABCMeta is a subclass of type).
-_PICKLE_NATIVE_TYPES_TUPLE = (
-    FunctionType,
-    BuiltinFunctionType,
-    BuiltinMethodType,
-    MethodType,
-    type,
-)
-
-
-def _get_stable_obj_key(obj: object) -> str | None:
-    """Produce a deterministic string key for an otherwise-unpicklable object.
-
-    Used by FxGraphCachePickler.reducer_override as a fallback for objects
-    whose types don't support default pickling (e.g. pybind11 enums).
-
-    The key is derived from the object's fully-qualified type name plus
-    values obtained via known accessor patterns (pybind11 enum, Python enum,
-    etc.).  Returns ``None`` if no accessor succeeds, letting the caller
-    decide how to handle the failure.
-    """
-    t = type(obj)
-    type_id = f"{t.__module__}.{t.__qualname__}"
-    parts = []
-    for accessor in (
-        lambda o: o.type.name,  # pybind11 enum pattern
-        lambda o: o.name,  # Python enum / named constant pattern
-        lambda o: o.value,  # value-based pattern
-    ):
-        try:
-            parts.append(str(accessor(obj)))
-        except Exception:
-            continue
-    if parts:
-        return f"{type_id}:{repr(parts)}"
-    return None
-
-
 class FxGraphCachePickler(pickle.Pickler):
     """
     Custom pickler to customize the pickling of some objects (Tensors), only for the
@@ -555,11 +500,6 @@ class FxGraphCachePickler(pickle.Pickler):
     objects that don't pickle and/or vary between runs, and we want to capture the
     data that allow us to compute a stable, but safe hash.
     """
-
-    # Cache probe results so we only call __reduce_ex__ once per type.
-    # Maps type -> True (pickleable) or False (unpickleable).
-    # Class-level because a type's picklability doesn't change at runtime.
-    _pickleable_type_cache: dict[type, bool] = {}
 
     def __init__(
         self,
@@ -604,55 +544,9 @@ class FxGraphCachePickler(pickle.Pickler):
         # TODO: pickler.fast is technically deprecated. Will this work on new python versions?
         self.fast = True
 
-    # pyrefly: ignore [bad-override]
-    def reducer_override(self, obj: Any) -> Any:
-        """Fallback reducer for objects not registered in dispatch_table.
-
-        This handles extension types (e.g. pybind11 enums) that don't support
-        default pickling.  Instead of bypassing the FX graph cache entirely,
-        we serialize a deterministic string representation of the object which
-        is sufficient for cache-key hashing.
-        """
-        t = type(obj)
-        # Types already registered or handled by default pickle.
-        # Use isinstance for _PICKLE_NATIVE_TYPES to cover subclasses
-        # (e.g. ABCMeta is a subclass of type, and pickle handles all
-        # type/class objects natively via GLOBAL opcode).
-        if t in self.dispatch_table or isinstance(obj, _PICKLE_NATIVE_TYPES_TUPLE):
-            return NotImplemented
-        # Fast path: type already probed.
-        if (pickleable := self._pickleable_type_cache.get(t)) is not None:
-            if not pickleable:
-                return self._reduce_unpicklable(obj)
-            return NotImplemented
-        # First encounter: probe whether the default reduce protocol works.
-        try:
-            result = obj.__reduce_ex__(pickle.DEFAULT_PROTOCOL)
-        except (TypeError, AttributeError, pickle.PicklingError):
-            self._pickleable_type_cache[t] = False
-            return self._reduce_unpicklable(obj)
-        except RuntimeError as e:
-            if "is not pickleable" in str(e):
-                self._pickleable_type_cache[t] = False
-                return self._reduce_unpicklable(obj)
-            raise
-        # Default pickling works – let pickle handle it.
-        self._pickleable_type_cache[t] = True
-        return result
-
-    @staticmethod
-    def _reduce_unpicklable(obj: Any) -> Any:
-        key = _get_stable_obj_key(obj)
-        if key is None:
-            raise BypassFxGraphCache(
-                f"Cannot produce stable cache key for unpicklable type "
-                f"{type(obj).__qualname__}"
-            )
-        return _unpicklable_error, (key,)
-
     def _reduce_fake_tensor(
         self, t: Tensor
-    ) -> tuple[Callable[[T], T], tuple[TensorMetadata]]:
+    ) -> Tuple[Callable[[T], T], Tuple[TensorMetadata]]:
         """
         Custom reducer to pickle FakeTensors.
         """
@@ -665,7 +559,7 @@ class FxGraphCachePickler(pickle.Pickler):
 
     def _reduce_tensor(
         self, t: Tensor
-    ) -> tuple[Callable[[T], T], tuple[TensorMetadata | TensorMetadataAndValues]]:
+    ) -> Tuple[Callable[[T], T], Tuple[Union[TensorMetadata, TensorMetadataAndValues]]]:
         """
         Custom reducer to pickle Tensors.  If we see tensors, we know they're constants
         stored as attributes on the GraphModule.
@@ -701,7 +595,7 @@ class FxGraphCachePickler(pickle.Pickler):
 
         return (_ident, (TensorMetadataAndValues(metadata, values),))
 
-    def _reduce_symint(self, s: SymInt) -> tuple[Callable[[T], T], tuple[str]]:
+    def _reduce_symint(self, s: SymInt) -> Tuple[Callable[[T], T], Tuple[str]]:
         """
         Custom reducer to pickle SymInts.
         """
@@ -710,7 +604,7 @@ class FxGraphCachePickler(pickle.Pickler):
         # entity with SymInt args is safe to reuse.
         return (_ident, (str(s),))
 
-    def _reduce_symbool(self, s: torch.SymBool) -> tuple[Callable[[T], T], tuple[str]]:
+    def _reduce_symbool(self, s: torch.SymBool) -> Tuple[Callable[[T], T], Tuple[str]]:
         """
         Custom reducer to pickle SymBools.
         """
@@ -727,7 +621,7 @@ class FxGraphCachePickler(pickle.Pickler):
 
     def _reduce_graph_module(
         self, gm: torch.fx.GraphModule
-    ) -> tuple[Any, tuple[dict[str, Any], str]]:
+    ) -> Tuple[Any, Tuple[Dict[str, Any], str]]:
         """
         Custom reducer for graph module to handle irrelevant data for user
         defined triton kernels
@@ -746,7 +640,7 @@ class FxGraphCachePickler(pickle.Pickler):
 
     def _reduce_fake_script_object(
         self, t: FakeScriptObject
-    ) -> tuple[Callable[..., Any], tuple[Any, ...]]:
+    ) -> Tuple[Callable[..., Any], Tuple[Any, ...]]:
         if t.real_obj is not None:
             cls = type(t.real_obj)
             # This is the only case where I'm sure it's cache safe.
@@ -799,7 +693,7 @@ class FxGraphCachePickler(pickle.Pickler):
         serialized_data = self.dumps(obj)
         return FX_GRAPH_CACHE_KEY_STRATEGY.key(serialized_data)
 
-    def debug_lines(self, inp: FxGraphHashDetails) -> list[str]:
+    def debug_lines(self, inp: FxGraphHashDetails) -> List[str]:
         """
         Get a printable string describing in more detail all the attributes
         comprising an object. Useful for debugging when one graph hashes
@@ -834,101 +728,44 @@ class FxGraphCachePickler(pickle.Pickler):
         return lines
 
 
-def _collect_module_files(
-    roots: list[str] | None, prefix: str
-) -> list[tuple[str, str]]:
-    """Collect all (spec_name, file_path) pairs from a module tree."""
-    result: list[tuple[str, str]] = []
-    for lib in pkgutil.iter_modules(roots, prefix):
+def build_code_hash(
+    roots: Optional[List[str]], prefix: str, hasher: hashlib._Hash
+) -> None:
+    for lib in sorted(pkgutil.iter_modules(roots, prefix), key=lambda x: x.name):
         spec = lib.module_finder.find_spec(lib.name, None)
         assert spec is not None
         module = spec.origin
         assert module is not None
-        result.append((spec.name, module))
+        with open(module, "rb") as f:
+            hasher.update(spec.name.encode("utf-8"))
+            hasher.update(f.read())
         if lib.ispkg:
-            result.extend(
-                _collect_module_files(spec.submodule_search_locations, f"{spec.name}.")
-            )
-    return result
+            # need to also hash submodules
+            build_code_hash(spec.submodule_search_locations, f"{spec.name}.", hasher)
 
 
-def _hash_one_file(name: str, path: str) -> tuple[str, bytes]:
-    """Hash a single module file. Suitable for concurrent execution."""
-    h = hashlib.sha256()
-    h.update(name.encode("utf-8"))
-    with open(path, "rb") as f:
-        if sys.version_info >= (3, 11):
-            h.update(hashlib.file_digest(f, "sha256").digest())
-        else:
-            h.update(f.read())
-    return (name, h.digest())
-
-
-def build_code_hash(
-    roots: list[str] | None, prefix: str, hasher: hashlib._Hash
-) -> None:
-    from concurrent.futures import ThreadPoolExecutor
-
-    files = _collect_module_files(roots, prefix)
-    if not files:
-        return
-    with ThreadPoolExecutor(max_workers=min(64, len(files))) as pool:
-        per_file_hashes = list(pool.map(lambda t: _hash_one_file(*t), files))
-    per_file_hashes.sort()
-    for _name, digest in per_file_hashes:
-        hasher.update(digest)
-
-
-_MISSING = object()
-
-
-def torch_key_cache(func: Callable[[], T]) -> Callable[[], T]:
+def torch_key_cache(func: Callable[[], bytes]) -> Callable[[], bytes]:
     """
-    Like functools.cache but with a prefetch() method that starts computing
-    the value in a background thread, and a set() method for prepopulating.
+    This function is a reimplementation of functools.lru_cache with a
+    set function that allows prepopulating the cache.
     """
-    _cache: T | object = _MISSING
-    _lock = threading.Lock()
-    _future: Future[T] | None = None
+    # Use list for reference semantics
+    _cache: List[bytes] = []
 
-    def wrapper() -> T:
-        nonlocal _cache, _future
-        with _lock:
-            if _cache is not _MISSING:
-                return _cache  # type: ignore[return-value]
-            if _future is not None:
-                _cache = _future.result()
-                _future = None
-                return _cache  # type: ignore[return-value]
-            _cache = func()
-            return _cache  # type: ignore[return-value]
+    def wrapper() -> bytes:
+        if len(_cache) == 0:
+            _cache.append(func())
+        return _cache[0]
 
-    def set_val(val: T) -> None:
-        nonlocal _cache
-        with _lock:
-            assert _cache is _MISSING
-            _cache = val
+    def set_val(val: bytes) -> None:
+        assert len(_cache) == 0
+        _cache.append(val)
 
     def clear() -> None:
-        nonlocal _cache, _future
-        with _lock:
-            _cache = _MISSING
-            _future = None
-
-    def prefetch() -> None:
-        nonlocal _future
-        from concurrent.futures import ThreadPoolExecutor
-
-        with _lock:
-            if _cache is not _MISSING or _future is not None:
-                return
-            executor = ThreadPoolExecutor(max_workers=1)
-            _future = executor.submit(func)
-            executor.shutdown(wait=False)
+        _cache.clear()
 
     wrapper.set = set_val  # type: ignore[attr-defined]
     wrapper.clear = clear  # type: ignore[attr-defined]
-    wrapper.prefetch = prefetch  # type: ignore[attr-defined]
     return wrapper
 
 
@@ -977,7 +814,7 @@ class OrderedSetHolder:
     of set kwargs.
     """
 
-    items: list[Any]
+    items: List[Any]
 
 
 class BypassFxGraphCache(Exception):
@@ -997,9 +834,9 @@ class CacheabilityValidator:
 
     gm: torch.fx.GraphModule
     example_inputs: Sequence[InputType] = ()
-    fx_kwargs: _CompileFxKwargs | None = None
+    fx_kwargs: Optional[_CompileFxKwargs] = None
     require_shape_env: bool = True
-    shape_env: ShapeEnv | None = None
+    shape_env: Optional[ShapeEnv] = None
 
     def validate(self) -> None:
         self._check_custom_passes()
@@ -1121,7 +958,7 @@ class CacheabilityValidator:
     def _check_cache_key_object(
         self,
         obj: Any,
-        seen: set[int] | None = None,  # noqa: set_linter
+        seen: Optional[Set[int]] = None,  # noqa: set_linter
     ) -> None:
         if seen is None:
             seen = set()  # noqa: set_linter
@@ -1165,16 +1002,12 @@ def resolve_pre_grad_pass_timing() -> Literal["early", "late"]:
         and isinstance(custom_pass, CustomGraphPass)
         and custom_pass.uuid() is not None
     )
-    pass_name = (
-        getattr(custom_pass, "__qualname__", None) or type(custom_pass).__qualname__
-        if custom_pass is not None
-        else "<none>"
-    )
 
     if timing == "default":
         supports_late = custom_pass is None or has_uuid
         timing = "late" if supports_late else "early"
         if timing == "early" and custom_pass:
+            pass_name = type(custom_pass).__qualname__
             if pass_name not in _warned_pre_grad_pass_missing_uuid:
                 _warned_pre_grad_pass_missing_uuid.add(pass_name)
                 log.warning(
@@ -1191,7 +1024,7 @@ def resolve_pre_grad_pass_timing() -> Literal["early", "late"]:
 
     if timing == "late" and custom_pass and not has_uuid:
         raise RuntimeError(
-            f"pre_grad_custom_pass {pass_name} must implement uuid() to run late "
+            "pre_grad_custom_pass must implement uuid() to run late "
             "(after cache lookup). Either implement uuid() or set "
             "pre_grad_pass_timing to 'early'."
         )
@@ -1226,8 +1059,8 @@ class FxGraphHashDetails:
         # Replace opaque references with hashable ordinals. What's important
         # is that if the same reference appears twice then it's the same hash
         # value for each.
-        processed_inputs: list[InputType | HashableOpaqueValue] = []
-        seen_opaques: dict[int, HashableOpaqueValue] = {}
+        processed_inputs: List[Union[InputType, HashableOpaqueValue]] = []
+        seen_opaques: Dict[int, HashableOpaqueValue] = {}
         for inp in example_inputs:
             if is_opaque_reference_type(type(inp)):
                 if id(inp) not in seen_opaques:
@@ -1241,7 +1074,7 @@ class FxGraphHashDetails:
         # Order kwargs so hashing is stable to changes in kwarg order. Although
         # it's technically a _CompileFxKwargs we don't actually need it typed as
         # such since we're just using it to generate a hash.
-        self.fx_kwargs: dict[str, object] = {}
+        self.fx_kwargs: Dict[str, object] = {}
         for k, v in sorted(fx_kwargs.items()):
             if k not in self.EXCLUDED_KWARGS:
                 if type(v) in (set, OrderedSet):  # noqa: set_linter
@@ -1262,7 +1095,7 @@ class FxGraphHashDetails:
 
         # Node meta will not be part of gm's reduce function, so lets remember
         # the kernel source code separately
-        self.user_defined_triton_source: list[Any] = []
+        self.user_defined_triton_source: List[Any] = []
         if gm is not None:
             for module in gm.modules():
                 if not isinstance(module, torch.fx.GraphModule):
@@ -1350,9 +1183,7 @@ class FxGraphHashDetails:
         # Also hash on various system info (including the triton compiler version).
         self.torch_version = torch_key()
         self.system_info = CacheBase.get_system()
-        self.inductor_config = config.save_config_portable(
-            ignore_private_configs=False, readonly_values=True
-        )
+        self.inductor_config = config.save_config_portable(ignore_private_configs=False)
         # Custom passes should provide an ID to hash when they run late (after cache lookup).
         if resolve_pre_grad_pass_timing() != "early":
             self.pre_grad_custom_pass = self._get_custom_pass_detail(
@@ -1387,9 +1218,7 @@ class FxGraphHashDetails:
 
         # Save custom inductor codegen configs
         self.custom_backend_codegen_configs = {
-            device: custom_config.save_config_portable(
-                ignore_private_configs=False, readonly_values=True
-            )
+            device: custom_config.save_config_portable(ignore_private_configs=False)
             for device, custom_config in custom_backend_codegen_configs.items()
             if custom_config is not None
         }
@@ -1401,7 +1230,7 @@ class FxGraphHashDetails:
 
         # Include hint overrides in the cache key because _reduce_symint
         # only hashes symbol names, not hint values.
-        self.var_to_hint_override: dict[str, int] = {}
+        self.var_to_hint_override: Dict[str, int] = {}
         shape_env = FxGraphCache._get_shape_env()
         if shape_env is not None and shape_env.var_to_hint_override:
             self.var_to_hint_override = {
@@ -1420,7 +1249,7 @@ class FxGraphHashDetails:
     # - if any of them are set to custom callables, we will need to cache miss
     # Future work is for someone to find any places where these functions are used
     # and force them to be of type CustomGraphPass, so we can guarantee serialization.
-    def _get_custom_pass_detail_unsafe(self, custom_pass: Any) -> Any | None:
+    def _get_custom_pass_detail_unsafe(self, custom_pass: Any) -> Optional[Any]:
         if not custom_pass:
             return None
         if isinstance(custom_pass, list):
@@ -1436,8 +1265,8 @@ class FxGraphHashDetails:
         raise AssertionError(f"unknown config type: {str(type(custom_pass))}")
 
     def _get_custom_pass_detail(
-        self, custom_pass: CustomGraphPassType | CustomGraphModulePass
-    ) -> Any | None:
+        self, custom_pass: Union[CustomGraphPassType, CustomGraphModulePass]
+    ) -> Optional[Any]:
         if not custom_pass:
             return None
         assert isinstance(custom_pass, (CustomGraphPass, CustomGraphModulePass))
@@ -1445,7 +1274,7 @@ class FxGraphHashDetails:
 
     def _get_custom_partitioner_fn_detail(
         self, custom_partitioner_fn: CustomPartitionerFnType
-    ) -> Any | None:
+    ) -> Optional[Any]:
         if not custom_partitioner_fn:
             return None
         assert isinstance(custom_partitioner_fn, CustomPartitionerFn)
@@ -1457,7 +1286,7 @@ def compiled_fx_graph_hash(
     example_inputs: Sequence[InputType],
     fx_kwargs: _CompileFxKwargs,
     inputs_to_check: Sequence[int],
-) -> tuple[str, list[str]]:
+) -> Tuple[str, List[str]]:
     """
     Generate a unique hash of the FX graph for caching.
     """
@@ -1508,12 +1337,12 @@ class GuardedCache(Generic[T]):
     """
 
     @classmethod
-    def _get_tmp_dir_for_key(cls: type[GuardedCache[T]], _key: str) -> str:
+    def _get_tmp_dir_for_key(cls: Type[GuardedCache[T]], _key: str) -> str:
         raise NotImplementedError("Implement _get_tmp_dir_for_key on parent class")
 
     @classmethod
     def _record_result(
-        cls: type[GuardedCache[T]],
+        cls: Type[GuardedCache[T]],
         key: str,
         local_hit: bool,
         local_miss: bool,
@@ -1524,11 +1353,11 @@ class GuardedCache(Generic[T]):
 
     @classmethod
     def iterate_over_candidates(
-        cls: type[GuardedCache[T]],
+        cls: Type[GuardedCache[T]],
         local: bool,
-        remote_cache: RemoteCache[JsonDataTy] | None,
+        remote_cache: Optional[RemoteCache[JsonDataTy]],
         key: str,
-    ) -> Generator[tuple[T, bytes, bool], None, None]:
+    ) -> Generator[Tuple[T, bytes, bool], None, None]:
         if local:
             subdir = cls._get_tmp_dir_for_key(key)
             if os.path.exists(subdir):
@@ -1560,13 +1389,13 @@ class GuardedCache(Generic[T]):
 
     @classmethod
     def find_guarded_entry(
-        cls: type[GuardedCache[T]],
+        cls: Type[GuardedCache[T]],
         key: str,
         local: bool,
-        remote_cache: RemoteCache[JsonDataTy] | None,
-        evaluate_guards: Callable[[str, list[int] | list[torch.SymInt]], bool],
-        hints: list[int],
-    ) -> tuple[T | None, bytes | None, dict[str, str]]:
+        remote_cache: Optional[RemoteCache[JsonDataTy]],
+        evaluate_guards: Union[Callable[[str, List[int], List[torch.SymInt]]], bool],
+        hints: List[int],
+    ) -> Tuple[Optional[T], Optional[bytes], Dict[str, str]]:
         """
         Find the first cache entry in iterate_over_candidates that passes `evaluate_guards`.
 
@@ -1639,8 +1468,8 @@ class GuardedCache(Generic[T]):
 
     @classmethod
     def _filter_backed_symints(
-        cls: type[GuardedCache[T]], inputs: Sequence[InputType]
-    ) -> list[torch.SymInt]:
+        cls: Type[GuardedCache[T]], inputs: Sequence[InputType]
+    ) -> List[torch.SymInt]:
         """
         Get the backed SymInt objects from the input list. Note that we can never
         have guards that depend on unbacked symint.
@@ -1650,7 +1479,7 @@ class GuardedCache(Generic[T]):
         ]
 
     @classmethod
-    def _get_shape_env(cls: type[GuardedCache[T]]) -> ShapeEnv | None:
+    def _get_shape_env(cls: Type[GuardedCache[T]]) -> Optional[ShapeEnv]:
         """
         Helper to get the shape env from the tracing context.
         """
@@ -1710,7 +1539,7 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
         return os.path.join(cache_dir(), "fxgraph")
 
     @classmethod
-    def _get_tmp_dir_for_key(cls: type[FxGraphCache], key: str) -> str:
+    def _get_tmp_dir_for_key(cls: Type[FxGraphCache], key: str) -> str:
         """
         Return the disk location for a given cache key.
         """
@@ -1718,7 +1547,7 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
 
     @classmethod
     def _record_result(
-        cls: type[FxGraphCache],
+        cls: Type[FxGraphCache],
         key: str,
         local_hit: bool,
         local_miss: bool,
@@ -1729,7 +1558,6 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
         Called by GuardedCache to record hit/miss statistics.
         """
         if local_hit:
-            cache_stats.hit("LocalFxGraphCache")
             CompileEventLogger.try_(
                 CompileEventLogger.increment_toplevel,
                 "inductor_fx_local_cache_hit_count",
@@ -1745,7 +1573,6 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
                 key,
             )
         if local_miss:
-            cache_stats.miss("LocalFxGraphCache")
             CompileEventLogger.try_(
                 CompileEventLogger.increment_toplevel,
                 "inductor_fx_local_cache_miss_count",
@@ -1764,9 +1591,9 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
     @staticmethod
     def cache_hit_post_compile(
         graph: CompiledFxGraph,
-        cache_info: dict[str, Any],
+        cache_info: Dict[str, Any],
         constants: CompiledFxGraphConstants,
-    ) -> tuple[CompiledFxGraph | None, dict[str, Any]]:
+    ) -> Tuple[Optional[CompiledFxGraph], Dict[str, Any]]:
         """
         Cache specific post compile steps that need to run if we find a graph in the cache
         This includes putting bundled triton artifacts in the right place,
@@ -1869,11 +1696,11 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
         key: str,
         example_inputs: Sequence[InputType],
         local: bool,
-        remote_cache: RemoteCache[JsonDataTy] | None,
+        remote_cache: Optional[RemoteCache[JsonDataTy]],
         constants: CompiledFxGraphConstants,
-        evaluate_guards: Callable[[str, list[int] | list[torch.SymInt]], bool]
+        evaluate_guards: Union[Callable[[str, List[int], List[torch.SymInt]]], bool]
         | None = None,
-    ) -> tuple[CompiledFxGraph | None, dict[str, Any]]:
+    ) -> Tuple[Optional[CompiledFxGraph], Dict[str, Any]]:
         """
         Lookup a compiled graph in the cache by key. On a hit, return the
         deserialized CompiledFxGraph object. On a miss, return None.
@@ -1898,7 +1725,7 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
         if evaluate_guards is None:
             evaluate_guards = shape_env.evaluate_guards_expression
 
-        cache_info: dict[str, Any] = dict()
+        cache_info: Dict[str, Any] = dict()
 
         # Use the find_graph_for_key method to find a graph for the given key
         graph, pickled_content, guard_info = FxGraphCache.find_guarded_entry(
@@ -1951,7 +1778,7 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
         compiled_graph: OutputCode,
         example_inputs: Sequence[InputType],
         local: bool,
-        remote_cache: RemoteCache[JsonDataTy] | None,
+        remote_cache: Optional[RemoteCache[JsonDataTy]],
     ) -> None:
         """
         Store a serialized CompiledFxGraph on disk.
@@ -1997,7 +1824,6 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
             CacheArtifactRecorder(InductorCacheArtifact.type(), key).record(content)
             if local:
                 FxGraphCache._write_to_local_cache(key, content)
-                cache_stats.put("LocalFxGraphCache")
 
             if remote_cache:
                 time_taken_ms = int((disk_compiled_graph._time_taken_ns or 0) // 1e6)
@@ -2020,7 +1846,7 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
     def _check_can_cache(
         gm: torch.fx.GraphModule,
         example_inputs: Sequence[InputType] = (),
-        fx_kwargs: _CompileFxKwargs | None = None,
+        fx_kwargs: Optional[_CompileFxKwargs] = None,
         require_shape_env: bool = True,
     ) -> None:
         """
@@ -2043,7 +1869,7 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
         fx_kwargs: _CompileFxKwargs,
         inputs_to_check: Sequence[int],
         remote: bool,
-    ) -> tuple[tuple[str, list[str]] | None, dict[str, Any]]:
+    ) -> Tuple[Tuple[str, List[str]] | None, Dict[str, Any]]:
         """
         Checks that the inductor input is cacheable, then computes
         and returns the cache key for the input.
@@ -2074,7 +1900,7 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
         return (key, debug_lines), {}
 
     @staticmethod
-    def get_remote_cache() -> RemoteCache[JsonDataTy] | None:
+    def get_remote_cache() -> Optional[RemoteCache[JsonDataTy]]:
         """
         Attempts to load the remote cache, returns None on error.
         """
@@ -2089,15 +1915,15 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
     @staticmethod
     def load_with_key(
         key: str,
-        debug_lines: list[str],
+        debug_lines: List[str],
         example_inputs: Sequence[InputType],
         local: bool,
-        remote_cache: RemoteCache[JsonDataTy] | None,
+        remote_cache: Optional[RemoteCache[JsonDataTy]],
         is_backward: bool,
         constants: CompiledFxGraphConstants,
-        evaluate_guards: Callable[[str, list[int] | list[torch.SymInt]], bool]
+        evaluate_guards: Union[Callable[[str, List[int], List[torch.SymInt]]], bool]
         | None = None,
-    ) -> tuple[CompiledFxGraph | None, dict[str, Any]]:
+    ) -> Tuple[Optional[CompiledFxGraph], Dict[str, Any]]:
         """
         Lookup the graph with the given key, and return results and metadata.
         Doesn't do any logging on its own, because AOTAutograd handles a cache miss
@@ -2147,8 +1973,8 @@ class FxGraphCache(GuardedCache[CompiledFxGraph]):
             pass
 
 
-@functools.cache
-def split_aot_inductor_output_path(path: str) -> tuple[str, str]:
+@functools.lru_cache(maxsize=None)
+def split_aot_inductor_output_path(path: str) -> Tuple[str, str]:
     def get_module_ext_type() -> str:
         if _IS_WINDOWS:
             return ".pyd"
@@ -2166,18 +1992,18 @@ def split_aot_inductor_output_path(path: str) -> tuple[str, str]:
 
 @clear_on_fresh_cache
 class CudaKernelParamCache:
-    cache: dict[str, dict[str, Any]] = {}
+    cache: Dict[str, Dict[str, Any]] = {}
     cache_clear = staticmethod(cache.clear)
 
     @classmethod
     def set(
         cls,
         key: str,
-        params: dict[str, str | None],
+        params: Dict[str, Optional[str]],
         cubin: str,
         bin_type: str,
-        asm: str | None = None,
-        asm_type: str | None = None,
+        asm: Optional[str] = None,
+        asm_type: Optional[str] = None,
     ) -> None:
         basename = None
         if config.aot_inductor.package_cpp_only:
@@ -2246,7 +2072,7 @@ class CudaKernelParamCache:
         cls.cache[key] = params
 
     @classmethod
-    def get(cls, key: str) -> dict[str, Any] | None:
+    def get(cls, key: str) -> Optional[Dict[str, Any]]:
         return cls.cache.get(key, None)
 
     @classmethod
@@ -2258,7 +2084,7 @@ class CudaKernelParamCache:
 class CpuTritonKernelCache:
     """AOTI counterpart of CudaKernelParamCache for CPU Triton kernels."""
 
-    cache: dict[str, dict[str, Any]] = {}
+    cache: Dict[str, Dict[str, Any]] = {}
     cache_clear = staticmethod(cache.clear)
 
     @classmethod
@@ -2268,7 +2094,7 @@ class CpuTritonKernelCache:
         kernel_bytes: bytes,
         launcher_bytes: bytes,
         kernel_symbol: str,
-        signature: dict[str, Any],
+        signature: Dict[str, Any],
     ) -> None:
         out_dir = split_aot_inductor_output_path(config.aot_inductor.output_path)[0]
         _, kernel_so_path = write(
@@ -2285,7 +2111,7 @@ class CpuTritonKernelCache:
         }
 
     @classmethod
-    def get(cls, key: str) -> dict[str, Any] | None:
+    def get(cls, key: str) -> Optional[Dict[str, Any]]:
         return cls.cache.get(key, None)
 
     @classmethod
@@ -2304,16 +2130,16 @@ class AotCodeCompiler:
         graph: GraphLowering,
         wrapper_code: str,
         kernel_code: str,
-        serialized_extern_kernel_nodes: str | None,
+        serialized_extern_kernel_nodes: Optional[str],
         *,
         device_type: str,
-        additional_files: list[str],
-    ) -> list[str | Weights] | str:
+        additional_files: List[str],
+    ) -> Union[List[str, Weights], str]:
         """
         Returns the .so path, or returns a list of files that were generated if
         config.aot_inductor.package=True.
         """
-        generated_files: list[str | Weights] = additional_files  # type: ignore[assignment]
+        generated_files: List[Union[str, Weights]] = additional_files  # type: ignore[assignment]
 
         _set_gpu_runtime_env()  # cpp_extension consults the env
 
@@ -2467,7 +2293,7 @@ class AotCodeCompiler:
             specified_sub_dir.mkdir(exist_ok=True)
         cmake_path = str(Path(specified_sub_dir) / "CMakeLists.txt")
 
-        def _compile_consts(consts: bytes | bytearray, platform: str) -> str:
+        def _compile_consts(consts: Union[bytes, bytearray], platform: str) -> str:
             # Load from aot_inductor, and update the value on demand.
             use_asm_build: bool = config.aot_inductor.use_consts_asm_build
 
@@ -2503,11 +2329,11 @@ class AotCodeCompiler:
             is_zero_size_consts = len(consts) == 0
 
             def format_consts_to_gnu_asm(
-                consts: bytes | bytearray,
+                consts: Union[bytes, bytearray],
                 align_bytes: int,
                 symbol_prefix: str,
                 is_large_consts: bool,
-            ) -> tuple[str, str]:
+            ) -> Tuple[str, str]:
                 consts_asm = f"\t.section\t{section_attr}\n"
                 consts_asm += f"\t.balign {align_bytes}\n"
                 consts_asm += f"\t.globl\t{symbol_prefix}_binary_constants_bin_start\n"
@@ -2528,8 +2354,8 @@ class AotCodeCompiler:
 
             # Use c++ to convert consts to object file can support more compilers, such as msvc and icx.
             def format_consts_to_cpp(
-                consts: bytes | bytearray, align_bytes: int, symbol_prefix: str
-            ) -> tuple[str, str]:
+                consts: Union[bytes, bytearray], align_bytes: int, symbol_prefix: str
+            ) -> Tuple[str, str]:
                 consts_size = len(consts)
                 asan_attr = """#if defined(__clang__) || defined (__GNUC__)\t\n\
 #define ATTRIBUTE_NO_SANITIZE_ADDRESS __attribute__((no_sanitize("address")))\t\n\
@@ -2554,7 +2380,7 @@ ATTRIBUTE_NO_SANITIZE_ADDRESS\t\n"""
             def get_zero_consts_asm_code(
                 align_bytes: int,
                 symbol_prefix: str,
-            ) -> tuple[str, str]:
+            ) -> Tuple[str, str]:
                 """
                 This function handles zero-sized constants because the C++ standard prohibits zero-length arrays:
                 https://stackoverflow.com/questions/9722632/what-happens-if-i-define-a-0-size-array-in-c-c
@@ -2744,8 +2570,8 @@ end
 
                         # Compute offsets up front so each worker can write into a
                         # disjoint slice of a single pre-allocated buffer independently
-                        offsets: list[int] = []
-                        sizes: list[int] = []
+                        offsets: List[int] = []
+                        sizes: List[int] = []
                         total_size = 0
                         for name in constant_names:
                             t = graph.get_original_value_of_constant(name)
@@ -2825,7 +2651,7 @@ end
                     wrapper_path_operator.with_name(external_weights_filename)
                 )
 
-            compile_command: dict[str, Any] = {
+            compile_command: Dict[str, Any] = {
                 "aot_mode": graph.aot_mode,
                 "device_type": device_type,
                 "use_mmap_weights": use_mmap_weights,
@@ -2978,9 +2804,9 @@ end
 
             cubins_o = []
             asm_files = []
-            fatbin_cmds: list[tuple[str, str]] = []
+            fatbin_cmds: List[Tuple[str, str]] = []
             if not _IS_WINDOWS:
-                cubins_to_embed: list[tuple[str, str]] = []
+                cubins_to_embed: List[Tuple[str, str]] = []
                 ld, objcopy = get_ld_and_objcopy(use_relative_path)
                 kernels = getattr(V.graph.wrapper_code, "_kernel_name_to_body", {})
                 for kernel_name, value in CudaKernelParamCache.cache.items():
@@ -3042,7 +2868,7 @@ end
                     current_arch = cuda_compile_utils._nvcc_arch_as_compile_option()
                     nvcc = cuda_compile_utils._cuda_compiler()
 
-                    def _compile_fatbin(asm_and_cubin: tuple[str, str]) -> None:
+                    def _compile_fatbin(asm_and_cubin: Tuple[str, str]) -> None:
                         asm_f, cubin_f = asm_and_cubin
                         cmd = (
                             f"{nvcc} -fatbin {asm_f} -o {cubin_f} "
@@ -3060,10 +2886,7 @@ end
                             )
                             raise
 
-                    with (
-                        dynamo_timed("aoti_compile_fatbin", log_pt2_compile_event=True),
-                        ThreadPoolExecutor() as pool,
-                    ):
+                    with dynamo_timed("aoti_compile_fatbin", log_pt2_compile_event=True), ThreadPoolExecutor() as pool:
                         list(pool.map(_compile_fatbin, fatbin_cmds))
 
                 if cubins_to_embed:
@@ -3267,10 +3090,10 @@ end
         return output_so
 
 
-_libgomp: CDLL | None = None
+_libgomp: Optional[CDLL] = None
 
 
-def custom_op_wrapper(op: str, *args: Any) -> list[c_void_p] | c_void_p | None:
+def custom_op_wrapper(op: str, *args: Any) -> Union[List[c_void_p], Optional[c_void_p]]:
     # This function will be called from generated cpp wrapper code in the JIT mode.
     # Because tensors will be passed in as AtenTensorHandle, we need to explicitly convert them.
     def convert_arg(arg: Any) -> Any:
@@ -3326,7 +3149,7 @@ _HEADER_DIR = os.path.join(default_cache_dir(), "precompiled_headers")
 _HEADER_LOCK_DIR = os.path.join(_HEADER_DIR, "locks")
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _precompile_header(
     header: str,
     hashable_cmd_line: str,
@@ -3390,7 +3213,7 @@ def _precompile_header(
     return header_full_path
 
 
-def _get_cpp_prefix_header(device: str) -> str | None:
+def _get_cpp_prefix_header(device: str) -> Optional[str]:
     if device.startswith("cpu"):
         return "torch/csrc/inductor/cpp_prefix.h"
     return None
@@ -3413,16 +3236,16 @@ class CppCodeCache:
     """Compiles and caches C++ libraries.  Users of this class supply the source code to
     be compiled, while compilation flags are set by CppBuilder."""
 
-    cache: dict[str, Callable[[], CDLL | ModuleType]] = {}
+    cache: Dict[str, Callable[[], Union[CDLL, ModuleType]]] = {}
     cache_clear = staticmethod(cache.clear)
-    cpp_compile_command_flags: dict[str, Any] = {}
+    cpp_compile_command_flags: Dict[str, Any] = {}
 
     @staticmethod
-    def _load_library_inner(path: str, key: str) -> CDLL | ModuleType:
+    def _load_library_inner(path: str, key: str) -> Union[CDLL, ModuleType]:
         return cdll.LoadLibrary(path)
 
     @classmethod
-    def _load_library(cls, path: str, key: str) -> CDLL | ModuleType:
+    def _load_library(cls, path: str, key: str) -> Union[CDLL, ModuleType]:
         try:
             result = cls._load_library_inner(path, key)
             result.key = key  # type: ignore[union-attr]
@@ -3445,7 +3268,7 @@ class CppCodeCache:
             raise
 
     @classmethod
-    def _get_uncompiled_header(cls, device: str) -> str | None:
+    def _get_uncompiled_header(cls, device: str) -> Optional[str]:
         """
         Given a device type, returns the path to a CPP header file to be precompiled.
         """
@@ -3458,7 +3281,7 @@ class CppCodeCache:
         device_type: str = "cpu",
         submit_fn: Any = None,
         extra_flags: Sequence[str] = (),
-        optimized_code: str | None = None,
+        optimized_code: Optional[str] = None,
     ) -> Any:
         """Compile and load a C++ library.  Returns a callable that returns the loaded
         library."""
@@ -3520,7 +3343,7 @@ class CppCodeCache:
             from torch.utils._filelock import FileLock
 
             lock_path = os.path.join(get_lock_dir(), key + ".lock")
-            future: Future[Any] | None = None
+            future: Optional[Future[Any]] = None
             lib = None
 
             # if requested, pre-compile any headers
@@ -3628,7 +3451,7 @@ def _worker_compile_cpp(
 # Customized Python binding for cpp kernels
 @clear_on_fresh_cache
 class CppPythonBindingsCodeCache(CppCodeCache):
-    cache: dict[str, Callable[[], CDLL | ModuleType]] = {}
+    cache: Dict[str, Callable[[], Union[CDLL, ModuleType]]] = {}
     _loaded_module_names: OrderedSet[str] = OrderedSet()
 
     @staticmethod
@@ -3756,7 +3579,7 @@ class CppPythonBindingsCodeCache(CppCodeCache):
         return module
 
     @classmethod
-    def _get_uncompiled_header(cls, device: str) -> str | None:
+    def _get_uncompiled_header(cls, device: str) -> Optional[str]:
         return _get_cpp_prefix_header(device)
 
     @classmethod
@@ -3768,7 +3591,7 @@ class CppPythonBindingsCodeCache(CppCodeCache):
         num_outputs: int = -1,
         submit_fn: Any = None,
         extra_flags: Sequence[str] = (),
-        kernel_code: str | None = None,
+        kernel_code: Optional[str] = None,
     ) -> Any:
         """
         Wrap a C++ function in fast Python bindings.
@@ -3819,7 +3642,7 @@ class CppPythonBindingsCodeCache(CppCodeCache):
 
 @clear_on_fresh_cache
 class CppWrapperCodeCache(CppPythonBindingsCodeCache):
-    cache: dict[str, Callable[[], CDLL | ModuleType]] = {}
+    cache: Dict[str, Callable[[], Union[CDLL, ModuleType]]] = {}
 
     @staticmethod
     def cache_clear() -> None:
@@ -3886,15 +3709,15 @@ class CppWrapperCodeCache(CppPythonBindingsCodeCache):
     )
 
     @classmethod
-    def _get_uncompiled_header(cls, device: str) -> str | None:
+    def _get_uncompiled_header(cls, device: str) -> Optional[str]:
         return _get_cpp_wrapper_header(device)
 
 
 @clear_on_fresh_cache
 class HalideCodeCache(CppPythonBindingsCodeCache):
-    cache: dict[str, Callable[[], ModuleType | CDLL]] = {}
+    cache: Dict[str, Callable[[], Union[ModuleType, CDLL]]] = {}
     cache_clear = staticmethod(cache.clear)
-    _standalone_runtime_path: str | None = None
+    _standalone_runtime_path: Optional[str] = None
     prefix = textwrap.dedent(
         """
         #include "{halideruntime_h}"
@@ -3969,7 +3792,7 @@ class HalideCodeCache(CppPythonBindingsCodeCache):
     )
 
     @classmethod
-    def _codegen_buffer(cls, name: str, arg: HalideInputSpec, cuda: bool) -> list[str]:
+    def _codegen_buffer(cls, name: str, arg: HalideInputSpec, cuda: bool) -> List[str]:
         assert arg.shape is not None
         assert arg.stride is not None and len(arg.shape) == len(arg.stride)
         assert arg.offset is not None
@@ -4039,7 +3862,7 @@ class HalideCodeCache(CppPythonBindingsCodeCache):
         return glue_code
 
     @classmethod
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def config_hash(cls) -> str:
         command_gen = CppBuilder(
             name="O",
@@ -4083,7 +3906,7 @@ class HalideCodeCache(CppPythonBindingsCodeCache):
         raise RuntimeError(errmsg)
 
     @staticmethod
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def find_libautoschedule(name: str) -> str:
         sofile = f"libautoschedule_{name.lower()}.so"
         if "HALIDE_LIB" in os.environ:
@@ -4096,7 +3919,7 @@ class HalideCodeCache(CppPythonBindingsCodeCache):
         return HalideCodeCache._search_for_file(sofile, errmsg)
 
     @staticmethod
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def find_header(name: str) -> str:
         if "HALIDE_INCLUDE" in os.environ:
             path = os.path.join(os.environ["HALIDE_INCLUDE"], name)
@@ -4134,7 +3957,7 @@ class HalideCodeCache(CppPythonBindingsCodeCache):
         donefile = str(dirpath / "done")
         lockfile = str(dirpath / "lock")
         need_compile = not os.path.exists(donefile)
-        jobs: list[Any] = []
+        jobs: List[Any] = []
         if need_compile:
             write_atomic(genfile, source_code)
             cmd = [
@@ -4246,12 +4069,12 @@ class HalideCodeCache(CppPythonBindingsCodeCache):
         return so_file
 
     @classmethod
-    def _get_uncompiled_header(cls, device: str) -> str | None:
+    def _get_uncompiled_header(cls, device: str) -> Optional[str]:
         """Header precompiling is currently disabled for halide."""
         return None
 
 
-def _worker_task_halide(lockfile: str, jobs: list[partial[Any]]) -> None:
+def _worker_task_halide(lockfile: str, jobs: List[partial[Any]]) -> None:
     from torch.utils._filelock import FileLock
 
     try:
@@ -4260,7 +4083,7 @@ def _worker_task_halide(lockfile: str, jobs: list[partial[Any]]) -> None:
                 job()
     except subprocess.SubprocessError as e:
         if os.environ.get("HALIDE_REPRO") == "1":
-            cmd: list[Any]
+            cmd: List[Any]
             python, script, *cmd = getattr(e, "cmd", ("", "", ""))
             if os.path.basename(python).startswith("python"):
                 code = Path(script).read_text()
@@ -4304,16 +4127,16 @@ class PyCodeCache:
     # clearing the cache. Note also that we may load the same path more
     # than once, but attach different attributes, i.e., due to different
     # constant values.
-    modules: list[ModuleType] = []
+    modules: List[ModuleType] = []
 
     # Modules loaded without extra attributes are stored here, those do not
     # need to be re-loaded.
-    modules_no_attr: dict[str, ModuleType] = {}
+    modules_no_attr: Dict[str, ModuleType] = {}
 
-    linemaps: dict[str, list[tuple[Any, ...]]] = {}
+    linemaps: Dict[str, List[Tuple[Any, ...]]] = {}
 
     @classmethod
-    def write(cls, source_code: str, extra: str = "") -> tuple[str, str]:
+    def write(cls, source_code: str, extra: str = "") -> Tuple[str, str]:
         return write(source_code, "py", extra=extra)
 
     @classmethod
@@ -4326,8 +4149,8 @@ class PyCodeCache:
         cls,
         key: str,
         path: str,
-        linemap: list[tuple[int, str]] | None = None,
-        attrs: dict[str, Any] | None = None,
+        linemap: List[Tuple[int, str]] | None = None,
+        attrs: Optional[Dict[str, Any]] = None,
     ) -> ModuleType:
         if linemap is None:
             linemap = []
@@ -4372,10 +4195,10 @@ class PyCodeCache:
         cls.modules_no_attr.clear()
 
     @classmethod
-    @functools.cache
+    @functools.lru_cache(maxsize=None)
     def stack_frames_for_code(
         cls, path: str, lineno: int
-    ) -> list[dict[str, Any]] | None:
+    ) -> List[Dict[str, Any]] | None:
         if path not in cls.linemaps:
             return None
         if len(cls.linemaps[path]) == 0:
@@ -4389,7 +4212,7 @@ class PyCodeCache:
         if not entry:
             return None
 
-        def parse_stack_trace(stack_trace: str) -> list[dict[str, Any]]:
+        def parse_stack_trace(stack_trace: str) -> List[Dict[str, Any]]:
             # ideally fx stores stack traces as data rather than a string
             # but this is not along a performance critical path
             regex = r'File "(.+)", line (\d+), in (.+)\n'
@@ -4416,12 +4239,7 @@ def cutlass_key() -> bytes:
     Note: OSS and fbcode will have different keys.
     """
     if config.is_fbcode():
-        with (
-            importlib.resources.path(
-                "cutlass_library", "src_hash.txt"
-            ) as resource_path,
-            open(resource_path) as resource_file,
-        ):
+        with importlib.resources.path( "cutlass_library", "src_hash.txt" ) as resource_path, open(resource_path) as resource_file:
             return resource_file.read().encode()
 
     combined_hash = hashlib.sha256()
@@ -4537,10 +4355,10 @@ class CUTLASSCodeCache:
     class CacheEntry:
         input_path: str
         output_path: str
-        error_json: str | None = None
+        error_json: Optional[str] = None
 
-    cache: dict[str, CacheEntry] = {}
-    aot_kernels_o: list[str] = []
+    cache: Dict[str, CacheEntry] = {}
+    aot_kernels_o: List[str] = []
 
     _SOURCE_CODE_SUFFIX: str = ""
     _BACKEND: str = ""
@@ -4555,7 +4373,7 @@ class CUTLASSCodeCache:
     @lru_cache(maxsize=4)
     def get_kernel_binary_remote_cache(
         caching_enabled: bool, caching_available: bool
-    ) -> Any | None:
+    ) -> Optional[Any]:
         """
         Get or create the class instance of the CUTLASSKernelBinaryRemoteCache.
 
@@ -4591,10 +4409,10 @@ class CUTLASSCodeCache:
     @classmethod
     def _compile_command(
         cls,
-        src_files: list[str],
+        src_files: List[str],
         dst_file: str,
         dst_file_ext: str,
-        extra_args: list[str] | None = None,
+        extra_args: Optional[List[str]] = None,
     ) -> str:
         raise NotImplementedError
 
@@ -4604,7 +4422,7 @@ class CUTLASSCodeCache:
 
     @classmethod
     @lru_cache(None)
-    def write(cls, source_code: str, dst_file_ext: str) -> tuple[str, str]:
+    def write(cls, source_code: str, dst_file_ext: str) -> Tuple[str, str]:
         """
         Writes source code into a file with dst_file_ext as the file extension.
         Returns the hash key of source code, and the path to the file.
@@ -4623,8 +4441,8 @@ class CUTLASSCodeCache:
 
     @classmethod
     def compile(
-        cls, source_code: str, dst_file_ext: str, extra_args: list[str] | None = None
-    ) -> tuple[str, str, str]:
+        cls, source_code: str, dst_file_ext: str, extra_args: Optional[List[str]] = None
+    ) -> Tuple[str, str, str]:
         """
         Compiles CUDA source_code into a file with dst_file_ext extension.
         If dst_file_ext is "so", first compiles to ".o" and then links to ".so".
@@ -4752,7 +4570,7 @@ class CUTLASSCodeCache:
         return (cls.cache[key_with_ext].output_path, key, input_path)
 
     @classmethod
-    def load(cls, source_code: str, dst_file_ext: str) -> tuple[DLLWrapper, str, str]:
+    def load(cls, source_code: str, dst_file_ext: str) -> Tuple[DLLWrapper, str, str]:
         """
         Compiles source code and loads the generated .so file.
         Returns a tuple of DLLWrapper, hash_key, source_code_path
@@ -4773,7 +4591,7 @@ class CUTLASSCodeCache:
         cls,
         error_str: str,
         key_with_ext: str,
-        cmd_parts: list[str],
+        cmd_parts: List[str],
         input_path: str,
         output_path: str,
         # Any here, as the import and type will only work in fbcode
@@ -4808,10 +4626,10 @@ class CUDACodeCache(CUTLASSCodeCache):
     @classmethod
     def _compile_command(
         cls,
-        src_files: list[str],
+        src_files: List[str],
         dst_file: str,
         dst_file_ext: str,
-        extra_args: list[str] | None = None,
+        extra_args: Optional[List[str]] = None,
     ) -> str:
         return cuda_compile_utils.cuda_compile_command(
             src_files, dst_file, dst_file_ext, extra_args=extra_args
@@ -4842,7 +4660,7 @@ from torch._inductor.codegen.xpu import compile_utils as xpu_compile_utils
 class XPUCodeCache(CUTLASSCodeCache):
     _SOURCE_CODE_SUFFIX = "cpp"
     _BACKEND = "XPU"
-    dll_cache: dict[str, DLLWrapper] = {}
+    dll_cache: Dict[str, DLLWrapper] = {}
 
     @classmethod
     def _use_re_build(cls) -> bool:
@@ -4851,10 +4669,10 @@ class XPUCodeCache(CUTLASSCodeCache):
     @classmethod
     def _compile_command(
         cls,
-        src_files: list[str],
+        src_files: List[str],
         dst_file: str,
         dst_file_ext: str,
-        extra_args: list[str] | None = None,
+        extra_args: Optional[List[str]] = None,
     ) -> str:
         return xpu_compile_utils.xpu_compile_command(
             src_files, dst_file, dst_file_ext, extra_args=extra_args
@@ -4872,7 +4690,7 @@ class XPUCodeCache(CUTLASSCodeCache):
         return extra
 
     @classmethod
-    def load(cls, source_code: str, dst_file_ext: str) -> tuple[DLLWrapper, str, str]:
+    def load(cls, source_code: str, dst_file_ext: str) -> Tuple[DLLWrapper, str, str]:
         """
         Compiles source code and loads the generated .so file.
         Returns a tuple of DLLWrapper, hash_key, source_code_path
@@ -4899,8 +4717,8 @@ class ROCmCodeCache:
         input_path: str
         output_path: str
 
-    cache: dict[str, CacheEntry] = {}
-    aot_kernels_o: list[str] = []
+    cache: Dict[str, CacheEntry] = {}
+    aot_kernels_o: List[str] = []
     _SOURCE_CODE_SUFFIX = "cpp"
     _logged_compiler_version = False
 
@@ -4910,7 +4728,7 @@ class ROCmCodeCache:
         ROCmCodeCache.aot_kernels_o.clear()
 
     @classmethod
-    def write(cls, source_code: str, dst_file_ext: str) -> tuple[str, str]:
+    def write(cls, source_code: str, dst_file_ext: str) -> Tuple[str, str]:
         """
         Writes source code into a file with dst_file_ext as the file extension.
         Returns the hash key of source code, and the path to the file.
@@ -4926,8 +4744,8 @@ class ROCmCodeCache:
 
     @classmethod
     def compile(
-        cls, source_code: str, dst_file_ext: str, extra_args: list[str] | None = None
-    ) -> tuple[str, str, str]:
+        cls, source_code: str, dst_file_ext: str, extra_args: Optional[List[str]] = None
+    ) -> Tuple[str, str, str]:
         """
         Compiles source_code into a file with dst_file_ext extension,
         using the compile command specific for the ROCm platform.
@@ -4975,7 +4793,7 @@ class ROCmCodeCache:
         return (cls.cache[key].output_path, key, input_path)
 
     @classmethod
-    def load(cls, source_code: str, dst_file_ext: str) -> tuple[DLLWrapper, str, str]:
+    def load(cls, source_code: str, dst_file_ext: str) -> Tuple[DLLWrapper, str, str]:
         """
         Compiles source code and loads the generated .so file.
         Returns a tuple of DLLWrapper, hash_key, source_code_path
@@ -4993,18 +4811,18 @@ class ROCmCodeCache:
 
 
 class CodeCacheFuture:
-    def result(self, timeout: float | None = None) -> Callable[..., Any]:
+    def result(self, timeout: Optional[float] = None) -> Callable[..., Any]:
         raise NotImplementedError
 
 
 class LambdaFuture(CodeCacheFuture):
     def __init__(
-        self, result_fn: Callable[..., Any], future: Future[Any] | None = None
+        self, result_fn: Callable[..., Any], future: Optional[Future[Any]] = None
     ) -> None:
         self.result_fn = result_fn
         self.future = future
 
-    def result(self, timeout: float | None = None) -> Callable[..., Any]:
+    def result(self, timeout: Optional[float] = None) -> Callable[..., Any]:
         if timeout is not None and self.future is not None:
             # Wait on the underlying cross-process future with the caller's
             # timeout; raises concurrent.futures.TimeoutError if it does not
@@ -5028,7 +4846,7 @@ class StaticAutotunerFuture(CodeCacheFuture):
         # since it can be very large.
         self.reload_kernel_from_src: Callable[[], Any] | None = None
 
-    def result(self, timeout: float | None = None) -> CachingAutotuner:
+    def result(self, timeout: Optional[float] = None) -> CachingAutotuner:
         # timeout is accepted for interface parity with other CodeCacheFuture
         # subclasses; this work is synchronous in-process and has no pending
         # future to wait on.

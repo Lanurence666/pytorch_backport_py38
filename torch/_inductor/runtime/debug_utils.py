@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import functools
 import logging
 import threading
@@ -5,6 +7,7 @@ import weakref
 
 import torch
 from torch.utils._ordered_set import OrderedSet
+from typing import Dict, List, Set, Type
 
 
 log = logging.getLogger(__name__)
@@ -20,7 +23,7 @@ class BufferMemoryTracker:
     """
 
     def __init__(self) -> None:
-        self.tensor_tracker: dict[str, torch.storage.UntypedStorage] = (
+        self.tensor_tracker: Dict[str, torch.storage.UntypedStorage] = (
             weakref.WeakValueDictionary()  # type: ignore[assignment]
         )
         self.died_since_last_step: OrderedSet[str] = OrderedSet()
@@ -52,8 +55,8 @@ class BufferMemoryTracker:
 
     def check_step_delta(
         self,
-        expected_allocated: list[str],
-        expected_freed: list[str],
+        expected_allocated: List[str],
+        expected_freed: List[str],
         is_final_step: bool,
     ) -> None:
         """Check only the delta changes since last step"""
@@ -104,8 +107,8 @@ def track_tensor(tensor: torch.Tensor, name: str) -> None:
 
 
 def tracked_empty_strided(
-    size: list[int],
-    stride: list[int],
+    size: List[int],
+    stride: List[int],
     *,
     dtype: torch.dtype,
     device: torch.device,
@@ -117,7 +120,7 @@ def tracked_empty_strided(
 
 
 def check_memory_step(
-    allocated: list[str], freed: list[str], is_final_step: bool = False
+    allocated: List[str], freed: List[str], is_final_step: bool = False
 ) -> None:
     tracker = get_mem_tracker()
     tracker.check_step_delta(allocated, freed, is_final_step)

@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 
 import torch
@@ -7,6 +9,7 @@ from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 from torch.distributions.utils import _standard_normal, lazy_property
 from torch.types import _size
+from typing import Optional
 
 
 __all__ = ["MultivariateNormal"]
@@ -135,10 +138,10 @@ class MultivariateNormal(Distribution):
     def __init__(
         self,
         loc: Tensor,
-        covariance_matrix: Tensor | None = None,
-        precision_matrix: Tensor | None = None,
-        scale_tril: Tensor | None = None,
-        validate_args: bool | None = None,
+        covariance_matrix: Optional[Tensor]= None,
+        precision_matrix: Optional[Tensor]= None,
+        scale_tril: Optional[Tensor]= None,
+        validate_args: Optional[bool]= None,
     ) -> None:
         if loc.dim() < 1:
             raise ValueError("loc must be at least one-dimensional.")

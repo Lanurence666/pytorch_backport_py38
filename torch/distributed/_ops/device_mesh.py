@@ -1,9 +1,12 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 
+from __future__ import annotations
+
 import torch
 from torch import SymInt
 
 from ..device_mesh import DeviceMesh
+from typing import List
 
 
 # Register custom operator
@@ -64,7 +67,7 @@ def _runtime_compute_coordinate_on_dim_impl(full_mesh: torch.Tensor, index: int)
     return mesh_coords[index]
 
 
-def _get_flattened_submesh_impl(mesh: DeviceMesh, mesh_dims: list[int]) -> DeviceMesh:
+def _get_flattened_submesh_impl(mesh: DeviceMesh, mesh_dims: List[int]) -> DeviceMesh:
     from torch.distributed.tensor._redistribute import (
         _get_flattened_mesh_by_layout_impl,
     )
@@ -76,16 +79,16 @@ def _get_flattened_submesh_impl(mesh: DeviceMesh, mesh_dims: list[int]) -> Devic
 
 
 @torch.library.custom_op("device_mesh::_get_flattened_submesh", mutates_args=())
-def _get_flattened_submesh(mesh: DeviceMesh, mesh_dims: list[int]) -> DeviceMesh:
+def _get_flattened_submesh(mesh: DeviceMesh, mesh_dims: List[int]) -> DeviceMesh:
     return _get_flattened_submesh_impl(mesh, mesh_dims)
 
 
 @_get_flattened_submesh.register_fake
-def _get_flattened_submesh_fake(mesh: DeviceMesh, mesh_dims: list[int]) -> DeviceMesh:
+def _get_flattened_submesh_fake(mesh: DeviceMesh, mesh_dims: List[int]) -> DeviceMesh:
     return _get_flattened_submesh_impl(mesh, mesh_dims)
 
 
-def _get_submesh_impl(mesh: DeviceMesh, mesh_dims: list[int]) -> DeviceMesh:
+def _get_submesh_impl(mesh: DeviceMesh, mesh_dims: List[int]) -> DeviceMesh:
     all_dim_names = mesh._mesh_dim_names
     if all_dim_names is None:
         raise ValueError(f"Cannot slice mesh without dim names: {mesh}")
@@ -96,10 +99,10 @@ def _get_submesh_impl(mesh: DeviceMesh, mesh_dims: list[int]) -> DeviceMesh:
 
 
 @torch.library.custom_op("device_mesh::_get_submesh", mutates_args=())
-def _get_submesh(mesh: DeviceMesh, mesh_dims: list[int]) -> DeviceMesh:
+def _get_submesh(mesh: DeviceMesh, mesh_dims: List[int]) -> DeviceMesh:
     return _get_submesh_impl(mesh, mesh_dims)
 
 
 @_get_submesh.register_fake
-def _get_submesh_fake(mesh: DeviceMesh, mesh_dims: list[int]) -> DeviceMesh:
+def _get_submesh_fake(mesh: DeviceMesh, mesh_dims: List[int]) -> DeviceMesh:
     return _get_submesh_impl(mesh, mesh_dims)

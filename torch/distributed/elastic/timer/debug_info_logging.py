@@ -8,7 +8,10 @@
 # LICENSE file in the root directory of this source tree.
 
 
+from __future__ import annotations
+
 from torch.distributed.elastic.utils.logging import get_logger
+from typing import Dict, List
 
 
 logger = get_logger(__name__)
@@ -18,7 +21,7 @@ __all__ = ["log_debug_info_for_expired_timers"]
 
 def log_debug_info_for_expired_timers(
     run_id: str,
-    expired_timers: dict[int, list[str]],
+    expired_timers: Dict[int, List[str]],
 ):
     if expired_timers:
         logger.info("Timers expired for run:[%s] [%s].", run_id, expired_timers)

@@ -10,6 +10,7 @@ from torch._higher_order_ops.utils import (
 from torch._ops import HigherOrderOperator
 from torch._subclasses.fake_tensor import FakeTensorMode
 from torch.fx.experimental.proxy_tensor import ProxyTorchDispatchMode, track_tensor_tree
+from typing import Callable, Tuple
 
 
 # used for wrapping a function/op with context hints

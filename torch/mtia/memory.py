@@ -1,8 +1,10 @@
 # pyre-strict
 
+from __future__ import annotations
+
 r"""This package adds support for device memory management implemented in MTIA."""
 
-from typing import Any
+from typing import Any, Dict
 
 import torch
 
@@ -10,7 +12,7 @@ from . import Device, is_initialized
 from ._utils import _get_device_index
 
 
-def memory_stats(device: Device = None) -> dict[str, Any]:
+def memory_stats(device: Device = None) -> Dict[str, Any]:
     r"""Return a dictionary of MTIA memory allocator statistics for a given device.
 
     Args:

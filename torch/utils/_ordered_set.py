@@ -1,13 +1,11 @@
 from __future__ import annotations
 
+from typing import Any, Dict, Iterable, Iterator, List, MutableSet, Optional, Reversible, Set, Tuple, Type, TypeVar, cast
 from collections.abc import (
     Hashable,
-    Iterable,
-    Iterator,
-    MutableSet,
-    Reversible,
     Set as AbstractSet,
 )
+
 from typing import Any, cast, TypeVar
 
 
@@ -24,11 +22,11 @@ class OrderedSet(MutableSet[T], Reversible[T]):
 
     __slots__ = ("_dict",)
 
-    def __init__(self, iterable: Iterable[T] | None = None) -> None:
+    def __init__(self, iterable: Optional[Iterable[T]] = None) -> None:
         self._dict = dict.fromkeys(iterable, None) if iterable is not None else {}
 
     @staticmethod
-    def _from_dict(dict_inp: dict[T, None]) -> OrderedSet[T]:
+    def _from_dict(dict_inp: Dict[T, None]) -> OrderedSet[T]:
         s: OrderedSet[T] = OrderedSet()
         s._dict = dict_inp
         return s
@@ -168,11 +166,11 @@ class OrderedSet(MutableSet[T], Reversible[T]):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({list(self)})"
 
-    def __getstate__(self) -> list[T]:
+    def __getstate__(self) -> List[T]:
         return list(self._dict.keys())
 
-    def __setstate__(self, state: list[T]) -> None:
+    def __setstate__(self, state: List[T]) -> None:
         self._dict = dict.fromkeys(state, None)
 
-    def __reduce__(self) -> tuple[type[OrderedSet[T]], tuple[list[T]]]:
+    def __reduce__(self) -> Tuple[Type[OrderedSet[T]], Tuple[List[T]]]:
         return (OrderedSet, (list(self),))

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import itertools
 from collections.abc import Callable, Sequence
@@ -47,6 +49,7 @@ from torch.fx.experimental.migrate_gradual_types.util import (
     gen_tensor_dims,
 )
 from torch.fx.tensor_type import _DynType, Dyn, TensorType
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
 
 
 __all__ = [
@@ -86,12 +89,12 @@ __all__ = [
 ]
 
 
-_TransformFn = Callable[[Constraint, int], tuple[Constraint, int]]
-_TRANSFORMATION_RULES: dict[type, _TransformFn] = {}
+_TransformFn = Callable[[Constraint, int], Tuple[Constraint, int]]
+_TRANSFORMATION_RULES: Dict[type, _TransformFn] = {}
 
 
 def register_transformation_rule(
-    call_target: type[Constraint],
+    call_target: Type[Constraint],
 ) -> Callable[[_TransformFn], _TransformFn]:
     def register(fn: _TransformFn) -> _TransformFn:
         if call_target in _TRANSFORMATION_RULES:
@@ -104,7 +107,7 @@ def register_transformation_rule(
     return register
 
 
-def valid_index(index: int, dims: list[DVar]) -> Constraint:
+def valid_index(index: int, dims: List[DVar]) -> Constraint:
     """
     Given a list of dimensions, checks if an index is valid in the list
     """
@@ -116,7 +119,7 @@ def valid_index(index: int, dims: list[DVar]) -> Constraint:
 
 
 @register_transformation_rule(Transpose)
-def transform_transpose(constraint: Constraint, counter: int) -> tuple[Constraint, int]:
+def transform_transpose(constraint: Constraint, counter: int) -> Tuple[Constraint, int]:
     """
     Similar to a sequence of two index-selects
     """
@@ -147,7 +150,7 @@ def transform_transpose(constraint: Constraint, counter: int) -> tuple[Constrain
 @register_transformation_rule(IndexSelect)
 def transform_index_select(
     constraint: Constraint, counter: int
-) -> tuple[Constraint, int]:
+) -> Tuple[Constraint, int]:
     """
     The constraints consider the given tensor size, checks if the index is valid
     and if so, generates a constraint for replacing the input dimension
@@ -179,7 +182,7 @@ def transform_index_select(
 
 
 @register_transformation_rule(GetItem)
-def transform_get_item(constraint: Constraint, counter: int) -> tuple[Constraint, int]:
+def transform_get_item(constraint: Constraint, counter: int) -> Tuple[Constraint, int]:
     """
     generate an equality of the form:
     t = [a1, ..., an]
@@ -217,7 +220,7 @@ def transform_get_item(constraint: Constraint, counter: int) -> tuple[Constraint
     return Conj(all_constraints), counter
 
 
-def valid_index_tensor(index: tuple[None | slice, ...], dims: list[DVar]) -> Constraint:
+def valid_index_tensor(index: Tuple[Optional[slice], ...], dims: List[DVar]) -> Constraint:
     """
     if the slice instances exceed the length of the dimensions
     then this is a type error so we return False
@@ -235,7 +238,7 @@ def valid_index_tensor(index: tuple[None | slice, ...], dims: list[DVar]) -> Con
 @register_transformation_rule(GetItemTensor)
 def transform_get_item_tensor(
     constraint: Constraint, counter: int
-) -> tuple[Constraint, int]:
+) -> Tuple[Constraint, int]:
     """
     When the index is a tuple, then the output will be a tensor
     TODO: we have to check if this is the case for all HF models
@@ -263,8 +266,8 @@ def transform_get_item_tensor(
     # generate a place-holder list of the right rank
     # where "slice" does not contribute to the rank and "None" does
     none_c = constraint.index_tuple.count(None)
-    # list invariance: [None] * n types as list[None], but elements are reassigned to int/DVar
-    resulting_tensor_dims: list[int | DVar | None] = [None] * (none_c + len(dims))  # type: ignore[assignment]
+    # list invariance: [None] * n types as List[None], but elements are reassigned to int/DVar
+    resulting_tensor_dims: Optional[List[Union[int, DVar]]] = [None] * (none_c + len(dims))  # type: ignore[assignment]
 
     dim_index = 0
     for i in range(len(constraint.index_tuple)):
@@ -305,7 +308,7 @@ def transform_get_item_tensor(
 @register_transformation_rule(BinConstraintT)
 def generate_binconstraint_t(
     constraint: Constraint, counter: int
-) -> tuple[Constraint, int]:
+) -> Tuple[Constraint, int]:
     """
     Transform binary constraints for tensors
     """
@@ -402,7 +405,7 @@ def generate_binconstraint_t(
 @register_transformation_rule(BinConstraintD)
 def generate_binconstraint_d(
     constraint: Constraint, counter: int
-) -> tuple[Constraint, int]:
+) -> Tuple[Constraint, int]:
     """
     Transform binary constraints for dimensions
     """
@@ -433,7 +436,7 @@ def generate_binconstraint_d(
 
 
 @register_transformation_rule(Conj)
-def generate_conj(constraint: Constraint, counter: int) -> tuple[Constraint, int]:
+def generate_conj(constraint: Constraint, counter: int) -> Tuple[Constraint, int]:
     """
     Transform conjunctions
     """
@@ -447,7 +450,7 @@ def generate_conj(constraint: Constraint, counter: int) -> tuple[Constraint, int
 
 
 @register_transformation_rule(Disj)
-def generate_disj(constraint: Constraint, counter: int) -> tuple[Constraint, int]:
+def generate_disj(constraint: Constraint, counter: int) -> Tuple[Constraint, int]:
     """
     Transform disjunctions
     """
@@ -461,7 +464,7 @@ def generate_disj(constraint: Constraint, counter: int) -> tuple[Constraint, int
 
 
 @register_transformation_rule(TGreatestUpperBound)
-def generate_gub(constraint: Constraint, counter: int) -> tuple[Constraint, int]:
+def generate_gub(constraint: Constraint, counter: int) -> Tuple[Constraint, int]:
     """
     Transform greatest upper bound for tensors. Results in equality and Greatest Upper Bound
     on dimensions
@@ -486,7 +489,7 @@ def generate_gub(constraint: Constraint, counter: int) -> tuple[Constraint, int]
 
 
 @register_transformation_rule(DGreatestUpperBound)
-def generate_d_gub(constraint: Constraint, counter: int) -> tuple[Constraint, int]:
+def generate_d_gub(constraint: Constraint, counter: int) -> Tuple[Constraint, int]:
     """
     Transform greatest upper bound for dimensions into equality constraints
     """
@@ -514,7 +517,7 @@ def generate_d_gub(constraint: Constraint, counter: int) -> tuple[Constraint, in
 
 
 @register_transformation_rule(CalcConv)
-def generate_calc_conv(constraint: Constraint, counter: int) -> tuple[Constraint, int]:
+def generate_calc_conv(constraint: Constraint, counter: int) -> Tuple[Constraint, int]:
     if not isinstance(constraint, CalcConv):
         raise TypeError(type(constraint))
     d, counter = gen_tensor_dims(4, counter)
@@ -551,7 +554,7 @@ def generate_calc_conv(constraint: Constraint, counter: int) -> tuple[Constraint
 @register_transformation_rule(CalcMaxPool)
 def generate_calc_maxpool(
     constraint: Constraint, counter: int
-) -> tuple[Constraint, int]:
+) -> Tuple[Constraint, int]:
     """
     Transform maxpool constraints
     """
@@ -583,7 +586,7 @@ def generate_calc_maxpool(
 @register_transformation_rule(CalcProduct)
 def generate_calc_product(
     constraint: Constraint, counter: int
-) -> tuple[Constraint, int]:
+) -> Tuple[Constraint, int]:
     """
     Transform flatten constraints
     """
@@ -606,7 +609,7 @@ def generate_calc_product(
 
     all_possibilities = generate_all_int_dyn_dim_possibilities(mid)
 
-    all_constraints: list[Constraint] = []
+    all_constraints: List[Constraint] = []
 
     for p in all_possibilities:
         p = list(p)
@@ -657,7 +660,7 @@ def generate_calc_product(
 
 
 @register_transformation_rule(CanReshape)
-def generate_reshape(constraint: Constraint, counter: int) -> tuple[Constraint, int]:
+def generate_reshape(constraint: Constraint, counter: int) -> Tuple[Constraint, int]:
     """
     Transform reshape constraints
     """
@@ -796,7 +799,7 @@ def generate_reshape(constraint: Constraint, counter: int) -> tuple[Constraint, 
 @register_transformation_rule(ApplyBroadcasting)
 def generate_broadcasting(
     constraint: Constraint, counter: int
-) -> tuple[Constraint, int]:
+) -> Tuple[Constraint, int]:
     """
     Transform broadcasting constraints
     """
@@ -874,7 +877,7 @@ def generate_broadcasting(
 
 def transform_constraint(
     constraint: Constraint, counter: int
-) -> tuple[Constraint, int]:
+) -> Tuple[Constraint, int]:
     """
     Transforms a constraint into a simpler constraint.
     Ex: precision and consistency are transformed to equality
@@ -893,8 +896,8 @@ def transform_constraint(
 
 
 def calc_last_two_dims(
-    constraint: CalcConv | CalcMaxPool, d: list[DVar]
-) -> tuple[Constraint, Constraint]:
+    constraint: Union[CalcConv, CalcMaxPool], d: List[DVar]
+) -> Tuple[Constraint, Constraint]:
     """
     Generates constraints for the last two dimensions of a convolution or a maxpool output
     Args:
@@ -967,8 +970,8 @@ def calc_last_two_dims(
 
 
 def generate_all_int_dyn_dim_possibilities(
-    my_list: list[DVar],
-) -> list[tuple[BinConstraintD, ...]]:
+    my_list: List[DVar],
+) -> List[Tuple[BinConstraintD, ...]]:
     """
     Generate all possibilities of being equal or not equal to dyn for my_list
     Args:
@@ -991,7 +994,7 @@ def generate_all_int_dyn_dim_possibilities(
 
 
 def is_target_div_by_dim(
-    target: Sequence[DVar | int | _DynType], dim: DVar | Prod
+    target: Union[Sequence[Union[DVar, int], _DynType]], dim: Union[DVar, Prod]
 ) -> BinConstraintD:
     """
     Generate constraints to check if the target dimensions are divisible by the input dimensions
@@ -1006,7 +1009,7 @@ def is_target_div_by_dim(
 
 
 def is_dim_div_by_target(
-    target: Sequence[DVar | int | _DynType], dim: DVar | Prod
+    target: Union[Sequence[Union[DVar, int], _DynType]], dim: Union[DVar, Prod]
 ) -> BinConstraintD:
     """
     Generate constraints to check if the input dimensions is divisible by the target dimensions
@@ -1021,7 +1024,7 @@ def is_dim_div_by_target(
 
 
 def gen_all_reshape_possibilities(
-    list_of_dims: list[DVar], target: Sequence[DVar | int | _DynType]
+    list_of_dims: List[DVar], target: Union[Sequence[Union[DVar, int], _DynType]]
 ) -> Constraint:
     """
     Consider all possibilities what the input dimensions could be (number or dynamic)
@@ -1042,7 +1045,7 @@ def gen_all_reshape_possibilities(
     all_constraints = []
 
     for p in all_possibilities:
-        to_multiply: list[DVar] = []
+        to_multiply: List[DVar] = []
 
         p = list(p)
 
@@ -1068,7 +1071,7 @@ def gen_all_reshape_possibilities(
 
 
 def broadcast_dim(
-    tensor_input1: Sequence[DVar | None],
+    tensor_input1: Sequence[Optional[DVar]],
     tensor_input2: Sequence[DVar],
     res1: Sequence[DVar],
     res2: Sequence[DVar],
@@ -1117,11 +1120,11 @@ def apply_padding(
     e11: BinConstraintT,
     e2: BinConstraintT,
     e12: BinConstraintT,
-    d2: list[DVar],
-    d11: list[DVar],
-    d12: list[DVar],
+    d2: List[DVar],
+    d11: List[DVar],
+    d12: List[DVar],
     counter: int,
-) -> tuple[Constraint, int]:
+) -> Tuple[Constraint, int]:
     """
     We are considering the possibility where one input has less dimensions than
     another input, so we apply padding to the broadcasted results
@@ -1186,7 +1189,7 @@ def apply_padding(
 
 
 def no_broadcast_dim_with_index(
-    d1: list[DVar], d2: list[DVar], d3: list[DVar], d4: list[DVar], i: int
+    d1: List[DVar], d2: List[DVar], d3: List[DVar], d4: List[DVar], i: int
 ) -> Constraint:
     """
     Args:
@@ -1224,7 +1227,7 @@ def no_broadcast_dim_with_index(
 
 def gen_lists_of_dims(
     num_tensors: int, dim_size: int, counter: int
-) -> tuple[list[list[DVar]], int]:
+) -> Tuple[List[List[DVar]], int]:
     """
     Generate lists of DVar to represent tensor dimensions
     Args:
@@ -1249,11 +1252,11 @@ def create_equality_constraints_for_broadcasting(
     e2: TVar,
     e11: TVar,
     e12: TVar,
-    d1: list[DVar],
-    d2: list[DVar],
-    d11: list[DVar],
-    d12: list[DVar],
-) -> list[BinConstraintT]:
+    d1: List[DVar],
+    d2: List[DVar],
+    d11: List[DVar],
+    d12: List[DVar],
+) -> List[BinConstraintT]:
     """
     Create equality constraints for when no broadcasting occurs
     Args:
@@ -1279,7 +1282,7 @@ def create_equality_constraints_for_broadcasting(
 
 def gen_consistency_constraints(
     constraint: BinConstraintT, counter: int
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     """
     Args:
         constraint: Consistency constraint on tensors
@@ -1289,7 +1292,7 @@ def gen_consistency_constraints(
 
     """
 
-    all_constraints: list[Constraint] = []
+    all_constraints: List[Constraint] = []
 
     for i in range(1, MAX_TENSOR_RANK + 1):
         new_dims_rhs_1, counter = gen_tensor_dims(i, counter)
@@ -1316,7 +1319,7 @@ def gen_consistency_constraints(
 
 def gen_greatest_upper_bound(
     constraint: TGreatestUpperBound, counter: int
-) -> tuple[list[Constraint], int]:
+) -> Tuple[List[Constraint], int]:
     """
     Args:
         constraint: Greatest upper bound on tensors
@@ -1326,10 +1329,10 @@ def gen_greatest_upper_bound(
 
     """
 
-    all_constraints: list[Constraint] = []
+    all_constraints: List[Constraint] = []
 
     for i in range(1, MAX_TENSOR_RANK + 1):
-        c: list[Constraint] = []
+        c: List[Constraint] = []
         dims1, counter = gen_tensor_dims(i, counter)
         c1tensor = TensorType(dims1)
 
@@ -1361,7 +1364,7 @@ def gen_greatest_upper_bound(
 
 
 def generate_all_broadcasting_possibilities_no_padding(
-    d1: list[DVar], d2: list[DVar], d11: list[DVar], d12: list[DVar]
+    d1: List[DVar], d2: List[DVar], d11: List[DVar], d12: List[DVar]
 ) -> Constraint:
     """
     Generate broadcasting constraints assuming no padding. Broadcasting can happen at any dimension.
@@ -1392,7 +1395,7 @@ def generate_all_broadcasting_possibilities_no_padding(
 
 def gen_broadcasting_constraints(
     e1: TVar, e2: TVar, e11: TVar, e12: TVar, i: int, counter: int
-) -> tuple[Constraint, Constraint, Constraint, list[BinConstraintD], int]:
+) -> Tuple[Constraint, Constraint, Constraint, List[BinConstraintD], int]:
     """
     Simulates broadcasting on e1 and e2 and returns the results
     respectively in e11 and e12. Because of gradual types,

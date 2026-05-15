@@ -1,5 +1,6 @@
 # Owner(s): ["oncall: distributed"]
 
+from __future__ import annotations
 import copy
 import itertools
 from typing import cast
@@ -1491,10 +1492,7 @@ class TestFullyShardNonFloatParam(FSDPTest):
             return orig_rs(*args, **kw)
 
         x = torch.randn(4, 16, device=device_type)
-        with (
-            patch_all_gather(assert_all_gather),
-            patch_reduce_scatter(assert_reduce_scatter),
-        ):
+        with patch_all_gather(assert_all_gather), patch_reduce_scatter(assert_reduce_scatter):
             loss = model(x).sum()
             loss.backward()
 

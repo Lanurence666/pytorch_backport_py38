@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
 import itertools
 import logging
-from collections.abc import Callable
-from typing import TYPE_CHECKING
+
+from typing import Callable, List, Optional, Set, TYPE_CHECKING
 
 from torch.utils._ordered_set import OrderedSet
 
@@ -106,8 +108,8 @@ class CoordescTuner:
         return timing
 
     @property
-    def tunable_fields(self) -> list[str]:
-        out: list[str] = [
+    def tunable_fields(self) -> List[str]:
+        out: List[str] = [
             "XBLOCK",
             "YBLOCK",
             "ZBLOCK",
@@ -141,7 +143,7 @@ class CoordescTuner:
         # them so coordesc iterates them alongside the base fields. Read
         # live each call so any post-construction mutation of
         # ``inductor_meta`` is observed.
-        combo_fields: list[str] = self.inductor_meta.get(
+        combo_fields: List[str] = self.inductor_meta.get(
             "combo_coordesc_field_order", []
         )
         out = combo_fields + out
@@ -238,7 +240,7 @@ class CoordescTuner:
         self,
         # pyrefly: ignore [missing-attribute]
         config: "triton.Config",
-    ) -> list["triton.Config"]:  # pyrefly: ignore [missing-attribute]
+    ) -> List["triton.Config"]:  # pyrefly: ignore [missing-attribute]
         """Return the Cartesian product of neighbour values across every
         tunable field, as a list of valid candidate configs."""
         candidate_values_list = []
@@ -322,7 +324,7 @@ class CoordescTuner:
         # pyrefly: ignore [missing-attribute]
         config: "triton.Config",
         field: str,
-    ) -> list["triton.Config"]:  # pyrefly: ignore [missing-attribute]
+    ) -> List["triton.Config"]:  # pyrefly: ignore [missing-attribute]
         """Return every valid neighbour of ``config`` along ``field``
         only — the per-axis counterpart of ``get_neighbour_values``.
 
@@ -345,7 +347,7 @@ class CoordescTuner:
         func: Callable[["triton.Config"], float],
         # pyrefly: ignore [missing-attribute]
         baseline_config: "triton.Config",
-        baseline_timing: float | None = None,
+        baseline_timing: Optional[float]= None,
     ) -> "triton.Config":  # pyrefly: ignore  # missing-attribute
         """
         Perform coordinate descent autotuning starting from a baseline configuration.

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Shared utilities for SHMEM Triton backends (_nvshmem_triton, _rocshmem_triton).
 
@@ -5,8 +6,8 @@ This is a leaf module — it does NOT import any backend or dispatch module,
 so backend modules can safely import from here without circular dependencies.
 """
 
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, Type
 
 from torch.utils._triton import has_triton
 
@@ -14,7 +15,7 @@ from torch.utils._triton import has_triton
 class ShmemKernelRegistry:
     """Base registry tracking Triton kernels that need SHMEM module init."""
 
-    _to_init: dict[str, Any] = {}
+    _to_init: Dict[str, Any] = {}
 
     @classmethod
     def register(cls, name: str) -> None:
@@ -31,8 +32,8 @@ class ShmemKernelRegistry:
 
 def run_shmem_init_hook(
     *,
-    kwargs: dict[str, Any],
-    registry: type[ShmemKernelRegistry],
+    kwargs: Dict[str, Any],
+    registry: Type[ShmemKernelRegistry],
     module_init: Callable[[Any], None],
     logger: Any,
 ) -> None:
@@ -68,7 +69,7 @@ if has_triton():
         so that users don't have to pass it.
         """
 
-        def __init__(self, jit_func: JITFunction, extern_libs: dict[str, str]) -> None:
+        def __init__(self, jit_func: JITFunction, extern_libs: Dict[str, str]) -> None:
             self.jit_func = jit_func
             self.extern_libs = extern_libs
 
@@ -80,7 +81,7 @@ if has_triton():
         jit_func,
         find_device_library: Callable[[], str],
         extern_libs_key: str,
-        registry: type[ShmemKernelRegistry],
+        registry: Type[ShmemKernelRegistry],
         init_hook: Callable[..., None],
         error_prefix: str,
     ):

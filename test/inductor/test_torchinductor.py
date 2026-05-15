@@ -1,5 +1,6 @@
 # Owner(s): ["module: inductor"]
 # ruff: noqa: F841
+from __future__ import annotations
 import contextlib
 import contextvars
 import copy
@@ -74,7 +75,6 @@ from torch.testing._internal.common_cuda import (
     IS_SM90,
     PLATFORM_SUPPORTS_FLASH_ATTENTION,
     PLATFORM_SUPPORTS_MEM_EFF_ATTENTION,
-    SM100OrLater,
     SM80OrLater,
     SM90OrLater,
     TEST_CUDNN,
@@ -182,7 +182,7 @@ skip_if_x86_mac = functools.partial(
 )
 vec_dtypes = [torch.float, torch.bfloat16, torch.float16]
 
-libtest = torch.library.Library("test", "FRAGMENT")  # noqa: SCOPED_LIBRARY
+libtest = torch.library.Library("test", "FRAGMENT")  # noqa: TOR901
 ids = set()
 
 f32 = torch.float32
@@ -1058,14 +1058,6 @@ def skip_if_triton_cpu(fn):
 
 def xfail_if_triton_cpu(fn):
     fn._expected_failure_triton_cpu = True
-    return fn
-
-
-def xfail_if_triton_cpu_no_avx512_bf16(fn):
-    # Triton CPU codegen for some BF16 kernels matches eager numerics only
-    # when avx512_bf16 is available; on older Intel CPUs the result drifts.
-    if not torch.cpu._is_avx512_bf16_supported():
-        fn._expected_failure_triton_cpu = True
     return fn
 
 
@@ -2658,7 +2650,7 @@ class CommonTemplate:
         self.common(fn, (a, b_int8pack, b_scales, c))
 
     @xfail_if_mps_unimplemented
-    @xfail_if_triton_cpu_no_avx512_bf16
+    @xfail_if_triton_cpu
     @skipCUDAIf(True, "No _dyn_quant_pack_4bit_weight implementation on CUDA")
     @skipIfXpu(msg="No _dyn_quant_pack_4bit_weight implementation on XPU")
     # Pallas codegen doesn't handle reduction axis after FloorDiv(ModularIndexing) simplification
@@ -2695,7 +2687,7 @@ class CommonTemplate:
         self.common(fn, (b, in_features, out_features))
 
     @xfail_if_mps_unimplemented
-    @xfail_if_triton_cpu_no_avx512_bf16
+    @xfail_if_triton_cpu
     @skipCUDAIf(True, "No _dyn_quant_pack_4bit_weight implementation on CUDA")
     @skipIfXpu(msg="No _dyn_quant_pack_4bit_weight implementation on XPU")
     @skip_if_halide  # bf16
@@ -2738,7 +2730,7 @@ class CommonTemplate:
         self.common(fn, (b, in_features, out_features))
 
     @xfail_if_mps_unimplemented
-    @xfail_if_triton_cpu_no_avx512_bf16
+    @xfail_if_triton_cpu
     # Pallas codegen doesn't handle reduction axis after FloorDiv(ModularIndexing) simplification
     @xfail_if_pallas
     @skipCUDAIf(True, "No _dyn_quant_matmul_4bit implementation on CUDA")
@@ -2784,7 +2776,7 @@ class CommonTemplate:
         self.common(fn, (a, q_group, in_features, out_features))
 
     @skipCPUIf(IS_MACOS, "fails on M1, mismatch in bf16 support reporting")
-    @xfail_if_triton_cpu_no_avx512_bf16
+    @xfail_if_triton_cpu
     @xfailIf(
         IS_ARM64 and not IS_CPU_EXT_SVE_SUPPORTED
     )  # see https://github.com/pytorch/pytorch/issues/170787
@@ -4077,11 +4069,6 @@ class CommonTemplate:
         if torch.device(self.device).type == GPU_TYPE:
             getattr(torch, GPU_TYPE).empty_cache()
 
-        # MPS routes eager eq/all through MPSGraph, which rejects tensor
-        # dims > INT_MAX
-        # TODO remove this once MPSGraph is gone from eq/all
-        if torch.device(self.device).type == "mps":
-            actual = actual.cpu()
         self.assertTrue((actual == 2).all())
 
     @skip_if_halide  # only 32-bit indexing
@@ -5112,24 +5099,6 @@ class CommonTemplate:
             fn,
             (torch.randn([10]),),
         )
-
-    @requires_gpu()
-    def test_to_copy_fp64_to_no_fp64_device(self):
-        # See https://github.com/pytorch/pytorch/issues/180664
-        # When the target device does not support fp64, _to_copy should
-        # convert dtype on CPU before the device transfer so that no fp64
-        # buffer is allocated on the target device.
-        def fn(x):
-            return x.to(dtype=torch.float32, device=GPU_TYPE)
-
-        x = torch.randn(4, 4, dtype=torch.float64, device="cpu")
-        with patch("torch._inductor.utils.device_supports_fp64", return_value=False):
-            _, code = run_and_get_code(torch.compile(fn), x)
-
-        # The Triton kernel should not have any fp64 pointer arguments.
-        # Without the fix, the kernel signature would contain '*fp64'.
-        code = "\n".join(code)
-        self.assertNotIn("'*fp64'", code)
 
     @requires_gpu()
     @xfail_if_triton_cpu
@@ -7311,11 +7280,7 @@ class CommonTemplate:
             rtol = 3e-4
 
         # MPS has correctness problem before MacOS15
-        with (
-            contextlib.nullcontext()
-            if self.device != "mps" or MACOS_VERSION >= 15.0
-            else self.assertRaises(AssertionError)
-        ):
+        with contextlib.nullcontext() if self.device != "mps" or MACOS_VERSION >= 15.0 else self.assertRaises(AssertionError):
             self.common(
                 fn,
                 (
@@ -7698,23 +7663,6 @@ def forward(self, arg0_1: "Sym(s77)", arg1_1: "Sym(s27)", arg2_1: "Sym(s53)", ar
                 RuntimeError, r".*(not implemented|aoti_torch_).*"
             ):
                 c_fn(x)
-
-    def test_convolution_errors_on_input_weight_dtype_mismatch(self):
-        if self.device != "cuda":
-            raise unittest.SkipTest("CUDA only")
-
-        def fn(x):
-            return torch.nn.functional.conv2d(x, weight, bias=None)
-
-        weight = torch.randn((1, 1, 1, 1), device=self.device, dtype=torch.float32)
-        x = torch.randn((1, 1, 1, 1), device=self.device, dtype=torch.float16)
-        c_fn = torch.compile(fn)
-
-        with self.assertRaisesRegex(
-            RuntimeError,
-            r"Input type.*and weight type.*should be the same",
-        ):
-            c_fn(x)
 
     def test_log1p(self):
         def fn(x):
@@ -10748,6 +10696,7 @@ def forward(self, arg0_1: "Sym(s77)", arg1_1: "Sym(s27)", arg2_1: "Sym(s53)", ar
         self.assertTrue(error < expected_error)
 
     @config.patch(fallback_random=True)
+    @xfail_if_mps  # 100% are not close
     def test_like_rands(self):
         def fn(x):
             return torch.rand_like(x), torch.randn_like(x), torch.randint_like(x, 1, 11)
@@ -10980,7 +10929,7 @@ def forward(self, arg0_1: "Sym(s77)", arg1_1: "Sym(s27)", arg2_1: "Sym(s53)", ar
         # Note: Kernel count varies by backend (CUDA ~3, ROCm ~2) due to fusion.
         # Correctness is validated by self.common() above.
         # MPS: decomposition falls back to native kernel, so no inductor kernels generated
-        if self.device != "mps" and self.device != "xpu":
+        if self.device != "mps":
             self.assertGreater(torch._inductor.metrics.generated_kernel_count, 0)
 
     # From https://github.com/pytorch/pytorch/issues/93384
@@ -11012,7 +10961,7 @@ def forward(self, arg0_1: "Sym(s77)", arg1_1: "Sym(s27)", arg2_1: "Sym(s53)", ar
         # Note: Kernel count varies by backend (CUDA ~3, ROCm ~2) due to fusion.
         # Correctness is validated by self.common() above.
         # MPS: decomposition falls back to native kernel, so no inductor kernels generated
-        if self.device != "mps" and self.device != "xpu":
+        if self.device != "mps":
             self.assertGreater(torch._inductor.metrics.generated_kernel_count, 0)
 
     def test_issue102546(self):
@@ -14279,29 +14228,6 @@ def forward(self, arg0_1: "Sym(s77)", arg1_1: "Sym(s27)", arg2_1: "Sym(s53)", ar
         self.assertEqual(ref, actual)
         self.assertTrue(called)
 
-    @requires_gpu()
-    @parametrize("inplace", [False, True])
-    def test_index_add_device_mismatch(self, inplace):
-        if self.device == "cpu":
-            raise unittest.SkipTest("requires GPU for device mismatch test")
-
-        def fn(x, source):
-            index = torch.randperm(x.size(0))
-            if inplace:
-                x = x.clone()
-                x.index_add_(0, index, source)
-                return x
-            return torch.index_add(x, 0, index, source)
-
-        x = torch.randn(10, 3, device=self.device)
-        source = torch.randn(10, 3, device=self.device)
-
-        with self.assertRaises(RuntimeError):
-            fn(x, source)
-
-        with self.assertRaises(RuntimeError):
-            torch.compile(fn)(x, source)
-
     @skip_if_gpu_halide  # cuda error
     def test_mutations_loop_fusion(self):
         def fn(tensor, index, source):
@@ -14349,6 +14275,9 @@ def forward(self, arg0_1: "Sym(s77)", arg1_1: "Sym(s27)", arg2_1: "Sym(s53)", ar
     # Skipped on ROCm until https://github.com/ROCm/triton/issues/443 resolved
     @slowTest
     def test_fuse_large_params(self):
+        if is_mps_backend(self.device):
+            raise unittest.SkipTest("Metal has a 31-buffer argument limit per kernel")
+
         def pt2_optimizer_step(optimizer):
             @torch.compile()
             def f():
@@ -16870,11 +16799,6 @@ if RUN_GPU:
                 expected_divisible = {
                     # one kernel, with extra workspace/semaphore args
                     0: (0, 1, 2, 3, 5),
-                }
-            elif SM100OrLater:
-                self.assertEqual(len(kernels), 1)
-                expected_divisible = {
-                    0: (0, 1, 3),
                 }
             else:
                 self.assertEqual(len(kernels), 2)

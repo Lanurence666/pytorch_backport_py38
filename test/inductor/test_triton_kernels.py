@@ -4606,10 +4606,7 @@ class CustomOpTests(torch._inductor.test_case.TestCase):
 
         torch._dynamo.decorators.mark_unbacked(x, 0)
 
-        with (
-            log_settings("+output_code"),
-            self.assertLogs(logger="torch._inductor", level=logging.DEBUG) as log,
-        ):
+        with log_settings("+output_code"), self.assertLogs(logger="torch._inductor", level=logging.DEBUG) as log:
             foo(x, w)
 
         output = "\n".join(record.getMessage() for record in log.records)
@@ -5225,11 +5222,6 @@ class TestUserKernelEpilogueFusion(torch._inductor.test_case.TestCase):
         cls._stack = contextlib.ExitStack()
         torch._inductor.config.epilogue_fusion_user_defined_triton_kernel = True
 
-    @classmethod
-    def tearDownClass(cls):
-        torch._inductor.config.epilogue_fusion_user_defined_triton_kernel = False
-        super().tearDownClass()
-
     def check_code(self, code_str, num_kernels, num_allocs, num_deallocs):
         from torch._inductor import config
 
@@ -5303,33 +5295,6 @@ class TestUserKernelEpilogueFusion(torch._inductor.test_case.TestCase):
         self.check_code(code[0], num_kernels=1, num_allocs=1, num_deallocs=1)
 
     @requires_cuda_and_triton
-    def test_fusion_with_unused_buffer(self):
-        @triton.jit
-        def kernel_unused_tensor(
-            X,
-            Y,
-            unused,
-            n: tl.constexpr,
-            BLOCK_SIZE: tl.constexpr,
-        ):
-            idx = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-            mask = idx < n
-            x = tl.load(X + idx, mask=mask)
-            tl.store(Y + idx, x * 2, mask=mask)
-
-        def fn(a):
-            out = torch.empty_like(a)
-            unused = torch.empty(a.numel(), device="cuda")
-            kernel_unused_tensor[(1,)](a, out, unused, a.numel(), BLOCK_SIZE=16)
-            return out.relu()
-
-        a = torch.randn(10, device="cuda")
-
-        out, code = run_and_get_code(torch.compile(fn), a)
-        self.assertEqual(out, fn(a))
-        self.check_code(code[0], num_kernels=1, num_allocs=2, num_deallocs=2)
-
-    @requires_cuda_and_triton
     def test_fusion_with_ordering_constraints(self):
         @triton.jit
         def add_kernel(in_ptr0, in_ptr1, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -5389,15 +5354,12 @@ class TestUserKernelEpilogueFusion(torch._inductor.test_case.TestCase):
     def test_fusion_custom_kernel_with_linebreaks(self):
         # we do AST manipulation / string manipulation of the kernel source code
         # so we wanna make sure to correctly handle edge cases with tricky line breaks
-        # which `ast.parse`-`ast.unparse` roundtrip does not recover
         @triton.jit
         def add_kernel(in_ptr0, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
             pid = tl.program_id(0)
             offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
             mask = offs < n_elements
             x = tl.load(in_ptr0 + offs, mask=mask)
-            # forcing newlines before `tl.store`
-
             tl.store(
                 out_ptr + offs,
                 # forcing the `value` arg to be written in multiple lines

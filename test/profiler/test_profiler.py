@@ -1,6 +1,7 @@
 # Owner(s): ["oncall: profiler"]
 # ruff: noqa: F841
 
+from __future__ import annotations
 import collections
 import copy
 import gc
@@ -2855,7 +2856,7 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
                     has_block,
                     f"kernel '{name}' should provide grid and block together",
                 )
-                has_kernel_launch_metadata |= has_grid
+                has_kernel_launch_metadata.update(has_grid)
             self.assertTrue(
                 has_kernel_launch_metadata,
                 "Error: No kernel events in trace contained grid/block metadata",

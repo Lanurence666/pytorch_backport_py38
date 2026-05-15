@@ -1,4 +1,5 @@
 # Owner(s): ["module: c10d"]
+from __future__ import annotations
 import gc
 import re
 import threading

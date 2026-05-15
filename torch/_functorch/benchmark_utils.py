@@ -6,7 +6,7 @@ import operator
 import os
 import time
 from contextlib import AbstractContextManager
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type
 from typing_extensions import TypeVar
 
 import torch
@@ -25,15 +25,15 @@ def synchronize() -> None:
 
 
 def dump_chrome_trace(
-    f: Callable[[tuple[Any, ...]], _R],
-    input_: tuple[Any, ...],
+    f: Callable[[Tuple[Any, ...]], _R],
+    input_: Tuple[Any, ...],
     trace_filename: str,
     optimize_ctx: AbstractContextManager[Any],
     activities: Sequence[ProfilerActivity],
     num_runs: int = 1,
-    devices: list[str] | None = None,
-    kwargs_for_f: dict[str, Any] | None = None,
-    kwargs_for_profiler: dict[str, Any] | None = None,
+    devices: Optional[List[str]]= None,
+    kwargs_for_f: Optional[Dict[str, Any]]= None,
+    kwargs_for_profiler: Optional[Dict[str, Any]]= None,
 ) -> float:
     """
     Output the chrome trace of running f(input_, **kwargs_for_f) with [optimize_ctx]
@@ -82,14 +82,14 @@ def dump_chrome_trace(
     return timing
 
 
-def get_chrome_trace_events(filename: str) -> list[dict[str, Any]]:
+def get_chrome_trace_events(filename: str) -> List[Dict[str, Any]]:
     with open(filename) as f:
         data = json.load(f)
     events = data["traceEvents"]
     return events
 
 
-def is_gpu_compute_event(event: dict[str, Any]) -> bool:
+def is_gpu_compute_event(event: Dict[str, Any]) -> bool:
     global gpu_pids
     return (
         "pid" in event
@@ -99,8 +99,8 @@ def is_gpu_compute_event(event: dict[str, Any]) -> bool:
     )
 
 
-def get_sorted_gpu_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    sorted_gpu_events: list[dict[str, Any]] = []
+def get_sorted_gpu_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    sorted_gpu_events: List[Dict[str, Any]] = []
     for event in events:
         if not is_gpu_compute_event(event):
             continue
@@ -108,7 +108,7 @@ def get_sorted_gpu_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(sorted_gpu_events, key=operator.itemgetter("ts"))
 
 
-def get_duration(sorted_gpu_events: list[dict[str, Any]]) -> int:
+def get_duration(sorted_gpu_events: List[Dict[str, Any]]) -> int:
     if len(sorted_gpu_events) == 0:
         return 0
     event = sorted_gpu_events[0]
@@ -122,8 +122,8 @@ def get_duration(sorted_gpu_events: list[dict[str, Any]]) -> int:
     return total_duration
 
 
-def get_sorted_gpu_mm_conv_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    def is_mm_conv_event(event: dict[str, Any]) -> bool:
+def get_sorted_gpu_mm_conv_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def is_mm_conv_event(event: Dict[str, Any]) -> bool:
         return "name" in event and (
             "gemm" in event["name"]
             or "conv" in event["name"]
@@ -132,7 +132,7 @@ def get_sorted_gpu_mm_conv_events(events: list[dict[str, Any]]) -> list[dict[str
         )
 
     gpu_events = get_sorted_gpu_events(events)
-    sorted_events: list[dict[str, Any]] = []
+    sorted_events: List[Dict[str, Any]] = []
     for event in gpu_events:
         if not is_mm_conv_event(event):
             continue
@@ -140,10 +140,10 @@ def get_sorted_gpu_mm_conv_events(events: list[dict[str, Any]]) -> list[dict[str
     return sorted_events
 
 
-gpu_pids: list[Any] = []
+gpu_pids: List[Any] = []
 
 
-def compute_utilization(filename: str, total_length: float) -> tuple[float, float]:
+def compute_utilization(filename: str, total_length: float) -> Tuple[float, float]:
     """
     Process the chrome traces outputs by the pytorch profiler to compute GPU Utilization
     and percent of times spent on matmul and convolution
@@ -178,13 +178,13 @@ def compute_utilization(filename: str, total_length: float) -> tuple[float, floa
 
 
 def benchmark_utilization(
-    f: Callable[[tuple[Any, ...]], _R],
-    input_: tuple[Any, ...],
+    f: Callable[[Tuple[Any, ...]], _R],
+    input_: Tuple[Any, ...],
     trace_folder: str,
-    optimize_ctx: AbstractContextManager[Any] | None = None,
+    optimize_ctx: Optional[AbstractContextManager[Any]]= None,
     trace_file_name: str = "tmp_chrome_trace",
     num_runs: int = 1,
-) -> tuple[float, float]:
+) -> Tuple[float, float]:
     """
     Benchmark the GPU Utilization and percent of time spent on matmul and convolution operations of
     running f(input_, **kwargs_for_f) with [optimize_ctx] [num_runs] times.

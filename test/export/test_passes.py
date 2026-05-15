@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 PYTEST_DONT_REWRITE (prevents pytest from rewriting assertions, which interferes
 with test_functionalization_with_native_python_assertion)

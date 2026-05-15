@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Generator, List, Optional, Sequence, Set, TYPE_CHECKING, Union
 from unittest.mock import patch
 
 import sympy
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 _DISTRIBUTED_AUTOTUNE_KEY = "distributed_autotune"
 
-_AUTOTUNE_PG: dist.ProcessGroup | None = None
+_AUTOTUNE_PG: Optional[dist.ProcessGroup]= None
 
 
 @dataclasses.dataclass
@@ -57,7 +57,7 @@ class _DistributedAutotuneInfo:
     local: bool
 
 
-def get_autotune_pg() -> dist.ProcessGroup | None:
+def get_autotune_pg() -> Optional[dist.ProcessGroup]:
     if dist.is_available() and dist.is_initialized():
         global _AUTOTUNE_PG
         if _AUTOTUNE_PG is None:
@@ -98,8 +98,8 @@ def graph_context() -> Generator[None, None, None]:
 
 
 def maybe_autotune_remote(
-    name: str, choices: list[ChoiceCaller], inputs: list[Buffer], layout: Layout
-) -> TensorBox | None:
+    name: str, choices: List[ChoiceCaller], inputs: List[Buffer], layout: Layout
+) -> Optional[TensorBox]:
     """
     Used by an op (like `mm`) to determine if the op should be autotuned
     locally (returns None) or remotely (returns a placeholder Buffer).
@@ -143,7 +143,7 @@ class _DistributedAutotuneBuffer(MultiTemplateBuffer):
     def __init__(
         self,
         kernel_name: str,
-        inputs: list[Buffer],
+        inputs: List[Buffer],
         layout: Layout,
     ) -> None:
         super().__init__(
@@ -157,8 +157,8 @@ class _DistributedAutotuneBuffer(MultiTemplateBuffer):
         self._kernel_name = kernel_name
 
     def _dummy_choice_timings(
-        self, _hint_override: int | None
-    ) -> dict[ChoiceCaller, float]:
+        self, _hint_override: Optional[int]
+    ) -> Dict[ChoiceCaller, float]:
         # This should never get called. It means that a remote autotune was
         # scheduled but never filled in.
         raise NotImplementedError
@@ -186,7 +186,7 @@ class _DistributedAutotuneBuffer(MultiTemplateBuffer):
 
 
 # Can we make this async?
-def _sync(autotune_results: list[_SerializedChoice]) -> Sequence[_SerializedChoice]:
+def _sync(autotune_results: List[_SerializedChoice]) -> Sequence[_SerializedChoice]:
     """
     Perform the all_gather to collect the autotune results from all the ranks.
     """
@@ -195,12 +195,12 @@ def _sync(autotune_results: list[_SerializedChoice]) -> Sequence[_SerializedChoi
     assert autotune_pg
 
     # Perform allgather
-    all_states: list[list[_SerializedChoice]] = [None] * autotune_pg.size()  # type: ignore[list-item]
+    all_states: List[List[_SerializedChoice]] = [None] * autotune_pg.size()  # type: ignore[list-item]
     torch.distributed.all_gather_object(all_states, autotune_results, group=autotune_pg)
 
     node_count = sum(len(x) for x in all_states)
     # It's faster to briefly lie about the type than to unzip the results and append.
-    choices_by_index: list[_SerializedChoice] = [None] * node_count  # type: ignore[list-item]
+    choices_by_index: List[_SerializedChoice] = [None] * node_count  # type: ignore[list-item]
 
     check_count = 0
     for other_results in all_states:
@@ -226,7 +226,7 @@ class _SerializedChoice:
         self.template_uid = _SerializedChoice._template_uid_from_choice(choice)
         self.kwargs = self._compute_kwargs(choice.description)
 
-    def get_choice(self, layout: Layout, inputs: KernelInputs) -> ChoiceCaller | None:
+    def get_choice(self, layout: Layout, inputs: KernelInputs) -> Optional[ChoiceCaller]:
         """
         Deserialize the ChoiceCaller and return it.
         """
@@ -242,7 +242,7 @@ class _SerializedChoice:
             k = inputs.nodes()[0].get_size()[1]
             kwargs["EVEN_K"] = sympy.gcd(k, kwargs["BLOCK_K"]) == kwargs["BLOCK_K"]
 
-        extra_kwargs: dict[str, Any] = {}
+        extra_kwargs: Dict[str, Any] = {}
         from .kernel_template_choice import (
             DictKernelTemplateParams,
             KernelTemplateChoice,
@@ -253,7 +253,7 @@ class _SerializedChoice:
         return ktc.choice
 
     @staticmethod
-    def _compute_kwargs(description: str) -> dict[str, int | str | bool]:
+    def _compute_kwargs(description: str) -> Union[Dict[str, int, str, bool]]:
         """
         Given a template description turn it into input kwargs.
         """
@@ -262,7 +262,7 @@ class _SerializedChoice:
 
         # TODO: It seems like it would be better if the template could provide
         # this directly instead of having to parse a string.
-        kwargs: dict[str, int | str | bool] = {}
+        kwargs: Union[Dict[str, int, str, bool]]= {}
         for cfg in description.split(","):
             key, val = cfg.split("=", 1)
             key, val = key.strip(), val.strip()
@@ -309,13 +309,13 @@ class _SerializedChoice:
 
 def _autotune_local_nodes(
     scheduler: torch._inductor.scheduler.Scheduler,
-) -> list[_SerializedChoice]:
+) -> List[_SerializedChoice]:
     """
     Go through the nodes in the scheduler and autotune the kernels which
     should be autotuned by this rank.
     """
 
-    autotune_results: list[_SerializedChoice] = []
+    autotune_results: List[_SerializedChoice] = []
 
     for node in scheduler.nodes:
         if not isinstance(node, SchedulerNode):

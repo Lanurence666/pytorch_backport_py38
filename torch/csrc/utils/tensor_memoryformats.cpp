@@ -5,6 +5,7 @@
 #include <torch/csrc/MemoryFormat.h>
 
 #include <torch/csrc/utils/object_ptr.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 namespace torch::utils {
 

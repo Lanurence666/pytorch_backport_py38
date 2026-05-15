@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 import logging
 import operator
-from collections.abc import Sequence
-from typing import Any
+
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import torch
 from torch.distributed.tensor import DTensor
@@ -78,7 +80,7 @@ class TensorChunkSpec:
 
     @staticmethod
     def from_tuple(
-        chunk_dims: tuple[int, ...],
+        chunk_dims: Tuple[int, ...],
     ):
         """
         A helper for creating a tuple of `TensorChunkSpec` from a tuple of chunk
@@ -97,7 +99,7 @@ class TensorChunkSpec:
 
     @staticmethod
     def from_dict(
-        chunk_dims: dict[str, int],
+        chunk_dims: Dict[str, int],
     ):
         """
         A helper for creating a dictionary of `TensorChunkSpec` from a
@@ -122,7 +124,7 @@ class _Replicate:
 def _split_block_mask(
     block_mask: BlockMask,
     num_chunks: int,
-) -> list[BlockMask]:
+) -> List[BlockMask]:
     """Given a block mask, split the block mask along the batch dimension (dim0).
 
     Args:
@@ -234,13 +236,13 @@ def _split_tensor(
 
     def _expand_chunks(
         orig: torch.Tensor, *chunks: torch.Tensor
-    ) -> tuple[torch.Tensor, ...]:
+    ) -> Tuple[torch.Tensor, ...]:
         expanded = []
         idx = 0
         for chunk in chunks:
             new_val = torch.zeros_like(orig)
             upper = idx + chunk.size(spec.split_dim)
-            slices: list[slice] = [slice(None)] * new_val.ndim
+            slices: List[slice] = [slice(None)] * new_val.ndim
             slices[spec.split_dim] = slice(idx, upper)
             new_val[slices] = chunk
             expanded.append(new_val)
@@ -298,7 +300,7 @@ def _shard_dict_of_args(
 
     # First check and find the actual number of chunks
     split_sizes = []
-    for v, spec in zip(values, chunk_specs, strict=True):
+    for v, spec in _zip_strict(values, chunk_specs):
         # The original logic is "spec is _Replicate". This doesn't seem to be
         # correct. But we keep it for backward compatibility.
         if spec is _Replicate or isinstance(spec, _Replicate):
@@ -323,8 +325,8 @@ def _shard_dict_of_args(
             )
     result_num_chunks = min(*split_sizes, num_chunks)
 
-    flat_split_results: list[Any] = [[] for _ in range(result_num_chunks)]
-    for v, spec in zip(values, chunk_specs, strict=True):
+    flat_split_results: List[Any] = [[] for _ in range(result_num_chunks)]
+    for v, spec in _zip_strict(values, chunk_specs):
         v_splits: Sequence[Any] = []
         if spec is _Replicate or isinstance(spec, _Replicate):
             v_splits = [v] * result_num_chunks
@@ -337,9 +339,8 @@ def _shard_dict_of_args(
                 f"Unsupported chunk spec: {spec} and value: {v} combination."
             )
 
-        for _flat_split_result, _v_split in zip(
-            flat_split_results, v_splits, strict=True
-        ):
+        for _flat_split_result, _v_split in _zip_strict(
+            flat_split_results, v_splits):
             _flat_split_result.append(_v_split)
 
     return [
@@ -349,12 +350,12 @@ def _shard_dict_of_args(
 
 
 def split_args_kwargs_into_chunks(
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any] | None,
+    args: Tuple[Any, ...],
+    kwargs: Optional[Dict[str, Any]],
     chunks: int,
-    args_chunk_spec: tuple[TensorChunkSpec, ...] | None = None,
-    kwargs_chunk_spec: dict[str, TensorChunkSpec] | None = None,
-) -> tuple[list[tuple], list[dict]]:
+    args_chunk_spec: Optional[Tuple[TensorChunkSpec, ...]] = None,
+    kwargs_chunk_spec: Optional[Dict[str, TensorChunkSpec]] = None,
+) -> Tuple[List[tuple], List[dict]]:
     """
     Given a sequence of args and kwargs, split them into a number of chunks
     according to  their respective chunking specs.
@@ -410,7 +411,7 @@ def split_args_kwargs_into_chunks(
     # If user did not provide args_chunk_spec or kwargs_chunk_spec, we extend
     # their format and use default chunking along dim 0
     def default_spec(v):
-        if isinstance(v, torch.Tensor | BlockMask):
+        if isinstance(v, (torch.Tensor , BlockMask)):
             return TensorChunkSpec(DEFAULT_CHUNK_DIM)
         else:
             return _Replicate()
@@ -464,7 +465,7 @@ def split_args_kwargs_into_chunks(
 
 
 def merge_chunks(
-    chunks: list[Any],
+    chunks: List[Any],
     chunk_spec,
 ):
     """
@@ -559,9 +560,8 @@ def merge_chunks(
                         f"Expected len(partial_values) == len(meta_chunks), got {len(partial_values)} != {len(meta_chunks)}"
                     )
 
-                for partial_value, meta_chunk in zip(
-                    partial_values, meta_chunks, strict=True
-                ):
+                for partial_value, meta_chunk in _zip_strict(
+                    partial_values, meta_chunks):
                     chunk_end_idx = chunk_start_idx + meta_chunk.size(arg.split_dim)
 
                     slice_indices = [slice(None, None, None)] * partial_value.ndim

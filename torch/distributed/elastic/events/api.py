@@ -7,15 +7,17 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Union
+from typing import Dict, Optional, Union
 
 
 __all__ = ["EventSource", "Event", "NodeState", "RdzvEvent"]
 
-EventMetadataValue = str | int | float | bool | None
+EventMetadataValue = Optional[Union[str, int, float, bool]]
 
 
 class EventSource(str, Enum):
@@ -42,7 +44,7 @@ class Event:
     name: str
     source: EventSource
     timestamp: int = 0
-    metadata: dict[str, EventMetadataValue] = field(default_factory=dict)
+    metadata: Dict[str, EventMetadataValue] = field(default_factory=dict)
 
     def __str__(self):
         return self.serialize()
@@ -95,8 +97,8 @@ class RdzvEvent:
     pid: int
     node_state: NodeState
     master_endpoint: str = ""
-    rank: int | None = None
-    local_id: int | None = None
+    rank: Optional[int]= None
+    local_id: Optional[int]= None
     error_trace: str = ""
 
     def __str__(self):

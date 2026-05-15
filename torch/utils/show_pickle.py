@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import sys
 import pickle
 import struct
 import pprint
 import zipfile
 import fnmatch
-from typing import Any, IO
+from typing import Any, IO, Optional
 
 __all__ = ["FakeObject", "FakeClass", "DumpUnpickler", "main"]
 
@@ -104,7 +106,7 @@ class DumpUnpickler(pickle._Unpickler):  # type: ignore[name-defined]
         return value
 
 
-def main(argv, output_stream=None) -> int | None:
+def main(argv, output_stream=None) -> Optional[int]:
     if len(argv) != 2:
         # Don't spam stderr if not using stdout.
         if output_stream is not None:

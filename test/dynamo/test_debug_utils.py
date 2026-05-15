@@ -1,5 +1,6 @@
 # Owner(s): ["module: dynamo"]
 
+from __future__ import annotations
 import os
 from unittest.mock import patch
 
@@ -274,15 +275,7 @@ class TestBackendOverrideIntegration(TestCase):
                     self._backends_called.append(backend_str_map[graph_id])
             return result
 
-        with (
-            patch.object(
-                torch._dynamo.config, "debug_backend_override", override_config
-            ),
-            patch(
-                "torch._dynamo.output_graph.get_backend_override_for_compile_id",
-                tracking_get_override,
-            ),
-        ):
+        with patch.object( torch._dynamo.config, "debug_backend_override", override_config ), patch( "torch._dynamo.output_graph.get_backend_override_for_compile_id", tracking_get_override, ):
             compiled_fn = torch.compile(self._fn_with_4_graphs, backend=default_backend)
             compiled_fn(torch.randn(10, device=device))
 
@@ -356,15 +349,7 @@ class TestBackendOverrideIntegration(TestCase):
         def fn(x):
             return (x * 2 + 1).sum()
 
-        with (
-            patch.object(
-                torch._dynamo.config, "debug_backend_override", ">=0:aot_eager"
-            ),
-            patch(
-                "torch._dynamo.output_graph.get_backend_override_for_compile_id",
-                tracking_get_override,
-            ),
-        ):
+        with patch.object( torch._dynamo.config, "debug_backend_override", ">=0:aot_eager" ), patch( "torch._dynamo.output_graph.get_backend_override_for_compile_id", tracking_get_override, ):
             compiled_fn = torch.compile(fn, backend="eager")
             x = torch.randn(10, device=device, requires_grad=True)
             result = compiled_fn(x)
@@ -541,23 +526,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
         # - Backend: all graphs use inductor
         # - Config: all graphs enable cudagraphs, graph 1 also disables
         #   cudagraph_skip_dynamic_graphs
-        with (
-            patch.object(
-                torch._dynamo.config,
-                "debug_backend_override",
-                backend_override,
-            ),
-            patch.object(
-                torch._dynamo.config,
-                "debug_inductor_config_override",
-                "1:triton.cudagraph_skip_dynamic_graphs=False;>=0:triton.cudagraphs=True",
-            ),
-            patch(
-                "torch._dynamo.output_graph.get_backend_override_for_compile_id",
-                tracking_get_backend,
-            ),
-            patch.object(output_graph, "_wrap_with_inductor_config", tracking_wrap),
-        ):
+        with patch.object( torch._dynamo.config, "debug_backend_override", backend_override, ), patch.object( torch._dynamo.config, "debug_inductor_config_override", "1:triton.cudagraph_skip_dynamic_graphs=False;>=0:triton.cudagraphs=True", ), patch( "torch._dynamo.output_graph.get_backend_override_for_compile_id", tracking_get_backend, ), patch.object(output_graph, "_wrap_with_inductor_config", tracking_wrap):
             compiled_fn = torch.compile(fn, backend="eager")
             compiled_fn(torch.randn(10, device=device))
 
@@ -642,23 +611,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
         # Use both overrides:
         # - Backend: graphs 0,2 use inductor (graphs 1,3 stay with eager)
         # - Config: graph 0 disables cudagraphs, graph 2 disables skip_dynamic_graphs
-        with (
-            patch.object(
-                torch._dynamo.config,
-                "debug_backend_override",
-                backend_override,
-            ),
-            patch.object(
-                torch._dynamo.config,
-                "debug_inductor_config_override",
-                "0:triton.cudagraphs=False;2:triton.cudagraph_skip_dynamic_graphs=False",
-            ),
-            patch(
-                "torch._dynamo.output_graph.get_backend_override_for_compile_id",
-                tracking_get_backend,
-            ),
-            patch.object(output_graph, "_wrap_with_inductor_config", tracking_wrap),
-        ):
+        with patch.object( torch._dynamo.config, "debug_backend_override", backend_override, ), patch.object( torch._dynamo.config, "debug_inductor_config_override", "0:triton.cudagraphs=False;2:triton.cudagraph_skip_dynamic_graphs=False", ), patch( "torch._dynamo.output_graph.get_backend_override_for_compile_id", tracking_get_backend, ), patch.object(output_graph, "_wrap_with_inductor_config", tracking_wrap):
             compiled_fn = torch.compile(fn, backend="eager")
             compiled_fn(torch.randn(10, device=device))
 
@@ -741,15 +694,7 @@ class TestInductorConfigOverrideIntegration(TestCase):
             },
         }
 
-        with (
-            patch.object(
-                torch._dynamo.config,
-                "debug_inductor_config_override",
-                config_override,
-            ),
-            patch.object(compile_fx_mod, "compile_fx", tracking_compile_fx),
-            patch.object(torch._functorch.config, "enable_autograd_cache", False),
-        ):
+        with patch.object( torch._dynamo.config, "debug_inductor_config_override", config_override, ), patch.object(compile_fx_mod, "compile_fx", tracking_compile_fx), patch.object(torch._functorch.config, "enable_autograd_cache", False):
             compiled_fn = torch.compile(fn)
             x = torch.randn(10, device=device, requires_grad=True)
             result = compiled_fn(x)

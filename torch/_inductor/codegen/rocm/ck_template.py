@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, List, Sequence, Tuple
 from typing_extensions import override
 
 import torch
@@ -99,11 +101,11 @@ class CKTemplate(ROCmTemplate):
             return f"({self._TORCH_DTYPE_TO_CK.get(node.get_dtype())}*)({ptr})"
 
     @override
-    def get_runtime_arg_info(self) -> list[ArgInfo]:
+    def get_runtime_arg_info(self) -> List[ArgInfo]:
         return [ArgInfo("kBatch", "int32_t")]
 
     @override
-    def get_runtime_arg_values(self, **kwargs: Any) -> list[Any]:
+    def get_runtime_arg_values(self, **kwargs: Any) -> List[Any]:
         """
         Helper method to retrieve runtime args from generate kwargs
         """

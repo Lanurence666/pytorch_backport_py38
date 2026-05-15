@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Registry for flash attention implementations.
 
@@ -6,8 +7,10 @@ It has no torch dependencies to avoid circular imports during initialization.
 """
 
 import logging
-from collections.abc import Callable
-from typing import Literal, Protocol
+
+from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing_extensions import Literal, Protocol
+
 
 
 logger = logging.getLogger(__name__)
@@ -17,16 +20,16 @@ class FlashAttentionHandle(Protocol):
     def remove(self) -> None: ...
 
 
-_RegisterFn = Callable[..., FlashAttentionHandle | None]
+_RegisterFn = Callable[..., Optional[FlashAttentionHandle]]
 _FlashAttentionImpl = Literal["FA3", "FA4"]
 
-_FLASH_ATTENTION_IMPLS: dict[str, _RegisterFn] = {}
+_FLASH_ATTENTION_IMPLS: Dict[str, _RegisterFn] = {}
 
-_FLASH_ATTENTION_ACTIVE: tuple[str, FlashAttentionHandle] | None = None
+_FLASH_ATTENTION_ACTIVE: Optional[Tuple[str, FlashAttentionHandle]] = None
 
 
 def register_flash_attention_impl(
-    impl: str | _FlashAttentionImpl,
+    impl: Union[str, _FlashAttentionImpl],
     *,
     register_fn: _RegisterFn,
 ) -> None:
@@ -59,7 +62,7 @@ def register_flash_attention_impl(
 
 
 def activate_flash_attention_impl(
-    impl: str | _FlashAttentionImpl,
+    impl: Union[str, _FlashAttentionImpl],
 ) -> None:
     """
     Activate into the dispatcher a previously registered flash attention impl.
@@ -99,12 +102,12 @@ def activate_flash_attention_impl(
         _FLASH_ATTENTION_ACTIVE = (impl, handle)
 
 
-def list_flash_attention_impls() -> list[str]:
+def list_flash_attention_impls() -> List[str]:
     """Return the names of all available flash attention implementations."""
     return sorted(_FLASH_ATTENTION_IMPLS.keys())
 
 
-def current_flash_attention_impl() -> str | None:
+def current_flash_attention_impl() -> Optional[str]:
     """
     Return the currently activated flash attention impl name, if any.
 

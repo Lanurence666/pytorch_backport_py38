@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 r"""Importing this file must **not** initialize CUDA context. test_distributed
 relies on this assumption to properly run. This means that when this is imported
 no CUDA calls shall be made, including torch.cuda.device_count(), etc.
@@ -49,8 +51,26 @@ from pathlib import Path
 from statistics import mean
 from typing import (
     Any,
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Type,
     TypeVar,
+    Union,
+    overload,
 )
+
+
+
+
 from collections.abc import Callable
 from collections.abc import Iterable, Iterator
 from unittest.mock import MagicMock
@@ -116,7 +136,7 @@ class ProfilingMode(Enum):
 
 # Set by parse_cmd_line_args() if called
 DISABLED_TESTS_FILE = ""
-GRAPH_EXECUTOR : ProfilingMode | None = None
+GRAPH_EXECUTOR : Optional[ProfilingMode]= None
 LOG_SUFFIX = ""
 PYTEST_SINGLE_TEST = ""
 REPEAT_COUNT = 0
@@ -128,7 +148,7 @@ TEST_BAILOUTS = False
 TEST_DISCOVER = False
 TEST_IN_SUBPROCESS = False
 TEST_SAVE_XML = ""
-UNITTEST_ARGS : list[str] = []
+UNITTEST_ARGS : List[str] = []
 USE_PYTEST = False
 
 def is_navi3_arch():
@@ -308,7 +328,7 @@ PRINT_REPRO_ON_FAILURE: bool = TestEnvironment.def_flag(
 )
 
 # possibly restrict OpInfo tests to a single sample input
-OPINFO_SAMPLE_INPUT_INDEX: int | None = TestEnvironment.def_setting(
+OPINFO_SAMPLE_INPUT_INDEX: Optional[int]= TestEnvironment.def_setting(
     "OPINFO_SAMPLE_INPUT_INDEX",
     env_var="PYTORCH_OPINFO_SAMPLE_INPUT_INDEX",
     default=None,
@@ -321,7 +341,7 @@ OPINFO_SAMPLE_INPUT_INDEX: int | None = TestEnvironment.def_setting(
 # Possibly restrict OpInfo tests to a single DSL runtime.
 # Example inputs: "triton", "cutedsl", all possible values
 # given by: torch.backends.python_native.all_dsls
-OPINFO_RESTRICT_TO_DSL: str | None = TestEnvironment.def_setting(
+OPINFO_RESTRICT_TO_DSL: Optional[str]= TestEnvironment.def_setting(
     "OPINFO_RESTRICT_TO_DSL",
     env_var="OPINFO_RESTRICT_TO_DSL",
     default=None,
@@ -373,7 +393,7 @@ def gcIfJetson(fn):
 
 # Tries to extract the current test function by crawling the stack.
 # If unsuccessful, return None.
-def extract_test_fn() -> Callable | None:
+def extract_test_fn() -> Optional[Callable]:
     try:
         stack = inspect.stack()
         for frame_info in stack:
@@ -400,7 +420,7 @@ class TrackedInput:
 
 # Attempt to pull out tracked input information from the test function.
 # A TrackedInputIter is used to insert this information.
-def get_tracked_input() -> TrackedInput | None:
+def get_tracked_input() -> Optional[TrackedInput]:
     test_fn = extract_test_fn()
     if test_fn is None:
         return None
@@ -699,7 +719,7 @@ class parametrize(_TestParametrizer):
         name_fn (Callable): Optional function that takes in parameters and returns subtest name.
     """
     def __init__(self, arg_str, arg_values, name_fn=None):
-        self.arg_names: list[str] = [s.strip() for s in arg_str.split(',') if s != '']
+        self.arg_names: List[str] = [s.strip() for s in arg_str.split(',') if s != '']
         self.arg_values = arg_values
         self.name_fn = name_fn
 
@@ -718,7 +738,7 @@ class parametrize(_TestParametrizer):
             return f"{name}{idx}"
 
     def _default_subtest_name(self, idx, values):
-        return '_'.join([self._formatted_str_repr(idx, a, v) for a, v in zip(self.arg_names, values, strict=True)])
+        return '_'.join([self._formatted_str_repr(idx, a, v) for a, v in _zip_strict(self.arg_names, values)])
 
     def _get_subtest_name(self, idx, values, explicit_name=None):
         if explicit_name:
@@ -742,7 +762,7 @@ class parametrize(_TestParametrizer):
             for idx, values in enumerate(self.arg_values):
                 maybe_name = None
 
-                decorators: list[Any] = []
+                decorators: List[Any] = []
                 if isinstance(values, subtest):
                     sub = values
                     values = sub.arg_values
@@ -762,7 +782,7 @@ class parametrize(_TestParametrizer):
                     raise RuntimeError(f'Expected # values == # arg names, but got: {len(values)} '
                                        f'values and {len(self.arg_names)} names for test "{test.__name__}"')
 
-                param_kwargs = dict(zip(self.arg_names, values, strict=True))
+                param_kwargs = dict(_zip_strict(self.arg_names, values))
 
                 test_name = self._get_subtest_name(idx, values, explicit_name=maybe_name)
 
@@ -1117,7 +1137,7 @@ def retry_shell(
     timeout=None,
     retries=1,
     was_rerun=False,
-) -> tuple[int, bool]:
+) -> Tuple[int, bool]:
     # Returns exicode + whether it was rerun
     if not (retries >= 0):
         raise AssertionError(
@@ -1239,10 +1259,10 @@ def sanitize_pytest_xml(xml_file: str):
     tree.write(xml_file)
 
 
-def get_pytest_test_cases(argv: list[str]) -> list[str]:
+def get_pytest_test_cases(argv: List[str]) -> List[str]:
     class TestCollectorPlugin:
         def __init__(self) -> None:
-            self.tests: list[Any] = []
+            self.tests: List[Any] = []
 
         def pytest_collection_finish(self, session):
             for item in session.items:
@@ -1426,7 +1446,7 @@ IS_WINDOWS = sys.platform == "win32"
 IS_MACOS = sys.platform == "darwin"
 IS_PPC = platform.machine() == "ppc64le"
 IS_X86 = platform.machine() in ('x86_64', 'i386')
-IS_ARM64 = platform.machine() in ('arm64', 'aarch64', 'ARM64')
+IS_ARM64 = platform.machine() in ('arm64', 'aarch64')
 IS_S390X = platform.machine() == "s390x"
 IS_AVX512_VNNI_SUPPORTED = torch.cpu.get_capabilities().get("avx512_vnni", False)
 IS_CPU_EXT_SVE_SUPPORTED = torch.cpu.get_capabilities().get("sve", False)
@@ -1516,7 +1536,6 @@ TEST_NUMPY = _check_module_exists('numpy')
 TEST_FAIRSEQ = _check_module_exists('fairseq')
 TEST_SCIPY = _check_module_exists('scipy')
 TEST_MKL = torch.backends.mkl.is_available()
-TEST_ONEDNN = torch.backends.mkldnn.enabled and torch.backends.mkldnn.is_available()
 TEST_ACL = torch.backends.mkldnn.is_available() and torch.ops.mkldnn._is_mkldnn_acl_supported()
 TEST_MPS = torch.backends.mps.is_available()
 MACOS_VERSION = float('.'.join(platform.mac_ver()[0].split('.')[:2]) or -1)
@@ -1560,12 +1579,12 @@ class LazyDSLCheck:
         registry = self._get_registry()
         return registry.is_dsl_available(dsl_name) if registry is not None else False
 
-    def list_available(self) -> list[str]:
+    def list_available(self) -> List[str]:
         """Get list of available DSLs"""
         registry = self._get_registry()
         return list(registry.list_available_dsls()) if registry is not None else []
 
-    def list_all(self) -> list[str]:
+    def list_all(self) -> List[str]:
         """Get list of all registered DSLs"""
         registry = self._get_registry()
         return list(registry.list_all_dsls()) if registry is not None else []
@@ -1587,19 +1606,19 @@ skipIfNoDill = unittest.skipIf(not TEST_DILL, "no dill")
 skipIfNoTritonDSL = unittest.skipIf(not TEST_TRITON_DSL, "Triton DSL not available")
 skipIfNoCuteDSL = unittest.skipIf(not TEST_CUTEDSL, "CuTeDSL not available")
 
-def skipIfDSLUnavailable(dsl_name: str, reason: str | None = None):
+def skipIfDSLUnavailable(dsl_name: str, reason: Optional[str] = None):
     """Skip test if specific DSL is not available"""
     available = _dsl_checker.is_available(dsl_name)
     msg = reason or f"{dsl_name} DSL not available"
     return unittest.skipIf(not available, msg)
 
-def skipUnlessDSLAvailable(dsl_name: str, reason: str | None = None):
+def skipUnlessDSLAvailable(dsl_name: str, reason: Optional[str] = None):
     """Skip test unless specific DSL is available"""
     available = _dsl_checker.is_available(dsl_name)
     msg = reason or f"{dsl_name} DSL required"
     return unittest.skipUnless(available, msg)
 
-def get_available_dsls() -> list[str]:
+def get_available_dsls() -> List[str]:
     """Get list of available DSL names for test parameterization"""
     return _dsl_checker.list_available()
 
@@ -1607,7 +1626,7 @@ def is_dsl_available(dsl_name: str) -> bool:
     """Check if specific DSL is available for conditional testing"""
     return _dsl_checker.is_available(dsl_name)
 
-def get_all_dsls() -> list[str]:
+def get_all_dsls() -> List[str]:
     """Get all registered DSL names (available or not) for comprehensive testing"""
     return _dsl_checker.list_all()
 
@@ -1731,40 +1750,14 @@ if TEST_CUDA and 'NUM_PARALLEL_PROCS' in os.environ:
 
 requires_cuda = unittest.skipUnless(torch.cuda.is_available(), "Requires CUDA")
 
-
-def lazy_skip_if(condition_fn, reason):
-    """Skip a test (function or class) when ``condition_fn()`` is true.
-
-    For function targets the condition is evaluated each time the test
-    runs, matching the historical PyTorch convention of checking skip
-    flags inside a wrapper. For class targets the condition is evaluated
-    once at class-decoration time and the standard ``__unittest_skip__``
-    attributes are set, since unittest's TestLoader makes class-level
-    skip decisions before instantiation.
-
-    Prefer this helper over hand-rolled ``@wraps + raise SkipTest``
-    wrappers, which silently drop classes from discovery when applied at
-    class scope.
-    """
-
-    def decorator(fn):
-        if isinstance(fn, type):
-            if condition_fn():
-                fn.__unittest_skip__ = True  # type: ignore[attr-defined]
-                fn.__unittest_skip_why__ = reason  # type: ignore[attr-defined]
-            return fn
-
-        @wraps(fn)
-        def wrapper(*args, **kwargs):
-            if condition_fn():
-                raise unittest.SkipTest(reason)
-            return fn(*args, **kwargs)
-        return wrapper
-    return decorator
-
-
 def skipIfCrossRef(fn):
-    return lazy_skip_if(lambda: TEST_WITH_CROSSREF, "test doesn't currently with crossref")(fn)
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if TEST_WITH_CROSSREF:
+            raise unittest.SkipTest("test doesn't currently with crossref")
+        else:
+            fn(*args, **kwargs)
+    return wrapper
 
 class CrossRefMode(torch.overrides.TorchFunctionMode):
     def __torch_function__(self, func, types, args=(), kwargs=None):
@@ -1815,9 +1808,6 @@ def xpassIfTorchDynamo_np(func):
         return unittest.skip("skipping numpy 2.0+ dynamo-wrapped test")(func)
     return func if TEST_WITH_TORCHDYNAMO else unittest.expectedFailure(func)
 
-
-requires_mkl = unittest.skipUnless(TEST_MKL, "Test requires MKL")
-requires_onednn = unittest.skipUnless(TEST_ONEDNN, "Test requires OneDNN/MKLDNN")
 
 def xfailIfACL(func):
     return unittest.expectedFailure(func) if TEST_ACL else func
@@ -2063,7 +2053,7 @@ def skipIfLegacyJitExecutor(msg="test doesn't currently work with legacy JIT exe
 
 
 def make_dynamo_test(
-    fn: Callable[..., Any] | None = None
+    fn: Optional[Callable[..., Any]]= None
 ) -> Callable[..., Any]:
     """
     Decorator function to create a dynamo test case. A function annotate with
@@ -2196,11 +2186,6 @@ def skipIfNNModuleInlined(
     return decorator
 
 def skipIfRocm(func=None, *, msg="test doesn't currently work on the ROCm stack"):
-    decorator = lazy_skip_if(lambda: TEST_WITH_ROCM, f"skipIfRocm: {msg}")
-    return decorator(func) if func is not None else decorator
-
-def skipIfRocm_BUGGY(func=None, *, msg="test doesn't currently work on the ROCm stack"):
-    """Old skipIfRocm that silently drops classes from discovery. Migrate to skipIfRocm."""
     def dec_fn(fn):
         reason = f"skipIfRocm: {msg}"
 
@@ -2218,17 +2203,22 @@ def skipIfRocm_BUGGY(func=None, *, msg="test doesn't currently work on the ROCm 
 def getRocmArchName(device_index: int = 0):
     return torch.cuda.get_device_properties(device_index).gcnArchName
 
-def isRocmArchAnyOf(arch: tuple[str, ...]):
+def isRocmArchAnyOf(arch: Tuple[str, ...]):
     if not torch.version.hip:
         return False
     rocmArch = getRocmArchName()
     return any(x in rocmArch for x in arch)
 
-def skipIfRocmArch(arch: tuple[str, ...]):
-    return lazy_skip_if(
-        lambda: TEST_WITH_ROCM and isRocmArchAnyOf(arch),
-        f"skipIfRocm: test skipped on {arch}",
-    )
+def skipIfRocmArch(arch: Tuple[str, ...]):
+    def dec_fn(fn):
+        @wraps(fn)
+        def wrap_fn(self, *args, **kwargs):
+            if TEST_WITH_ROCM and isRocmArchAnyOf(arch):
+                reason = f"skipIfRocm: test skipped on {arch}"
+                raise unittest.SkipTest(reason)
+            return fn(self, *args, **kwargs)
+        return wrap_fn
+    return dec_fn
 
 def runOnRocm(fn):
     @wraps(fn)
@@ -2239,7 +2229,7 @@ def runOnRocm(fn):
             raise unittest.SkipTest("test currently only works on the ROCm stack")
     return wrapper
 
-def runOnRocmArch(arch: tuple[str, ...]):
+def runOnRocmArch(arch: Tuple[str, ...]):
     def dec_fn(fn):
         @wraps(fn)
         def wrap_fn(self, *args, **kwargs):
@@ -2262,11 +2252,6 @@ def xfailIf(condition):
     return wrapper
 
 def skipIfXpu(func=None, *, msg="test doesn't currently work on the XPU stack"):
-    decorator = lazy_skip_if(lambda: TEST_XPU, f"skipIfXpu: {msg}")
-    return decorator(func) if func is not None else decorator
-
-def skipIfXpu_BUGGY(func=None, *, msg="test doesn't currently work on the XPU stack"):
-    """Old skipIfXpu that silently drops classes from discovery. Migrate to skipIfXpu."""
     def dec_fn(fn):
         reason = f"skipIfXpu: {msg}"
 
@@ -2282,15 +2267,6 @@ def skipIfXpu_BUGGY(func=None, *, msg="test doesn't currently work on the XPU st
     return dec_fn
 
 def skipIfMPS(fn):
-    reason = "test doesn't currently work with MPS"
-    # Class-level skip falls back to the global TEST_MPS check; the wrapper
-    # below inspects args[0].device_type, which is only available per-method.
-    if isinstance(fn, type):
-        if TEST_MPS:
-            fn.__unittest_skip__ = True  # type: ignore[attr-defined]
-            fn.__unittest_skip_why__ = reason  # type: ignore[attr-defined]
-        return fn
-
     sig = inspect.signature(fn)
     has_device_arg = "device" in sig.parameters
 
@@ -2311,19 +2287,15 @@ def skipIfMPS(fn):
                     slf, "device", None
                 )
                 if isinstance(device_type, str) and device_type == "mps":
-                    raise unittest.SkipTest(reason)
+                    raise unittest.SkipTest("test doesn't currently work with MPS")
         elif TEST_MPS:
-            raise unittest.SkipTest(reason)
+            raise unittest.SkipTest("test doesn't currently work with MPS")
         return fn(*args, **kwargs)
 
     return wrapper
 
 
 def skipIfHpu(fn):
-    return lazy_skip_if(lambda: TEST_HPU, "test doesn't currently work with HPU")(fn)
-
-def skipIfHpu_BUGGY(fn):
-    """Old skipIfHpu that silently drops classes from discovery. Migrate to skipIfHpu."""
     @wraps(fn)
     def wrapper(*args, **kwargs):
         if TEST_HPU:
@@ -2332,39 +2304,63 @@ def skipIfHpu_BUGGY(fn):
             fn(*args, **kwargs)
     return wrapper
 
-def getRocmVersion() -> tuple[int, int]:
+def getRocmVersion() -> Tuple[int, int]:
     from torch.testing._internal.common_cuda import _get_torch_rocm_version
     rocm_version = _get_torch_rocm_version()
     return (rocm_version[0], rocm_version[1])
 
 # Skips a test on CUDA if ROCm is available and its version is lower than requested.
 def skipIfRocmVersionLessThan(version=None):
-    def _should_skip():
-        if not TEST_WITH_ROCM:
-            return False
-        rocm_version_tuple = getRocmVersion()
-        return (
-            rocm_version_tuple is None
-            or version is None
-            or rocm_version_tuple < tuple(version)
-        )
-    return lazy_skip_if(_should_skip, f"ROCm version less than {version} required")
+    def dec_fn(fn):
+        @wraps(fn)
+        def wrap_fn(self, *args, **kwargs):
+            if TEST_WITH_ROCM:
+                rocm_version_tuple = getRocmVersion()
+                if rocm_version_tuple is None or version is None or rocm_version_tuple < tuple(version):
+                    reason = f"ROCm {rocm_version_tuple} is available but {version} required"
+                    raise unittest.SkipTest(reason)
+            return fn(self, *args, **kwargs)
+        return wrap_fn
+    return dec_fn
 
 def skipIfNotMiopenSuggestNHWC(fn):
-    return lazy_skip_if(
-        lambda: not TEST_WITH_MIOPEN_SUGGEST_NHWC,
-        "test doesn't currently work without MIOpen NHWC activation",
-    )(fn)
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not TEST_WITH_MIOPEN_SUGGEST_NHWC:
+            raise unittest.SkipTest("test doesn't currently work without MIOpen NHWC activation")
+        else:
+            fn(*args, **kwargs)
+    return wrapper
 
 def skipIfWindows(func=None, *, msg="test doesn't currently work on the Windows stack"):
-    decorator = lazy_skip_if(lambda: IS_WINDOWS, f"skipIfWindows: {msg}")
-    return decorator(func) if func is not None else decorator
+    def dec_fn(fn):
+        reason = f"skipIfWindows: {msg}"
+
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if IS_WINDOWS:
+                raise unittest.SkipTest(reason)
+            else:
+                return fn(*args, **kwargs)
+        return wrapper
+    if func:
+        return dec_fn(func)
+    return dec_fn
 
 def skipIfWindowsXPU(func=None, *, msg="test doesn't currently work on the Windows stack"):
-    decorator = lazy_skip_if(
-        lambda: IS_WINDOWS and torch.xpu.is_available(), f"skipIfWindowsXPU: {msg}"
-    )
-    return decorator(func) if func is not None else decorator
+    def dec_fn(fn):
+        reason = f"skipIfWindowsXPU: {msg}"
+
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if IS_WINDOWS and torch.xpu.is_available():
+                raise unittest.SkipTest(reason)
+            else:
+                return fn(*args, **kwargs)
+        return wrapper
+    if func:
+        return dec_fn(func)
+    return dec_fn
 
 def requires_cuda_p2p_access():
     cuda_p2p_access_available = (
@@ -2415,15 +2411,6 @@ def setBlasBackendsToDefaultFinally(fn):
                 torch._C._cuda_clearCublasWorkspaces()
     return _fn
 
-def setSdpaBackendsToDefaultFinally(fn):
-    @wraps(fn)
-    def _fn(*args, **kwargs):
-        _preferred_backend = torch.backends.cuda.preferred_rocm_fa_library()
-        try:
-            fn(*args, **kwargs)
-        finally:
-            torch.backends.cuda.preferred_rocm_fa_library(_preferred_backend)
-    return _fn
 
 # Context manager for setting deterministic flag and automatically
 # resetting it to its original value
@@ -2577,10 +2564,19 @@ def skipIfCompiledWithoutNumpy(fn):
     numpy_support = TEST_NUMPY
     if numpy_support:
         try:
+            # The numpy module is present, verify that PyTorch is compiled with
+            # numpy support
             torch.from_numpy(np.array([2, 2]))
         except RuntimeError:
             numpy_support = False
-    return unittest.skipIf(not numpy_support, "PyTorch was compiled without numpy support")(fn)
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not numpy_support:
+            raise unittest.SkipTest("PyTorch was compiled without numpy support")
+        else:
+            fn(*args, **kwargs)
+    return wrapper
 
 def _test_function(fn, device):
     def run_test_function(self):
@@ -2588,13 +2584,22 @@ def _test_function(fn, device):
     return run_test_function
 
 def skipIfNoXNNPACK(fn):
-    return lazy_skip_if(
-        lambda: not torch.backends.xnnpack.enabled,  # type: ignore[attr-defined]
-        "XNNPACK must be enabled for these tests. Please build with USE_XNNPACK=1.",
-    )(fn)
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not torch.backends.xnnpack.enabled:  # type: ignore[attr-defined]
+            raise unittest.SkipTest('XNNPACK must be enabled for these tests. Please build with USE_XNNPACK=1.')
+        else:
+            fn(*args, **kwargs)
+    return wrapper
 
 def skipIfNoLapack(fn):
-    return lazy_skip_if(lambda: not torch._C.has_lapack, "PyTorch compiled without Lapack")(fn)
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not torch._C.has_lapack:
+            raise unittest.SkipTest('PyTorch compiled without Lapack')
+        else:
+            fn(*args, **kwargs)
+    return wrapper
 
 def skipIfNotRegistered(op_name, message):
     """Wraps the decorator to hide the import of the `core`.
@@ -2610,15 +2615,31 @@ def skipIfNotRegistered(op_name, message):
     return unittest.skip("Pytorch is compiled without Caffe2")
 
 def skipIfNoSciPy(fn):
-    return lazy_skip_if(lambda: not TEST_SCIPY, "test require SciPy, but SciPy not found")(fn)
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not TEST_SCIPY:
+            raise unittest.SkipTest("test require SciPy, but SciPy not found")
+        else:
+            fn(*args, **kwargs)
+    return wrapper
 
 def skip_if_pytest(fn):
-    return lazy_skip_if(
-        lambda: "PYTEST_CURRENT_TEST" in os.environ, "does not work under pytest"
-    )(fn)
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            raise unittest.SkipTest("does not work under pytest")
+        return fn(*args, **kwargs)
+
+    return wrapped
 
 def skipIfNoXPU(fn):
-    return lazy_skip_if(lambda: not TEST_XPU, "test required PyTorched compiled with XPU")(fn)
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not TEST_XPU:
+            raise unittest.SkipTest("test required PyTorched compiled with XPU")
+        else:
+            fn(*args, **kwargs)
+    return wrapper
 
 def slowTest(fn):
     @wraps(fn)
@@ -3102,7 +3123,7 @@ class RelaxedBooleanPair(BooleanPair):
     def _process_inputs(self, actual, expected, *, id):
         # We require only one of the inputs of the inputs to be a boolean and the other can also be a boolean, a
         # number, or a single element tensor or array, whereas in default BooleanPair both inputs have to be booleans.
-        tensor_or_array_types: tuple[type, ...] = (torch.Tensor, np.ndarray)
+        tensor_or_array_types: Tuple[type, ...] = (torch.Tensor, np.ndarray)
         other_supported_types = (*self._supported_types, *self._supported_number_types, *tensor_or_array_types)
         if not (
             (isinstance(actual, self._supported_types) and isinstance(expected, other_supported_types))
@@ -3159,7 +3180,7 @@ class RelaxedNumberPair(NumberPair):
     def _process_inputs(self, actual, expected, *, id):
         # We require only one of the inputs of the inputs to be a number and the other can also be a number or a single
         # element tensor or array, whereas in default NumberPair both inputs have to be numbers.
-        tensor_or_array_types: tuple[type, ...] = (torch.Tensor, np.ndarray)
+        tensor_or_array_types: Tuple[type, ...] = (torch.Tensor, np.ndarray)
         other_supported_types = (*self._supported_types, *tensor_or_array_types)
         if not (
                 (isinstance(actual, self._supported_types) and isinstance(expected, other_supported_types))
@@ -3248,8 +3269,8 @@ class UnittestPair(Pair):
 
     Define the :attr:`UnittestPair.CLS` in a subclass to indicate which class(es) of the inputs the pair should support.
     """
-    CLS: type | tuple[type, ...]
-    TYPE_NAME: str | None = None
+    CLS: Union[type, Tuple[type, ...]]
+    TYPE_NAME: Optional[str]= None
 
     def __init__(self, actual, expected, **other_parameters):
         self._check_inputs_isinstance(actual, expected, cls=self.CLS)
@@ -3326,9 +3347,6 @@ class TestCase(expecttest.TestCase):
     # Toggles whether to assert that `torch.get_default_dtype()` returns
     # `torch.float` when `setUp` and `tearDown` are called.
     _default_dtype_check_enabled: bool = False
-
-    _prev_torch_function_mode_stack_len: int = 0
-    _prev_torch_function_state = torch._C._TorchFunctionState.ENABLED
 
     # Always use difflib to print diffs on multi line equality.
     # Undocumented feature in unittest
@@ -3742,8 +3760,6 @@ class TestCase(expecttest.TestCase):
 
         # attempt to reset some global state at the end of the test
         self._prev_grad_state = torch.is_grad_enabled()
-        self._prev_torch_function_mode_stack_len = torch._C._len_torch_function_stack()
-        self._prev_torch_function_state = torch._C._get_torch_function_state()
 
     def tearDown(self):
         # There exists test cases that override TestCase.setUp
@@ -3765,25 +3781,6 @@ class TestCase(expecttest.TestCase):
         # attribute may not be defined, per above
         if hasattr(self, '_prev_grad_state'):
             torch.set_grad_enabled(self._prev_grad_state)
-
-        # torch.set_default_device pushes a DeviceContext onto the torch
-        # function mode stack, so this check also catches leaked default devices.
-        after = torch._C._len_torch_function_stack()
-        if after != self._prev_torch_function_mode_stack_len:
-            for _ in range(after - self._prev_torch_function_mode_stack_len):
-                torch._C._pop_torch_function_stack()
-            raise AssertionError(
-                f"torch function mode stack was leaked: "
-                f"length changed from {self._prev_torch_function_mode_stack_len} to {after}"
-            )
-
-        tf_state = torch._C._get_torch_function_state()
-        if tf_state != self._prev_torch_function_state:
-            torch._C._set_torch_function_state(self._prev_torch_function_state)
-            raise AssertionError(
-                f"torch function state was leaked: "
-                f"changed from {self._prev_torch_function_state} to {tf_state}"
-            )
 
     @staticmethod
     def _make_crow_indices(n_rows, n_cols, nnz,
@@ -3982,7 +3979,7 @@ class TestCase(expecttest.TestCase):
             n_compressed_dims, n_plain_dims = size[-1 - dense_dims] // blocksize1, size[-2 - dense_dims] // blocksize0
         blocknnz = nnz // (blocksize0 * blocksize1)
         sparse_tensors = [random_sparse_compressed(n_compressed_dims, n_plain_dims, blocknnz) for _ in range(n_batch)]
-        sparse_tensors_it = map(list, zip(*sparse_tensors, strict=True))
+        sparse_tensors_it = map(list, _zip_strict(*sparse_tensors))
 
         values = torch.stack(next(sparse_tensors_it)).reshape(*batch_shape, blocknnz, *blocksize, *dense_size)
         compressed_indices = torch.stack(next(sparse_tensors_it)).reshape(*batch_shape, -1)
@@ -4467,10 +4464,10 @@ class TestCase(expecttest.TestCase):
             self,
             x,
             y,
-            msg: str | Callable[[str], str] | None = None,
+            msg: Optional[Union[str, Callable[[str], str]]]= None,
             *,
-            atol: float | None = None,
-            rtol: float | None = None,
+            atol: Optional[float]= None,
+            rtol: Optional[float]= None,
             equal_nan=True,
             exact_dtype=True,
             # TODO: default this to True
@@ -4556,8 +4553,8 @@ class TestCase(expecttest.TestCase):
                 (lambda generated_msg: f"{generated_msg}\n{msg}") if isinstance(msg, str) and self.longMessage else msg
             )
 
-    def assertNotEqual(self, x, y, msg: str | None = None, *,                                       # type: ignore[override]
-                       atol: float | None = None, rtol: float | None = None, **kwargs) -> None:
+    def assertNotEqual(self, x, y, msg: Optional[str] = None, *,                                       # type: ignore[override]
+                       atol: Optional[float] = None, rtol: Optional[float] = None, **kwargs) -> None:
         with self.assertRaises(AssertionError, msg=msg):
             self.assertEqual(x, y, msg, atol=atol, rtol=rtol, **kwargs)
 
@@ -4577,7 +4574,7 @@ class TestCase(expecttest.TestCase):
     # _ignore_not_implemented_error is True
     def assertRaises(self, expected_exception, *args, **kwargs):
         if self._ignore_not_implemented_error:
-            context: AssertRaisesContextIgnoreNotImplementedError | None = \
+            context: Optional[AssertRaisesContextIgnoreNotImplementedError]= \
                 AssertRaisesContextIgnoreNotImplementedError(expected_exception, self)  # type: ignore[call-arg]
             try:
                 return context.handle('assertRaises', args, kwargs)  # type: ignore[union-attr, arg-type]
@@ -4891,7 +4888,7 @@ class TestCase(expecttest.TestCase):
         self,
         file: pathlib.Path,
         import_string: str,
-        expected_failure_message: str | None = None
+        expected_failure_message: Optional[str]= None
     ) -> None:
         """
         Attempts weights_only `torch.load` in a subprocess. This is used to test that
@@ -5620,8 +5617,8 @@ def get_tensors_from(args, kwargs):
 
 
 # Returns scalar tensor representation of a list of integer byte values
-def bytes_to_scalar(byte_list: list[int], dtype: torch.dtype, device: torch.device):
-    dtype_to_ctype: dict[torch.dtype, Any] = {
+def bytes_to_scalar(byte_list: List[int], dtype: torch.dtype, device: torch.device):
+    dtype_to_ctype: Dict[torch.dtype, Any] = {
         torch.int8: ctypes.c_int8,
         torch.uint8: ctypes.c_uint8,
         torch.uint16: ctypes.c_uint16,
@@ -6028,7 +6025,7 @@ class NestedTensorTestCase(TestCase):
             nested_tensor_module._tensor_symint_registry = original_tensor_symint_registry
 
 
-def munge_exc(e, *, suppress_suffix=True, suppress_prefix=True, file=None, skip=0, strip_carets=True, strip_stack_attribution=True):
+def munge_exc(e, *, suppress_suffix=True, suppress_prefix=True, file=None, skip=0):
     from torch._dynamo.trace_rules import _as_posix_path
 
     if file is None:
@@ -6049,7 +6046,7 @@ def munge_exc(e, *, suppress_suffix=True, suppress_prefix=True, file=None, skip=
         return m.group(0)
 
     s = re.sub(
-        r'( *)File "([^"]+)", line \d+, in (.+)\n(\1  .+\n( +[~^]* *\n)?)*',
+        r'( *)File "([^"]+)", line \d+, in (.+)\n(\1  .+\n( +[~^]+ *\n)?)*',
         repl_frame,
         s,
     )
@@ -6072,19 +6069,6 @@ def munge_exc(e, *, suppress_suffix=True, suppress_prefix=True, file=None, skip=
     if suppress_prefix:
         s = re.sub(r"Cannot export model.+\n\n", "", s)
     s = re.sub(r" +$", "", s, flags=re.MULTILINE)
-    if strip_stack_attribution:
-        # Strip the contents of "Stack variable source attribution" blocks but
-        # keep the header, since the entries depend on whether specific bytecodes
-        # have position info which varies across Python point releases.
-        s = re.sub(
-            r"(\nStack variable source attribution:)\n(?:.*\n)*?\n",
-            r"\1\n\n",
-            s,
-        )
-    if strip_carets:
-        # Remove caret/tilde indicator lines (e.g. "    ~~~^^^^") since their
-        # presence and alignment vary across Python versions.
-        s = re.sub(r"\n[ ~^]*[~^][ ~^]*(?=\n|\Z)", "", s)
     return s
 
 
@@ -6217,12 +6201,19 @@ def recover_orig_fp32_precision(fn):
 
 def skipIfPythonVersionMismatch(predicate):
     vi = sys.version_info
-    return lazy_skip_if(
-        lambda: not predicate(vi.major, vi.minor, vi.micro), "Python version mismatch"
-    )
+
+    def dec_fn(fn):
+        @wraps(fn)
+        def wrap_fn(self, *args, **kwargs):
+            if predicate(vi.major, vi.minor, vi.micro):
+                return fn(self, *args, **kwargs)
+            else:
+                raise unittest.SkipTest("Python version mismatch")
+        return wrap_fn
+    return dec_fn
 
 # Decorator to patch multiple test class members for the duration of the subtest
-def patch_test_members(updates: dict[str, Any]):
+def patch_test_members(updates: Dict[str, Any]):
     def decorator(test_func):
         @wraps(test_func)
         def wrapper(self, *args, **kwargs):

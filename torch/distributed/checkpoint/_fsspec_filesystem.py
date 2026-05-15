@@ -1,12 +1,14 @@
 # Mypy will not try inferring the types of any 3rd party libraries installed.
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 import io
 import os
-from collections.abc import Generator, Sequence
+
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Dict, Generator, IO, List, Optional, Sequence, TYPE_CHECKING
 
 from fsspec.core import url_to_fs
 
@@ -31,7 +33,7 @@ __all__ = [
 
 class FileSystem(FileSystemBase):
     def __init__(self) -> None:
-        self.fs: AbstractFileSystem | None = None
+        self.fs: Optional[AbstractFileSystem] = None
 
     @contextmanager
     def create_stream(
@@ -86,9 +88,9 @@ class FileSystem(FileSystemBase):
     def rm_file(self, path: str | os.PathLike) -> None:
         self.fs.rm(path)
 
-    def ls(self, path: str | os.PathLike) -> list[str]:
-        # setting detail to False explicitly to keep the list[str] return type,
-        # instead of the list[Dict] return type when detail=True
+    def ls(self, path: str | os.PathLike) -> List[str]:
+        # setting detail to False explicitly to keep the List[str] return type,
+        # instead of the List[Dict] return type when detail=True
         return self.fs.ls(path, detail=False)
 
 
@@ -115,7 +117,7 @@ class FsspecWriter(FileSystemWriter):
         thread_count: int = 1,
         per_thread_copy_ahead: int = 10_000_000,
         overwrite: bool = True,
-        _extensions: Sequence[StreamTransformExtension] | None = None,
+        _extensions: Optional[Sequence[StreamTransformExtension]] = None,
         serialization_format: SerializationFormat = SerializationFormat.TORCH_SAVE,
         **kwargs,
     ) -> None:

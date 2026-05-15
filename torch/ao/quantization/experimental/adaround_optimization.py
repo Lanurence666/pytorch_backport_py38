@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, List, Optional, Tuple, Type, Union, overload
 
 import torch
 from torch.ao.quantization.experimental.adaround_fake_quantize import (
@@ -17,25 +19,25 @@ from torch.utils.data import DataLoader, TensorDataset
 class AdaptiveRoundingOptimizer:
     def __init__(
         self,
-        model: torch.nn.Module | torch.nn.DataParallel,
+        model: Union[torch.nn.Module, torch.nn.DataParallel],
         callback: Callable[
             [
-                torch.nn.Module | torch.nn.DataParallel,
+                Union[torch.nn.Module, torch.nn.DataParallel],
                 Any,
-                torch.nn.Module | None,
+                Optional[torch.nn.Module],
             ],
             None,
         ],
-        forward_hook_wrapper: Callable[[list[torch.Tensor]], Callable],
+        forward_hook_wrapper: Callable[[List[torch.Tensor]], Callable],
         data: Any,
-        observer: type[torch.ao.quantization.observer.ObserverBase] = MinMaxObserver,
+        observer: Type[torch.ao.quantization.observer.ObserverBase] = MinMaxObserver,
         max_iter=10000,
         dtype: torch.dtype = torch.qint8,
         quant_min=-128,
         quant_max=127,
         qscheme: torch.qscheme = torch.per_tensor_symmetric,
         batch_size: int = 256,
-        feed_forward_wrapper: torch.nn.Module | None = None,
+        feed_forward_wrapper: Optional[torch.nn.Module] = None,
     ):
         if torch.cuda.is_available():
             self.model = model.cuda()
@@ -62,7 +64,7 @@ class AdaptiveRoundingOptimizer:
         self.feed_forward_wrapper = feed_forward_wrapper
 
     def run_adaround(self) -> torch.nn.Module:
-        layer_list: list[tuple[str, torch.nn.Module, torch.nn.Module]] = []
+        layer_list: List[Tuple[str, torch.nn.Module, torch.nn.Module]] = []
         for (name, module), q_module in zip(
             self.model.named_modules(), self.q_model.modules()
         ):
@@ -93,13 +95,13 @@ class AdaptiveRoundingOptimizer:
         )
 
     def get_data_inp_out(
-        self, module: torch.nn.Module, q_module: torch.nn.Module, data: list[Any]
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
-        fp_out: list[torch.Tensor] = []
-        q_input: list[torch.Tensor] = []
-        fp_input: list[torch.Tensor] = []
-        fp32_fetcher: list[torch.Tensor] = []
-        quant_fetcher: list[torch.Tensor] = []
+        self, module: torch.nn.Module, q_module: torch.nn.Module, data: List[Any]
+    ) -> Tuple[List[torch.Tensor], List[torch.Tensor], List[torch.Tensor]]:
+        fp_out: List[torch.Tensor] = []
+        q_input: List[torch.Tensor] = []
+        fp_input: List[torch.Tensor] = []
+        fp32_fetcher: List[torch.Tensor] = []
+        quant_fetcher: List[torch.Tensor] = []
         handler1 = module.register_forward_hook(self.forward_hook_wrapper(fp32_fetcher))
         handler2 = q_module.register_forward_hook(
             self.forward_hook_wrapper(quant_fetcher)

@@ -5,13 +5,15 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import binascii
 import logging
 import os
 import tempfile
 from base64 import b64decode, b64encode
 from datetime import timedelta
-from typing import Any, cast
+from typing import Any, Optional, Tuple, Union, cast
 
 from torch.distributed import FileStore, Store, TCPStore
 from torch.distributed.elastic.events import construct_and_record_rdzv_event, NodeState
@@ -70,15 +72,15 @@ class C10dRendezvousBackend(RendezvousBackend):
         """See base class."""
         return "c10d"
 
-    def get_state(self) -> tuple[bytes, Token] | None:
+    def get_state(self) -> Optional[Tuple[bytes, Token]]:
         """See base class."""
         base64_state: bytes = self._call_store("get", self._key)
 
         return self._decode_state(base64_state)
 
     def set_state(
-        self, state: bytes, token: Token | None = None
-    ) -> tuple[bytes, Token, bool] | None:
+        self, state: bytes, token: Optional[Token] = None
+    ) -> Optional[Tuple[bytes, Token, bool]]:
         """See base class."""
         base64_state_str: str = b64encode(state).decode()
 
@@ -117,7 +119,7 @@ class C10dRendezvousBackend(RendezvousBackend):
                 "The connection to the C10d store has failed. See inner exception for details."
             ) from exc
 
-    def _decode_state(self, base64_state: bytes) -> tuple[bytes, Token] | None:
+    def _decode_state(self, base64_state: bytes) -> Optional[Tuple[bytes, Token]]:
         if base64_state == self._NULL_SENTINEL.encode():
             return None
 
@@ -208,19 +210,19 @@ def _create_file_store(params: RendezvousParameters) -> FileStore:
     return store
 
 
-def create_backend(params: RendezvousParameters) -> tuple[C10dRendezvousBackend, Store]:
+def create_backend(params: RendezvousParameters) -> Tuple[C10dRendezvousBackend, Store]:
     """Create a new :py:class:`C10dRendezvousBackend` from the specified parameters.
 
     +--------------+-----------------------------------------------------------+
-    | Parameter    | Description                                               |
+    | Union[Parameter, Description]                                               |
     +==============+===========================================================+
-    | store_type   | The type of the C10d store. The currently supported types |
+    | Union[store_type, The] type of the C10d store. The currently supported types |
     |              | are "tcp" and "file" which correspond to                  |
     |              | :py:class:`torch.distributed.TCPStore` and                |
     |              | :py:class:`torch.distributed.FileStore`, respectively.    |
     |              | Defaults to "tcp".                                        |
     +--------------+-----------------------------------------------------------+
-    | read_timeout | The read timeout, in seconds, for store operations.       |
+    | Union[read_timeout, The] read timeout, in seconds, for store operations.       |
     |              | Defaults to 60 seconds.                                   |
     |              |                                                           |
     |              | Note this only applies to                                 |
@@ -228,7 +230,7 @@ def create_backend(params: RendezvousParameters) -> tuple[C10dRendezvousBackend,
     |              | to :py:class:`torch.distributed.FileStore` which does not |
     |              | take in timeout as a parameter.                           |
     +--------------+-----------------------------------------------------------+
-    | is_host      | A boolean value indicating whether this backend instance  |
+    | Union[is_host, A] boolean value indicating whether this backend instance  |
     |              | will host the C10d store. If not specified it will be     |
     |              | inferred heuristically by matching the hostname or the IP |
     |              | address of this machine against the specified rendezvous  |

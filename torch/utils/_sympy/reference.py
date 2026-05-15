@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 import operator
-from typing import NoReturn
+from typing import NoReturn, Union
 
 import sympy
 
@@ -43,7 +45,7 @@ class ReferenceAnalysis:
 
     @staticmethod
     def or_(a, b):
-        return a | b
+        return Union[a, b]
 
     @staticmethod
     def and_(a, b):
@@ -334,7 +336,7 @@ class PythonReferenceAnalysis(ReferenceAnalysis):
 
     @staticmethod
     def bitwise_or(a, b):
-        return a | b
+        return Union[a, b]
 
     @staticmethod
     def bitwise_xor(a, b):
@@ -386,7 +388,7 @@ class TensorReferenceAnalysis:
     # function isn't traced correctly.  Here for completeness.
     @staticmethod
     def constant(c, dtype):
-        d: int | float | bool
+        d: Union[int, float, bool]
         if dtype is torch.int64:
             d = int(c)
         elif dtype is torch.double:

@@ -1,12 +1,14 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import itertools
 import logging
 import operator
 from collections import Counter, defaultdict
-from collections.abc import Callable
-from typing import Any, TypeVar
+
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union
 from typing_extensions import ParamSpec
 
 import torch
@@ -131,7 +133,7 @@ def _chain_random_ops_for_ordering(graph: torch.fx.Graph) -> None:
     if len(random_nodes) < 2:
         return
 
-    additional_deps_map: dict[torch.fx.Node, OrderedSet[torch.fx.Node]] = {}
+    additional_deps_map: Dict[torch.fx.Node, OrderedSet[torch.fx.Node]] = {}
     for i in range(1, len(random_nodes)):
         additional_deps_map[random_nodes[i]] = OrderedSet([random_nodes[i - 1]])
 
@@ -159,7 +161,7 @@ def post_grad_passes(gm: torch.fx.GraphModule, is_inference: bool):
             reorder_for_locality
         )
 
-    fake_tensor_updater = FakeTensorUpdater(gm)
+    fake_tensor_updater = FakeTensorUpdater(gm.graph)
 
     if post_grad_custom_pre_pass := config.post_grad_custom_pre_pass:
         if isinstance(post_grad_custom_pre_pass, CustomInferenceAwareGraphPass):
@@ -284,13 +286,6 @@ def post_grad_passes(gm: torch.fx.GraphModule, is_inference: bool):
         spmd_check(gm)
 
     collectives_bucketing: bool = False
-
-    if config.dedup_reduce_scatters:
-        from torch._inductor.fx_passes.fsdp import dedup_fsdp_reduce_scatter
-
-        GraphTransformObserver(gm, "dedup_reduce_scatters").apply_gm_pass(
-            dedup_fsdp_reduce_scatter
-        )
 
     if config.bucket_reduce_scatters_fx != "none":
         from torch._inductor.fx_passes.bucketing import bucket_reduce_scatter
@@ -570,7 +565,7 @@ def decompose_map_to_while_loop(gm: torch.fx.GraphModule):
 
 
 def resolve_shape_to_proxy(
-    shape: list[int | torch.SymInt], bound_symbols: dict[Any, Any]
+    shape: Union[List[int, torch.SymInt], bound_symbols: Dict[Any, Any]]
 ):
     """
     Given a list of symints/ints, this function returns a calculated expression of bound_symbols' values.
@@ -782,7 +777,7 @@ def decompose_scan_to_while_loop(gm: torch.fx.GraphModule):
 
 
 @init_once_fakemode
-def lazy_init(input_device: torch.device | None = None):
+def lazy_init(input_device: Optional[torch.device] = None):
     if torch._C._has_mkldnn:
         from . import decompose_mem_bound_mm  # noqa: F401
         from .mkldnn_fusion import _mkldnn_fusion_init
@@ -1088,7 +1083,7 @@ def same_meta(node1: torch.fx.Node, node2: torch.fx.Node):
     )
 
 
-noop_registry: dict[Any, Any] = {}
+noop_registry: Dict[Any, Any] = {}
 
 
 def register_noop_decomp(targets, nop_arg=0):
@@ -1213,8 +1208,8 @@ def remove_noop_ops(graph: torch.fx.Graph):
     Removes both operations that are essentially aten.clone and operations that are essentially aten.alias from the graph.
     """
     inputs = OrderedSet[torch.fx.Node]()
-    input_storages = OrderedSet[int | None]()
-    output_storages = OrderedSet[int | None]()
+    input_storages = OrderedSet[Optional[int]]()
+    output_storages = OrderedSet[Optional[int]]()
 
     for node in graph.find_nodes(op="placeholder"):
         inputs.add(node)
@@ -1709,7 +1704,7 @@ def register_partial_reduction_pattern():
             if not statically_known_true(input.meta["val"].numel() >= 4096):
                 return True
 
-            def replacement(inp: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            def replacement(inp: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
                 partial = partial_red.target(inp, reduced_dims, keepdim)
                 complete = full_red.target(partial)
                 return (partial, complete)
@@ -1853,18 +1848,18 @@ class ConstructorMoverPass:
 
         return False
 
-    def get_node_device(self, node: fx.Node) -> torch.device | None:
+    def get_node_device(self, node: fx.Node) -> Optional[torch.device]:
         """
         Get the device of a node.
         """
         ten = node.meta.get("val")
         return None if not isinstance(ten, torch.Tensor) else ten.device
 
-    def get_cpu_indeg_count(self, graph: fx.Graph) -> dict[fx.Node, int]:
+    def get_cpu_indeg_count(self, graph: fx.Graph) -> Dict[fx.Node, int]:
         """
         Get the number of cpu inputs to a node
         """
-        cpu_indeg: dict[fx.Node, int] = Counter()
+        cpu_indeg: Dict[fx.Node, int] = Counter()
 
         for node in graph.nodes:
             cpu_count = 0
@@ -1911,12 +1906,6 @@ class ConstructorMoverPass:
                 continue
 
             if node.kwargs.get("device") != torch.device("cpu"):
-                continue
-
-            if (
-                torch._inductor.config.fallback_random
-                and torch.Tag.nondeterministic_seeded in node.target.tags
-            ):
                 continue
 
             constructors.append(node)
@@ -1988,26 +1977,26 @@ class ConstructorMoverPass:
             node.kwargs = kwargs
 
     def find_movable_constructors(
-        self, graph: fx.Graph, constructors: list[fx.Node]
+        self, graph: fx.Graph, constructors: List[fx.Node]
     ) -> OrderedSet[fx.Node]:
         """
         Starting from the cpu constructors, iterate through the graph and test that all of their
         downstream uses can safely be moved to cpu.
         """
-        cpu_indeg: dict[fx.Node, int] = self.get_cpu_indeg_count(graph)
+        cpu_indeg: Dict[fx.Node, int] = self.get_cpu_indeg_count(graph)
 
         # which constructors cannot be moved to gpu
         cannot_move_to_gpu = OrderedSet[fx.Node]()
 
         # For any node in the graph, which constructors does it have a dependency on
-        constructor_dependencies: dict[fx.Node, OrderedSet[fx.Node]] = defaultdict(
+        constructor_dependencies: Dict[fx.Node, OrderedSet[fx.Node]] = defaultdict(
             OrderedSet
         )
 
         # if a cpu node has a dependency on two different cpu constructors,
         # then if either constructor cannot be moved to gpu, the other cannot as well.
         # In this case any node with a dependency on one will have a dependency on the other
-        equal_constructor_sets: dict[fx.Node, OrderedSet[fx.Node]] = {
+        equal_constructor_sets: Dict[fx.Node, OrderedSet[fx.Node]] = {
             c: OrderedSet([c]) for c in constructors
         }
 
@@ -2020,7 +2009,7 @@ class ConstructorMoverPass:
                 equal_constructor_sets[obj] = set1
             return set1
 
-        queue: list[fx.Node] = list(constructors)
+        queue: List[fx.Node] = list(constructors)
 
         for c in queue:
             constructor_dependencies[c].add(c)

@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import collections
 import copy
 import operator
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, overload
 
 import torch
 import torch.fx
@@ -61,7 +63,7 @@ class OutputProp:
 
     def propagate(self, *args):
         args_iter = iter(args)
-        env: dict[str, Node] = {}
+        env: Dict[str, Node] = {}
 
         def load_arg(a):
             return torch.fx.graph.map_arg(a, lambda n: env[n.name])
@@ -103,7 +105,7 @@ class OutputProp:
         return None
 
 
-def _get_dedup_subgraphs(matches: dict[str, _MatchResult]) -> dict[str, list[Node]]:
+def _get_dedup_subgraphs(matches: Dict[str, _MatchResult]) -> Dict[str, List[Node]]:
     # the original matches variable is unique by node, make it unique by subgraph
     # instead
     seen_nodes = set()
@@ -112,7 +114,7 @@ def _get_dedup_subgraphs(matches: dict[str, _MatchResult]) -> dict[str, list[Nod
     # Dict items are not reversible until Python 3.8, so we hack it
     # to be compatible with previous Python versions
     # TODO(future PR): try reversed(list(matches.items()))
-    matches_items_reversed: list[tuple[str, _MatchResult]] = list(
+    matches_items_reversed: List[Tuple[str, _MatchResult]] = list(
         reversed(matches.items())
     )
 
@@ -172,7 +174,7 @@ def _get_dedup_subgraphs(matches: dict[str, _MatchResult]) -> dict[str, list[Nod
             # TODO(future PR): make this code less confusing,  see discussion
             # in https://github.com/pytorch/pytorch/pull/80521/files#r975918836
 
-            def _order_nodes(node_a, node_b, node_c) -> list[Node]:
+            def _order_nodes(node_a, node_b, node_c) -> List[Node]:
                 nodes = [node_a, node_b, node_c]
                 first_node = None
                 mid_node = None
@@ -224,7 +226,7 @@ def _get_logger_for_subgraph(
     subgraph_candidate_idx: int,
     qconfig_str: str,
     logger_cls: Callable,
-    fqn: str | None,
+    fqn: Optional[str],
 ) -> torch.nn.Module:
     """
     Given a model and a linear subgraph starting from `first_node` and
@@ -316,8 +318,8 @@ def create_submodule_from_subgraph(
             # to the first node, need to handle this
             cur_args_copy = []
             cur_kwargs_copy = {}
-            seen_names: set[str] = set()
-            old_name_to_new_node: dict[str, Node] = {}
+            seen_names: Set[str] = set()
+            old_name_to_new_node: Dict[str, Node] = {}
 
             def _add_placeholder(
                 g: Graph, node: Node, seen_names, old_name_to_new_node
@@ -463,12 +465,12 @@ def create_one_transformed_and_logged_copy_of_subgraph(
     subgraph_candidate_idx: int,
     first_node: Node,
     last_node: Node,
-    fqn: str | None,
-    list_of_node_name_to_qconfig: list[dict[str, QConfigAny]],
+    fqn: Optional[str],
+    list_of_node_name_to_qconfig: List[Dict[str, QConfigAny]],
     example_inputs: Any,
-    last_added_shadow_node_list: list[Node | None],
-    custom_prepare_fn: Callable | None = None,
-    custom_prepare_kwargs: dict[str, Any] | None = None,
+    last_added_shadow_node_list: List[Optional[Node]],
+    custom_prepare_fn: Optional[Callable] = None,
+    custom_prepare_kwargs: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
     Given a subgraph in `mt` and a subgraph candidate idx, inserts the
@@ -549,7 +551,7 @@ def create_one_transformed_and_logged_copy_of_subgraph(
                     raise AssertionError(
                         f"cannot specify {kwarg_name} in custom_prepare_kwargs"
                     )
-            prepare_kwargs: dict[str, Any] = {
+            prepare_kwargs: Dict[str, Any] = {
                 "example_inputs": example_inputs,
                 "qconfig_mapping": qconfig_mapping,
             }
@@ -626,11 +628,11 @@ def create_n_transformed_and_logged_copies_of_subgraph(
     mt: GraphModule,
     subgraph_idx: int,
     match_name: str,
-    nodes_in_this_subgraph: list[Any],
-    qconfig_mappings: list[QConfigMapping],
-    list_of_node_name_to_qconfig: list[dict[str, QConfigAny]],
-    custom_prepare_fn: Callable | None = None,
-    custom_prepare_kwargs: dict[str, Any] | None = None,
+    nodes_in_this_subgraph: List[Any],
+    qconfig_mappings: List[QConfigMapping],
+    list_of_node_name_to_qconfig: List[Dict[str, QConfigAny]],
+    custom_prepare_fn: Optional[Callable] = None,
+    custom_prepare_kwargs: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
     Given a model `mt` and a subgraph_idx, creates the needed copies
@@ -707,7 +709,7 @@ def create_n_transformed_and_logged_copies_of_subgraph(
     # order but the eventual results will be in reverse order.
     # So, we keep track of the last shadow logger we added and
     # always insert after it.
-    last_added_shadow_node_list: list[Node | None] = [None]
+    last_added_shadow_node_list: List[Optional[Node]] = [None]
     for subgraph_candidate_idx in range(len(qconfig_mappings) + 1):
         create_one_transformed_and_logged_copy_of_subgraph(
             mt,
@@ -726,9 +728,9 @@ def create_n_transformed_and_logged_copies_of_subgraph(
 
 def create_add_loggers_graph(
     model: GraphModule,
-    subgraphs_dedup: dict[str, list[Node]],
+    subgraphs_dedup: Dict[str, List[Node]],
     qconfig_mapping: QConfigMapping,
-    node_name_to_qconfig: dict[str, QConfigAny],
+    node_name_to_qconfig: Dict[str, QConfigAny],
 ) -> None:
     r"""
     Given a model, a model graph partition (currently a set of matched
@@ -884,7 +886,7 @@ def create_add_loggers_graph(
                     new_args = cur_node_orig.args
                     new_kwargs = cur_node_orig.kwargs
                 else:
-                    first_arg_for_copy: Node | None = cur_node_copy
+                    first_arg_for_copy: Optional[Node] = cur_node_copy
                     new_args = (first_arg_for_copy, *cur_node_orig.args[1:])
                     new_kwargs = cur_node_orig.kwargs
                 # make a copy of cur_node_orig
@@ -1375,7 +1377,7 @@ def print_n_shadows_summary(
 
     Prints:
 
-    node_name | node_type | fqn | 0    | 1    | ...
+    {**node_name, **node_type} | fqn | 0    | 1    | ...
     linear1   | ...       | ... | 45.0 | 50.0 | ...
     """
 
@@ -1392,7 +1394,8 @@ def print_n_shadows_summary(
     results = []
     for subgraph_data in results_comparison.values():
         mean_all_candidates = [
-            candidate["cmp_mean"] for candidate in subgraph_data["candidates"].values()
+            candidate["cmp_mean"]
+            for candidate_name, candidate in subgraph_data["candidates"].items()
         ]
 
         data_row = [

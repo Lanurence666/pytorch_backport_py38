@@ -1,5 +1,6 @@
 # Owner(s): ["module: nestedtensor"]
 # ruff: noqa: F841
+from __future__ import annotations
 import ast
 import io
 import itertools

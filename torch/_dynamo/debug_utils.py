@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Debug utilities for TorchDynamo compilation and execution.
 
@@ -16,7 +17,6 @@ Key classes:
 - BuckTargetWriter: Manages Buck build system integration
 """
 
-from __future__ import annotations
 
 import atexit
 import copy
@@ -34,7 +34,7 @@ import tempfile
 import textwrap
 from collections import Counter
 from importlib import import_module
-from typing import Any, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type, TypeVar
 
 import torch
 import torch._prims_common as utils
@@ -51,7 +51,7 @@ from .utils import clone_inputs, get_debug_dir, warn_once
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    
 
     from torch.hub import tqdm
     from torch.storage import UntypedStorage
@@ -128,7 +128,7 @@ python_binary(
 """
         )
 
-    def write(self, print_msg: bool = True) -> list[str]:
+    def write(self, print_msg: bool = True) -> List[str]:
         target_file = os.path.join(self.subdir, "TARGETS")
         with open(target_file, "w") as fd:
             fd.write(self.build())
@@ -222,11 +222,7 @@ class NNModuleToString:
             if buffer.numel() <= MAX_CONSTANT_NUMEL_INLINE:
                 from torch._tensor_str import PRINT_OPTS
 
-                if PRINT_OPTS.threshold < MAX_CONSTANT_NUMEL_INLINE:
-                    raise AssertionError(
-                        f"PRINT_OPTS.threshold ({PRINT_OPTS.threshold}) must be >= "
-                        f"MAX_CONSTANT_NUMEL_INLINE ({MAX_CONSTANT_NUMEL_INLINE})"
-                    )
+                assert PRINT_OPTS.threshold >= MAX_CONSTANT_NUMEL_INLINE
                 tensor_str = repr(buffer)
             elif torch.is_floating_point(buffer):
                 tensor_str = f"torch.randn({list(buffer.shape)}, dtype={buffer.dtype})"
@@ -260,7 +256,7 @@ class NNModuleToString:
         return model_str
 
 
-@functools.cache  # subprocess is expensive
+@functools.lru_cache(maxsize=None)  # subprocess is expensive
 def _cuda_system_info_comment() -> str:
     if not torch.cuda.is_available():
         return "# torch.cuda.is_available()==False, no GPU info collected\n"
@@ -356,7 +352,7 @@ class AccuracyError(Exception):
     pass
 
 
-def clone_inputs_retaining_gradness(example_inputs: Sequence[Any]) -> list[Any]:
+def clone_inputs_retaining_gradness(example_inputs: Sequence[Any]) -> List[Any]:
     """
     This clone inputs is different from utils clone_input. In case of minifier,
     all the tensors are leaf tensors while creating a new graph. So, we set the
@@ -465,10 +461,7 @@ def cast_dtype_args_to_fp64(model: torch.fx.GraphModule) -> torch.fx.GraphModule
             node.op == "call_function"
             and node.target is torch.ops.prims.convert_element_type.default
         ):
-            if len(node.args) != 2:
-                raise AssertionError(
-                    f"Expected node to have 2 args, got {len(node.args)}"
-                )
+            assert len(node.args) == 2
             if is_float_dtype(node.args[1]) and node.args[1] != torch.float64:
                 node.args = (node.args[0], torch.float64)
         if node.op == "call_function":
@@ -484,8 +477,8 @@ def cast_dtype_args_to_fp64(model: torch.fx.GraphModule) -> torch.fx.GraphModule
 
 
 def cast_to(
-    dtype: torch.dtype, model: torch.fx.GraphModule, inputs: list[Any]
-) -> tuple[torch.fx.GraphModule, list[Any]]:
+    dtype: torch.dtype, model: torch.fx.GraphModule, inputs: List[Any]
+) -> Tuple[torch.fx.GraphModule, List[Any]]:
     from torch.utils._pytree import tree_map
 
     model = model.to(dtype)
@@ -504,15 +497,15 @@ def cast_to(
 
 
 def cast_to_fp64(
-    model: torch.fx.GraphModule, inputs: list[Any]
-) -> tuple[torch.fx.GraphModule, list[Any]]:
+    model: torch.fx.GraphModule, inputs: List[Any]
+) -> Tuple[torch.fx.GraphModule, List[Any]]:
     return cast_to(torch.float64, model, inputs)
 
 
 def backend_accuracy_fails(
     gm: torch.fx.GraphModule,
     example_inputs: Sequence[Any],
-    compiler_fn: Callable[[torch.fx.GraphModule, list[Any]], torch.fx.GraphModule],
+    compiler_fn: Callable[[torch.fx.GraphModule, List[Any]], torch.fx.GraphModule],
     only_fwd: bool = False,
     *,
     require_fp64: bool = False,
@@ -551,14 +544,14 @@ def backend_accuracy_fails(
 
 
 def _stride_or_default(
-    stride: torch._prims_common.StrideType | None,
+    stride: Optional[torch._prims_common.StrideType],
     *,
     shape: torch._prims_common.ShapeType,
 ) -> torch._prims_common.StrideType:
     return stride if stride is not None else utils.make_contiguous_strides_for(shape)
 
 
-def _mk_defaulter(d: T) -> Callable[[T | None], T]:
+def _mk_defaulter(d: T) -> Callable[[Optional[T]], T]:
     return lambda x: x if x is not None else d
 
 
@@ -575,18 +568,18 @@ class NopInputReader:
 
     def storage(
         self,
-        storage_hash: str | None,
+        storage_hash: Optional[str],
         nbytes: int,
         *,
-        device: torch._prims_common.DeviceLikeType | None = None,
-        dtype_hint: torch.dtype | None = None,
+        device: Optional[torch._prims_common.DeviceLikeType] = None,
+        dtype_hint: Optional[torch.dtype] = None,
     ) -> None:
         self.total += 1
 
-    def tensor(self, *args: Any, **kwargs: Any) -> torch.Tensor | None:
+    def tensor(self, *args: Any, **kwargs: Any) -> Optional[torch.Tensor]:
         pass
 
-    def symint(self, *args: Any, **kwargs: Any) -> int | None:
+    def symint(self, *args: Any, **kwargs: Any) -> Optional[int]:
         pass
 
     def const(self, name: str) -> None:
@@ -606,7 +599,7 @@ class NopInputReader:
 # transferring around
 class InputReader:
     def __init__(
-        self, save_dir: str | None = None, *, pbar: tqdm | None = None
+        self, save_dir: Optional[str] = None, *, pbar: Optional[tqdm] = None
     ) -> None:
         # If None, we will generate random data instead.  It's important
         # to natively support this use case as it will allow people to
@@ -615,16 +608,16 @@ class InputReader:
         if save_dir is None:
             log.warning("no save_dir specified, will generate random data")
         self.store = ContentStoreReader(save_dir) if save_dir is not None else None
-        self.args: list[Any] = []
+        self.args: List[Any] = []
         self.pbar = pbar
 
     def storage(
         self,
-        storage_hash: str | None,
+        storage_hash: Optional[str],
         nbytes: int,
         *,
-        device: torch._prims_common.DeviceLikeType | None = None,
-        dtype_hint: torch.dtype | None = None,
+        device: Optional[torch._prims_common.DeviceLikeType] = None,
+        dtype_hint: Optional[torch.dtype] = None,
     ) -> UntypedStorage:
         if self.pbar is not None:
             self.pbar.update(1)
@@ -651,12 +644,12 @@ class InputReader:
         self,
         storage: UntypedStorage,
         shape: torch._prims_common.ShapeType,
-        stride: torch._prims_common.StrideType | None = None,
+        stride: Optional[torch._prims_common.StrideType] = None,
         *,
-        storage_offset: int | None = None,
-        dtype: torch.dtype | None = None,
-        requires_grad: bool | None = None,
-        is_leaf: bool | None = None,
+        storage_offset: Optional[int] = None,
+        dtype: Optional[torch.dtype] = None,
+        requires_grad: Optional[bool] = None,
+        is_leaf: Optional[bool] = None,
         **metadata: Any,
     ) -> torch.Tensor:
         stride = _stride_or_default(stride, shape=shape)
@@ -675,21 +668,13 @@ class InputReader:
                 t = t.clone(memory_format=torch.preserve_format)
             with torch.no_grad():
                 t.set_(storage, storage_offset, shape, stride)
-        if torch._subclasses.meta_utils.safe_is_leaf(t) != is_leaf:
-            raise AssertionError(
-                f"Tensor leaf status mismatch: safe_is_leaf(t) = "
-                f"{torch._subclasses.meta_utils.safe_is_leaf(t)}, expected {is_leaf}"
-            )
+        assert torch._subclasses.meta_utils.safe_is_leaf(t) == is_leaf
         torch._utils.set_tensor_metadata(t, metadata)
         self.args.append(t)
         return t  # for BC
 
-    def symint(self, val: Any, *, expr: str | None = None) -> Any:
+    def symint(self, val: Any) -> Any:
         self.args.append(val)
-        if expr is not None:
-            if not hasattr(self, "symint_exprs"):
-                self.symint_exprs: dict[int, str] = {}
-            self.symint_exprs[len(self.args) - 1] = expr
         return val  # for BC
 
     def const(self, name: str) -> None:
@@ -721,8 +706,8 @@ class InputReader:
 
 
 class InputWriter:
-    def __init__(self, save_dir: str | None, *, stable_hash: bool = False) -> None:
-        self._lines: list[str] = []
+    def __init__(self, save_dir: Optional[str], *, stable_hash: bool = False) -> None:
+        self._lines: List[str] = []
         # TODO: consider ensuring tensor and storage counters line up?
         self.storage_counter = itertools.count()
         self.save_dir = save_dir
@@ -731,9 +716,9 @@ class InputWriter:
             if save_dir is not None
             else None
         )
-        self.seen_storages: dict[StorageWeakRef, str] = {}
+        self.seen_storages: Dict[StorageWeakRef, str] = {}
 
-    def lines(self) -> list[str]:
+    def lines(self) -> List[str]:
         r = [
             "def load_args(reader):",
         ]
@@ -752,8 +737,8 @@ class InputWriter:
         self,
         untyped_storage: UntypedStorage,
         *,
-        device_hint: torch._prims_common.DeviceLikeType | None = None,
-        dtype_hint: torch.dtype | None = None,
+        device_hint: Optional[torch._prims_common.DeviceLikeType] = None,
+        dtype_hint: Optional[torch.dtype] = None,
     ) -> str:
         ws = StorageWeakRef(untyped_storage)
         v = self.seen_storages.get(ws)
@@ -768,10 +753,7 @@ class InputWriter:
         maybe_device = ""
         device = untyped_storage.device
         if device.type == "meta":
-            if device_hint is None:
-                raise AssertionError(
-                    "device_hint must be provided when storage device is 'meta'"
-                )
+            assert device_hint is not None
             device = device_hint  # type: ignore[assignment]
         if _device_or_default(None) != device:
             maybe_device = f", device={device!r}"
@@ -845,11 +827,8 @@ class InputWriter:
     # TODO: this doesn't actually symint atm
     def symint(self, name: str, val: Any) -> None:
         if isinstance(val, torch.SymInt):
-            expr_str = str(val.node.expr)
-            hint = val.node.hint
-            self._lines.append(f"reader.symint({hint!r}, expr={expr_str!r})  # {name}")
-        else:
-            self._lines.append(f"reader.symint({val!r})  # {name}")
+            val = val.node.hint
+        self._lines.append(f"reader.symint({val!r})  # {name}")
 
     def generator(self, name: str, arg: torch._C.Generator) -> None:
         device = arg.device
@@ -862,11 +841,11 @@ class InputWriter:
 
 
 def aot_graph_input_parser(
-    func: Callable[[list[Tensor]], list[Tensor]],
+    func: Callable[[List[Tensor]], List[Tensor]],
     device: str = "cuda",
-    sym_shapes: dict[str, int] | None = None,
-    default_sym_shape: int | None = None,
-) -> dict[str, Any]:
+    sym_shapes: Optional[Dict[str, int]] = None,
+    default_sym_shape: Optional[int] = None,
+) -> Dict[str, Any]:
     """
     Takes in a function which has been printed with print_readable() and constructs kwargs to run it.
 
@@ -884,7 +863,7 @@ def aot_graph_input_parser(
 
     from torch.utils._dtype_abbrs import dtype_abbrs
 
-    dtype_map: dict[str, torch.dtype] = {
+    dtype_map: Dict[str, torch.dtype] = {
         value: key for key, value in dtype_abbrs.items()
     }
     dtype_pattern: str = "|".join(dtype_abbrs.values())
@@ -901,9 +880,9 @@ def aot_graph_input_parser(
         "Container for tensors as attributes"
 
     # Dictionary for tensors from annotations
-    kwargs: dict[str, Any] = {}
+    kwargs: Dict[str, Any] = {}
 
-    sym_shapes_dict: dict[str, int] = sym_shapes or {}
+    sym_shapes_dict: Dict[str, int] = sym_shapes or {}
 
     def get_sym_int(symint: str) -> int:
         torch._check(

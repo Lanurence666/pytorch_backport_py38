@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from collections import OrderedDict
 import contextlib
-from typing import Any
+from typing import Any, Dict, IO, Type
 
 from tensorboard.compat.proto.config_pb2 import RunMetadata
 from tensorboard.compat.proto.graph_pb2 import GraphDef
@@ -167,7 +169,7 @@ class GraphPy:
 
     def populate_namespace_from_OP_to_IO(self) -> None:
         for node in self.nodes_op:
-            for node_output, outputSize in zip(node.outputs, node.outputstensor_size, strict=True):
+            for node_output, outputSize in _zip_strict(node.outputs, node.outputstensor_size):
                 self.scope_name_appeared.append(node.scopeName)
                 self.nodes_io[node_output] = NodeBase(
                     node_output,
@@ -253,7 +255,7 @@ def parse(graph, trace, args=None, omit_useless_nodes=True):
         if node.type().kind() != CLASSTYPE_KIND:
             nodes_py.append(NodePyIO(node, "input"))
 
-    attr_to_scope: dict[Any, str] = {}
+    attr_to_scope: Dict[Any, str] = {}
     for node in graph.nodes():
         if node.kind() == GETATTR_KIND:
             attr_name = node.s("name")

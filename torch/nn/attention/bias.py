@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Optional
+
 # mypy: allow-untyped-defs
 """Defines bias subclasses that work with scaled_dot_product_attention"""
 
@@ -158,7 +161,7 @@ class CausalBias(torch.Tensor):
         )
 
     # pyrefly: ignore [bad-return]
-    def _materialize(self, device: torch.device | None = None) -> torch.Tensor:
+    def _materialize(self, device: Optional[torch.device] = None) -> torch.Tensor:
         """
         Materializes the causal bias into a tensor form.
 
@@ -186,7 +189,7 @@ class CausalBias(torch.Tensor):
         attn_mask: "CausalBias",
         dropout_p: float = 0.0,
         is_causal: bool = False,
-        scale: float | None = None,
+        scale: Optional[float]= None,
         enable_gqa: bool = False,
     ) -> torch.Tensor:
         r"""

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Factory functions for creating checkpointer instances with sensible defaults.
 
@@ -6,8 +7,8 @@ of checkpointer instances by automatically handling component initialization
 and configuration with reasonable defaults.
 """
 
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import torch.distributed as dist
 
@@ -53,8 +54,8 @@ def default_writer_init_fn(rank_info: RankInfo) -> CheckpointWriter:
 
 def make_sync_checkpointer(
     config: CheckpointerConfig = CheckpointerConfig(),
-    rank_info: RankInfo | None = None,
-    commit_hook: WriterHook | None = None,
+    rank_info: Optional[RankInfo]= None,
+    commit_hook: Optional[WriterHook]= None,
 ) -> SyncCheckpointer:
     """
     Factory function to create a SyncCheckpointer instance with sensible defaults.
@@ -112,11 +113,11 @@ def make_sync_checkpointer(
 
 def make_async_checkpointer(
     config: CheckpointerConfig = CheckpointerConfig(),
-    rank_info: RankInfo | None = None,
+    rank_info: Optional[RankInfo]= None,
     subprocess_init_fn: Callable[..., None] = default_subprocess_init_fn,
-    subprocess_init_args: tuple[Any, ...] = (),
+    subprocess_init_args: Tuple[Any, ...] = (),
     checkpoint_writer_init_fn: Callable[..., CheckpointWriter] = default_writer_init_fn,
-    checkpoint_writer_init_args: dict[str, Any] | None = None,
+    checkpoint_writer_init_args: Optional[Dict[str, Any]]= None,
 ) -> AsyncCheckpointer:
     """
     Factory function to create an AsyncCheckpointer instance with sensible defaults.

@@ -9,7 +9,7 @@ import sys
 import tempfile
 import warnings
 from collections import namedtuple
-from functools import cached_property
+from functools import lru_cached_property
 from os.path import abspath, exists
 
 import torch

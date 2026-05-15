@@ -4,6 +4,7 @@
 The module for testing variable annotations.
 Empty lines above are for good reason (testing for correct line numbers)
 """
+from __future__ import annotations
 
 from typing import Optional
 from functools import wraps

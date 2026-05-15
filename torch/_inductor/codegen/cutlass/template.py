@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import hashlib
 import itertools
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Tuple, Union
 from unittest.mock import patch
 
 import sympy
@@ -47,15 +49,15 @@ class CUTLASSTemplate(KernelTemplate):
 
     index_counter = itertools.count()
     # dict of cache key to (code, size_args)
-    code_cache: dict[str, tuple[str, tuple[int, ...], tuple[int, ...]]] = {}
+    code_cache: Dict[str, Tuple[str, Tuple[int, ...], Tuple[int, ...]]] = {}
     cache_clear = staticmethod(code_cache.clear)
 
     def __init__(
         self,
         name: str,
-        input_nodes: list[Buffer],
+        input_nodes: List[Buffer],
         layout: Layout,
-        input_reorder: list[int] | None = None,
+        input_reorder: Optional[List[int]] = None,
     ) -> None:
         """
         Baseclass for CUTLASS C++ Templates, derived from KernelTemplate.
@@ -109,12 +111,12 @@ class CUTLASSTemplate(KernelTemplate):
 
     def generate_code_and_args(
         self, name: str, input_key: str, layout_repr: str, **kwargs
-    ) -> tuple[str, tuple[int, ...]]:
+    ) -> Tuple[str, Tuple[int, ...]]:
         """
         Generate code and args with caching. We cache the code even if runtime
         args are different.
         """
-        key: str | None = None
+        key: Optional[str] = None
         if config.cutlass.enable_caching_codegen:
             key = self.make_key(name=name, input_key=input_key, layout_repr=layout_repr)
 
@@ -180,8 +182,8 @@ class CUTLASSTemplate(KernelTemplate):
         description: str,
         input_key: str,
         layout_repr: str,
-        input_tensor_meta: TensorMeta | list[TensorMeta],
-        output_tensor_meta: TensorMeta | list[TensorMeta],
+        input_tensor_meta: Union[TensorMeta, List[TensorMeta]],
+        output_tensor_meta: Union[TensorMeta, List[TensorMeta]],
         **kwargs,
     ) -> CUTLASSTemplateCaller:
         """
@@ -230,8 +232,8 @@ class CUTLASSTemplate(KernelTemplate):
 
         def make_kernel_render(
             template_node: CUTLASSTemplateBuffer,
-            epilogue_nodes: list[BaseSchedulerNode] | None = None,
-        ) -> tuple[CUTLASSTemplateKernel, functools.partial[str]]:
+            epilogue_nodes: Optional[List[BaseSchedulerNode]] = None,
+        ) -> Tuple[CUTLASSTemplateKernel, functools.partial[str]]:
             assert supports_epilogue_fusion or not epilogue_nodes, (
                 "epilogue fusion is not supported for this kernel"
             )
@@ -375,10 +377,10 @@ class CUTLASSTemplate(KernelTemplate):
     def render(self, **kwargs) -> str:
         raise NotImplementedError
 
-    def get_runtime_arg_info(self) -> list[ArgInfo]:
+    def get_runtime_arg_info(self) -> List[ArgInfo]:
         return [ArgInfo("swizzle", "const uint8_t")]
 
-    def get_runtime_arg_values(self, **kwargs) -> list[Any]:
+    def get_runtime_arg_values(self, **kwargs) -> List[Any]:
         """
         Helper method to retrieve runtime args from generate kwargs
         """

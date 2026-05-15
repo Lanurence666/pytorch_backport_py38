@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import token
-from typing import TYPE_CHECKING
+from typing import Dict, List, TYPE_CHECKING
 
 from . import is_empty
 from .block import Block
@@ -13,8 +13,8 @@ if TYPE_CHECKING:
     from .python_file import PythonFile
 
 
-def blocks(pf: PythonFile) -> list[Block]:
-    blocks: list[Block] = []
+def blocks(pf: PythonFile) -> List[Block]:
+    blocks: List[Block] = []
 
     it = (i for i, t in enumerate(pf.tokens) if t.string in ("class", "def"))
     blocks = [_make_block(pf, i) for i in it]
@@ -45,7 +45,7 @@ def _add_full_names(
     blocks: Sequence[Block], children: Sequence[Block], prefix: str = ""
 ) -> None:
     # Would be trivial except that there can be duplicate names at any level
-    dupes: dict[str, list[Block]] = {}
+    dupes: Dict[str, List[Block]] = {}
     for b in children:
         dupes.setdefault(b.name, []).append(b)
 
@@ -70,8 +70,9 @@ def _make_block(pf: PythonFile, begin: int) -> Block:
         elif not end:
             if t.type == token.INDENT:
                 end = pf.indent_to_dedent[i]
-                while is_empty(pf.tokens[end := end - 1]):
-                    pass
+                end = end - 1
+                while is_empty(pf.tokens[end]):
+                    end = end - 1
             elif t.string == "...":
                 end = i
         elif t.type == token.STRING:

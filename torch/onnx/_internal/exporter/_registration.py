@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Module for handling ATen to ONNX functions registration.
 
 https://github.com/pytorch/pytorch/blob/6aa5bb1a76dee8112f1a9e7c194c790b5cdc6462/torch/onnx/_internal/fx/registration.py
@@ -10,7 +11,6 @@ https://github.com/pytorch/pytorch/blob/6aa5bb1a76dee8112f1a9e7c194c790b5cdc6462
 # export time by users, and is designed with dispatching in mind.
 
 # mypy: allow-untyped-defs
-from __future__ import annotations
 
 import dataclasses
 import importlib.util
@@ -19,7 +19,13 @@ import math
 import operator
 import types
 from collections.abc import Callable
-from typing import Literal, TypeAlias
+from typing import Callable, Dict, List, Optional, Type, Union, overload
+from typing_extensions import Literal
+
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 import torch
 import torch._ops
@@ -28,7 +34,7 @@ from torch.onnx._internal.exporter import _constants, _schemas
 from torch.onnx._internal.exporter._torchlib import _torchlib_registry
 
 
-TorchOp: TypeAlias = torch._ops.OpOverload | types.BuiltinFunctionType | Callable
+TorchOp: TypeAlias = Union[torch._ops.OpOverload, types.BuiltinFunctionType, Callable]
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +57,11 @@ class OnnxDecompMeta:
 
     onnx_function: Callable
     fx_target: TorchOp
-    signature: ir.schemas.OpSignature | None
+    signature: Optional[ir.schemas.OpSignature]
     is_custom: bool = False
     is_complex: bool = False
     opset_introduced: int = 18
-    device: Literal["cuda", "cpu"] | str | None = None  # noqa: PYI051
+    device: Optional[Union[Literal["cuda", "cpu"], str]]= None  # noqa: PYI051
     skip_signature_inference: bool = False
 
     def __post_init__(self) -> None:
@@ -92,7 +98,7 @@ class OnnxDecompMeta:
                 self.onnx_function._pt_onnx_signature = signature  # type: ignore[attr-defined]
 
 
-def _get_overload(qualified_name: str) -> torch._ops.OpOverload | None:
+def _get_overload(qualified_name: str) -> Optional[torch._ops.OpOverload]:
     """Obtain the torch op from <namespace>::<op_name>[.<overload>]"""
     # TODO(justinchuby): Handle arbitrary custom ops
     namespace, opname_overload = qualified_name.split("::")
@@ -146,7 +152,7 @@ class ONNXRegistry:
     def __init__(self) -> None:
         """Initializes the registry"""
         self._opset_version = _constants.TORCHLIB_OPSET
-        self.functions: dict[TorchOp | str, list[OnnxDecompMeta]] = {}
+        self.functions: Dict[Union[TorchOp, str], List[OnnxDecompMeta]] = {}
 
     @property
     def opset_version(self) -> int:
@@ -204,7 +210,7 @@ class ONNXRegistry:
             target: The PyTorch node callable target.
             onnx_decomposition: The OnnxDecompMeta to register.
         """
-        target_or_name: str | TorchOp
+        target_or_name: Union[str, TorchOp]
         if isinstance(target, torch._ops.OpOverload):
             # Get the qualified name of the aten op because torch._ops.OpOverload lookup in
             # a dictionary is unreliable for some reason.
@@ -247,7 +253,7 @@ class ONNXRegistry:
             ),
         )
 
-    def get_decomps(self, target: TorchOp) -> list[OnnxDecompMeta]:
+    def get_decomps(self, target: TorchOp) -> List[OnnxDecompMeta]:
         """Returns a list of OnnxDecompMeta for the given op: torch.ops.<namespace>.<op_name>.<overload>.
 
         The list is ordered by the time of registration. The custom operators should come
@@ -259,7 +265,7 @@ class ONNXRegistry:
             A list of OnnxDecompMeta corresponding to the given name, or None if
             the name is not in the registry.
         """
-        target_or_name: str | TorchOp
+        target_or_name: Union[str, TorchOp]
         if isinstance(target, torch._ops.OpOverload):
             # Get the qualified name of the aten op because torch._ops.OpOverload lookup in
             # a dictionary is unreliable for some reason.

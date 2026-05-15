@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import collections
 import contextlib
 import ctypes
 import pickle
 import sys
-from typing import Any, Literal
+from typing import Any, Dict, List, Optional, Set, Tuple, Type
+from typing_extensions import Literal
+
 
 import torch
 from torch._utils import _augment_memory_snapshot_stack_traces, _dummy_type
@@ -66,7 +70,7 @@ def reset_accumulated_memory_stats(device: Device = None) -> None:
     return torch._C._xpu_resetAccumulatedMemoryStats(device)
 
 
-def memory_stats_as_nested_dict(device: Device = None) -> dict[str, Any]:
+def memory_stats_as_nested_dict(device: Device = None) -> Dict[str, Any]:
     r"""Return the result of :func:`~torch.xpu.memory_stats` as a nested dictionary."""
     if not is_initialized():
         return {}
@@ -74,7 +78,7 @@ def memory_stats_as_nested_dict(device: Device = None) -> dict[str, Any]:
     return torch._C._xpu_memoryStats(device)
 
 
-def memory_stats(device: Device = None) -> dict[str, Any]:
+def memory_stats(device: Device = None) -> Dict[str, Any]:
     r"""Return a dictionary of XPU memory allocator statistics for a given device.
 
     The return value of this function is a dictionary of statistics, each of
@@ -191,7 +195,7 @@ def max_memory_reserved(device: Device = None) -> int:
     return memory_stats(device=device).get("reserved_bytes.all.peak", 0)
 
 
-def mem_get_info(device: Device = None) -> tuple[int, int]:
+def mem_get_info(device: Device = None) -> Tuple[int, int]:
     r"""Return the global free and total GPU memory for a given device.
 
     Args:
@@ -200,7 +204,7 @@ def mem_get_info(device: Device = None) -> tuple[int, int]:
             if :attr:`device` is ``None`` (default).
 
     Returns:
-        tuple[int, int]: a tuple of two integers (free_memory, total_memory) in bytes.
+        Tuple[int, int]: a tuple of two integers (free_memory, total_memory) in bytes.
             The first value is the free memory on the device (available across all processes and applications),
             The second value is the device's total hardware memory capacity.
     """
@@ -255,18 +259,18 @@ def set_per_process_memory_fraction(fraction: float, device: Device = None) -> N
 
 
 def memory_snapshot(
-    mempool_id: tuple[int, int] | None = None,
-) -> list[dict[str, Any]]:
+    mempool_id: Optional[Tuple[int, int]] = None
+) -> List[Dict[str, Any]]:
     r"""
     Return a snapshot of the XPU memory allocator state across all devices.
     Provides detailed information for each memory segment managed by the allocator
     including its size, owning pool, associated stream, call stack traces, and other relevant attributes.
 
     Arguments:
-        mempool_id (tuple[int, int] or None, optional): The memory pool id. If None, the default memory pool is used.
+        mempool_id (Tuple[int, int] or None, optional): The memory pool id. If None, the default memory pool is used.
 
     Returns:
-        list[dict[str, Any]]: List of memory segments and their attributes.
+        List[Dict[str, Any]]: List of memory segments and their attributes.
     """
     if not is_initialized():
         return []
@@ -387,12 +391,12 @@ def _dump_snapshot(
 
 
 def _record_memory_history(
-    enabled: Literal["state", "all"] | None = "all",
-    context: Literal["state", "alloc", "all"] | None = "all",
+    enabled: Optional[Literal["state", "all"]]= "all",
+    context: Optional[Literal["state", "alloc", "all"]]= "all",
     stacks: Literal["python", "all"] = "all",
     max_entries: int = sys.maxsize,
     clear_history: bool = False,
-    skip_actions: list[str] | None = None,
+    skip_actions: Optional[List[str]] = None
 ) -> None:
     """
     Enable recording of stack traces associated with memory allocations, so you can
@@ -445,7 +449,7 @@ def _record_memory_history(
         max_entries (int, optional): Keep a maximum of `max_entries`
             alloc/free events in the recorded history recorded.
         clear_history (bool, optional): Clear history when enabling, defaults to ``False``.
-        skip_actions (list[str], optional): List of action types to skip when recording
+        skip_actions (List[str], optional): List of action types to skip when recording
             memory history. This can be used to reduce memory overhead by excluding
             certain types of events from being recorded. Valid action types are:
 
@@ -564,18 +568,18 @@ class MemPool(torch._C._XPUMemPool):
 
     def __init__(
         self,
-        allocator: torch._C._xpu_XPUAllocator | None = None,
+        allocator: Optional[torch._C._xpu_XPUAllocator]= None,
         use_on_oom: bool = False,
     ):
         super().__init__(allocator, True, use_on_oom)
 
     @property
-    def id(self) -> tuple[int, int]:
+    def id(self) -> Tuple[int, int]:
         r"""Returns the ID of this pool as a tuple of two ints."""
         return super().id
 
     @property
-    def allocator(self) -> torch._C._xpu_XPUAllocator | None:
+    def allocator(self) -> Optional[torch._C._xpu_XPUAllocator]:
         r"""Returns the allocator this MemPool routes allocations to."""
         return super().allocator
 

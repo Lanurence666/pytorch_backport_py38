@@ -2,6 +2,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/cuda/ForeachFunctors.cuh>
 #include <ATen/native/cuda/MultiTensorApply.cuh>
+#include <ATen/OpMathType.h>
 
 namespace at::native {
 

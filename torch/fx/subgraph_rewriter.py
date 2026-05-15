@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import copy
-from collections.abc import Callable
+
 from dataclasses import dataclass
-from typing import Any, NamedTuple, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Union, overload
+from typing_extensions import NamedTuple
+
 
 import torch
 
@@ -28,7 +32,7 @@ class Match(NamedTuple):
     # Node from which the match was found
     anchor: Node
     # Maps nodes in the pattern subgraph to nodes in the larger graph
-    nodes_map: dict[Node, Node]
+    nodes_map: Dict[Node, Node]
 
 
 @compatibility(is_backward_compatible=False)
@@ -37,9 +41,9 @@ class ReplacedPatterns:
     # Node from which the match was found
     anchor: Node
     # Maps nodes in the pattern subgraph to nodes in the larger graph
-    nodes_map: dict[Node, Node]
+    nodes_map: Dict[Node, Node]
     # List of nodes that were added into the graph
-    replacements: list[Node]
+    replacements: List[Node]
 
 
 def _replace_attributes(gm: GraphModule, replacement: torch.nn.Module) -> None:
@@ -48,7 +52,7 @@ def _replace_attributes(gm: GraphModule, replacement: torch.nn.Module) -> None:
     if isinstance(replacement, GraphModule):
         replacement.graph.lint()
 
-    def try_get_attr(gm: torch.nn.Module, target: str) -> Any | None:
+    def try_get_attr(gm: torch.nn.Module, target: str) -> Optional[Any]:
         module_path, _, attr_name = target.rpartition(".")
         try:
             mod: torch.nn.Module = gm.get_submodule(module_path)
@@ -95,9 +99,9 @@ def _replace_attributes(gm: GraphModule, replacement: torch.nn.Module) -> None:
 @compatibility(is_backward_compatible=True)
 def replace_pattern(
     gm: GraphModule,
-    pattern: Callable[..., Any] | GraphModule,
-    replacement: Callable[..., Any] | GraphModule,
-) -> list[Match]:
+    pattern: Union[Callable[..., Any], GraphModule],
+    replacement: Union[Callable[..., Any], GraphModule],
+) -> List[Match]:
     """
     Matches all possible non-overlapping sets of operators and their
     data dependencies (``pattern``) in the Graph of a GraphModule
@@ -225,15 +229,15 @@ def replace_pattern(
 @compatibility(is_backward_compatible=False)
 def replace_pattern_with_filters(
     gm: GraphModule,
-    pattern: Callable[..., Any] | Graph | GraphModule,
-    replacement: Callable[..., Any] | Graph | GraphModule | None = None,
-    match_filters: list[Callable[["InternalMatch", Graph, Graph], bool]] | None = None,
+    pattern: Union[Callable[..., Any], Graph] | GraphModule,
+    replacement: Union[Callable[..., Any], Graph] | Optional[GraphModule] = None,
+    match_filters: List[Callable[["InternalMatch", Graph, Graph], bool]] | None = None,
     ignore_literals: bool = False,
     # Placed at the end to avoid breaking backward compatibility
     replacement_callback: Callable[["InternalMatch", Graph, Graph], Graph]
     | None = None,
     node_name_match: str = "",
-) -> list[ReplacedPatterns]:
+) -> List[ReplacedPatterns]:
     """
     See replace_pattern for documentation. This function is an overload with an additional match_filter argument.
 
@@ -261,15 +265,15 @@ def replace_pattern_with_filters(
 
 def _replace_pattern(
     gm: GraphModule,
-    pattern: Callable[..., Any] | Graph | GraphModule,
-    replacement: Callable[..., Any] | Graph | GraphModule | None = None,
-    match_filters: list[Callable[["InternalMatch", Graph, Graph], bool]] | None = None,
+    pattern: Union[Callable[..., Any], Graph] | GraphModule,
+    replacement: Union[Callable[..., Any], Graph] | Optional[GraphModule] = None,
+    match_filters: List[Callable[["InternalMatch", Graph, Graph], bool]] | None = None,
     ignore_literals: bool = False,
     # Placed at the end to avoid breaking backward compatibility
     replacement_callback: Callable[["InternalMatch", Graph, Graph], Graph]
     | None = None,
     node_name_match: str = "",
-) -> list[ReplacedPatterns]:
+) -> List[ReplacedPatterns]:
     from torch.fx.passes.utils.matcher_utils import InternalMatch, SubgraphMatcher
 
     if match_filters is None:
@@ -292,7 +296,7 @@ def _replace_pattern(
         remove_overlapping_matches=True,
         ignore_literals=ignore_literals,
     )
-    _matches: list[InternalMatch] = matcher.match(
+    _matches: List[InternalMatch] = matcher.match(
         original_graph, node_name_match=node_name_match
     )
 
@@ -320,7 +324,7 @@ def _replace_pattern(
         common_replacement_graph = None  # type: ignore[assignment]
 
     # As we progressively replace nodes, we'll need to keep track of how the match results should change
-    match_changed_node: dict[Node, Node] = {}
+    match_changed_node: Dict[Node, Node] = {}
 
     match_and_replacements = []
     for match in _matches:
@@ -347,7 +351,7 @@ def _replace_pattern(
                 f"Placeholder count mismatch: {len(match.placeholder_nodes)} vs "
                 f"{len(replacement_placeholders)}"
             )
-        val_map: dict[Node, Node] = {}
+        val_map: Dict[Node, Node] = {}
         for rn, gn in zip(replacement_placeholders, match.placeholder_nodes):
             if isinstance(gn, Node):
                 val_map[rn] = match_changed_node.get(gn, gn)
@@ -363,7 +367,7 @@ def _replace_pattern(
                 val_map[rn] = gn
 
         # Copy the replacement graph over
-        user_nodes: set[Node] = set()
+        user_nodes: Set[Node] = set()
         for n in match.returning_nodes:
             user_nodes.update(n.users)
 
@@ -405,7 +409,7 @@ def _replace_pattern(
             copied_returning_nodes = (copied_returning_nodes,)
 
         # Get a list of nodes that have been replaced into the graph
-        replacement_nodes: list[Node] = [
+        replacement_nodes: List[Node] = [
             v for v in val_map.values() if v not in match.placeholder_nodes
         ]
 

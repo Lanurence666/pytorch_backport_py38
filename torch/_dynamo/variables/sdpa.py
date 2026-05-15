@@ -1,6 +1,10 @@
-from collections.abc import Sequence
+
 from inspect import getattr_static
-from typing import Any, TYPE_CHECKING, TypeGuard
+from typing import Any, Sequence, TYPE_CHECKING, Type
+try:
+    from typing import TypeGuard
+except ImportError:
+    from typing_extensions import TypeGuard
 
 from torch._guards import Source
 from torch.backends.cuda import SDPAParams
@@ -54,12 +58,8 @@ class SDPAParamsVariable(VariableTracker):
         return SDPAParams
 
     def reconstruct(self, codegen: "PyCodegen") -> None:
-        if self.source is not None:
-            raise AssertionError(
-                "SDPAParamsVariable should not have a source during reconstruct"
-            )
-        if self.param_vars is None:
-            raise AssertionError("SDPAParamsVariable.param_vars must not be None")
+        assert self.source is None
+        assert self.param_vars is not None
         codegen.add_push_null(
             lambda: codegen.load_import_from("torch._C", "_SDPAParams")
         )

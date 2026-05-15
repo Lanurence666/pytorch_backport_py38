@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Unit tests for the _ir_passes module."""
 
-from __future__ import annotations
 
 import onnx_ir as ir
 

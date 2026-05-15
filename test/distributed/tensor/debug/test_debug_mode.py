@@ -103,11 +103,7 @@ class TestDTensorDebugMode(TestCase):
         eager_out = mm(x_dtensor, y_dtensor)
 
         # check recording hook for compiled variant
-        with (
-            DebugMode() as debug_mode,
-            DebugMode.record_outputs(),
-            DebugMode.log_tensor_hashes(),
-        ):
+        with DebugMode() as debug_mode, DebugMode.record_outputs(), DebugMode.log_tensor_hashes():
             compiled_out = torch.compile(mm, backend="aot_eager")(x_dtensor, y_dtensor)
 
         # check numerical equivalence
@@ -126,10 +122,7 @@ class TestDTensorDebugMode(TestCase):
         )
 
         # check tuple hash functions
-        with (
-            DebugMode() as debug_mode,
-            DebugMode.log_tensor_hashes(hash_fn=["norm", "hash_tensor"]),
-        ):
+        with DebugMode() as debug_mode, DebugMode.log_tensor_hashes(hash_fn=["norm", "hash_tensor"]):
             mm(x_dtensor, y_dtensor)
 
         output_hash = debug_mode.operators[-1].log["hash"]
@@ -844,10 +837,7 @@ class TestDTensorDebugMode(TestCase):
 
         mod = Foo()
         inp = torch.tensor(1)
-        with (
-            DebugMode(record_output=True) as debug_mode,
-            DebugMode.log_tensor_hashes(hash_inputs=True),
-        ):
+        with DebugMode(record_output=True) as debug_mode, DebugMode.log_tensor_hashes(hash_inputs=True):
             _ = mod(inp)
 
         self.assertExpectedInline(

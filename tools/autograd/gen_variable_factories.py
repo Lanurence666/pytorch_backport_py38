@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from typing import List, Union
 import re
 
 import torchgen.api.python as python
@@ -70,7 +71,7 @@ def is_factory_function(f: NativeFunction) -> bool:
 
 
 @with_native_function
-def process_function(f: NativeFunction) -> str | None:
+def process_function(f: NativeFunction) -> Union[str, None]:
     name = cpp.name(f.func)
     has_tensor_options = python.has_tensor_options(f)
     is_factory = has_tensor_options or name.endswith("_like")
@@ -84,8 +85,8 @@ def process_function(f: NativeFunction) -> str | None:
         sigs.append(cpp_sigs.symint_signature)
     r = ""
     for sig in sigs:
-        formals: list[str] = []
-        exprs: list[str] = []
+        formals: List[str] = []
+        exprs: List[str] = []
         requires_grad = "false"
         for arg in sig.arguments():
             qualified_type = fully_qualified_type(arg.type)

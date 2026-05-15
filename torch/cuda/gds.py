@@ -1,12 +1,15 @@
+from __future__ import annotations
+
 import os
 import sys
 from collections.abc import Callable
 
 import torch
 from torch.types import Storage
+from typing import Callable, List, Optional, Union
 
 
-__all__: list[str] = [
+__all__: List[str] = [
     "gds_register_buffer",
     "gds_deregister_buffer",
     "GdsFile",
@@ -121,7 +124,7 @@ class GdsFile:
         self.filename = filename
         self.flags = flags
         self.fd = os.open(filename, flags | os.O_DIRECT)  # type: ignore[attr-defined]
-        self.handle: int | None = None
+        self.handle: Optional[int] = None
         self.register_handle()
 
     def __del__(self) -> None:

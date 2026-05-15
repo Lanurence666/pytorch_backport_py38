@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import collections
 from collections import defaultdict
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, Optional
 
 import torch
 import torch.utils._pytree as pytree
@@ -54,8 +56,8 @@ class ConstantFolder(torch.fx.Interpreter):
         skip_constructors: bool = False,
     ):
         super().__init__(gm)
-        self.node_replacements: dict[torch.fx.Node, Any] = {}
-        self.replaced_uses: dict[torch.fx.Node, int] = collections.Counter()
+        self.node_replacements: Dict[torch.fx.Node, Any] = {}
+        self.replaced_uses: Dict[torch.fx.Node, int] = collections.Counter()
         self.unknown_value = object()
         self.skip_constructors: bool = skip_constructors
 
@@ -206,7 +208,7 @@ class ConstantFolder(torch.fx.Interpreter):
 
 def constant_fold(
     gm: torch.fx.GraphModule,
-    constraint_fn: Callable[[torch.fx.Node], bool] | None = None,
+    constraint_fn: Callable[[torch.fx.Optional[Node], bool]] = None
 ):
     with torch.utils._python_dispatch._disable_current_modes():
         cf = ConstantFolder(gm, skip_constructors=True)
@@ -283,7 +285,7 @@ def run_and_get_constant_graph(gm: torch.fx.GraphModule) -> torch.fx.GraphModule
 
     new_graph = torch.fx.Graph()
 
-    node_remapping: dict[torch.fx.Node, torch.fx.Node] = {}
+    node_remapping: Dict[torch.fx.Node, torch.fx.Node] = {}
     output_nodes = []
     for node in gm.graph.nodes:
         if node.meta[META_TAG] == MODULE_TAG:

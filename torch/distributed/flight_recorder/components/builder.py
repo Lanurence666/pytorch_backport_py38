@@ -4,12 +4,14 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import argparse
 import ast
 import copy
 import os
 import sys
-from typing import Any  # type: ignore[attr-defined]
+from typing import Any, Any  # type: ignore[attr-defined], Dict, List, Set, Tuple
 
 from torch.distributed.flight_recorder.components.fr_logger import FlightRecorderLogger
 from torch.distributed.flight_recorder.components.types import (
@@ -67,12 +69,12 @@ Flat DB builder
 
 def build_groups_memberships(
     pg_config: Any,
-) -> tuple[
-    list[Group],
-    dict[Any, Group],
-    list[Membership],
-    dict[str, set[Any]],
-    dict[tuple[str, int], str],
+) -> Tuple[
+    List[Group],
+    Dict[Any, Group],
+    List[Membership],
+    Dict[str, Set[Any]],
+    Dict[Tuple[str, int], str],
 ]:
     """
     pg_config: {
@@ -139,13 +141,13 @@ def build_groups_memberships(
 
 
 def build_collectives(
-    all_entries: dict[int, list[dict[str, Any]]],
-    _groups: dict[str, Group],
-    _memberships: dict[str, set[Any]],
-    _pg_guids: dict[tuple[str, int], str],
+    all_entries: Dict[int, List[Dict[str, Any]]],
+    _groups: Dict[str, Group],
+    _memberships: Dict[str, Set[Any]],
+    _pg_guids: Dict[Tuple[str, int], str],
     version: str,
     mismatch_cap: int = 10,
-) -> tuple[list[Traceback], list[Collective], list[NCCLCall]]:
+) -> Tuple[List[Traceback], List[Collective], List[NCCLCall]]:
     """
     groups, memberships are the non-flat dicts that are indexable
     all_entries is a raw dict from the original dumps:
@@ -174,10 +176,10 @@ def build_collectives(
         ]
     }
     """
-    tracebacks: list[Traceback] = []
+    tracebacks: List[Traceback] = []
 
-    collectives: list[Collective] = []
-    nccl_calls: list[NCCLCall] = []
+    collectives: List[Collective] = []
+    nccl_calls: List[NCCLCall] = []
 
     # once we find one mismatch, we stop pairing up collectives since the pairing is possibly incorrect
     # instead, just record the remaining ops as NCCLCalls
@@ -392,8 +394,8 @@ def build_collectives(
 
 
 def transform_ft(
-    details: dict[str, dict[str, Any]], group_world_size: int
-) -> dict[str, dict[str, Any]]:
+    details: Dict[str, Dict[str, Any]], group_world_size: int
+) -> Dict[str, Dict[str, Any]]:
     for dump_key, dump in details.items():
         rank = dump["rank"]
         for key, pg_config in dump["pg_config"].items():
@@ -408,7 +410,7 @@ def transform_ft(
 
 
 def build_db(
-    details: dict[str, dict[str, Any]], args: argparse.Namespace, version: str
+    details: Dict[str, Dict[str, Any]], args: argparse.Namespace, version: str
 ) -> Database:
     if args.verbose:
         os.environ["FR_TRACE_VERBOSE_OUTPUT"] = "1"
@@ -425,7 +427,7 @@ def build_db(
     # Ensure version is consistent across all ranks.
     check_version(version_by_ranks, version)
     entries = align_trace_from_beginning(entries)
-    stack_id_trace_map: dict[str, int] = {}
+    stack_id_trace_map: Dict[str, int] = {}
     if args.just_print_entries:
         entries, stack_id_trace_map = add_stack_id_in_entries(entries)
 

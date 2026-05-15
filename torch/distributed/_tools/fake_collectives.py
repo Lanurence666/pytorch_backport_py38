@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, List, Set, Type
 
 import torch
 from torch._C._distributed_c10d import (
@@ -23,7 +25,7 @@ _dtensor = torch.ops._dtensor
 #     c10d.allgather_into_tensor_coalesced_.default,
 #     c10d.allgather_coalesced_.default,
 # ]
-non_functional_collectives: set[torch._ops.OpOverload] = {
+non_functional_collectives: Set[torch._ops.OpOverload] = {
     c10d.broadcast_.default,
     c10d.allreduce_.default,
     c10d.reduce_.default,
@@ -41,7 +43,7 @@ non_functional_collectives: set[torch._ops.OpOverload] = {
     c10d.barrier.default,
     c10d.monitored_barrier_.default,
 }
-functional_collectives: set[torch._ops.OpOverload] = {
+functional_collectives: Set[torch._ops.OpOverload] = {
     _c10d_functional.broadcast.default,
     _c10d_functional.all_reduce.default,
     _c10d_functional.all_gather_into_tensor.default,
@@ -65,7 +67,7 @@ functional_collectives: set[torch._ops.OpOverload] = {
     _dtensor.shard_dim_alltoall.default,
 }
 
-sync_ops: set[torch._ops.OpOverload] = {
+sync_ops: Set[torch._ops.OpOverload] = {
     c10d.barrier.default,
     c10d.monitored_barrier_.default,
     _c10d_functional.wait_tensor.default,

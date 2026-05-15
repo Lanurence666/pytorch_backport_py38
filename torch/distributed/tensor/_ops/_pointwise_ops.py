@@ -1,4 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 from collections.abc import Callable
 
 import torch
@@ -11,6 +13,7 @@ from torch.distributed.tensor._ops.single_dim_strategy import (
 )
 from torch.distributed.tensor._ops.utils import infer_broadcast_dims_map
 from torch.distributed.tensor.placement_types import Partial, Placement, Replicate
+from typing import Callable, List, Optional, Set, Type, Union
 
 
 aten = torch.ops.aten
@@ -21,9 +24,9 @@ unary_linear_ops = [aten.to.dtype]
 
 
 def _common_pointwise_single_dim_strategy(
-    partial_extra_rules: list[list[Placement | _ShardingPlaceholder]] | None = None,
+    partial_extra_rules: Optional[Union[List[List[Placement, _ShardingPlaceholder]]]]= None,
 ) -> Callable[
-    [OpOverload, ArgsType, KwargsType], list[list[Placement | _ShardingPlaceholder]]
+    [OpOverload, ArgsType, KwargsType], List[List[Union[Placement, _ShardingPlaceholder]]]
 ]:
     """Factory for single-dim strategies that add partial placement rules.
 
@@ -36,8 +39,8 @@ def _common_pointwise_single_dim_strategy(
         op: OpOverload,
         args_schema: ArgsType,
         kwargs_schema: KwargsType,
-    ) -> list[list[Placement | _ShardingPlaceholder]]:
-        tensor_arg_metas: list[TensorMeta] = [
+    ) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
+        tensor_arg_metas: List[TensorMeta] = [
             arg for arg in args_schema if isinstance(arg, TensorMeta)
         ]
         common_shape = torch.broadcast_shapes(
@@ -46,9 +49,9 @@ def _common_pointwise_single_dim_strategy(
         # For multi-output ops (e.g. frexp), all outputs share the same
         # pointwise sharding, so replicate the output placement.
         num_outputs = sum(1 for r in op._schema.returns if "Tensor" in str(r.type))
-        placements: list[list[Placement | _ShardingPlaceholder]] = []
+        placements: Union[List[List[Placement, _ShardingPlaceholder]]]= []
         for i in range(len(common_shape)):
-            shard_placements: list[Placement | _ShardingPlaceholder] = [
+            shard_placements: Union[List[Placement, _ShardingPlaceholder]]= [
                 _ShardingPlaceholder(i)
             ] * num_outputs
             for arg in tensor_arg_metas:
@@ -94,12 +97,12 @@ _FUSED_OP_SCALAR_IDX = 5
 
 # Ops registered with extra Partial rules; populated by _register_single_dim_pointwise
 # when partial_extra_rules is not None, to avoid double-registration from tag discovery.
-_specially_registered_ops: set[OpOverload] = set()
+_specially_registered_ops: Set[OpOverload] = set()
 
 
 def _register_single_dim_pointwise(
     op: OpOverload,
-    partial_extra_rules: list[list[Placement]] | None = None,
+    partial_extra_rules: Optional[List[List[Placement]]]= None,
     static_argnum: int = 0,
 ) -> None:
     if partial_extra_rules is not None:
@@ -116,7 +119,7 @@ def _register_single_dim_pointwise(
         args: ArgsType,
         kwargs: KwargsType,
         _fn: Callable = inner_fn,
-    ) -> list[list[Placement | _ShardingPlaceholder]]:
+    ) -> Union[List[List[Placement, _ShardingPlaceholder]]]:
         strategies = _fn(op, args, kwargs)
         kw_names = [k for k, v in kwargs.items() if isinstance(v, TensorMeta)]
         if not kw_names:
@@ -132,7 +135,7 @@ def _register_single_dim_pointwise(
         schema_info = RuntimeSchemaInfo(static_argnum, static_kwargkey=["out"])
     # Fused ops (e.g. _fused_adam_) have state_steps on a potentially different
     # mesh; see the note in expand_to_full_mesh_op_strategy for details.
-    different_mesh_args: list[int] | None = None
+    different_mesh_args: Optional[List[int]]= None
     if op.name().startswith("aten::_fused_"):
         different_mesh_args = [_FUSED_OP_SCALAR_IDX]
     register_single_dim_strategy(
@@ -144,7 +147,7 @@ def _register_single_dim_pointwise(
     )(strategy_fn)
 
 
-_UNARY_LINEAR_RULES: list[list[Placement]] = [
+_UNARY_LINEAR_RULES: List[List[Placement]] = [
     [Partial("sum"), Partial("sum")],
     [Partial("avg"), Partial("avg")],
 ]
@@ -163,7 +166,7 @@ binary_additive_ops = [
     aten._foreach_sub_.List,
 ]
 
-_BINARY_ADDITIVE_RULES: list[list[Placement]] = [
+_BINARY_ADDITIVE_RULES: List[List[Placement]] = [
     [Partial("sum"), Partial("sum"), Partial("sum")],
     [Partial("avg"), Partial("avg"), Partial("avg")],
     # P(x), R -> P(x): adding/subtracting a replicated value preserves partial types
@@ -205,14 +208,14 @@ binary_div_ops = [
 # _UNARY_LINEAR_RULES handles the scalar promotion case: Python's __mul__/__truediv__
 # promote scalars to 0-dim tensors, so aten.mul.Scalar dispatches as aten.mul.Tensor
 # with n_tensors=1, matching the length-2 unary rules.
-_MUL_RULES: list[list[Placement]] = [
+_MUL_RULES: List[List[Placement]] = [
     [Partial("sum"), Partial("sum"), Replicate()],
     [Partial("avg"), Partial("avg"), Replicate()],
     [Partial("sum"), Replicate(), Partial("sum")],
     [Partial("avg"), Replicate(), Partial("avg")],
 ]
 
-_DIV_RULES: list[list[Placement]] = [
+_DIV_RULES: List[List[Placement]] = [
     [Partial("sum"), Partial("sum"), Replicate()],
     [Partial("avg"), Partial("avg"), Replicate()],
 ]
@@ -323,7 +326,7 @@ non_decreasing_unary_ops = [
     aten._foreach_clamp_min_.Scalar,
 ]
 
-_NON_DECREASING_RULES: list[list[Placement]] = [
+_NON_DECREASING_RULES: List[List[Placement]] = [
     [Partial("max"), Partial("max")],
     [Partial("min"), Partial("min")],
 ]
@@ -333,7 +336,7 @@ for op in non_decreasing_unary_ops:
 
 # Non-increasing unary ops: f(max(a,b)) = min(f(a),f(b)).
 # Note: acos excluded due to domain constraints [-1,1] causing validation failures
-non_increasing_unary_ops: list[OpOverload] = [
+non_increasing_unary_ops: List[OpOverload] = [
     aten.erfc.default,
     aten.erfc_.default,
     aten.erfc.out,
@@ -341,7 +344,7 @@ non_increasing_unary_ops: list[OpOverload] = [
     aten.special_erfcx.out,
 ]
 
-_NON_INCREASING_RULES: list[list[Placement]] = [
+_NON_INCREASING_RULES: List[List[Placement]] = [
     [Partial("min"), Partial("max")],
     [Partial("max"), Partial("min")],
 ]
@@ -353,7 +356,7 @@ for op in non_increasing_unary_ops:
 # Only P(min)->P(max) is safe: P(min) offsets add positive values to the
 # non-holding rank, keeping all inputs positive. P(max) offsets subtract,
 # which can push inputs to x <= 0 producing NaN.
-_POSITIVE_DOMAIN_NON_INCREASING_RULES: list[list[Placement]] = [
+_POSITIVE_DOMAIN_NON_INCREASING_RULES: List[List[Placement]] = [
     [Partial("max"), Partial("min")],
 ]
 
@@ -375,14 +378,14 @@ neg_ops = [
     aten._foreach_neg_.default,
 ]
 
-_NEG_RULES: list[list[Placement]] = _UNARY_LINEAR_RULES + _NON_INCREASING_RULES
+_NEG_RULES: List[List[Placement]] = _UNARY_LINEAR_RULES + _NON_INCREASING_RULES
 
 for op in neg_ops:
     _register_single_dim_pointwise(op, _NEG_RULES)
 
 # xlog1py(x, y) = x * log1p(y). Linear in x with y replicated:
 # (a+b)*log1p(y) = a*log1p(y) + b*log1p(y).
-_XLOG1PY_RULES: list[list[Placement]] = [
+_XLOG1PY_RULES: List[List[Placement]] = [
     [Partial("sum"), Partial("sum"), Replicate()],
     [Partial("avg"), Partial("avg"), Replicate()],
 ]
@@ -398,7 +401,7 @@ all_partial_preserving_unary_ops = [
     aten.positive.default,
 ]
 
-_ALL_PARTIAL_PRESERVING_RULES: list[list[Placement]] = [
+_ALL_PARTIAL_PRESERVING_RULES: List[List[Placement]] = [
     [Partial(r), Partial(r)] for r in ("sum", "avg", "max", "min")
 ]
 
@@ -410,7 +413,7 @@ all_partial_preserving_binary_ops = [
     prims.copy_to.default,
 ]
 
-_ALL_PARTIAL_BINARY_PRESERVING_RULES: list[list[Placement]] = [
+_ALL_PARTIAL_BINARY_PRESERVING_RULES: List[List[Placement]] = [
     [Partial(r), Partial(r), Partial(r)] for r in ("sum", "avg", "max", "min")
 ]
 
@@ -425,7 +428,7 @@ monotonic_binary_ops = [
     aten.logaddexp2.out,
 ]
 
-_MONOTONE_BINARY_BASE_RULES: list[list[Placement]] = [
+_MONOTONE_BINARY_BASE_RULES: List[List[Placement]] = [
     [Partial("max"), Partial("max"), Replicate()],
     [Partial("max"), Replicate(), Partial("max")],
     [Partial("min"), Partial("min"), Replicate()],
@@ -448,7 +451,7 @@ monotonic_max_preserving_binary_ops = [
     aten._foreach_maximum_.List,
 ]
 
-_MONOTONE_MAX_PRESERVING_BINARY_BASE_RULES: list[list[Placement]] = [
+_MONOTONE_MAX_PRESERVING_BINARY_BASE_RULES: List[List[Placement]] = [
     *_MONOTONE_BINARY_BASE_RULES,
     [Partial("max"), Partial("max"), Partial("max")],
 ]
@@ -466,7 +469,7 @@ monotonic_min_preserving_binary_ops = [
     prims.fmin.default,
 ]
 
-_MONOTONE_MIN_PRESERVING_BINARY_BASE_RULES: list[list[Placement]] = [
+_MONOTONE_MIN_PRESERVING_BINARY_BASE_RULES: List[List[Placement]] = [
     *_MONOTONE_BINARY_BASE_RULES,
     [Partial("min"), Partial("min"), Partial("min")],
 ]
@@ -478,7 +481,7 @@ for op in monotonic_min_preserving_binary_ops:
 # Ops that are pointwise for DTensor purposes but lack torch.Tag.pointwise.
 # TODO(pianpwk): add torch.Tag.pointwise to these ops in native_functions.yaml
 # so this list can be removed.
-_extra_pointwise_ops: list[OpOverload] = [
+_extra_pointwise_ops: List[OpOverload] = [
     aten.__irshift__.Scalar,
     aten.__irshift__.Tensor,
     aten._conj.default,
@@ -553,7 +556,7 @@ _extra_pointwise_ops: list[OpOverload] = [
 ]
 
 
-def _get_pointwise_ops_from_tag() -> list[OpOverload]:
+def _get_pointwise_ops_from_tag() -> List[OpOverload]:
     """
     Auto-discover pointwise ops via torch.Tag.pointwise, from ops.aten, ops.prims.
     """

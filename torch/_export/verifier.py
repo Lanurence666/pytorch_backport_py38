@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import inspect
 import math
 import operator
 from collections.abc import Iterable
-from typing import Any, final, TYPE_CHECKING
+from typing import Any, Dict, Iterable, List, TYPE_CHECKING, Tuple, Type, final
 
 import torch
 from torch._library.opaque_object import is_opaque_type
@@ -96,7 +98,7 @@ def _check_torch_fn(node: torch.fx.Node) -> None:
 
 
 class _VerifierMeta(type):
-    _registry: dict[str, type["Verifier"]] = {}
+    _registry: Dict[str, Type["Verifier"]] = {}
 
     def __new__(metacls, name, bases, attrs):
         if bases:
@@ -169,13 +171,13 @@ class Verifier(metaclass=_VerifierMeta):
             round,
         ]
 
-    def allowed_op_types(self) -> tuple[type[Any], ...]:
+    def allowed_op_types(self) -> Tuple[Type[Any], ...]:
         return (OpOverload, HigherOrderOperator)
 
-    def allowed_getattr_types(self) -> tuple[type[Any], ...]:
+    def allowed_getattr_types(self) -> Tuple[Type[Any], ...]:
         return (torch.fx.GraphModule, torch.utils._pytree.TreeSpec)
 
-    def allowed_getattr_types_for_subgm(self) -> tuple[type[Any], ...]:
+    def allowed_getattr_types_for_subgm(self) -> Tuple[Type[Any], ...]:
         # subgm in HOP's argument could have getattr(weight) nodes, thus stateful
         return (
             torch.fx.GraphModule,
@@ -200,7 +202,7 @@ class Verifier(metaclass=_VerifierMeta):
 
     @final
     def _check_graph_module(self, gm: torch.fx.GraphModule) -> None:
-        def _allowed_getattr_types(is_toplevel_gm) -> tuple[type[Any], ...]:
+        def _allowed_getattr_types(is_toplevel_gm) -> Tuple[Type[Any], ...]:
             if is_toplevel_gm:
                 ret = self.allowed_getattr_types()
             else:
@@ -216,7 +218,7 @@ class Verifier(metaclass=_VerifierMeta):
                     raise AssertionError("allowed_builtin_ops must all be builtins")
                 return ret
 
-            def _allowed_op_types() -> tuple[type[Any], ...]:
+            def _allowed_op_types() -> Tuple[Type[Any], ...]:
                 ret = self.allowed_op_types()
                 if any(t is object for t in ret):
                     raise AssertionError("allowed_op_types must not contain 'object'")
@@ -520,7 +522,7 @@ def _verify_exported_program_signature(exported_program) -> None:
         + len(gs.user_inputs_to_mutate)
         + num_tokens
     )
-    mutate_nodes: list[str] = output_nodes[num_tokens:end]
+    mutate_nodes: List[str] = output_nodes[num_tokens:end]
     user_output_nodes = output_nodes[end : end + len(gs.user_outputs)]
 
     for mutation_node in mutate_nodes:
@@ -560,7 +562,7 @@ def _verify_exported_program_signature(exported_program) -> None:
             )
 
 
-def load_verifier(dialect: str) -> type[Verifier]:
+def load_verifier(dialect: str) -> Type[Verifier]:
     if dialect == "ATEN" or dialect == "":
         return _VerifierMeta._registry.get(dialect, Verifier)
     return _VerifierMeta._registry[dialect]

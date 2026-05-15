@@ -1,12 +1,14 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import fnmatch
 import functools
 import inspect
 import os
 import warnings
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from io import IOBase
-from typing import Any, NoReturn
+from typing import Any, Callable, Dict, Iterable, List, NoReturn, Optional, Tuple, Type, Union
 
 from torch.utils._import_utils import dill_available
 
@@ -25,7 +27,7 @@ __all__ = [
 DILL_AVAILABLE = dill_available()
 
 
-def validate_input_col(fn: Callable, input_col: int | tuple | list | None) -> None:
+def validate_input_col(fn: Callable, input_col: Union[Union[int, tuple], Optional[list]]) -> None:
     """
     Check that function used in a callable datapipe works with the input column.
 
@@ -44,8 +46,8 @@ def validate_input_col(fn: Callable, input_col: int | tuple | list | None) -> No
         >>> assert validate_input_col(f_def, [1, 2])
 
     Notes:
-        If the function contains variable positional (``inspect.VAR_POSITIONAL``) arguments,
-        for example, ``f(a, *args)``, the validator will accept any size of input column
+        If the function contains variable positional (`inspect.VAR_POSITIONAL`) arguments,
+        for example, f(a, *args), the validator will accept any size of input column
         greater than or equal to the number of positional arguments.
         (in this case, 1).
 
@@ -164,7 +166,7 @@ def _check_unpickable_fn(fn: Callable) -> None:
         return
 
 
-def match_masks(name: str, masks: str | list[str]) -> bool:
+def match_masks(name: str, masks: Union[str, List[str]]) -> bool:
     # empty mask matches any input name
     if not masks:
         return True
@@ -180,7 +182,7 @@ def match_masks(name: str, masks: str | list[str]) -> bool:
 
 def get_file_pathnames_from_root(
     root: str,
-    masks: str | list[str],
+    masks: Union[str, List[str]],
     recursive: bool = False,
     abspath: bool = False,
     non_deterministic: bool = False,
@@ -216,7 +218,7 @@ def get_file_pathnames_from_root(
 
 
 def get_file_binaries_from_pathnames(
-    pathnames: Iterable, mode: str, encoding: str | None = None
+    pathnames: Iterable, mode: str, encoding: Optional[str] = None
 ):
     if not isinstance(pathnames, Iterable):
         pathnames = [
@@ -234,7 +236,7 @@ def get_file_binaries_from_pathnames(
         yield pathname, StreamWrapper(open(pathname, mode, encoding=encoding))  # noqa:SIM115
 
 
-def validate_pathname_binary_tuple(data: tuple[str, IOBase]) -> None:
+def validate_pathname_binary_tuple(data: Tuple[str, IOBase]) -> None:
     if not isinstance(data, tuple):
         raise TypeError(
             f"pathname binary data should be tuple type, but it is type {type(data)}"
@@ -255,8 +257,8 @@ def validate_pathname_binary_tuple(data: tuple[str, IOBase]) -> None:
 
 
 # Deprecated function names and its corresponding DataPipe type and kwargs for the `_deprecation_warning` function
-_iter_deprecated_functional_names: dict[str, dict] = {}
-_map_deprecated_functional_names: dict[str, dict] = {}
+_iter_deprecated_functional_names: Dict[str, dict] = {}
+_map_deprecated_functional_names: Dict[str, dict] = {}
 
 
 def _deprecation_warning(
@@ -322,7 +324,7 @@ class StreamWrapper:
     StreamWrapper would guarantee the wrapped file handler is closed when it's out of scope.
     """
 
-    session_streams: dict[Any, int] = {}
+    session_streams: Dict[Any, int] = {}
     debug_unclosed_streams: bool = False
 
     def __init__(self, file_obj, parent_stream=None, name=None) -> None:

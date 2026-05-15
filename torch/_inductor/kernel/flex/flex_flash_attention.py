@@ -1,12 +1,15 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Call into flash-attention 4 for flexattention"""
 
 import dataclasses
 import functools
 import importlib
-from collections.abc import Callable, Sequence
+
 from contextlib import contextmanager
-from typing import Any, cast, Literal
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union, cast
+from typing_extensions import Literal
+
 
 import sympy
 from sympy import Expr, Integer
@@ -37,13 +40,13 @@ class FlexFlashConfig:
         not currently support vectorized score_mod.
     """
 
-    score_mod_vec_size: int | None = None
+    score_mod_vec_size: Optional[int] = None
 
 
 def _get_flex_flash_fwd_configs(
     has_score_mod: bool,
     has_aux_tensors: bool,
-) -> list[FlexFlashConfig]:
+) -> List[FlexFlashConfig]:
     if not has_score_mod or not torch._inductor.config.max_autotune:
         return [FlexFlashConfig()]
     if has_aux_tensors:
@@ -53,7 +56,7 @@ def _get_flex_flash_fwd_configs(
     ]
 
 
-def _get_flex_flash_bwd_configs() -> list[FlexFlashConfig]:
+def _get_flex_flash_bwd_configs() -> List[FlexFlashConfig]:
     return [FlexFlashConfig()]
 
 
@@ -111,7 +114,7 @@ class HierarchicalIndex(sympy.Function):
 
 def _hierarchical_indexer_cute(
     size: Sequence[int],
-    stride: Sequence[int] | None = None,
+    stride: Optional[Sequence[int]] = None,
     offset: Expr = Integer(0),
 ) -> Callable[[Sequence[Expr]], Expr]:
     """Return an indexer that preserves multi-dimensional indices for CuteDSL."""
@@ -264,7 +267,7 @@ def _can_use_flex_flash_attention(
     subgraph: Subgraph,
     mask_graph: Subgraph,
     num_score_mod_placeholders: int,
-) -> tuple[bool, str]:
+) -> Tuple[bool, str]:
     """Check if flex flash attention can be used for the given inputs.
 
     Returns:
@@ -285,7 +288,7 @@ def _can_use_flex_flash_attention(
 def _use_flex_flash_attention(
     subgraph: Subgraph,
     mask_graph: Subgraph,
-    kernel_options: dict[str, Any],
+    kernel_options: Dict[str, Any],
     num_score_mod_placeholders: int,
     backend: Literal["AUTO", "TRITON", "FLASH", "TRITON_DECODE"],
 ) -> bool:
@@ -323,22 +326,22 @@ def create_flex_flash_attention_kernel(
     query: TensorBox,
     key: TensorBox,
     value: TensorBox,
-    block_mask: tuple[Any, ...],
+    block_mask: Tuple[Any, ...],
     scale: float,
-    kernel_options: dict[str, Any],
+    kernel_options: Dict[str, Any],
     subgraph_buffer: SubgraphResults,
     mask_graph_buffer: SubgraphResults,
-    score_mod_other_buffers: list[TensorBox],
-    mask_mod_other_buffers: list[TensorBox],
-    kv_num_blocks: TensorBox | None,
-    kv_indices: TensorBox | None,
-    full_kv_num_blocks: TensorBox | None,
-    full_kv_indices: TensorBox | None,
+    score_mod_other_buffers: List[TensorBox],
+    mask_mod_other_buffers: List[TensorBox],
+    kv_num_blocks: Optional[TensorBox],
+    kv_indices: Optional[TensorBox],
+    full_kv_num_blocks: Optional[TensorBox],
+    full_kv_indices: Optional[TensorBox],
     sparse_q_block_size: int,
     sparse_kv_block_size: int,
     mask_graph: Subgraph,
-    subgraph: Subgraph | None = None,
-) -> tuple[TensorBox, TensorBox]:
+    subgraph: Optional[Subgraph] = None,
+) -> Tuple[TensorBox, TensorBox]:
     """Create a flex flash attention kernel using CuteDSL template."""
     if query.dtype != key.dtype or query.dtype != value.dtype:
         raise ValueError(
@@ -395,7 +398,7 @@ def create_flex_flash_attention_kernel(
     has_score_mod = not score_graph_is_trivial
     has_full_blocks = full_kv_num_blocks is not None
 
-    choices: list[Any] = []
+    choices: List[Any] = []
     assert flash_attention_cutedsl_template is not None
 
     input_nodes = [query, key, value, lse]
@@ -418,7 +421,7 @@ def create_flex_flash_attention_kernel(
         has_score_mod, len(score_mod_other_buffers) > 0
     )
 
-    error: NotImplementedError | None = None
+    error: Optional[NotImplementedError] = None
     for conf in configs:
         with patch_fixed_layout_indexer_for_cutedsl():
             error = flash_attention_cutedsl_template.maybe_append_choice(
@@ -443,7 +446,7 @@ def create_flex_flash_attention_kernel(
     if not choices:
         raise RuntimeError(f"CuteDSL template failed: {error}")
 
-    input_gen_fns: dict[int, Callable] | None = None
+    input_gen_fns: Optional[Dict[int, Callable]] = None
     if has_full_blocks:
         input_gen_fns = {
             4: create_num_blocks_fake_generator(kv_indices),
@@ -467,10 +470,10 @@ def create_flex_flash_attention_kernel(
 def _can_use_flex_flash_attention_backward(
     fw_subgraph: Subgraph,
     mask_graph: Subgraph,
-    joint_outputs: Any | None = None,
-    score_mod_other_buffers: Sequence[TensorBox] | None = None,
+    joint_outputs: Optional[Any] = None,
+    score_mod_other_buffers: Optional[Sequence[TensorBox]] = None,
     num_score_mod_placeholders: int = 5,
-) -> tuple[bool, str]:
+) -> Tuple[bool, str]:
     if not ensure_flash_available():
         return False, "CUTE flash attention is not available"
 
@@ -501,8 +504,8 @@ def _use_flex_flash_attention_backward(
     fw_subgraph: Subgraph,
     mask_graph: Subgraph,
     backend: Literal["AUTO", "TRITON", "FLASH", "TRITON_DECODE"],
-    joint_outputs: Any | None = None,
-    score_mod_other_buffers: Sequence[TensorBox] | None = None,
+    joint_outputs: Optional[Any] = None,
+    score_mod_other_buffers: Optional[Sequence[TensorBox]] = None,
 ) -> bool:
     """Determine if we should use flex flash attention for the given inputs.
 
@@ -543,18 +546,18 @@ def create_flex_flash_attention_backward_kernel(
     logsumexp: TensorBox,
     grad_out: TensorBox,
     scale: float,
-    kernel_options: dict[str, Any],
+    kernel_options: Dict[str, Any],
     sparse_q_block_size: int,
     sparse_kv_block_size: int,
-    fw_subgraph_buffer: SubgraphResults | None = None,
-    joint_subgraph_buffer: Any | None = None,
-    score_mod_other_buffers: list[TensorBox] | None = None,
-    mask_graph_buffer: SubgraphResults | None = None,
-    q_num_blocks: TensorBox | None = None,
-    q_indices: TensorBox | None = None,
-    full_q_num_blocks: TensorBox | None = None,
-    full_q_indices: TensorBox | None = None,
-) -> tuple[TensorBox | ShapeAsConstantBuffer, TensorBox, TensorBox, tuple]:
+    fw_subgraph_buffer: Optional[SubgraphResults] = None,
+    joint_subgraph_buffer: Optional[Any] = None,
+    score_mod_other_buffers: Optional[List[TensorBox]] = None,
+    mask_graph_buffer: Optional[SubgraphResults] = None,
+    q_num_blocks: Optional[TensorBox] = None,
+    q_indices: Optional[TensorBox] = None,
+    full_q_num_blocks: Optional[TensorBox] = None,
+    full_q_indices: Optional[TensorBox] = None,
+) -> Tuple[Union[TensorBox, ShapeAsConstantBuffer], TensorBox, TensorBox, tuple]:
     """Create a CuteDSL flash attention backward kernel for the default mod path."""
     if not ensure_flash_available():
         raise RuntimeError("CUTE flash attention not available")
@@ -606,9 +609,9 @@ def create_flex_flash_attention_backward_kernel(
     sparse_q_block_size = V.graph.sizevars.guard_int(sparse_q_block_size)
     sparse_kv_block_size = V.graph.sizevars.guard_int(sparse_kv_block_size)
 
-    choices: list[Any] = []
+    choices: List[Any] = []
 
-    input_nodes: list[TensorBox] = [
+    input_nodes: List[TensorBox] = [
         query,
         key,
         value,
@@ -643,7 +646,7 @@ def create_flex_flash_attention_backward_kernel(
 
     configs = _get_flex_flash_bwd_configs()
 
-    error: NotImplementedError | None = None
+    error: Optional[NotImplementedError] = None
     for conf in configs:
         with patch_fixed_layout_indexer_for_cutedsl():
             error = flash_attention_backward_cutedsl_template.maybe_append_choice(
@@ -668,7 +671,7 @@ def create_flex_flash_attention_backward_kernel(
     if not choices:
         raise RuntimeError(f"CuteDSL template failed: {error}")
 
-    input_gen_fns: dict[int, Callable] | None = None
+    input_gen_fns: Optional[Dict[int, Callable]] = None
     if has_block_mask:
         input_gen_fns = {
             8: create_num_blocks_fake_generator(q_indices),

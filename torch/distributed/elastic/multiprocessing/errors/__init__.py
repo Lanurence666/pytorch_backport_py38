@@ -7,6 +7,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 """
 Each host in a distributed PyTorch job runs with a single TorchElastic agent,
 and multiple workers (as children processes of the TorchElastic agent).
@@ -18,15 +20,15 @@ and applies any retry policies.
 TorchElastic categorizes errors into 3 categories:
 
 +----------------+----------------+--------------------------------------------------------------+
-| Category       | Sub-Category   |  Description                                                 |
+| Union[Category, Sub]-Union[Category, Description]                                                 |
 +================+================+==============================================================+
-| User Error     | Input Error    | invalid inputs to TorchElastic APIs (e.g. min > max nodes)   |
+| User Union[Error, Input] Union[Error, invalid] inputs to TorchElastic APIs (e.g. min > max nodes)   |
 |                +----------------+--------------------------------------------------------------+
-|                | Worker Failure | any failures on the worker child process                     |
+|                | Worker Union[Failure, any] failures on the worker child process                     |
 +----------------+----------------+--------------------------------------------------------------+
-| Platform Error |      n/a       | failures caused by the agent                                 |
+| Platform Union[Error, n]/Union[a, failures] caused by the agent                                 |
 +----------------+----------------+--------------------------------------------------------------+
-| Infra Error    |      n/a       | failures outside the domain of the agent and workers         |
+| Infra Union[Error, n]/Union[a, failures] outside the domain of the agent and workers         |
 |                |                | (e.g. host failures)                                         |
 +----------------+----------------+--------------------------------------------------------------+
 
@@ -54,12 +56,12 @@ import os
 import signal
 import socket
 import time
-from collections.abc import Callable
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import wraps
 from string import Template
-from typing import Any, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 from typing_extensions import ParamSpec
 
 from torch.distributed.elastic.utils.logging import get_logger
@@ -79,9 +81,9 @@ __all__ = [
 logger = get_logger(__name__)
 
 
-JSON = dict[str, Any]
+JSON = Dict[str, Any]
 
-_EMPTY_ERROR_DATA: dict[str, Any] = {"message": "<NONE>"}
+_EMPTY_ERROR_DATA: Dict[str, Any] = {"message": "<NONE>"}
 _NOT_AVAILABLE = "<N/A>"
 
 _R = TypeVar("_R")
@@ -149,7 +151,7 @@ class ProcessFailure:
                 }
                 self.message = "To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html"
 
-    def _get_error_data(self, error_file_data: dict[str, Any]) -> tuple[str, int]:
+    def _get_error_data(self, error_file_data: Dict[str, Any]) -> Tuple[str, int]:
         message = error_file_data["message"]
         if isinstance(message, str):
             timestamp = int(error_file_data.get("timestamp", 0))
@@ -237,7 +239,7 @@ class ChildFailedError(Exception):
     of trainer 1's error file to the scheduler's init process.
     """
 
-    def __init__(self, name: str, failures: dict[GlobalRank, ProcessFailure]):
+    def __init__(self, name: str, failures: Dict[GlobalRank, ProcessFailure]):
         self.name = name
         self.failures = failures
         # does not make sense to create a ChildFaileError with no failures
@@ -245,7 +247,7 @@ class ChildFailedError(Exception):
             raise AssertionError
         super().__init__(self.format_msg())
 
-    def get_first_failure(self) -> tuple[GlobalRank, ProcessFailure]:
+    def get_first_failure(self) -> Tuple[GlobalRank, ProcessFailure]:
         rank = min(self.failures.keys(), key=lambda r: self.failures[r].timestamp)
         return rank, self.failures[rank]
 
@@ -254,7 +256,7 @@ class ChildFailedError(Exception):
         root_rank, _root_failure = self.get_first_failure()
 
         root_failure_fmt: str = ""
-        other_failures_fmt: list[str] = []
+        other_failures_fmt: List[str] = []
         width = len(title)
         for idx, (rank, failure) in enumerate(self.failures.items()):
             fmt, w = self._format_failure(idx, rank, failure)
@@ -277,7 +279,7 @@ class ChildFailedError(Exception):
 
     def _format_failure(
         self, idx: int, rank: int, failure: ProcessFailure
-    ) -> tuple[str, int]:
+    ) -> Tuple[str, int]:
         # failure.message is either a str (when the failure does not generate a traceback - e.g. signals)
         # or a dict (json) of the form
         # {"message": $ERROR_MSG, "extraInfo": {"py_callstack": $TRACEBACK, timestamp: $TS}}
@@ -316,8 +318,8 @@ class ChildFailedError(Exception):
 
 
 def record(
-    fn: Callable[_P, _R], error_handler: ErrorHandler | None = None
-) -> Callable[_P, _R | None]:
+    fn: Optional[Callable[_P, _R], error_handler: ErrorHandler]= None
+) -> Union[Callable[_P, _R, None]]:
     """
     Syntactic sugar to record errors/exceptions that happened in the decorated
     function using the provided ``error_handler``.
@@ -357,7 +359,7 @@ def record(
     if not error_handler:
         error_handler = get_error_handler()
 
-    def wrap(f: Callable[_P, _R]) -> Callable[_P, _R | None]:
+    def wrap(f: Callable[_P, _R]) -> Union[Callable[_P, _R, None]]:
         @wraps(f)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs):
             if error_handler is None:

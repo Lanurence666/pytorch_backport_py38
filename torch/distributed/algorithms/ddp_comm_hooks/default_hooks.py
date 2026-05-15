@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
-from collections.abc import Callable
-from typing import Any, cast
+from __future__ import annotations
+
+
+from typing import Any, Callable, Tuple, cast
 
 import torch
 import torch.distributed as dist
@@ -64,7 +66,7 @@ def _compress_hook(
     world_size = group_to_use.size()
 
     buffer = (
-        cast(tuple[torch.Tensor, ...], bucket)[0]
+        cast(Tuple[torch.Tensor, ...], bucket)[0]
         if isinstance(bucket, tuple)
         else bucket.buffer()
     )

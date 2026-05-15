@@ -1,3 +1,4 @@
+from __future__ import annotations
 import glob
 import gzip
 import json
@@ -6,7 +7,7 @@ import time
 import zipfile
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Union
 
 from filelock import FileLock, Timeout
 
@@ -25,7 +26,7 @@ def get_s3_resource() -> Any:
     return boto3.client("s3")
 
 
-def zip_artifact(file_name: str, paths: list[str]) -> None:
+def zip_artifact(file_name: str, paths: List[str]) -> None:
     """Zip the files in the paths listed into file_name. The paths will be used
     in a glob and should be relative to REPO_ROOT."""
 
@@ -152,7 +153,7 @@ def parse_xml_and_upload_json() -> None:
     uploading the same file from multiple processes.
     """
     try:
-        job_id: int | None = int(os.environ.get("JOB_ID", 0))
+        job_id: Union[int, None] = int(os.environ.get("JOB_ID", 0))
         if job_id == 0:
             job_id = None
     except (ValueError, TypeError):

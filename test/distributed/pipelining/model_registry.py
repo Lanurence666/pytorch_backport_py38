@@ -1,6 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 # Owner(s): ["oncall: distributed"]
 # This file is a model zoo for testing torch.distributed.pipelining.
+from __future__ import annotations
 import torch
 from torch.autograd import Function
 from torch.distributed.pipelining import pipe_split, SplitPoint

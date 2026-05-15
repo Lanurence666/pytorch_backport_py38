@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Functions to export models into the ONNX IR format.
 
@@ -5,7 +6,6 @@ These models can be loaded with the ONNX library and then
 converted to models which run on other deep learning frameworks.
 """
 
-from __future__ import annotations
 
 
 __all__ = [
@@ -62,7 +62,7 @@ import inspect
 import re
 import typing
 import warnings
-from typing import Any, cast
+from typing import Any, Callable, Collection, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Type, Union, cast
 from typing_extensions import deprecated
 
 import torch
@@ -80,7 +80,7 @@ from torch.onnx._internal.torchscript_exporter._globals import GLOBALS
 
 
 if typing.TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Mapping, Sequence
+    from collections.abc import Callable
 
 
 # TODO(justinchuby): Remove dependency to this global variable from constant_fold.cpp
@@ -146,7 +146,7 @@ def select_model_mode_for_export(model, mode: _C_onnx.TrainingMode):
     category=None,
 )
 @contextlib.contextmanager
-def disable_apex_o2_state_dict_hook(model: torch.nn.Module | torch.jit.ScriptFunction):
+def disable_apex_o2_state_dict_hook(model: Union[torch.nn.Module, torch.jit.ScriptFunction]):
     """A context manager to temporarily disable the Apex O2 hook that returns.
 
     .. deprecated:: 2.7
@@ -212,34 +212,30 @@ def exporter_context(model, mode: _C_onnx.TrainingMode, verbose: bool):
     .. deprecated:: 2.7
         Please set training mode before exporting the model.
     """
-    with (
-        select_model_mode_for_export(model, mode) as mode_ctx,
-        disable_apex_o2_state_dict_hook(model) as apex_ctx,
-        setup_onnx_logging(verbose) as log_ctx,
-    ):
+    with select_model_mode_for_export(model, mode) as mode_ctx, disable_apex_o2_state_dict_hook(model) as apex_ctx, setup_onnx_logging(verbose) as log_ctx:
         yield (mode_ctx, apex_ctx, log_ctx)
 
 
 def export(
-    model: torch.nn.Module | torch.jit.ScriptModule | torch.jit.ScriptFunction,
-    args: tuple[Any, ...] | torch.Tensor,
+    model: Union[Union[torch.nn.Module, torch.jit.ScriptModule], torch.jit.ScriptFunction],
+    args: Union[Tuple[Any, ...], torch.Tensor],
     f: str,
     *,
-    kwargs: dict[str, Any] | None = None,
+    kwargs: Optional[Dict[str, Any]] = None,
     export_params: bool = True,
     verbose: bool = False,
     training: _C_onnx.TrainingMode = _C_onnx.TrainingMode.EVAL,
-    input_names: Sequence[str] | None = None,
-    output_names: Sequence[str] | None = None,
+    input_names: Optional[Sequence[str]] = None,
+    output_names: Optional[Sequence[str]] = None,
     operator_export_type: _C_onnx.OperatorExportTypes = _C_onnx.OperatorExportTypes.ONNX,
-    opset_version: int | None = None,
+    opset_version: Optional[int] = None,
     do_constant_folding: bool = True,
     dynamic_axes: Mapping[str, Mapping[int, str]]
     | Mapping[str, Sequence[int]]
     | None = None,
-    keep_initializers_as_inputs: bool | None = None,
-    custom_opsets: Mapping[str, int] | None = None,
-    export_modules_as_functions: bool | Collection[type[torch.nn.Module]] = False,
+    keep_initializers_as_inputs: Optional[bool] = None,
+    custom_opsets: Optional[Mapping[str, int]] = None,
+    export_modules_as_functions: Union[bool, Collection[Type[torch.nn.Module]]] = False,
     autograd_inlining: bool = True,
 ) -> None:
     r"""Exports a model into ONNX format.
@@ -481,7 +477,7 @@ def export(
             inputs and this argument will be ignored and the behavior will be
             equivalent to setting this argument to True.
 
-        custom_opsets (dict[str, int], default empty dict): A dict with schema:
+        custom_opsets (Dict[str, int], default empty dict): A dict with schema:
 
             * KEY (str): opset domain name
             * VALUE (int): opset version
@@ -566,7 +562,7 @@ def export(
     return None
 
 
-def _is_constant_tensor_list(node) -> bool | None:
+def _is_constant_tensor_list(node) -> Optional[bool]:
     if node.kind() != "prim::Constant":
         return False
     output_type = node.output().type()
@@ -752,7 +748,7 @@ def _resolve_args_by_export_type(arg_name, arg_value, operator_export_type):
 
 
 def _decide_keep_init_as_input(
-    keep_initializers_as_inputs: bool | None,
+    keep_initializers_as_inputs: Optional[bool],
     operator_export_type: _C_onnx.OperatorExportTypes,
     opset_version: int,
 ):
@@ -953,8 +949,8 @@ def _check_flatten_did_not_remove(original, jit_flattened) -> None:
 
 
 def _create_jit_graph(
-    model: torch.nn.Module | torch.jit.ScriptFunction, args: Sequence[Any]
-) -> tuple[_C.Graph, list[_C.IValue], Any | None, _C.ScriptModule | None]:
+    model: Union[torch.nn.Module, torch.jit.ScriptFunction], args: Sequence[Any]
+) -> Tuple[_C.Graph, List[_C.IValue], Optional[Any], Optional[_C.ScriptModule]]:
     if isinstance(model, (torch.jit.ScriptFunction, torch.jit.ScriptModule)):
         flattened_args = tuple(torch.jit._flatten(tuple(args))[0])
         _check_flatten_did_not_remove(args, flattened_args)
@@ -1079,13 +1075,13 @@ def _model_to_graph(
     fixed_batch_size=False,
     training=_C_onnx.TrainingMode.EVAL,
     dynamic_axes=None,
-) -> tuple[
+) -> Tuple[
     _C.Graph,
-    dict[str, torch.Tensor],
+    Dict[str, torch.Tensor],
     torch.Tensor
-    | tuple[torch.Tensor, ...]
-    | list[torch.Tensor]
-    | dict[str, torch.Tensor]
+    | Tuple[torch.Tensor, ...]
+    | List[torch.Tensor]
+    | Dict[str, torch.Tensor]
     | Any
     | None,
 ]:
@@ -1211,8 +1207,8 @@ def unconvertible_ops(
     model,
     args,
     training: _C_onnx.TrainingMode = _C_onnx.TrainingMode.EVAL,
-    opset_version: int | None = None,
-) -> tuple[_C.Graph, list[str]]:
+    opset_version: Optional[int] = None,
+) -> Tuple[_C.Graph, List[str]]:
     """Returns an approximated list of all ops that are yet supported by :mod:`torch.onnx`.
 
     .. deprecated:: 2.5
@@ -1279,9 +1275,9 @@ def unconvertible_ops(
 
 
 def _setup_trace_module_map(
-    model: torch.nn.Module | torch.jit.ScriptModule,
-    export_modules_as_functions: bool | Collection[type[torch.nn.Module]],
-) -> set[str]:
+    model: Union[torch.nn.Module, torch.jit.ScriptModule],
+    export_modules_as_functions: Union[bool, Collection[Type[torch.nn.Module]]],
+) -> Set[str]:
     def __register_attribute_hook() -> None:
         attr_name = "_onnx_attrs"
 
@@ -1370,7 +1366,7 @@ def _get_module_attributes(module):
     #
     # For example, torch.nn.Embedding has the `freeze` variable and its
     # type specified in the class but the attribute is not created in the
-    # constructor. In other words, there is no `self.freeze = <True | False>`
+    # constructor. In other words, there is no `self.freeze = <Union[True, False]>`
     # in the constructor.
     #
     # Reference: https://github.com/pytorch/pytorch/blob/92de1d322223fb5584e384971b32c46b93bc2f4b/torch/nn/modules/sparse.py#L120
@@ -1478,7 +1474,7 @@ def _export(
         _autograd_inlining_previous = GLOBALS.autograd_inlining
         GLOBALS.autograd_inlining = autograd_inlining
 
-        module_typenames_to_export_as_functions: set[str] = set()
+        module_typenames_to_export_as_functions: Set[str] = set()
         if isinstance(model, (torch.nn.Module, torch.jit.ScriptModule)):
             module_typenames_to_export_as_functions = _setup_trace_module_map(
                 model, export_modules_as_functions
@@ -1711,11 +1707,11 @@ def _run_symbolic_function(
     block: _C.Block,
     node: _C.Node,
     inputs: Any,
-    env: dict[_C.Value, _C.Value],
-    values_in_env: set[_C.Value],
-    new_nodes: list[_C.Node],
+    env: Dict[_C.Value, _C.Value],
+    values_in_env: Set[_C.Value],
+    new_nodes: List[_C.Node],
     operator_export_type=_C_onnx.OperatorExportTypes.ONNX,
-) -> _C.Value | Sequence[_C.Value | None] | None:
+) -> Union[_C.Value, Union[Sequence[_C.Value, None]], None]:
     """Runs a symbolic function.
 
     The function is used in C++ to export the node to ONNX.
@@ -1931,7 +1927,7 @@ def _validate_dynamic_axes(dynamic_axes, model, input_names, output_names) -> No
             dynamic_axes[key] = value_dict
 
 
-def model_signature(model: torch.nn.Module | Callable) -> inspect.Signature:
+def model_signature(model: Union[torch.nn.Module, Callable]) -> inspect.Signature:
     return inspect.signature(
         model.forward if isinstance(model, torch.nn.Module) else model
     )

@@ -1,7 +1,12 @@
+from __future__ import annotations
 """Miscellaneous utilities to aid with typing."""
 
-from collections.abc import Callable
-from typing import Any, cast, Concatenate, TypeVar
+
+from typing import Any, Callable, Optional, Type, TypeVar, cast
+try:
+    from typing import Concatenate
+except ImportError:
+    from typing_extensions import Concatenate
 from typing_extensions import ParamSpec
 
 
@@ -10,7 +15,7 @@ from typing_extensions import ParamSpec
 T = TypeVar("T")
 
 
-def not_none(obj: T | None) -> T:
+def not_none(obj: Optional[T]) -> T:
     if obj is None:
         raise TypeError("Invariant encountered: value was None when it should not be")
     return obj

@@ -1,8 +1,8 @@
 # mypy: allow-untyped-defs
 import hashlib
 import logging
-from collections.abc import Sequence
-from typing import cast
+
+from typing import List, Sequence, Set, cast
 
 from torch._inductor.utils import Placeholder
 from torch.utils._ordered_set import OrderedSet
@@ -54,12 +54,6 @@ class CuteDSLScheduling(BaseScheduling):
         TODO CuteDSL doesn't support vertical fusion yet.
         This could be extended in the future for epilogue fusion.
         """
-        return False
-
-    def can_fuse_horizontal(
-        self, node1: BaseSchedulerNode, node2: BaseSchedulerNode
-    ) -> bool:
-        """CuteDSL doesn't support horizontal fusion yet."""
         return False
 
     def define_kernel(self, src_code_str: str, node_schedule) -> str:

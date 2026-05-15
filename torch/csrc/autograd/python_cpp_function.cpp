@@ -18,6 +18,7 @@
 #include <torch/csrc/utils/pyobject_preservation.h>
 #include <torch/csrc/utils/python_numbers.h>
 #include <torch/csrc/utils/python_strings.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 using namespace torch::autograd;
 using torch::utils::PyObjectPreservation;
@@ -358,7 +359,8 @@ PyObject* registerFunctionHook(Node& fn, PyObject* hook) {
   }
 
   PyObject* handle = PyTuple_GET_ITEM(res.get(), 1);
-  return Py_NewRef(handle);
+  Py_INCREF(handle);
+  return handle;
 }
 
 // This is almost a copy of the function above except post -> pre
@@ -380,7 +382,8 @@ PyObject* registerFunctionPreHook(Node& fn, PyObject* hook) {
   }
 
   PyObject* handle = PyTuple_GET_ITEM(res.get(), 1);
-  return Py_NewRef(handle);
+  Py_INCREF(handle);
+  return handle;
 }
 
 } // namespace torch::autograd

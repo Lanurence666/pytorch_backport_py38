@@ -13,6 +13,7 @@
 #include <ATen/ops/_foreach_mul_native.h>
 
 #include <ATen/ops/empty_like_native.h>
+#include <ATen/OpMathType.h>
 #endif
 
 namespace at::native {

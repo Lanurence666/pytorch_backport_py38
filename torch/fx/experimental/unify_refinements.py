@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Dict, List, Tuple, Type
 
 import torch
 import torch.fx
@@ -49,7 +51,7 @@ def infer_symbolic_types(traced: torch.fx.GraphModule) -> None:
     r.symbolic_relations()
 
 
-def convert_eq(list_of_eq: list[Equality]) -> tuple[tuple[Any, ...], tuple[Any, ...]]:
+def convert_eq(list_of_eq: List[Equality]) -> Tuple[Tuple[Any, ...], Tuple[Any, ...]]:
     """
     Convert equality constraints in the right format
     to be used by unification library.
@@ -62,7 +64,7 @@ def convert_eq(list_of_eq: list[Equality]) -> tuple[tuple[Any, ...], tuple[Any, 
     return tuple(lhs), tuple(rhs)
 
 
-def unify_eq(list_of_eq: list[Equality]) -> Any:
+def unify_eq(list_of_eq: List[Equality]) -> Any:
     """
     Apply unification to a set of
     equality constraints
@@ -71,7 +73,7 @@ def unify_eq(list_of_eq: list[Equality]) -> Any:
     return unify(lhs, rhs)
 
 
-def substitute_solution_one_type(mapping: dict[object, object], t: object) -> Any:
+def substitute_solution_one_type(mapping: Dict[object, object], t: object) -> Any:
     """
     Apply the most general unifier to a type
     """
@@ -106,7 +108,7 @@ def substitute_solution_one_type(mapping: dict[object, object], t: object) -> An
         return t
 
 
-def substitute_all_types(graph: torch.fx.Graph, mapping: dict[object, object]) -> None:
+def substitute_all_types(graph: torch.fx.Graph, mapping: Dict[object, object]) -> None:
     """
     Apply the most general unifier to all types in a graph
     till reaching a fixed point. If the input and output graph

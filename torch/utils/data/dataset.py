@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import bisect
 import itertools
 import math
@@ -10,7 +12,7 @@ from collections.abc import Sequence
 # targets fail to typecheck with:
 #     TypeError: Cannot create a consistent method resolution order (MRO) for
 #     bases Iterable, Generic
-from typing import cast, Generic, Iterable, TypeVar  # noqa: UP035
+from typing import Dict, Generic, Iterable, Optional, Tuple, TypeVar  # noqa: UP035, Union
 from typing_extensions import deprecated
 
 # No 'default_generator' in torch/__init__.pyi
@@ -31,8 +33,8 @@ __all__ = [
 
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
-_T_dict = dict[str, _T_co]
-_T_tuple = tuple[_T_co, ...]
+_T_dict = Dict[str, _T_co]
+_T_tuple = Tuple[_T_co, ...]
 _T_stack = TypeVar("_T_stack", _T_tuple, _T_dict)
 
 
@@ -186,7 +188,7 @@ class IterableDataset(Dataset[_T_co], Iterable[_T_co]):
     # See NOTE [ Lack of Default `__len__` in Python Abstract Base Classes ]
 
 
-class TensorDataset(Dataset[tuple[Tensor, ...]]):
+class TensorDataset(Dataset[Tuple[Tensor, ...]]):
     r"""Dataset wrapping tensors.
 
     Each sample will be retrieved by indexing tensors along the first dimension.
@@ -228,7 +230,7 @@ class StackDataset(Dataset[_T_stack]):
         **kwargs (Dataset): Datasets for stacking returned as dict.
     """
 
-    datasets: tuple | dict
+    datasets: Union[tuple, dict]
 
     def __init__(self, *args: Dataset[_T_co], **kwargs: Dataset[_T_co]) -> None:
         if args:
@@ -267,10 +269,10 @@ class StackDataset(Dataset[_T_stack]):
                             "Nested dataset's output size mismatch."
                             f" Expected {len(indices)}, got {len(items)}"
                         )
-                    for data, d_sample in zip(items, dict_batch, strict=True):
+                    for data, d_sample in _zip_strict(items, dict_batch):
                         d_sample[k] = data
                 else:
-                    for idx, d_sample in zip(indices, dict_batch, strict=True):
+                    for idx, d_sample in _zip_strict(indices, dict_batch):
                         d_sample[k] = dataset[idx]
             return dict_batch
 
@@ -284,10 +286,10 @@ class StackDataset(Dataset[_T_stack]):
                         "Nested dataset's output size mismatch."
                         f" Expected {len(indices)}, got {len(items)}"
                     )
-                for data, t_sample in zip(items, list_batch, strict=True):
+                for data, t_sample in _zip_strict(items, list_batch):
                     t_sample.append(data)
             else:
-                for idx, t_sample in zip(indices, list_batch, strict=True):
+                for idx, t_sample in _zip_strict(indices, list_batch):
                     t_sample.append(dataset[idx])
         tuple_batch: list[_T_tuple] = [tuple(sample) for sample in list_batch]
         return tuple_batch
@@ -448,8 +450,8 @@ class Subset(Dataset[_T_co]):
 
 def random_split(
     dataset: Dataset[_T],
-    lengths: Sequence[int | float],
-    generator: Generator | None = default_generator,
+    lengths: Sequence[Union[int, float]],
+    generator: Optional[Generator] = default_generator,
 ) -> list[Subset[_T]]:
     r"""
     Randomly split a dataset into non-overlapping new datasets of given lengths.

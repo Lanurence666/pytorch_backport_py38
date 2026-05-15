@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
+from typing import Any, Dict, List
 
 from tools.stats.upload_stats_lib import (
     download_s3_artifacts,
@@ -15,7 +15,7 @@ from tools.stats.upload_stats_lib import (
 
 def get_sccache_stats(
     workflow_run_id: int, workflow_run_attempt: int
-) -> list[dict[str, Any]]:
+) -> List[Dict[str, Any]]:
     with TemporaryDirectory() as temp_dir:
         print("Using temporary directory:", temp_dir)
         os.chdir(temp_dir)

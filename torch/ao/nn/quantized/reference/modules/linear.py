@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -26,9 +28,9 @@ class Linear(nn.Linear, ReferenceQuantizedModule):
         in_features: int,
         out_features: int,
         bias_: bool = True,
-        device: torch.device | None = None,
-        dtype: torch.dtype | None = None,
-        weight_qparams: dict[str, Any] | None = None,
+        device: Optional[torch.device]= None,
+        dtype: Optional[torch.dtype]= None,
+        weight_qparams: Optional[Dict[str, Any]]= None,
     ) -> None:
         super().__init__(in_features, out_features, bias_, device, dtype)
         self._init_weight_qparams(weight_qparams, device)
@@ -53,7 +55,7 @@ class Linear(nn.Linear, ReferenceQuantizedModule):
 
     @classmethod
     def from_float(
-        cls, float_linear: nn.Linear, weight_qparams: dict[str, Any]
+        cls, float_linear: nn.Linear, weight_qparams: Dict[str, Any]
     ) -> "Linear":
         qref_linear = Linear(
             float_linear.in_features,

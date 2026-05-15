@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Tuple, Type
 from typing_extensions import Self
 
 import torch
@@ -93,30 +93,14 @@ class ComplexTensor(Tensor):
     def im(self) -> Tensor:
         return self._im
 
-    @property
-    def real(self) -> Tensor:  # type: ignore[bad-override]
-        return self.re
-
-    @real.setter
-    def real(self, value: Tensor) -> None:
-        self.re[...] = value
-
-    @property
-    def imag(self) -> Tensor:  # type: ignore[bad-override]
-        return self.im
-
-    @imag.setter
-    def imag(self, value: Tensor) -> None:
-        self.im[...] = value
-
     @classmethod
     def __torch_dispatch__(  # type: ignore[bad-override]
         cls,
         func: OpOverload,
-        types: tuple[type, ...],
+        types: Tuple[type, ...],
         # pyrefly: ignore [implicit-any]
         args: tuple = (),
-        kwargs: dict[str, Any] | None = None,
+        kwargs: Optional[Dict[str, Any]]= None,
     ) -> Any:
         from ._ops.common import lookup_complex
 
@@ -139,23 +123,23 @@ class ComplexTensor(Tensor):
 
     @staticmethod
     def __tensor_unflatten__(
-        inner_tensors: dict[str, Tensor],
+        inner_tensors: Dict[str, Tensor],
         meta: Any,
-        outer_size: tuple[int, ...],
-        outer_stride: tuple[int, ...],
+        outer_size: Tuple[int, ...],
+        outer_stride: Tuple[int, ...],
     ) -> ComplexTensor:
         if meta is not None:
             raise AssertionError(f"meta must be None, got {meta}")
         re, im = inner_tensors["re"], inner_tensors["im"]
         return ComplexTensor(re, im)
 
-    def __tensor_flatten__(self) -> tuple[list[str], Any]:
+    def __tensor_flatten__(self) -> Tuple[List[str], Any]:
         return ["re", "im"], None
 
-    def __repr__(self, *, tensor_contents: object | None = None) -> str:
+    def __repr__(self, *, tensor_contents: Optional[object] = None) -> str:
         return f"ComplexTensor(real={self.re!r}, imag={self.im!r})"
 
-    def is_pinned(self, device: DeviceLikeType | None = None) -> bool:
+    def is_pinned(self, device: Optional[DeviceLikeType] = None) -> bool:
         return self.re.is_pinned(device)
 
 
@@ -165,5 +149,5 @@ class Complex(Function):
         return ComplexTensor(real, imag)
 
     @staticmethod
-    def backward(ctx: FunctionCtx, grad_output: ComplexTensor) -> tuple[Tensor, Tensor]:  # type: ignore[bad-override]
+    def backward(ctx: FunctionCtx, grad_output: ComplexTensor) -> Tuple[Tensor, Tensor]:  # type: ignore[bad-override]
         return grad_output.real, grad_output.imag

@@ -3,7 +3,7 @@
 # the cyclic imports, thus implementing lazy version
 # as per https://peps.python.org/pep-0562/
 
-from typing import TYPE_CHECKING as _TYPE_CHECKING
+from typing import TYPE_CHECKING, TYPE_CHECKING as _TYPE_CHECKING, Type
 
 
 if _TYPE_CHECKING:

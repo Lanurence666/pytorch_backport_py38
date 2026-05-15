@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import inspect
-from typing import Any
+from typing import Any, Callable, Dict, Optional, Tuple, Type
 
 import torch
 import torch.fx
@@ -46,7 +48,7 @@ class AnnotateTypesWithSchema(Transformer):
         self.annotate_get_attrs = annotate_get_attrs
 
     def call_function(
-        self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: Target, args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Proxy:
         python_ret_type = None
         if self.annotate_functionals and target.__module__ == "torch.nn.functional":
@@ -78,7 +80,7 @@ class AnnotateTypesWithSchema(Transformer):
         return return_proxy
 
     def call_module(
-        self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
+        self, target: Target, args: Tuple[Argument, ...], kwargs: Dict[str, Any]
     ) -> Proxy:
         python_ret_type = None
         if not isinstance(target, str):
@@ -97,8 +99,8 @@ class AnnotateTypesWithSchema(Transformer):
     def get_attr(
         self,
         target: Target,
-        args: tuple[Argument, ...],
-        kwargs: dict[str, Any],
+        args: Tuple[Argument, ...],
+        kwargs: Dict[str, Any],
     ) -> Proxy:
         attr_proxy = super().get_attr(target, args, kwargs)
 
@@ -125,7 +127,7 @@ class AnnotateTypesWithSchema(Transformer):
 
         return attr_proxy
 
-    def _extract_python_return_type(self, target: Target) -> Any | None:
+    def _extract_python_return_type(self, target: Target) -> Optional[Any]:
         """
         Given a Python call target, try to extract the Python return annotation
         if it is available, otherwise return None

@@ -25,6 +25,7 @@ from torch.distributed.tensor.debug import (
     _clear_python_sharding_prop_cache,
 )
 from torch.distributed.tensor.placement_types import Replicate, Shard
+from typing import List, Optional, overload
 
 
 aten = torch.ops.aten

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import List, Union
 from torchgen.api import dispatcher
 from torchgen.api.types import (
     BaseCppType,
@@ -103,7 +104,7 @@ def name(
     *,
     is_reverse: bool,
     include_namespace: bool,
-    reapply_views: bool | None = None,
+    reapply_views: Union[bool, None] = None,
 ) -> str:
     if reapply_views is None:
         # reapply_views is only important for the fwd lambda,
@@ -157,7 +158,7 @@ def is_multi_output(func: FunctionSchema) -> bool:
 
 
 # `ViewMeta` specialization constructor parameters.
-def base_ctor_arguments(func: FunctionSchema) -> list[Binding]:
+def base_ctor_arguments(func: FunctionSchema) -> List[Binding]:
     # All specializations are parematerized by `has_symbolic_inputs` flag.
     arguments = [has_symbolic_inputs_binding]
 
@@ -173,7 +174,7 @@ def base_ctor_arguments(func: FunctionSchema) -> list[Binding]:
 #
 # Values needed specifically by this specialization, that the base class does not need.
 # Same as the class' attributes, but non-owning.
-def extra_ctor_arguments(func: FunctionSchema) -> list[Binding]:
+def extra_ctor_arguments(func: FunctionSchema) -> List[Binding]:
     return attributes(func, owning=False)
 
 
@@ -181,7 +182,7 @@ def extra_ctor_arguments(func: FunctionSchema) -> list[Binding]:
 #
 # Essential data for calling the instance's `forward` and `reverse functions. You can
 # think of them as values that should be captured from the functionalization kernel.
-def attributes(func: FunctionSchema, owning: bool = True) -> list[Binding]:
+def attributes(func: FunctionSchema, owning: bool = True) -> List[Binding]:
     args = func.arguments.flat_all
     if args[0].type != BaseType(BaseTy.Tensor):
         raise AssertionError(f"Expected first arg to be Tensor, got {args[0].type}")
@@ -192,7 +193,7 @@ def attributes(func: FunctionSchema, owning: bool = True) -> list[Binding]:
     ]
 
 
-def op_arguments(func: FunctionSchema, is_reverse: bool) -> list[Binding]:
+def op_arguments(func: FunctionSchema, is_reverse: bool) -> List[Binding]:
     args = func.arguments.flat_all
     if args[0].type != BaseType(BaseTy.Tensor):
         raise AssertionError(f"Expected first arg to be Tensor, got {args[0].type}")

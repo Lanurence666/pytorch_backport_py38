@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 import unittest
 from collections.abc import Sequence
 from functools import partial
@@ -29,6 +31,7 @@ from torch.testing._internal.opinfo.core import (
     SampleInput,
 )
 from torch.testing._internal.opinfo.utils import prod_numpy, reference_reduction_numpy
+from typing import List, Sequence
 
 
 # Used for log_softmax, softmax, softmin
@@ -409,10 +412,9 @@ def sample_inputs_masked_logaddexp(op_info, device, dtype, requires_grad, **kwar
     make_arg = partial(
         make_tensor, dtype=dtype, device=device, requires_grad=requires_grad
     )
-    for shape, input_masks, other_masks in zip(
-        shapes, input_mask_lists, other_mask_lists, strict=True
-    ):
-        for input_mask, other_mask in zip(input_masks, other_masks, strict=True):
+    for shape, input_masks, other_masks in _zip_strict(
+        shapes, input_mask_lists, other_mask_lists):
+        for input_mask, other_mask in _zip_strict(input_masks, other_masks):
             yield SampleInput(
                 make_arg(shape),
                 make_arg(shape),
@@ -435,7 +437,7 @@ def sample_inputs_masked_normalize(op_info, device, dtype, requires_grad, **kwar
             )
 
 
-op_db: list[OpInfo] = [
+op_db: List[OpInfo] = [
     ReductionOpInfo(
         "masked.sum",
         ref=reference_reduction_numpy(np.sum),
@@ -963,16 +965,6 @@ op_db: list[OpInfo] = [
             # NotSupportedError: Compiled functions can't ... use keyword-only arguments with defaults
             DecorateInfo(
                 unittest.skip("Skipped!"), "TestJit", "test_variant_consistency_jit"
-            ),
-            # masked.median raises ValueError for fully-masked rows on
-            # non-floating dtypes, but the trivial 0-d sample exercised by
-            # test_dtypes succeeds for ints / bool / complex64, fooling the
-            # detector into believing these dtypes are supported.
-            DecorateInfo(
-                unittest.skip("Skipped!"),
-                "TestCommon",
-                "test_dtypes",
-                device_type="mps",
             ),
         ),
         sample_inputs_func=partial(

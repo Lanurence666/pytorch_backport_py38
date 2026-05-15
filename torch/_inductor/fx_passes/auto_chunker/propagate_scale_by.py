@@ -1,7 +1,13 @@
+from __future__ import annotations
+
 import functools
 import logging
-from collections.abc import Callable, Sequence
-from typing import TypeAlias
+
+
+try:
+    from typing import Callable, Dict, List, Sequence, Type, TypeAlias, Union
+except ImportError:
+    TypeAlias = None
 
 import torch
 from torch.fx import Node
@@ -20,11 +26,11 @@ aten = torch.ops.aten
 prims = torch.ops.prims
 
 _HandlerType: TypeAlias = Callable[[Node], bool]
-propagate_rules: dict[torch._ops.OpOverload, _HandlerType] = {}
+propagate_rules: Dict[torch._ops.OpOverload, _HandlerType] = {}
 
 
 def _register_propagate_rule(
-    aten_op: torch._ops.OpOverload | Sequence[torch._ops.OpOverload],
+    aten_op: Union[torch._ops.OpOverload, Sequence[torch._ops.OpOverload]],
     handler: _HandlerType,
 ) -> _HandlerType:
     if not isinstance(aten_op, (list, tuple)):
@@ -38,7 +44,7 @@ def _register_propagate_rule(
 
 
 def register_propagate_rule(
-    aten_op: torch._ops.OpOverload | Sequence[torch._ops.OpOverload],
+    aten_op: Union[torch._ops.OpOverload, Sequence[torch._ops.OpOverload]],
 ) -> Callable[[_HandlerType], _HandlerType]:
     return functools.partial(_register_propagate_rule, aten_op)
 

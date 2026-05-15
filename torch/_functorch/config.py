@@ -4,6 +4,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 from collections.abc import Callable
 
 
@@ -13,7 +15,9 @@ Global flags for aot autograd
 
 import os
 import sys
-from typing import Literal, TYPE_CHECKING
+from typing import Callable, Optional, Set, TYPE_CHECKING
+from typing_extensions import Literal
+
 
 from torch.utils._config_module import Config, install_config_module
 
@@ -93,13 +97,13 @@ autograd_cache_normalize_inputs = not is_fbcode()
 #   - When False: Emits UserWarning on aliasing violations.
 #
 # Deprecated: Custom ops returning aliased outputs is deprecated and will
-# become an error in a future version of PyTorch. Currently error_on_custom_op_aliasing
+# become an error in PyTorch 2.12. Currently error_on_custom_op_aliasing
 # is True only in CI.
 check_custom_op_aliasing = True
 error_on_custom_op_aliasing = bool(os.getenv("CI"))
 
 
-def remote_autograd_cache_default() -> bool | None:
+def remote_autograd_cache_default() -> Optional[bool]:
     if os.environ.get("TORCHINDUCTOR_AUTOGRAD_REMOTE_CACHE") == "1":
         return True
     if os.environ.get("TORCHINDUCTOR_AUTOGRAD_REMOTE_CACHE") == "0":
@@ -351,7 +355,7 @@ generate_fake_kernels_from_real_mismatches = False
 # compiler to proceed with compilation by choosing the preferred device type
 # for consistency. For example, set to "mtia" to prefer MTIA devices over
 # CPU, or "cuda" to prefer CUDA devices over CPU.
-fake_tensor_prefer_device_type: str | None = None
+fake_tensor_prefer_device_type: Optional[str]= None
 
 # CUDAGraph safe run_with_rng functionalization.
 # TODO: turn on by default

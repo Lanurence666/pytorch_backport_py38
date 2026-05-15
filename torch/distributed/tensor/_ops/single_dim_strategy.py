@@ -1,13 +1,19 @@
 #  Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 import functools
 import heapq
 import logging
 import math
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+
 from dataclasses import dataclass, field
 from itertools import count
-from typing import Any, cast, TypeAlias, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, TypeVar, Union, cast
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 from typing_extensions import TypeIs
 
 import torch
@@ -40,7 +46,7 @@ from torch.utils._pytree import tree_map_only
 logger = logging.getLogger(__name__)
 
 
-def _is_sharding(p: Placement) -> TypeIs[Shard | _StridedShard]:
+def _is_sharding(p: Placement) -> TypeIs[Union[Shard, _StridedShard]]:
     return isinstance(p, (Shard, _StridedShard))
 
 
@@ -63,7 +69,7 @@ _StrategyTypeT = TypeVar("_StrategyTypeT", bound=StrategyType)
 _PlacementT = TypeVar("_PlacementT", bound=Placement)
 _ShardingPlaceholderT = TypeVar("_ShardingPlaceholderT", bound=_ShardingPlaceholder)
 _SingleDimStrategyFunc: TypeAlias = Callable[
-    [OpOverload, ArgsType, KwargsType], list[list[_PlacementT | _ShardingPlaceholderT]]
+    [OpOverload, ArgsType, KwargsType], List[List[Union[_PlacementT, _ShardingPlaceholderT]]]
 ]
 _ExpandedSingleDimStrategyFunc: TypeAlias = Callable[
     [OpOverload, ArgsType, KwargsType], _StrategyTypeT
@@ -73,12 +79,12 @@ _ExpandedSingleDimStrategyFunc: TypeAlias = Callable[
 @dataclass
 class _SingleDimStrategyInfo:
     func: _SingleDimStrategyFunc
-    allow_unbacked_sharding: bool | None = field(default=None)
+    allow_unbacked_sharding: Optional[bool] = field(default=None)
     allow_uneven_sharding: bool = field(default=False)
     # Positions (in args_schema) of args that may live on a different mesh
     # than the op's compute mesh.  These args must be Replicate.
     # See Note [Multi-mesh args] in expand_to_full_mesh_op_strategy.
-    different_mesh_args: list[int] | None = field(default=None)
+    different_mesh_args: Optional[List[int]] = field(default=None)
 
     # Delegate to func so this can be used interchangeably with a raw
     # _SingleDimStrategyFunc (e.g. in tests that call strategy functions directly).
@@ -87,13 +93,13 @@ class _SingleDimStrategyInfo:
 
 
 def _insert_single_dim_replication_strategy(
-    single_dim_strategies_with_placeholders: list[
-        list[Placement | _ShardingPlaceholder | None]
+    single_dim_strategies_with_placeholders: List[
+        List[Union[Placement, Optional[_ShardingPlaceholder]]]
     ],
     num_outputs: int,
     num_input_tensors: int,
-    output_tensor_meta: TensorMeta | Sequence[TensorMeta | None] | None = None,
-) -> list[list[Placement | _ShardingPlaceholder | None]]:
+    output_tensor_meta: Union[TensorMeta, Sequence[TensorMeta, None]] | None = None,
+) -> Optional[List[List[Union[Placement, _ShardingPlaceholder]]]]:
     """
     Inserts the [Replicate(), Replicate(), ...] strategy after asserting that such strategy does not yet exist.
     For ops with masked-off outputs (e.g. backward ops with output_mask), output positions
@@ -103,7 +109,7 @@ def _insert_single_dim_replication_strategy(
         if all(isinstance(p, Replicate) or p is None for p in strategy):
             return single_dim_strategies_with_placeholders
     total_len = num_outputs + num_input_tensors
-    replicate_rule: list[Placement | _ShardingPlaceholder | None] = [
+    replicate_rule: Optional[List[Union[Placement, _ShardingPlaceholder]]] = [
         Replicate()
     ] * total_len
     # Set None for masked-off output positions based on output_tensor_meta
@@ -116,11 +122,11 @@ def _insert_single_dim_replication_strategy(
 
 
 def _fill_single_dim_strategy_placeholders(
-    unique_input_placements: set[Placement],
-    single_dim_strategies_with_placeholders: list[
-        list[Placement | _ShardingPlaceholder | None]
+    unique_input_placements: Set[Placement],
+    single_dim_strategies_with_placeholders: List[
+        List[Union[Placement, Optional[_ShardingPlaceholder]]]
     ],
-) -> list[list[Placement | None]]:
+) -> List[List[Optional[Placement]]]:
     """
     Replace any _ShardingPlaceholder with the specific Sharding types used by the inputs in op_schema.
     Supports implicit replication.
@@ -135,7 +141,7 @@ def _fill_single_dim_strategy_placeholders(
        [Replicate(), Replicate(), Replicate()]
     ]
     """
-    shard_builders: dict[str, Callable[[int], Placement]] = {}
+    shard_builders: Dict[str, Callable[[int], Placement]] = {}
     for placement in unique_input_placements:
         if isinstance(placement, _StridedShard):
             key = f"StridedShard(sf={placement.split_factor})"
@@ -150,11 +156,11 @@ def _fill_single_dim_strategy_placeholders(
 
     # if any of the placements is a placeholder, we need to expand the strategy
     # to all possible combinations of placements
-    expanded_strategies_over_one_mesh_dim: list[list[Placement | None]] = []
+    expanded_strategies_over_one_mesh_dim: List[List[Optional[Placement]]] = []
     for s in single_dim_strategies_with_placeholders:
         if any(isinstance(p, _ShardingPlaceholder) for p in s):
             for shard_builder in shard_builders.values():
-                expanded_strategy: list[Placement | None] = []
+                expanded_strategy: List[Optional[Placement]] = []
                 for maybe_placeholder in s:
                     if isinstance(maybe_placeholder, _ShardingPlaceholder):
                         # we combine the tensor dim to shard from the placeholder
@@ -171,13 +177,13 @@ def _fill_single_dim_strategy_placeholders(
             if not all(isinstance(p, Placement) or p is None for p in s):
                 raise AssertionError
             expanded_strategies_over_one_mesh_dim.append(
-                cast(list[Placement | None], (s))
+                cast(List[Optional[Placement]], (s))
             )
 
     return expanded_strategies_over_one_mesh_dim
 
 
-def _get_unique_placements(op_schema: OpSchema) -> set[Placement]:
+def _get_unique_placements(op_schema: OpSchema) -> Set[Placement]:
     unique_placements = set()
 
     def _update_placements(obj: Any):
@@ -225,10 +231,10 @@ def _get_num_tensor_inputs(op_schema: OpSchema) -> int:
 
 def _build_output_specs(
     mesh: DeviceMesh,
-    per_mesh_dim_placements: list[tuple[Placement | None, ...]],
+    per_mesh_dim_placements: List[Tuple[Optional[Placement], ...]],
     num_outputs: int,
-    output_metas: tuple[TensorMeta | None, ...],
-) -> DTensorSpec | tuple[DTensorSpec | None, ...]:
+    output_metas: Tuple[Optional[TensorMeta], ...],
+) -> Union[DTensorSpec, Tuple[DTensorSpec, None, ...]]:
     """Build output spec(s) by transposing per-mesh-dim placements to per-output.
 
     per_mesh_dim_placements is indexed [mesh_dim][output_idx]. output_metas must
@@ -242,7 +248,7 @@ def _build_output_specs(
             f"Expected {num_outputs} output_metas, got {len(output_metas)}"
         )
 
-    def _spec_for_output(out_idx: int) -> DTensorSpec | None:
+    def _spec_for_output(out_idx: int) -> Optional[DTensorSpec]:
         if output_metas[out_idx] is None:
             return None
         placements = tuple(
@@ -272,14 +278,14 @@ class _PreparedSingleDimStrategy:
     allowed_partial_per_input for graph search neighbor generation.
     """
 
-    strategy_lookup: dict[tuple[Placement | None, ...], tuple[Placement | None, ...]]
-    expanded_strategies: list[list[Placement | None]]
+    strategy_lookup: Dict[Tuple[Optional[Placement], ...], Tuple[Optional[Placement], ...]]
+    expanded_strategies: List[List[Optional[Placement]]]
     num_outputs: int
     num_inputs: int
-    output_metas: tuple[TensorMeta | None, ...]
-    allowed_sharding_per_input: dict[int, set[Shard | _StridedShard]]
-    allowed_partial_per_input: dict[int, set[Placement]]
-    allow_unbacked_sharding: bool | None
+    output_metas: Tuple[Optional[TensorMeta], ...]
+    allowed_sharding_per_input: Dict[int, Set[Union[Shard, _StridedShard]]]
+    allowed_partial_per_input: Dict[int, Set[Placement]]
+    allow_unbacked_sharding: Optional[bool]
 
     # many, but not all ops are able to support unevenly sharded tensors
     # there are existing BC expectations even if we wanted to ban for
@@ -293,11 +299,11 @@ class _PreparedSingleDimStrategy:
         strategy_fn: _SingleDimStrategyInfo
         | Callable[
             [OpOverload, ArgsType, KwargsType],
-            list[list[Placement | _ShardingPlaceholder]],
+            List[List[Union[Placement, _ShardingPlaceholder]]],
         ],
         op_schema: OpSchema,
-        output_tensor_meta: TensorMeta | Sequence[TensorMeta | None] | None,
-        num_inputs: int | None = None,
+        output_tensor_meta: Union[TensorMeta, Union[Sequence[TensorMeta, None]], None],
+        num_inputs: Optional[int] = None,
     ) -> None:
         # Note: circular import
         from torch.distributed.tensor.placement_types import Partial
@@ -316,7 +322,7 @@ class _PreparedSingleDimStrategy:
         # Determine element_mesh from the first OpStrategy arg.  For foreach
         # per-element schemas the element's inputs may live on a smaller
         # sub-mesh than the global compute_mesh.
-        self.element_mesh: DeviceMesh | None = None
+        self.element_mesh: Optional[DeviceMesh] = None
         for arg in op_schema.args_schema:
             if isinstance(arg, OpStrategy):
                 self.element_mesh = arg.strategies[0].output_spec.mesh
@@ -339,9 +345,9 @@ class _PreparedSingleDimStrategy:
         # OpStrategy-only positions.  Non-OpStrategy args (e.g. empty lists)
         # are filtered out by expand_to_full_mesh_op_strategy, shifting later
         # indices.
-        self.remapped_different_mesh_args: list[int] | None = None
+        self.remapped_different_mesh_args: Optional[List[int]] = None
         if different_mesh_args is not None:
-            schema_to_strategy: dict[int, int] = {}
+            schema_to_strategy: Dict[int, int] = {}
             strategy_pos = 0
             for schema_pos, arg in enumerate(op_schema.args_schema):
                 if isinstance(arg, OpStrategy):
@@ -360,7 +366,7 @@ class _PreparedSingleDimStrategy:
         # Strategy functions may return None in output positions for masked-off
         # outputs (e.g. backward ops with output_mask). Widen the type here.
         strategies_with_placeholders = cast(
-            list[list[Placement | _ShardingPlaceholder | None]],
+            Optional[List[List[Union[Placement, _ShardingPlaceholder]]]],
             func(op_schema.op, op_schema.args_meta, op_schema.kwargs_meta),
         )
 
@@ -414,10 +420,10 @@ class _PreparedSingleDimStrategy:
                 self.strategy_lookup[input_key] = tuple(strategy[:num_outputs])
 
         # Precompute allowed placements per input from the expanded rules
-        self.allowed_sharding_per_input: dict[int, set[Shard | _StridedShard]] = (
+        self.allowed_sharding_per_input: Dict[int, Set[Union[Shard, _StridedShard]]] = (
             defaultdict(set)
         )
-        self.allowed_partial_per_input: dict[int, set[Placement]] = defaultdict(set)
+        self.allowed_partial_per_input: Dict[int, Set[Placement]] = defaultdict(set)
         for strategy in self.expanded_strategies:
             for input_idx in range(num_inputs):
                 p = strategy[num_outputs + input_idx]
@@ -439,9 +445,9 @@ class _PreparedSingleDimStrategy:
     def try_propagate(
         self,
         mesh: DeviceMesh,
-        input_placements: tuple[tuple[Placement, ...], ...],
-        input_specs: list[DTensorSpec],
-    ) -> OpStrategy | None:
+        input_placements: Tuple[Tuple[Placement, ...], ...],
+        input_specs: List[DTensorSpec],
+    ) -> Optional[OpStrategy]:
         """Try to match input placements against single-dim strategy rules on every mesh dim.
 
         Checks whether the given input placements independently match a rule in
@@ -451,7 +457,7 @@ class _PreparedSingleDimStrategy:
         """
         from torch.distributed.tensor._ops.utils import is_tensor_shardable
 
-        selected_output_placements: list[tuple[Placement | None, ...]] = []
+        selected_output_placements: List[Tuple[Optional[Placement], ...]] = []
         for mesh_dim in range(mesh.ndim):
             input_placements_for_dim = tuple(
                 placements[mesh_dim] for placements in input_placements
@@ -503,7 +509,7 @@ def _expand_single_dim_strategy_to_mesh(
     mesh: DeviceMesh,
     op_schema: OpSchema,
     strategy_info: _SingleDimStrategyInfo,
-    output_tensor_meta: TensorMeta | Sequence[TensorMeta | None] | None,
+    output_tensor_meta: Union[TensorMeta, Union[Sequence[TensorMeta, None]], None],
 ) -> _ExpandedSingleDimStrategyFunc:
     """
     Expands the single_mesh_dim impl across all mesh dims, and expands ShardingPlacholder into all
@@ -523,7 +529,7 @@ def _expand_single_dim_strategy_to_mesh(
 
     def _create_expanded_strategy_impl(
         op_schema: OpSchema,
-        output_tensor_meta: TensorMeta | Sequence[TensorMeta | None] | None,
+        output_tensor_meta: Union[TensorMeta, Union[Sequence[TensorMeta, None]], None],
     ) -> Callable[[OpOverload, ArgsType, KwargsType], StrategyType]:
         def expanded_strategy(
             op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
@@ -560,7 +566,7 @@ def _expand_single_dim_strategy_to_mesh(
 
     def _create_expanded_strategy(
         op_schema: OpSchema,
-        output_tensor_meta: TensorMeta | Sequence[TensorMeta | None] | None,
+        output_tensor_meta: Union[TensorMeta, Union[Sequence[TensorMeta, None]], None],
     ) -> Callable[[OpOverload, ArgsType, KwargsType], StrategyType]:
         # Try to use cache, but fall back to uncached version if hashing fails
         # (e.g., when TensorMeta contains SymInts from dynamic shapes)
@@ -572,9 +578,9 @@ def _expand_single_dim_strategy_to_mesh(
 
     def _translate_list_op_schema(
         op_schema: OpSchema,
-        output_tensor_meta: Sequence[TensorMeta] | None,
+        output_tensor_meta: Optional[Sequence[TensorMeta]],
         index: int,
-    ) -> tuple[OpSchema, TensorMeta | None]:
+    ) -> Tuple[OpSchema, Optional[TensorMeta]]:
         """Translate foreach/fused op to per-element version of schema."""
         op_parts = str(op_schema.op).split(".")
         op_name = op_parts[-2]
@@ -610,7 +616,7 @@ def _expand_single_dim_strategy_to_mesh(
             return op_schema, target_output_meta
 
         # Strip trailing underscore for inplace ops
-        base_op_name = base_op_name.removesuffix("_")
+        base_op_name = base_op_name[:-len("_")] if base_op_name.endswith("_") else base_op_name
 
         # figure out target op variant
         variant_map = {
@@ -644,7 +650,7 @@ def _expand_single_dim_strategy_to_mesh(
     def expanded_foreach_strategy(
         op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
     ) -> StrategyType:
-        tensorlist_len: int | None = None
+        tensorlist_len: Optional[int] = None
         for i, obj in enumerate(op_schema.args_schema):
             if isinstance(obj, TupleStrategy):
                 if tensorlist_len is None:
@@ -657,7 +663,7 @@ def _expand_single_dim_strategy_to_mesh(
         if tensorlist_len is None:
             raise AssertionError("Must have at least one tuple input to a foreach op")
 
-        child_strategies: list[StrategyType] = []
+        child_strategies: List[StrategyType] = []
         for tensorlist_i in range(tensorlist_len):
             per_index_schema, per_index_output_meta = _translate_list_op_schema(
                 op_schema,
@@ -692,11 +698,11 @@ def _expand_single_dim_strategy_to_mesh(
 
 
 def register_single_dim_strategy(
-    op: torch._ops.OpOverload | list[torch._ops.OpOverload],
-    schema_info: RuntimeSchemaInfo | None = None,
-    allow_unbacked_sharding: bool | None = None,
+    op: Union[torch._ops.OpOverload, List[torch._ops.OpOverload]],
+    schema_info: Optional[RuntimeSchemaInfo] = None,
+    allow_unbacked_sharding: Optional[bool] = None,
     allow_uneven_sharding: bool = False,
-    different_mesh_args: list[int] | None = None,
+    different_mesh_args: Optional[List[int]] = None,
 ) -> Callable[[_SingleDimStrategyFunc], _SingleDimStrategyFunc]:
     """
     Registers a single_dim_strategy function for the given op.
@@ -765,23 +771,23 @@ class _PQEntry:
     cost: float
     counter: int
     # Per-input placement tuples representing the current search state.
-    placements: tuple[tuple[Placement, ...], ...] = field(compare=False)
+    placements: Tuple[Tuple[Placement, ...], ...] = field(compare=False)
     # History of (input_idx, mesh_dim, old_placement, new_placement) transitions
     # from the initial state to this state, used for debugging.
-    transitions: list[tuple[int, int, Placement, Placement]] = field(compare=False)
+    transitions: List[Tuple[int, int, Placement, Placement]] = field(compare=False)
     # Accumulated redistribute cost per input (sum of incremental step costs).
-    per_input_costs: tuple[float, ...] = field(compare=False)
+    per_input_costs: Tuple[float, ...] = field(compare=False)
     # Current communication bytes (in GB) per input, updated as placements change.
-    per_input_comm_bytes_gb: tuple[float, ...] = field(compare=False)
+    per_input_comm_bytes_gb: Tuple[float, ...] = field(compare=False)
 
 
 def _get_neighbor_placements(
-    allowed_sharding: set[Shard | _StridedShard],
-    allowed_partial: set[Placement],
+    allowed_sharding: Set[Union[Shard, _StridedShard]],
+    allowed_partial: Set[Placement],
     current: Placement,
-    input_placements: tuple[Placement, ...],
+    input_placements: Tuple[Placement, ...],
     mesh_dim: int,
-) -> list[Placement]:
+) -> List[Placement]:
     """Return valid one-shot placement transitions for one input on one mesh dim.
 
     DTensor placements are applied left-to-right, so a tensor dim sharded on
@@ -803,13 +809,13 @@ def _get_neighbor_placements(
     from torch.distributed.tensor.placement_types import Partial
 
     # Tensor dims sharded by mesh dims to the right of this one.
-    right_shard_dims: set[int] = set()
+    right_shard_dims: Set[int] = set()
     for i in range(mesh_dim + 1, len(input_placements)):
         p = input_placements[i]
         if _is_sharding(p):
             right_shard_dims.add(p.dim)
 
-    neighbors: list[Placement] = []
+    neighbors: List[Placement] = []
 
     if isinstance(current, Replicate):
         neighbors.extend(s for s in allowed_sharding if s.dim not in right_shard_dims)
@@ -835,11 +841,11 @@ def _dijkstra_expand_single_dim_strategy_to_mesh(
     op_schema: OpSchema,
     single_dim_strategy: _SingleDimStrategyInfo
     | Callable[
-        [OpOverload, ArgsType, KwargsType], list[list[Placement | _ShardingPlaceholder]]
+        [OpOverload, ArgsType, KwargsType], List[List[Union[Placement, _ShardingPlaceholder]]]
     ],
-    output_tensor_meta: TensorMeta | Sequence[TensorMeta | None] | None = None,
-    _collect_all_matches: set[tuple[tuple[Placement, ...], ...]] | None = None,
-) -> OpStrategy | None:
+    output_tensor_meta: Union[TensorMeta, Sequence[TensorMeta, None]] | None = None,
+    _collect_all_matches: Set[Tuple[Tuple[Placement, ...], ...]] | None = None,
+) -> Optional[OpStrategy]:
     """
     Find the lowest cost sharding for the given op_schema.
 
@@ -872,7 +878,7 @@ def _dijkstra_expand_single_dim_strategy_to_mesh(
     # Extract input DTensorSpecs from OpStrategy-wrapped args.
     # Fall back for TupleStrategy (e.g. index tensors in index_put) since the PQ
     # search doesn't model variable-length tuple inputs.
-    input_specs: list[DTensorSpec] = []
+    input_specs: List[DTensorSpec] = []
     for arg in op_schema.args_schema:
         if isinstance(arg, OpStrategy):
             if len(arg.strategies) != 1:
@@ -906,7 +912,7 @@ def _dijkstra_expand_single_dim_strategy_to_mesh(
     )
 
     initial_placements = tuple(spec.placements for spec in input_specs)
-    first_result: OpStrategy | None = None
+    first_result: Optional[OpStrategy] = None
 
     # Fast path: if initial placements already match a strategy, skip search
     fast_result = prepared_strategy.try_propagate(mesh, initial_placements, input_specs)
@@ -922,7 +928,7 @@ def _dijkstra_expand_single_dim_strategy_to_mesh(
     # comm_bytes_gb reflects the local shard size given current placements;
     # it's tracked per PQ entry and updated as placements change.
     mesh_topo = MeshTopoInfo.build_from_mesh(mesh)
-    initial_comm_bytes_gb: list[float] = []
+    initial_comm_bytes_gb: List[float] = []
     for spec in input_specs:
         if spec.tensor_meta is None:
             raise AssertionError
@@ -939,8 +945,8 @@ def _dijkstra_expand_single_dim_strategy_to_mesh(
                 num_shards *= mesh_topo.mesh_dim_devices[i]
         initial_comm_bytes_gb.append(total_bytes / num_shards / (1024**3))
 
-    pq: list[_PQEntry] = []
-    visited: set[tuple[tuple[Placement, ...], ...]] = set()
+    pq: List[_PQEntry] = []
+    visited: Set[Tuple[Tuple[Placement, ...], ...]] = set()
     next_counter = count()
 
     initial_per_input_costs = (0.0,) * num_inputs

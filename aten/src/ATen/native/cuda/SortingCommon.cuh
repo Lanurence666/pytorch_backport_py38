@@ -2,6 +2,7 @@
 #include <ATen/core/TensorBase.h>
 #include <ATen/ceil_div.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/OpMathType.h>
 #include <c10/macros/Macros.h>
 #include <stdlib.h>
 #include <ATen/cuda/detail/IndexUtils.cuh>
@@ -46,16 +47,18 @@ inline bool getGridFromTiles(int64_t gridTiles, dim3& grid) {
 template <typename scalar_t, bool handleNaN = false>
 struct GTOp {
   __device__ bool operator()(const scalar_t& lhs, const scalar_t& rhs) const {
+    using opmath_t = at::opmath_type<scalar_t>;
     return (handleNaN && at::_isnan(lhs) && !at::_isnan(rhs)) ||
-        (static_cast<scalar_t>(lhs) > static_cast<scalar_t>(rhs));
+        (static_cast<opmath_t>(lhs) > static_cast<opmath_t>(rhs));
   }
 };
 
 template <typename scalar_t, bool handleNaN = false>
 struct LTOp {
   __device__ bool operator()(const scalar_t& lhs, const scalar_t& rhs) const {
+    using opmath_t = at::opmath_type<scalar_t>;
     return (handleNaN && at::_isnan(rhs) && !at::_isnan(lhs)) ||
-        (static_cast<scalar_t>(lhs) < static_cast<scalar_t>(rhs));
+        (static_cast<opmath_t>(lhs) < static_cast<opmath_t>(rhs));
   }
 };
 

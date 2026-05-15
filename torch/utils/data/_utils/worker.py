@@ -1,17 +1,17 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
 r"""Contains definitions of the methods used by the _BaseDataLoaderIter workers.
 
 These **needs** to be in global scope since Py2 doesn't support serializing
 static methods.
 """
 
-from __future__ import annotations
 
 import os
 import queue
 import random
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Generator, Iterable, Optional, Set, TYPE_CHECKING, Union
 
 import torch
 from torch._utils import ExceptionWrapper
@@ -72,10 +72,10 @@ else:
             return not self.manager_dead
 
 
-_worker_info: WorkerInfo | None = None
+_worker_info: Optional[WorkerInfo]= None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class WorkerInfo:
     """Information about the current DataLoader worker process or thread.
 
@@ -92,11 +92,11 @@ class WorkerInfo:
     num_workers: int
     seed: int
     dataset: Dataset
-    rng: _RNG | None = None
-    worker_method: str | None = "multiprocessing"
+    rng: Optional[_RNG]= None
+    worker_method: Optional[str]= "multiprocessing"
 
 
-def get_worker_info() -> WorkerInfo | None:
+def get_worker_info() -> Optional[WorkerInfo]:
     r"""Returns the information about the current
     :class:`~torch.utils.data.DataLoader` iterator worker process.
 
@@ -138,10 +138,10 @@ r"""Dummy class used to resume the fetching when worker reuse is enabled"""
 
 @dataclass(frozen=True)
 class _ResumeIteration:
-    seed: int | None = None
+    seed: Optional[int]= None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _RNG:
     """Container for thread-local random number generator state.
 
@@ -156,7 +156,7 @@ class _RNG:
 
     random_generator: random.Random
     torch_generator: torch.Generator
-    numpy_generator: object | None = None
+    numpy_generator: Optional[object]= None
 
 
 # The function `_generate_state` is adapted from `numpy.random.SeedSequence`
@@ -365,7 +365,7 @@ def _worker_loop(
                 # processing steps.
                 continue
             idx, index = r
-            data: _IterableDatasetStopIteration | ExceptionWrapper
+            data: Union[_IterableDatasetStopIteration, ExceptionWrapper]
             if init_exception is not None:
                 data = init_exception
                 init_exception = None

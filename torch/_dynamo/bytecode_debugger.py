@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Bytecode debugger for Dynamo-optimized code.
 
@@ -23,18 +24,17 @@ Programmatic breakpoints (for Dynamo developers):
         codegen.extend_output(create_breakpoint())
 """
 
-from __future__ import annotations
 
 import dis
 import sys
 import types
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, cast, TYPE_CHECKING
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, TYPE_CHECKING, Type, Union, cast
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator
+    
 
     from typing_extensions import Self
 
@@ -55,7 +55,7 @@ class _BreakpointMarker:
     """
 
     __slots__ = ()
-    _instance: _BreakpointMarker | None = None
+    _instance: Optional[_BreakpointMarker] = None
 
     def __new__(cls) -> Self:
         if cls._instance is None:
@@ -79,12 +79,12 @@ class CodeInfo:
     """Per-code-object data shared across all frames executing the same code."""
 
     code: types.CodeType
-    instructions: list[Instruction]
-    offset_to_inst: dict[int, Instruction]
-    offset_to_index: dict[int, int]
+    instructions: List[Instruction]
+    offset_to_inst: Dict[int, Instruction]
+    offset_to_index: Dict[int, int]
     index_width: int
     offset_width: int
-    breakpoints: set[int] = field(default_factory=set)
+    breakpoints: Set[int] = field(default_factory=set)
 
 
 @dataclass
@@ -98,11 +98,11 @@ class DebuggerState:
     first_instruction_seen: bool = False
     step_mode: bool = True
     step_count: int = 0  # Remaining steps for "s [n]" command (0 = prompt each time)
-    user_locals: dict[str, Any] = field(
+    user_locals: Dict[str, Any] = field(
         default_factory=dict
     )  # User-defined variables from debugger
     last_command: str = "s"  # Last command for repeat on empty input
-    list_index: int | None = (
+    list_index: Optional[int] = (
         None  # Current position for 'l' command (None = use current)
     )
 
@@ -111,15 +111,15 @@ class DebuggerState:
         return self.code_info.code
 
     @property
-    def instructions(self) -> list[Instruction]:
+    def instructions(self) -> List[Instruction]:
         return self.code_info.instructions
 
     @property
-    def offset_to_inst(self) -> dict[int, Instruction]:
+    def offset_to_inst(self) -> Dict[int, Instruction]:
         return self.code_info.offset_to_inst
 
     @property
-    def offset_to_index(self) -> dict[int, int]:
+    def offset_to_index(self) -> Dict[int, int]:
         return self.code_info.offset_to_index
 
     @property
@@ -131,7 +131,7 @@ class DebuggerState:
         return self.code_info.offset_width
 
     @property
-    def breakpoints(self) -> set[int]:
+    def breakpoints(self) -> Set[int]:
         return self.code_info.breakpoints
 
 
@@ -139,15 +139,15 @@ class _DebugContext:
     """Internal debug context that manages the debugging session."""
 
     def __init__(self) -> None:
-        self._code_info: dict[types.CodeType, CodeInfo] = {}
-        self._frame_states: dict[types.FrameType, DebuggerState] = {}
+        self._code_info: Dict[types.CodeType, CodeInfo] = {}
+        self._frame_states: Dict[types.FrameType, DebuggerState] = {}
         self._active = False
-        self._tracked_codes: set[types.CodeType] = set()
-        self._old_trace: Callable[..., Any] | None = None
-        self._prev_callback: Callable[..., Any] | None = None
-        self._return_from_frame: types.FrameType | None = None
+        self._tracked_codes: Set[types.CodeType] = set()
+        self._old_trace: Optional[Callable[..., Any]] = None
+        self._prev_callback: Optional[Callable[..., Any]] = None
+        self._return_from_frame: Optional[types.FrameType] = None
         self._stop_after_return: bool = False
-        self._next_in_frame: types.FrameType | None = None
+        self._next_in_frame: Optional[types.FrameType] = None
         self._next_count: int = 0
         self._verbose: bool = False
         self._stop_at_new_code: bool = True
@@ -155,7 +155,7 @@ class _DebugContext:
         if _HAS_SYS_MONITORING:
             self._tool_id = sys.monitoring.DEBUGGER_ID
 
-    def get_instructions(self, code: types.CodeType | None = None) -> list[Instruction]:
+    def get_instructions(self, code: Optional[types.CodeType] = None) -> List[Instruction]:
         """Get the list of instructions for a tracked code object.
 
         Args:
@@ -175,7 +175,7 @@ class _DebugContext:
                 return []
         return info.instructions
 
-    def get_tracked_codes(self) -> list[types.CodeType]:
+    def get_tracked_codes(self) -> List[types.CodeType]:
         """Get all code objects that have been tracked by the debugger."""
         return list(self._code_info.keys())
 
@@ -196,8 +196,8 @@ class _DebugContext:
             # dis.get_instructions only reports the instruction start offset,
             # but sys.monitoring RAISE reports offsets within cache entries.
             # Map the full byte range of each instruction so lookups succeed.
-            offset_to_inst: dict[int, Instruction] = {}
-            offset_to_index: dict[int, int] = {}
+            offset_to_inst: Dict[int, Instruction] = {}
+            offset_to_index: Dict[int, int] = {}
             for i, inst in enumerate(instructions):
                 if inst.offset is not None:
                     inst_size = instruction_size(inst)
@@ -212,7 +212,7 @@ class _DebugContext:
             )
 
             # Pre-populate breakpoints from BREAKPOINT_MARKER instructions
-            programmatic_breakpoints: set[int] = {
+            programmatic_breakpoints: Set[int] = {
                 i
                 for i, inst in enumerate(instructions)
                 if self.is_programmatic_breakpoint(inst)
@@ -238,24 +238,24 @@ class _DebugContext:
             self._frame_states[frame] = DebuggerState(code_info=code_info, frame=frame)
         return self._frame_states[frame]
 
-    def _find_frame_for_code(self, code: types.CodeType) -> types.FrameType | None:
+    def _find_frame_for_code(self, code: types.CodeType) -> Optional[types.FrameType]:
         """Walk the stack to find the frame executing the given code."""
-        f: types.FrameType | None = sys._getframe()
+        f: Optional[types.FrameType] = sys._getframe()
         while f is not None:
             if f.f_code is code:
                 return f
             f = f.f_back
         return None
 
-    def _build_tracked_frame_stack(self, state: DebuggerState) -> list[DebuggerState]:
+    def _build_tracked_frame_stack(self, state: DebuggerState) -> List[DebuggerState]:
         """Build list of tracked ancestor frames, outermost-first.
 
         Walks f_back from the current execution frame to find all ancestor
         frames whose code is tracked by the debugger. Returns the corresponding
         DebuggerState objects with the execution state (state) last.
         """
-        ancestors: list[DebuggerState] = []
-        f: types.FrameType | None = state.frame.f_back
+        ancestors: List[DebuggerState] = []
+        f: Optional[types.FrameType] = state.frame.f_back
         while f is not None:
             ancestor_state = self._frame_states.get(f)
             if ancestor_state is not None:
@@ -356,7 +356,7 @@ class _DebugContext:
                 print(f"  {name} = {value!r}")
         print()
 
-    def _print_globals(self, state: DebuggerState, pattern: str | None = None) -> None:
+    def _print_globals(self, state: DebuggerState, pattern: Optional[str] = None) -> None:
         """Print global variables."""
         print("\nGlobals:")
         for name, value in state.frame.f_globals.items():
@@ -411,7 +411,7 @@ class _DebugContext:
 
     def _get_stack_for_eval(
         self, state: DebuggerState, is_current_frame: bool = True
-    ) -> list[Any]:
+    ) -> List[Any]:
         """Get the current stack for use in expression evaluation."""
         from torch._C._dynamo.eval_frame import _get_frame_value_stack_with_depth
 
@@ -423,7 +423,7 @@ class _DebugContext:
 
     def _build_eval_locals(
         self, state: DebuggerState, is_current_frame: bool = True
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """Build locals dict for expression evaluation, including user-defined variables."""
         eval_locals = dict(state.frame.f_locals)
         eval_locals.update(state.user_locals)
@@ -556,8 +556,8 @@ class _DebugContext:
                 # - 'l N' lists 11 instructions starting at N
                 # - 'l first, last' lists range (if last < first, last is a count)
                 num_lines = 11  # pdb default
-                start: int | None = None
-                end: int | None = None
+                start: Optional[int] = None
+                end: Optional[int] = None
 
                 if arg == ".":
                     # Reset to current instruction
@@ -599,8 +599,7 @@ class _DebugContext:
                         start = view_state.list_index
                     end = start + num_lines
 
-                if end is None:
-                    raise AssertionError("end must be set before listing instructions")
+                assert end is not None
                 end = min(len(view_state.instructions), end)
                 if start >= len(view_state.instructions):
                     print("(End of bytecode)")
@@ -730,15 +729,12 @@ class _DebugContext:
                     print(f"*** {type(e).__name__}: {e}")
 
     def _handle_instruction(
-        self, code: types.CodeType, offset: int, frame: types.FrameType | None = None
+        self, code: types.CodeType, offset: int, frame: Optional[types.FrameType] = None
     ) -> None:
         """Common instruction handling logic for both tracing backends."""
         if frame is None:
             frame = self._find_frame_for_code(code)
-            if frame is None:
-                raise AssertionError(
-                    f"Could not find frame for code object {code.co_name}"
-                )
+            assert frame is not None
         state = self._get_or_create_frame_state(code, frame)
 
         # Update stack depth based on the previous instruction's effect.
@@ -847,7 +843,7 @@ class _DebugContext:
             self._interactive_prompt(state)
 
     def _handle_return(
-        self, code: types.CodeType, retval: object, frame: types.FrameType | None = None
+        self, code: types.CodeType, retval: object, frame: Optional[types.FrameType] = None
     ) -> None:
         """Common return handling logic."""
         if self._quitting:
@@ -936,7 +932,7 @@ class _DebugContext:
             sys.monitoring.set_local_events(
                 self._tool_id,
                 code,
-                sys.monitoring.events.INSTRUCTION | sys.monitoring.events.PY_RETURN,
+                Union[sys.monitoring.events.INSTRUCTION, sys.monitoring.events.PY_RETURN],
             )
         # For settrace, we enable opcode tracing when we see the frame
 
@@ -973,7 +969,7 @@ class _DebugContext:
 
     def _settrace_callback(
         self, frame: types.FrameType, event: str, arg: Any
-    ) -> Callable[..., Any] | None:
+    ) -> Optional[Callable[..., Any]]:
         """Trace function for sys.settrace."""
         code = frame.f_code
 
@@ -1058,9 +1054,9 @@ class _DebugContext:
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: types.TracebackType | None,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[types.TracebackType],
     ) -> bool:
         """End the debug context."""
         if not self._active:
@@ -1080,10 +1076,7 @@ class _DebugContext:
                     pass
             else:
                 # Restore outer context's monitoring callbacks and events
-                if not isinstance(prev, types.MethodType):
-                    raise AssertionError(
-                        f"Expected prev callback to be a MethodType, got {type(prev)}"
-                    )
+                assert isinstance(prev, types.MethodType)
                 outer = cast("_DebugContext", prev.__self__)
                 sys.monitoring.register_callback(
                     self._tool_id,

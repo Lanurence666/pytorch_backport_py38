@@ -1,5 +1,6 @@
 # Owner(s): ["module: named tensor"]
 # ruff: noqa: F841
+from __future__ import annotations
 import unittest
 from torch.testing._internal.common_utils import TestCase, run_tests, TEST_NUMPY
 from torch.testing._internal.common_utils import skipIfTorchDynamo

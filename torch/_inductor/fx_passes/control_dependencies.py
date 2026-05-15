@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 Effect ordering pass for inductor.
@@ -8,7 +9,7 @@ operations (e.g., collective_start -> mm -> wait), this pass wraps operations
 with control_deps to make dependencies explicit.
 """
 
-from typing import Any
+from typing import Any, Dict, List, Mapping, Set, Tuple, Type
 
 import torch.fx as fx
 import torch.utils._pytree as pytree
@@ -100,8 +101,8 @@ def get_subgraph_name(gm: fx.GraphModule, name):
 
 
 def _extract_unique_nodes(
-    args: tuple[Any, ...], kwargs: dict[str, Any]
-) -> tuple[list[fx.Node], list[Any], Any]:
+    args: Tuple[Any, ...], kwargs: Dict[str, Any]
+) -> Tuple[List[fx.Node], List[Any], Any]:
     """Extract unique fx.Node instances from args/kwargs using pytree.
 
     Args:
@@ -114,7 +115,7 @@ def _extract_unique_nodes(
         - The pytree spec for reconstructing the original structure
     """
     flat_args_kwargs, spec = pytree.tree_flatten((args, kwargs))
-    unique_nodes: list[fx.Node] = []
+    unique_nodes: List[fx.Node] = []
     seen: OrderedSet[fx.Node] = OrderedSet()
     for item in flat_args_kwargs:
         if isinstance(item, fx.Node) and item not in seen:
@@ -125,7 +126,7 @@ def _extract_unique_nodes(
 
 def preserve_node_ordering(
     graph: fx.Graph,
-    additional_deps_map: dict[fx.Node, OrderedSet[fx.Node]],
+    additional_deps_map: Dict[fx.Node, OrderedSet[fx.Node]],
     verbose: bool = False,
 ) -> None:
     """
@@ -145,7 +146,7 @@ def preserve_node_ordering(
         return
 
     # Track replacements so we can update dependencies
-    replacements: dict[fx.Node, fx.Node] = {}
+    replacements: Dict[fx.Node, fx.Node] = {}
 
     # Process each node that needs additional dependencies
     for dependent_node, dep_nodes in additional_deps_map.items():
@@ -236,7 +237,7 @@ def _create_subgraph_for_node(
     unique_nodes, flat_args_kwargs, spec = _extract_unique_nodes(node.args, node.kwargs)
 
     # Create placeholders for each unique node
-    node_to_placeholder: dict[fx.Node, fx.Node] = {}
+    node_to_placeholder: Dict[fx.Node, fx.Node] = {}
     for idx, orig_node in enumerate(unique_nodes):
         placeholder = subgraph.placeholder(f"arg_{idx}")
         if "val" in orig_node.meta:

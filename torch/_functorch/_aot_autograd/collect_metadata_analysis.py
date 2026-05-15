@@ -13,7 +13,7 @@ a functionalized version of the graph under compilation.
 import collections
 import contextlib
 import logging
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, overload
 
 import torch
 import torch.utils._pytree as pytree
@@ -82,7 +82,7 @@ static_input_logger = getArtifactLogger("torch._dynamo", "cudagraph_static_input
 # Coercing and collecting traced tangents memory format in one recursive traversal
 def coerce_tangent_and_suggest_memory_format(
     x: Tensor,
-) -> tuple[Any, MemoryFormatMeta | list[Any] | None, bool]:
+) -> Union[Tuple[Any, MemoryFormatMeta, List[Any], None, bool]]:
     updated = False
     if not isinstance(x, Tensor):
         return x, None, updated
@@ -166,13 +166,13 @@ def coerce_tangent_and_suggest_memory_format(
 def run_functionalized_fw_and_collect_metadata(
     f: Callable[..., Any],
     *,
-    flat_args_descs: list[AOTInput],
+    flat_args_descs: List[AOTInput],
     keep_input_mutations: bool,
     # Note: this is guaranteed to be set when running under dynamo
-    static_input_indices: list[int] | None = None,
+    static_input_indices: Optional[List[int]]= None,
     pre_dispatch: bool = False,
 ) -> Callable[..., ViewAndMutationMeta]:
-    memo: dict[Tensor, Tensor] = {}
+    memo: Dict[Tensor, Tensor] = {}
 
     # TODO: see if we can rewrite this to be more accurate using
     # overload
@@ -195,8 +195,8 @@ def run_functionalized_fw_and_collect_metadata(
         ):
             raise AssertionError("all flat_args must be KNOWN_TYPES or opaque types")
 
-        input_info: list[InputAliasInfo] = []
-        output_info: list[OutputAliasInfo] = []
+        input_info: List[InputAliasInfo] = []
+        output_info: List[OutputAliasInfo] = []
 
         prior_grad_enabled = torch.is_grad_enabled()
         prior_autocast_states = _get_autocast_states()
@@ -313,18 +313,18 @@ def run_functionalized_fw_and_collect_metadata(
         out_tensor_ids = {id(o): i for i, o in enumerate(flat_f_outs)}
 
         # Keep track of which outputs alias other outputs
-        out_tensor_alias_counts: collections.defaultdict[StorageWeakRef | None, int] = (
+        out_tensor_alias_counts: Union[collections.defaultdict[StorageWeakRef, None, int]]= (
             collections.defaultdict(int)
         )
         # This tells us, for a given group of outputs that alias each other,
         # whether they e.g. all came from an unbind call
         num_aliased_tensors_that_are_multi_output_views: collections.defaultdict[
-            StorageWeakRef | None, int
+            Optional[StorageWeakRef], int
         ] = collections.defaultdict(int)
 
         out_storage_to_metadata_key_to_tensors: collections.defaultdict[
-            StorageWeakRef | None,
-            collections.defaultdict[MetadataKey, set[torch.Tensor]],
+            Optional[StorageWeakRef],
+            collections.defaultdict[MetadataKey, Set[torch.Tensor]],
         ] = collections.defaultdict(lambda: collections.defaultdict(set))
 
         curr_storage = None
@@ -423,9 +423,9 @@ def run_functionalized_fw_and_collect_metadata(
                     ].add(o)
 
         # maps the id of an intermediate base to its index in the output of the compiled forward
-        intermediate_base_tensor_id_to_output_idx: dict[int, int] = {}
-        intermediate_bases: list[torch.Tensor] = []
-        intermediate_bases_descs: list[AOTInput] = []
+        intermediate_base_tensor_id_to_output_idx: Dict[int, int] = {}
+        intermediate_bases: List[torch.Tensor] = []
+        intermediate_bases_descs: List[AOTInput] = []
         # Why Do We Care If Storage Changed?
         # It's important to understand the implications of storage changes in complex scenarios. Take this example:
         #
@@ -461,7 +461,7 @@ def run_functionalized_fw_and_collect_metadata(
                 if not isinstance(o, torch.Tensor)
                 else StorageWeakRef(o.untyped_storage())
             )
-            outs_with_identical_metadata_that_require_grad: list[torch.Tensor] = (
+            outs_with_identical_metadata_that_require_grad: List[torch.Tensor] = (
                 []
                 if not isinstance(o, Tensor)
                 else [

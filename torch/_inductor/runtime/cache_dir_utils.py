@@ -2,10 +2,11 @@ import getpass
 import os
 import re
 import tempfile
-from collections.abc import Generator
+
 from contextlib import contextmanager
 
 from torch._environment import is_fbcode
+from typing import Generator
 
 
 # Factoring out to file without torch dependencies

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Testing utilities for Dynamo, providing a specialized TestCase class and test running functionality.
 
 This module extends PyTorch's testing framework with Dynamo-specific testing capabilities.
@@ -16,8 +17,8 @@ import os
 import re
 import sys
 import unittest
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, List, Set, Tuple, Union
 
 import torch
 import torch.testing
@@ -36,7 +37,7 @@ from . import config, reset, utils
 log = logging.getLogger(__name__)
 
 
-def run_tests(needs: str | tuple[str, ...] = ()) -> None:
+def run_tests(needs: Union[str, Tuple[str, ...]] = ()) -> None:
     from torch.testing._internal.common_utils import run_tests
 
     if TEST_WITH_TORCHDYNAMO or TEST_WITH_CROSSREF:
@@ -177,7 +178,7 @@ class CPythonTestCase(TestCase):
     def compile_fn(
         self,
         fn: Callable[..., Any],
-        backend: str | Callable[..., Any],
+        backend: Union[str, Callable[..., Any]],
         nopython: bool,
     ) -> Callable[..., Any]:
         # We want to compile only the test function, excluding any setup code
@@ -213,7 +214,7 @@ class CPythonTestCase(TestCase):
         search_path = inspect.getfile(cls)
         m = re.search(regex, search_path)
         if m:
-            test_py_ver = tuple(map(int, m.group().removeprefix(prefix).split("_")))
+            test_py_ver = tuple(map(int, m.group()[len(prefix):].split("_")))
             py_ver = sys.version_info[:2]
             if py_ver != test_py_ver:
                 expected = ".".join(map(str, test_py_ver))
@@ -231,7 +232,6 @@ class CPythonTestCase(TestCase):
         cls._stack.enter_context(  # type: ignore[attr-defined]
             config.patch(
                 enable_trace_unittest=True,
-                enable_trace_load_build_class=True,
             ),
         )
 

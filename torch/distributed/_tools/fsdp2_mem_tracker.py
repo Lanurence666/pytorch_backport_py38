@@ -1,9 +1,11 @@
-from collections.abc import Callable
+from __future__ import annotations
+
+
 from copy import deepcopy
 from enum import auto, Enum
 from functools import partial, wraps
-from typing import Any, NamedTuple, TYPE_CHECKING, TypeVar
-from typing_extensions import ParamSpec, TypeVarTuple, Unpack
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Tuple, Type, TypeVar, Union
+from typing_extensions import NamedTuple, ParamSpec, TypeVarTuple, Unpack
 
 import torch
 import torch.distributed._tools.fake_collectives
@@ -104,9 +106,9 @@ class _FSDPModMemStats:
 
     def __init__(self, mod_fqn: str) -> None:
         self.mod_fqn = mod_fqn
-        self.local_peak: dict[torch.device, int] = {}
-        self.snapshots: dict[
-            _FSDPModState, list[dict[torch.device, dict[str, int]]]
+        self.local_peak: Dict[torch.device, int] = {}
+        self.snapshots: Dict[
+            _FSDPModState, List[Dict[torch.device, Dict[str, int]]]
         ] = {}
 
 
@@ -162,7 +164,7 @@ class FSDPMemTracker(MemTracker):
     def __init__(
         self,
         mod: torch.nn.Module,
-        optm: torch.optim.Optimizer | None = None,
+        optm: Optional[torch.optim.Optimizer]= None,
     ) -> None:
         super().__init__()
         if not isinstance(mod, FSDPModule):
@@ -171,7 +173,7 @@ class FSDPMemTracker(MemTracker):
         self._optm = optm
         self._fsdp_mod_to_saved_methods: WeakIdKeyDictionary = WeakIdKeyDictionary()
         self._fsdp_state: _FSDPState = _FSDPState.PRE_FW
-        self._ref_class: type[_RefType] = _FSDPRefType
+        self._ref_class: Type[_RefType] = _FSDPRefType
 
     def _instrument_fsdp_sharded_params_grads(
         self, fsdp_param_group: FSDPParamGroup
@@ -192,8 +194,8 @@ class FSDPMemTracker(MemTracker):
     def _fsdp_state_pre_forward(
         self,
         fsdp_mod: FSDPModule,
-        orig_fsdp_state_pre_fw: Callable[_P, tuple[tuple[Unpack[_Ts]], dict[str, Any]]],
-    ) -> Callable[_P, tuple[tuple[Unpack[_Ts]], dict[str, Any]]]:
+        orig_fsdp_state_pre_fw: Callable[_P, Tuple[Tuple[Unpack[_Ts]], Dict[str, Any]]],
+    ) -> Callable[_P, Tuple[Tuple[Unpack[_Ts]], Dict[str, Any]]]:
         # We capture memory snapshots before and after ``FSDPState._pre_forward`` to attribute the `unsharded` params
         # and `all_gather` buffers.  There are three cases:
         # Case 1: If the module is not in the ``memory_tracking`` dictionary, create a new ``_FSDPModMemStats``
@@ -210,7 +212,7 @@ class FSDPMemTracker(MemTracker):
         @wraps(orig_fsdp_state_pre_fw)
         def inner(
             *args: _P.args, **kwargs: _P.kwargs
-        ) -> tuple[tuple[Unpack[_Ts]], dict[str, Any]]:
+        ) -> Tuple[Tuple[Unpack[_Ts]], Dict[str, Any]]:
             self._fsdp_state = _FSDPState.PRE_FW
             mod_fqn = self._mod_tracker.get_known_fqn(fsdp_mod)
             if mod_fqn is None:
@@ -375,7 +377,7 @@ class FSDPMemTracker(MemTracker):
 
         # get the unique _MultiHandlers/RemoveHandlers and store in dictionary
         # the _MultiHandlers object will only need to be grabbed once.
-        unique_handlers: dict[RemovableHandle, bool] = {}
+        unique_handlers: Dict[RemovableHandle, bool] = {}
 
         for module in self._root_mod.modules():
             if isinstance(module, FSDPModule):
@@ -479,7 +481,7 @@ class FSDPMemTracker(MemTracker):
                 handle.remove()
             self._optimizer_hook_handles = None
 
-    def track_inputs(self, inputs: tuple[Any, ...]) -> None:
+    def track_inputs(self, inputs: Tuple[Any, ...]) -> None:
         """
         This is used to track the input tensors to the model and annotate them as ``Inputs``.
         Args:
@@ -496,7 +498,7 @@ class FSDPMemTracker(MemTracker):
         tree_map_only(torch.Tensor, _track_inputs, inputs)
 
     def track_external(
-        self, *external: nn.Module | optim.Optimizer | torch.Tensor
+        self, *external: Union[Union[nn.Module, optim.Optimizer], torch.Tensor]
     ) -> None:
         """This is no-op for ``FSDPMemTracker``"""
 

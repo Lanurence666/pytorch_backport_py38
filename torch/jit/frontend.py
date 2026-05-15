@@ -76,6 +76,16 @@ from torch.jit._monkeytype_config import get_qualified_name, monkeytype_trace
 # Borrowed from cPython implementation
 # https://github.com/python/cpython/blob/561612d8456cfab5672c9b445521113b847bd6b3/Lib/textwrap.py#L411#
 
+try:
+    from ast import unparse as _ast_unparse_compat
+except ImportError:
+    import ast as _ast_mod
+    def _ast_unparse_compat(node):
+        try:
+            import astunparse
+            return astunparse.unparse(node)
+        except ImportError:
+            return _ast_mod.dump(node)
 _reserved_prefix = "__jit"
 _reserved_names = {"print"}
 _identifier_chars = set(string.ascii_lowercase + string.ascii_uppercase + string.digits)
@@ -586,10 +596,10 @@ def build_ignore_context_manager(ctx, stmt):
     ignore_func_str = f"""\
 # Backward compat: These used to be imported into the outer global scope so some
 # code may still expect them.
-from typing import List, Dict, Tuple
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type, overload
 
 @torch.jit.ignore
-{ast.unparse(ignore_function)}
+{_ast_unparse_compat(ignore_function)}
 """
     g = copy.copy(globals())
     exec(ignore_func_str, g)  # noqa: P204

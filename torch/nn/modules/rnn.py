@@ -1,16 +1,26 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 import numbers
 import warnings
 import weakref
-from typing import overload
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, overload
 from typing_extensions import deprecated
 
 import torch
 from torch import _VF, Tensor
 from torch.nn import init
 from torch.nn.parameter import Parameter
+
+
+def _zip_strict(*iterables):
+    iterables = [list(it) for it in iterables]
+    lengths = [len(it) for it in iterables]
+    if len(set(lengths)) > 1:
+        raise ValueError(f"Iterables have different lengths: {lengths}")
+    return zip(*iterables)
 from torch.nn.utils.rnn import PackedSequence
 
 from .module import Module
@@ -106,7 +116,7 @@ class RNNBase(Module):
         self.dropout = float(dropout)
         self.bidirectional = bidirectional
         self.proj_size = proj_size
-        self._flat_weight_refs: list[weakref.ReferenceType[Parameter] | None] = []
+        self._flat_weight_refs: Optional[List[weakref.ReferenceType[Parameter]]] = []
         num_directions = 2 if bidirectional else 1
 
         if (
@@ -185,7 +195,7 @@ class RNNBase(Module):
                 # Second bias vector included for CuDNN compatibility. Only one
                 # bias vector is needed in standard definition.
                 b_hh = Parameter(torch.empty(gate_size, **factory_kwargs))
-                layer_params: tuple[Tensor, ...] = ()
+                layer_params: Tuple[Tensor, ...] = ()
                 if self.proj_size == 0:
                     if bias:
                         layer_params = (w_ih, w_hh, b_ih, b_hh)
@@ -208,7 +218,7 @@ class RNNBase(Module):
                     param_names += ["weight_hr_l{}{}"]
                 param_names = [x.format(layer, suffix) for x in param_names]
 
-                for name, param in zip(param_names, layer_params, strict=True):
+                for name, param in _zip_strict(param_names, layer_params):
                     setattr(self, name, param)
                 self._flat_weights_names.extend(param_names)
                 self._all_weights.append(param_names)
@@ -310,7 +320,7 @@ class RNNBase(Module):
         for weight in self.parameters():
             init.uniform_(weight, -stdv, stdv)
 
-    def check_input(self, input: Tensor, batch_sizes: Tensor | None) -> None:
+    def check_input(self, input: Tensor, batch_sizes: Optional[Tensor]) -> None:
         if not torch.jit.is_scripting():
             if (
                 input.dtype != self._flat_weights[0].dtype  # type: ignore[union-attr]
@@ -331,8 +341,8 @@ class RNNBase(Module):
             )
 
     def get_expected_hidden_size(
-        self, input: Tensor, batch_sizes: Tensor | None
-    ) -> tuple[int, int, int]:
+        self, input: Tensor, batch_sizes: Optional[Tensor]
+    ) -> Tuple[int, int, int]:
         if batch_sizes is not None:
             mini_batch = int(batch_sizes[0])
         else:
@@ -355,7 +365,7 @@ class RNNBase(Module):
     def check_hidden_size(
         self,
         hx: Tensor,
-        expected_hidden_size: tuple[int, int, int],
+        expected_hidden_size: Tuple[int, int, int],
         msg: str = "Expected hidden size {}, got {}",
     ) -> None:
         if hx.size() != expected_hidden_size:
@@ -365,9 +375,8 @@ class RNNBase(Module):
         # Returns True if the weight tensors have changed since the last forward pass.
         # This is the case when used with torch.func.functional_call(), for example.
         weights_changed = False
-        for ref, name in zip(
-            self._flat_weight_refs, self._flat_weights_names, strict=True
-        ):
+        for ref, name in _zip_strict(
+            self._flat_weight_refs, self._flat_weights_names):
             weight = getattr(self, name) if hasattr(self, name) else None
             if weight is not None and ref is not None and ref() is not weight:
                 weights_changed = True
@@ -375,14 +384,14 @@ class RNNBase(Module):
         return weights_changed
 
     def check_forward_args(
-        self, input: Tensor, hidden: Tensor, batch_sizes: Tensor | None
+        self, input: Tensor, hidden: Tensor, batch_sizes: Optional[Tensor]
     ) -> None:
         self.check_input(input, batch_sizes)
         expected_hidden_size = self.get_expected_hidden_size(input, batch_sizes)
 
         self.check_hidden_size(hidden, expected_hidden_size)
 
-    def permute_hidden(self, hx: Tensor, permutation: Tensor | None):
+    def permute_hidden(self, hx: Tensor, permutation: Optional[Tensor]):
         if permutation is None:
             return hx
         return _apply_permutation(hx, permutation)
@@ -468,7 +477,7 @@ class RNNBase(Module):
         ]
 
     @property
-    def all_weights(self) -> list[list[Parameter]]:
+    def all_weights(self) -> List[List[Parameter]]:
         return [
             [getattr(self, weight) for weight in weights]
             for weights in self._all_weights
@@ -658,8 +667,8 @@ class RNN(RNNBase):
     def forward(
         self,
         input: Tensor,
-        hx: Tensor | None = None,
-    ) -> tuple[Tensor, Tensor]:
+        hx: Optional[Tensor]= None,
+    ) -> Tuple[Tensor, Tensor]:
         pass
 
     @overload
@@ -667,8 +676,8 @@ class RNN(RNNBase):
     def forward(
         self,
         input: PackedSequence,
-        hx: Tensor | None = None,
-    ) -> tuple[PackedSequence, Tensor]:
+        hx: Optional[Tensor]= None,
+    ) -> Tuple[PackedSequence, Tensor]:
         pass
 
     def forward(self, input, hx=None):
@@ -1009,8 +1018,8 @@ class LSTM(RNNBase):
         super().__init__("LSTM", *args, **kwargs)
 
     def get_expected_cell_size(
-        self, input: Tensor, batch_sizes: Tensor | None
-    ) -> tuple[int, int, int]:
+        self, input: Tensor, batch_sizes: Optional[Tensor]
+    ) -> Tuple[int, int, int]:
         if batch_sizes is not None:
             mini_batch = int(batch_sizes[0])
         else:
@@ -1029,8 +1038,8 @@ class LSTM(RNNBase):
     def check_forward_args(
         self,
         input: Tensor,
-        hidden: tuple[Tensor, Tensor],  # type: ignore[override]
-        batch_sizes: Tensor | None,
+        hidden: Tuple[Tensor, Tensor],  # type: ignore[override]
+        batch_sizes: Union[Tensor, None,]
     ) -> None:
         self.check_input(input, batch_sizes)
         self.check_hidden_size(
@@ -1047,9 +1056,9 @@ class LSTM(RNNBase):
     # Same as above, see torch/nn/modules/module.py::_forward_unimplemented
     def permute_hidden(  # type: ignore[override]
         self,
-        hx: tuple[Tensor, Tensor],
-        permutation: Tensor | None,
-    ) -> tuple[Tensor, Tensor]:
+        hx: Tuple[Tensor, Tensor],
+        permutation: Union[Tensor, None,]
+    ) -> Tuple[Tensor, Tensor]:
         if permutation is None:
             return hx
         return _apply_permutation(hx[0], permutation), _apply_permutation(
@@ -1062,8 +1071,8 @@ class LSTM(RNNBase):
     def forward(
         self,
         input: Tensor,
-        hx: tuple[Tensor, Tensor] | None = None,
-    ) -> tuple[Tensor, tuple[Tensor, Tensor]]:
+        hx: Optional[Tuple[Tensor, Tensor]]= None,
+    ) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
         pass
 
     # Same as above, see torch/nn/modules/module.py::_forward_unimplemented
@@ -1072,8 +1081,8 @@ class LSTM(RNNBase):
     def forward(
         self,
         input: PackedSequence,
-        hx: tuple[Tensor, Tensor] | None = None,
-    ) -> tuple[PackedSequence, tuple[Tensor, Tensor]]:
+        hx: Optional[Tuple[Tensor, Tensor]]= None,
+    ) -> Tuple[PackedSequence, Tuple[Tensor, Tensor]]:
         pass
 
     def forward(self, input, hx=None):
@@ -1360,8 +1369,8 @@ class GRU(RNNBase):
     def forward(
         self,
         input: Tensor,
-        hx: Tensor | None = None,
-    ) -> tuple[Tensor, Tensor]:
+        hx: Optional[Tensor]= None,
+    ) -> Tuple[Tensor, Tensor]:
         pass
 
     @overload
@@ -1369,8 +1378,8 @@ class GRU(RNNBase):
     def forward(
         self,
         input: PackedSequence,
-        hx: Tensor | None = None,
-    ) -> tuple[PackedSequence, Tensor]:
+        hx: Optional[Tensor]= None,
+    ) -> Tuple[PackedSequence, Tensor]:
         pass
 
     def forward(self, input, hx=None):
@@ -1608,7 +1617,7 @@ class RNNCell(RNNCellBase):
         super().__init__(input_size, hidden_size, bias, num_chunks=1, **factory_kwargs)
         self.nonlinearity = nonlinearity
 
-    def forward(self, input: Tensor, hx: Tensor | None = None) -> Tensor:
+    def forward(self, input: Tensor, hx: Optional[Tensor] = None) -> Tensor:
         if input.dim() not in (1, 2):
             raise ValueError(
                 f"RNNCell: Expected input to be 1D or 2D, got {input.dim()}D instead"
@@ -1728,8 +1737,8 @@ class LSTMCell(RNNCellBase):
         super().__init__(input_size, hidden_size, bias, num_chunks=4, **factory_kwargs)
 
     def forward(
-        self, input: Tensor, hx: tuple[Tensor, Tensor] | None = None
-    ) -> tuple[Tensor, Tensor]:
+        self, input: Tensor, hx: Optional[Tuple[Tensor, Tensor]] = None
+    ) -> Tuple[Tensor, Tensor]:
         if input.dim() not in (1, 2):
             raise ValueError(
                 f"LSTMCell: Expected input to be 1D or 2D, got {input.dim()}D instead"
@@ -1839,7 +1848,7 @@ class GRUCell(RNNCellBase):
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__(input_size, hidden_size, bias, num_chunks=3, **factory_kwargs)
 
-    def forward(self, input: Tensor, hx: Tensor | None = None) -> Tensor:
+    def forward(self, input: Tensor, hx: Optional[Tensor] = None) -> Tensor:
         if input.dim() not in (1, 2):
             raise ValueError(
                 f"GRUCell: Expected input to be 1D or 2D, got {input.dim()}D instead"

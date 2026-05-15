@@ -1,8 +1,9 @@
+from __future__ import annotations
 import itertools
 import unittest.mock
-from collections.abc import Callable, Generator, Iterator
+
 from contextlib import contextmanager
-from typing import TypeVar
+from typing import Callable, Generator, Iterator, Type, TypeVar, Union, overload
 from typing_extensions import ParamSpec
 
 import torch
@@ -119,7 +120,7 @@ def _fmt(a: object) -> object:
 
 def make_crossref_functionalize(
     op: torch._ops.OpOverload[_P, _T], final_key: DispatchKey
-) -> Callable[_P, _T] | DispatchKey:
+) -> Union[Callable[_P, _T], DispatchKey]:
     from torch._subclasses.fake_tensor import FakeTensorMode
 
     # This case is pretty weird, suppress it for now
@@ -129,7 +130,7 @@ def make_crossref_functionalize(
     def handler(*args: _P.args, **kwargs: _P.kwargs) -> _T:
         fake_mode = FakeTensorMode()
 
-        def fakeify_defun(t: _R) -> _R | torch._subclasses.fake_tensor.FakeTensor:
+        def fakeify_defun(t: _R) -> Union[_R, torch._subclasses.fake_tensor.FakeTensor]:
             if isinstance(t, torch.Tensor):
                 if torch._is_functional_tensor(t):
                     r = torch._from_functional_tensor(t)
@@ -149,7 +150,7 @@ def make_crossref_functionalize(
                 return fake_mode.from_tensor(r)
             return t
 
-        def maybe_detach(t: _R) -> _R | torch.Tensor:
+        def maybe_detach(t: _R) -> Union[_R, torch.Tensor]:
             if isinstance(t, torch.Tensor):
                 return t.detach()
             else:
@@ -157,10 +158,7 @@ def make_crossref_functionalize(
 
         # TODO: This probably does the wrong thing if you're running other
         # substantive modes with the normal op outside here
-        with (
-            torch.utils._python_dispatch._disable_current_modes(),
-            suspend_functionalization(),
-        ):
+        with torch.utils._python_dispatch._disable_current_modes(), suspend_functionalization():
             f_args, f_kwargs = pytree.tree_map(fakeify_defun, (args, kwargs))
             orig_f_args, orig_f_kwargs = pytree.tree_map(
                 maybe_detach, (f_args, f_kwargs)
@@ -194,10 +192,7 @@ def enable_crossref_functionalize() -> Generator[None, None, None]:
     for op in all_py_loaded_overloads():
         op._uncache_dispatch(torch._C.DispatchKey.Functionalize)
     try:
-        with (
-            enable_python_dispatcher(),
-            unittest.mock.patch("torch._dispatch.python.CROSSREF_FUNCTIONALIZE", True),
-        ):
+        with enable_python_dispatcher(), unittest.mock.patch("torch._dispatch.python.CROSSREF_FUNCTIONALIZE", True):
             yield
     finally:
         for op in all_py_loaded_overloads():

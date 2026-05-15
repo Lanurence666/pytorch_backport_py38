@@ -1,17 +1,20 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 from collections import defaultdict
 
 import torch
 from torch.export.unflatten import _ModuleFrame, _SubmoduleEntry
+from typing import Dict, List, Set
 
 
 def _outline_submodules(orig_graph: torch.fx.Graph) -> torch.fx.GraphModule:
     # Create an empty GraphModule to hold the outlined modules
     new_module = torch.fx.GraphModule(torch.nn.Module(), torch.fx.Graph())
-    seen_nodes: dict[str, torch.fx.Node] = {}
-    seen_modules: dict[int, list[_SubmoduleEntry]] = defaultdict(list)
-    seen_attrs: dict[str, set[str]] = defaultdict(set)
-    created_modules: dict[str, torch.nn.Module] = {}
+    seen_nodes: Dict[str, torch.fx.Node] = {}
+    seen_modules: Dict[int, List[_SubmoduleEntry]] = defaultdict(list)
+    seen_attrs: Dict[str, Set[str]] = defaultdict(set)
+    created_modules: Dict[str, torch.nn.Module] = {}
     _ModuleFrame(
         orig_graph,
         tuple(orig_graph.nodes),

@@ -4,6 +4,7 @@
 # Tests compiling the inductor tests in a subprocess.
 #
 
+from __future__ import annotations
 import contextlib
 import importlib
 import os
@@ -121,8 +122,8 @@ class TestSubprocess(TestCase):
 
         torch._inductor.compile_fx.fx_compile_progressive = True
 
-        x = torch.randn(1152, 4096, device=GPU_TYPE, dtype=torch.bfloat16)
-        y = torch.randn(4096, 4096, device=GPU_TYPE, dtype=torch.bfloat16)
+        x = torch.randn(1152, 1024, device=GPU_TYPE, dtype=torch.bfloat16)
+        y = torch.randn(1024, 1024, device=GPU_TYPE, dtype=torch.bfloat16)
 
         @torch.compile(fullgraph=True, backend="inductor")
         def optimized(x, y):

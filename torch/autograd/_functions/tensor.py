@@ -6,6 +6,7 @@ from typing_extensions import deprecated
 import torch
 import torch._utils
 from torch.autograd.function import Function
+from typing import Type
 
 
 class Type(Function):

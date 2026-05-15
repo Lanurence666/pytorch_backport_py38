@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Stateless PRNG APIs.
 
 These are experimental and subject to change without notice.
@@ -7,10 +8,11 @@ Access via ``torch.func._random``.
 from collections.abc import Sequence
 
 import torch
+from typing import Optional, Sequence, Tuple, overload
 
 
 def key(
-    seed: int, impl: str = "philox4x32-10", device: torch.device | None = None
+    seed: int, impl: str = "philox4x32-10", device: Optional[torch.device] = None
 ) -> torch.Tensor:
     r"""Create a PRNG key from a seed.
 
@@ -141,10 +143,10 @@ def normal_(
 
 def normal(
     key: torch.Tensor,
-    *shape: tuple[int, ...],
+    *shape: Tuple[int, ...],
     mean: float = 0.0,
     std: float = 1.0,
-    dtype: torch.dtype | None = None,
+    dtype: torch.Optional[dtype] = None
 ) -> torch.Tensor:
     r"""Generate normally distributed random values from a PRNG key.
 
@@ -221,10 +223,10 @@ def uniform_(
 
 def uniform(
     key: torch.Tensor,
-    *shape: tuple[int, ...],
+    *shape: Tuple[int, ...],
     low: float = 0.0,
     high: float = 1.0,
-    dtype: torch.dtype | None = None,
+    dtype: torch.Optional[dtype] = None
 ) -> torch.Tensor:
     r"""Generate uniformly distributed random values from a PRNG key.
 

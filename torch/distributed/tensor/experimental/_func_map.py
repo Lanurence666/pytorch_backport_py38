@@ -1,7 +1,10 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 import functools
-from collections.abc import Callable, Sequence
+from typing import Callable, Optional, Sequence, Tuple, Type, Union
+from collections.abc import Callable
 
 import torch
 from torch.distributed._functional_collectives import AsyncCollectiveTensor
@@ -17,17 +20,17 @@ except ImportError:
 
 __all__ = ["local_map"]
 
-PlacementType = Sequence[Placement] | None
-InputPlacements = tuple[PlacementType, ...] | None
-OutputPlacements = PlacementType | tuple[PlacementType, ...]
+PlacementType = Optional[Sequence[Placement]]
+InputPlacements = Optional[Tuple[PlacementType, ...]]
+OutputPlacements = Union[PlacementType, Tuple[PlacementType, ...]]
 
 
 def local_map(
-    func: Callable | None = None,
+    func: Optional[Callable] = None,
     out_placements: OutputPlacements = None,
     in_placements: InputPlacements = None,
     in_grad_placements: InputPlacements = None,
-    device_mesh: DeviceMesh | None = None,
+    device_mesh: Optional[DeviceMesh] = None,
     *,
     redistribute_inputs: bool = False,
 ):
@@ -162,7 +165,7 @@ def _local_map_wrapped(
     out_placements: OutputPlacements,
     in_placements: InputPlacements,
     in_grad_placements: InputPlacements,
-    device_mesh: DeviceMesh | None,
+    device_mesh: Optional[DeviceMesh],
     redistribute_inputs: bool,
     *args,
     **kwargs,

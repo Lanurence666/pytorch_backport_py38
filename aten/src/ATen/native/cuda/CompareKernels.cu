@@ -1,9 +1,11 @@
 #define TORCH_ASSERT_NO_OPERATORS
 #include <ATen/Dispatch.h>
+#include <ATen/AccumulateType.h>
 #include <ATen/native/BinaryOps.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/cuda/Loops.cuh>
+#include <ATen/OpMathType.h>
 
 
 // NOTE: CUDA on Windows requires that the enclosing function
@@ -18,14 +20,17 @@ struct CompareFunctor{
   constexpr CompareFunctor(OpType op): op_(op) {};
   OpType op_;
   __device__ __forceinline__ bool operator() (scalar_t a, scalar_t b) const {
+    using opmath_t = at::opmath_type<scalar_t>;
+    auto fa = static_cast<opmath_t>(a);
+    auto fb = static_cast<opmath_t>(b);
     if (op_ == OpType::GE) {
-      return a >= b;
+      return fa >= fb;
     } else if (op_ == OpType::GT) {
-      return a > b;
+      return fa > fb;
     } else if (op_ == OpType::LE) {
-      return a <= b;
+      return fa <= fb;
     } else { //LT
-      return a < b;
+      return fa < fb;
     }
   }
 };

@@ -29,14 +29,13 @@ Error Formatting:
 import json
 import logging
 import re
-import sys
 import textwrap
 import typing
 from enum import auto, Enum
 from functools import lru_cache
 from pathlib import Path
-from traceback import format_exc, format_list, FrameSummary, StackSummary
-from typing import Any, NoReturn, TYPE_CHECKING
+from traceback import extract_stack, format_exc, format_list, FrameSummary, StackSummary
+from typing import Any, Dict, List, NoReturn, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import torch._guards
 from torch._utils_internal import get_file_path_2
@@ -82,8 +81,8 @@ class TorchDynamoException(RuntimeError):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._torch_dynamo_tracer_output: DynamoTracerOutput | None = None
-        self.frame_exec_strategy: FrameExecStrategy | None = None
+        self._torch_dynamo_tracer_output: Optional[DynamoTracerOutput] = None
+        self.frame_exec_strategy: Optional[FrameExecStrategy] = None
 
 
 class InternalTorchDynamoError(TorchDynamoException):
@@ -95,9 +94,9 @@ class ResumePrologueTracingError(TorchDynamoException):
 
 
 class RestartAnalysis(TorchDynamoException):
-    restart_reason: str | None
+    restart_reason: Optional[str]
 
-    def __init__(self, *args: Any, restart_reason: str | None = None) -> None:
+    def __init__(self, *args: Any, restart_reason: Optional[str] = None) -> None:
         self.restart_reason = restart_reason
         super().__init__(*args)
 
@@ -142,7 +141,7 @@ class SkipFrame(TorchDynamoException):
 
 
 class TorchRuntimeError(TorchDynamoException):
-    def __init__(self, msg: str, real_stack: StackSummary | None = None) -> None:
+    def __init__(self, msg: str, real_stack: Optional[StackSummary] = None) -> None:
         super().__init__(msg)
         self.msg = msg
         self.real_stack = (
@@ -173,7 +172,7 @@ class ResetRequired(TorchDynamoException):
 
 class ShortenTraceback(TorchDynamoException):
     def __init__(
-        self, *args: Any, first_useful_frame: types.FrameType | None, **kwargs: Any
+        self, *args: Any, first_useful_frame: Optional[types.FrameType], **kwargs: Any
     ) -> None:
         super().__init__(*args, **kwargs)
         self.first_useful_frame = first_useful_frame
@@ -184,8 +183,7 @@ class ShortenTraceback(TorchDynamoException):
             return self
         while tb.tb_frame is not self.first_useful_frame:
             tb = tb.tb_next
-            if tb is None:
-                raise AssertionError("internal error, please report a bug")
+            assert tb is not None, "internal error, please report a bug"
         return self.with_traceback(tb)
 
 
@@ -194,7 +192,7 @@ class BackendCompilerFailed(ShortenTraceback):
         self,
         backend_fn: Any,
         inner_exception: Exception,
-        first_useful_frame: types.FrameType | None,
+        first_useful_frame: Union[types.FrameType, None,]
     ) -> None:
         self.backend_name = getattr(backend_fn, "__name__", "?")
         self.inner_exception = inner_exception
@@ -215,8 +213,8 @@ class Unsupported(TorchDynamoException):
         gb_type: str = "",
         skip_frame: bool = False,
         *,
-        case_name: str | None = None,
-        real_stack: StackSummary | None = None,
+        case_name: Optional[str]= None,
+        real_stack: Optional[StackSummary]= None,
     ) -> None:
         super().__init__(msg)
         if not real_stack:
@@ -224,14 +222,13 @@ class Unsupported(TorchDynamoException):
         self.real_stack = real_stack
         self.msg = msg
         self.skip_frame = skip_frame
-        self.category: str | None = None
+        self.category: Optional[str] = None
         self.add_to_stats()
-        self.gb_type: str | None = gb_type
+        self.gb_type: Optional[str] = gb_type
         self.logged = False
 
     def remove_from_stats(self) -> None:
-        if self.category is None:
-            raise AssertionError("category must be set before removing from stats")
+        assert self.category is not None
         counters[self.category][self.msg] -= 1
         if counters[self.category][self.msg] <= 0:
             del counters[self.category][self.msg]
@@ -273,7 +270,7 @@ class UserErrorType(Enum):
 
 class UserError(TorchDynamoException):
     def __init__(
-        self, error_type: UserErrorType, msg: str, case_name: str | None = None
+        self, error_type: UserErrorType, msg: str, case_name: Optional[str] = None
     ) -> None:
         """
         Type of errors that would be valid in Eager, but not supported in TorchDynamo.
@@ -284,8 +281,7 @@ class UserError(TorchDynamoException):
         case_name: (Optional) Unique name (snake case) for the usage example in exportdb.
         """
         if case_name is not None:
-            if not isinstance(case_name, str):
-                raise AssertionError(f"case_name must be a str, got {type(case_name)}")
+            assert isinstance(case_name, str)
             if msg.endswith("."):
                 msg += " "
             else:
@@ -302,7 +298,7 @@ class UserError(TorchDynamoException):
 
 # debug exception thrown when tracing torch._dynamo.step_unsupported()
 class StepUnsupported(TorchDynamoException):
-    def __init__(self, msg: str, real_stack: StackSummary | None = None) -> None:
+    def __init__(self, msg: str, real_stack: Optional[StackSummary] = None) -> None:
         super().__init__(msg)
         self.msg = msg
         if not real_stack:
@@ -316,7 +312,7 @@ class UnsafeScriptObjectError(TorchDynamoException):
 
 
 class UncapturedHigherOrderOpError(TorchDynamoException):
-    def __init__(self, msg: str, real_stack: StackSummary | None = None) -> None:
+    def __init__(self, msg: str, real_stack: Optional[StackSummary] = None) -> None:
         super().__init__(msg)
         self.msg = msg
         self.real_stack = (
@@ -340,7 +336,7 @@ class PackageError(TorchDynamoException):
 class ObservedException(TorchDynamoException):
     # An exception observed during the tracing. This exception is used by Dynamo to handle exceptions.
     def __init__(
-        self, *args: Any, real_stack: StackSummary | None = None, **kwargs: Any
+        self, *args: Any, real_stack: Optional[StackSummary] = None, **kwargs: Any
     ) -> None:
         super().__init__(*args, **kwargs)
         self.real_stack: StackSummary = (
@@ -352,12 +348,12 @@ class ObservedException(TorchDynamoException):
 
 class ObservedUserStopIteration(ObservedException):
     # An UserStopIteration exception observed during the Dynamo tracing (e.g Dynamo tracing __next__)
-    value: Any | None
+    value: Optional[Any]
 
     # Reference `StopIteration_init` in CPython
     # https://github.com/python/cpython/blob/3.11/Objects/exceptions.c#L568-L584
     def __init__(
-        self, *args: Any, real_stack: StackSummary | None = None, **kwargs: Any
+        self, *args: Any, real_stack: Optional[StackSummary] = None, **kwargs: Any
     ) -> None:
         super().__init__("unhandled `raise StopIteration`", real_stack=real_stack)
         if len(args) > 0:
@@ -417,7 +413,7 @@ observed_exception_map = {
 }
 
 
-def get_dynamo_observed_exception(exc_type: type[Exception]) -> type[ObservedException]:
+def get_dynamo_observed_exception(exc_type: Type[Exception]) -> Type[ObservedException]:
     if exc_type not in observed_exception_map:
         name = getattr(exc_type, "__name__", str(exc_type))
         observed_exception_map[exc_type] = type(  # type: ignore[assignment]
@@ -428,11 +424,11 @@ def get_dynamo_observed_exception(exc_type: type[Exception]) -> type[ObservedExc
 
 
 def raise_observed_exception(
-    exc_type: type[Exception],
+    exc_type: Type[Exception],
     tx: InstructionTranslatorBase,
     *,
-    args: list[VariableTracker] | list[str] | None = None,
-    kwargs: dict[str, VariableTracker] | None = None,
+    args: Optional[Union[List[VariableTracker], List[str]]]= None,
+    kwargs: Optional[Dict[str, VariableTracker]]= None,
 ) -> NoReturn:
     from .symbolic_convert import ExceptionVals
     from .variables.builder import SourcelessBuilder
@@ -443,15 +439,14 @@ def raise_observed_exception(
             for arg in args
         ]
     else:
-        args_: list[VariableTracker] = []
+        args_: List[VariableTracker] = []
 
     # CPython here raises an exception. Since there is no python code, we have to manually setup the exception
     # stack and raise the exception.
     exception_vt = SourcelessBuilder.create(tx, exc_type).call_function(
         tx, args_, kwargs or {}
     )
-    if not isinstance(exception_vt, ExceptionVals):
-        raise AssertionError(f"expected ExceptionVals, got {type(exception_vt)}")
+    assert isinstance(exception_vt, ExceptionVals)
     tx._attach_traceback_to_exception(exception_vt)
     tx.exn_vt_stack.set_current_exception(exception_vt)  # type: ignore[arg-type]
     raised_exc = get_dynamo_observed_exception(exc_type)
@@ -516,7 +511,7 @@ def unimplemented_with_warning(
     gb_type: str,
     context: str,
     explanation: str,
-    hints: list[str],
+    hints: List[str],
 ) -> NoReturn:
     # This function calls unimplemented internally and eventually graph breaks
     # or falls to eager. unimplemented itself does not print any user warnings,
@@ -551,7 +546,7 @@ def format_graph_break_message(
     gb_type: str,
     context: str,
     explanation: str,
-    hints: list[str],
+    hints: List[str],
 ) -> str:
     explanation = textwrap.indent(explanation, "    ").lstrip()
     hints_str = "\n".join(
@@ -574,7 +569,7 @@ def format_graph_break_message(
 
 
 @lru_cache(maxsize=1)
-def _load_gb_type_to_gb_id_map() -> dict[str, Any]:
+def _load_gb_type_to_gb_id_map() -> Dict[str, Any]:
     """
     Loads the gb_type to gb_id map from the graph break registry from JSON file with caching.
 
@@ -600,7 +595,7 @@ def _load_gb_type_to_gb_id_map() -> dict[str, Any]:
     return mapping
 
 
-def get_gbid_documentation_link(gb_type: str) -> str | None:
+def get_gbid_documentation_link(gb_type: str) -> Optional[str]:
     """
     Retrieves the GBID documentation link for a given graph break type.
 
@@ -632,7 +627,7 @@ def unimplemented(
     gb_type: str,
     context: str,
     explanation: str,
-    hints: list[str],
+    hints: List[str],
     from_exc: Any = _NOTHING,
     log_warning: bool = False,
     skip_frame: bool = False,
@@ -743,7 +738,7 @@ def augment_exc_message(exc: Exception, msg: str = "\n", export: bool = False) -
 
 def get_exc_message(
     e: Exception, compile_id: CompileId
-) -> tuple[str | None, int | None]:
+) -> Union[Tuple[str, None, int, None]]:
     filename = None
     lineno = None
     if e.innermost_user_frame_summary is not None:  # type: ignore[attr-defined]
@@ -753,44 +748,13 @@ def get_exc_message(
     return filename, lineno
 
 
-def _extract_stack_with_positions() -> StackSummary:
-    # traceback.extract_stack() does not populate colno/end_colno on
-    # FrameSummary, even though the data is available on live frames via
-    # f_lasti + co_positions(). This means traceback.format_list() never
-    # renders caret annotations for stacks captured this way. We do it
-    # manually here so that "stack above dynamo" frames get carets.
-    stack = StackSummary()
-    frame = sys._getframe(1)
-    while frame is not None:
-        code = frame.f_code
-        # colno/end_colno kwargs were added to FrameSummary in 3.11
-        kwargs: dict[str, Any] = {}
-        if sys.version_info >= (3, 11) and frame.f_lasti >= 0:
-            positions = list(code.co_positions())
-            idx = frame.f_lasti // 2
-            if idx < len(positions):
-                _, _, kwargs["colno"], kwargs["end_colno"] = positions[idx]
-        stack.append(
-            FrameSummary(
-                code.co_filename,
-                frame.f_lineno,
-                code.co_name,
-                lookup_line=False,
-                **kwargs,
-            )
-        )
-        frame = frame.f_back
-    stack.reverse()
-    return stack
-
-
 def get_stack_above_dynamo() -> StackSummary:
-    return filter_stack(_extract_stack_with_positions())
+    return filter_stack(extract_stack())
 
 
 def get_real_stack(
-    exc: Exception, frame: DynamoFrameType | None = None
-) -> StackSummary | None:
+    exc: Optional[Exception, frame: DynamoFrameType]= None
+) -> Optional[StackSummary]:
     real_stack = getattr(exc, "real_stack", None)
     if real_stack is None:
         return None
@@ -846,7 +810,7 @@ def remove_resume_prefix(name: str) -> str:
     return name
 
 
-def collapse_resume_frames(stack: StackSummary | list[FrameSummary]) -> StackSummary:
+def collapse_resume_frames(stack: Union[StackSummary, List[FrameSummary]]) -> StackSummary:
     """
     When we graph break, we create a resume function and make a regular Python call
     to it, which gets intercepted by Dynamo. This behavior is normally shown in the
@@ -884,8 +848,8 @@ def collapse_resume_frames(stack: StackSummary | list[FrameSummary]) -> StackSum
 def format_error_msg_verbose(
     exc: Exception,
     code: types.CodeType,
-    record_filename: str | None = None,
-    frame: DynamoFrameType | None = None,
+    record_filename: Optional[str]= None,
+    frame: Optional[DynamoFrameType]= None,
 ) -> str:
     msg = (
         f"WON'T CONVERT {code.co_name} {code.co_filename} line {code.co_firstlineno}\n"
@@ -916,7 +880,7 @@ def format_frame_info(code: types.CodeType) -> str:
     )
 
 
-def format_skip_frame_message(code: types.CodeType | None, reason: str) -> str:
+def format_skip_frame_message(code: Optional[types.CodeType], reason: str) -> str:
     if code is not None:
         frame_info = format_frame_info(code)
         return (
@@ -933,8 +897,8 @@ def format_skip_frame_message(code: types.CodeType | None, reason: str) -> str:
 def format_error_msg(
     exc: Exception,
     code: types.CodeType,
-    record_filename: str | None = None,
-    frame: DynamoFrameType | None = None,
+    record_filename: Optional[str]= None,
+    frame: Optional[DynamoFrameType]= None,
 ) -> str:
     if config.verbose:
         return format_error_msg_verbose(exc, code, record_filename, frame)

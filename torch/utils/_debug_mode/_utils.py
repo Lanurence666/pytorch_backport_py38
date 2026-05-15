@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 Utility functions for DebugMode: tensor formatting, hashing, stack traces, and hook runners.
@@ -8,7 +9,7 @@ import os
 import traceback
 import weakref
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, TYPE_CHECKING, Union
 
 import torch
 from torch._subclasses.fake_tensor import FakeTensor
@@ -32,14 +33,14 @@ _IN_INDUCTOR_BENCHMARK: bool = False
 # Stores kernel outputs in call.record["output"]
 _RECORD_TRITON_OUTPUTS: bool = False
 # Annotates kernel output hashes, and stores them in call.post_hashes
-_TRITON_OUTPUT_HASH_FN: Callable | None = None
+_TRITON_OUTPUT_HASH_FN: Optional[Callable]= None
 # Annotates kernel input hashes, and stores them in call.pre_hashes
-_TRITON_INPUT_HASH_FN: Callable | None = None
+_TRITON_INPUT_HASH_FN: Optional[Callable]= None
 
 # registered dispatch call hooks
-_DISPATCH_RECORD_HOOKS: list[Callable] = []
-_DISPATCH_LOG_HOOKS: list[Callable] = []
-_DISPATCH_PRE_LOG_HOOKS: list[Callable] = []
+_DISPATCH_RECORD_HOOKS: List[Callable] = []
+_DISPATCH_LOG_HOOKS: List[Callable] = []
+_DISPATCH_PRE_LOG_HOOKS: List[Callable] = []
 
 
 def _stringify_shape(shape) -> str:
@@ -72,7 +73,7 @@ def _stringify_dtensor_spec(spec) -> str:
 
 class TensorIdTracker:
     def __init__(self) -> None:
-        self.tensor_memo: dict[WeakIdRef, int] = {}
+        self.tensor_memo: Dict[WeakIdRef, int] = {}
         self.next_tensor_id = 0
 
     def _id(self, tensor) -> int:
@@ -120,7 +121,7 @@ def _arg_to_str(arg, attributes, tensor_memo=None) -> str:
     return str(arg)
 
 
-def norm_hash_fn(t: torch.Tensor, use_scalar: bool = False) -> torch.Tensor | float:
+def norm_hash_fn(t: torch.Tensor, use_scalar: bool = False) -> Union[torch.Tensor, float]:
     """
     from Observer. Computes a hash for a tensor by converting it to float (if needed), making it contiguous,
     replacing NaN/inf values with fixed numbers, and then computing the L1 norm in float64 or complex128.
@@ -149,7 +150,7 @@ def _compute_rel_diff(hash1, hash2):
     return numerator / denominator
 
 
-def hash_tensor_fn(t: torch.Tensor, use_scalar: bool = False) -> torch.Tensor | int:
+def hash_tensor_fn(t: torch.Tensor, use_scalar: bool = False) -> Union[torch.Tensor, int]:
     """
     wrapper over torch.hash_tensor
     """
@@ -185,7 +186,7 @@ def _get_stack_trace() -> str:
     return "".join(summary.format())
 
 
-def _get_user_stack_trace(stack_trace_str: str) -> str | None:
+def _get_user_stack_trace(stack_trace_str: str) -> Optional[str]:
     # Extract user code stack trace, filtering out torch internals.
     torch_dir = os.path.dirname(inspect.getfile(torch))
     filter_fn = lambda file, name, code: not file.startswith(torch_dir + os.path.sep)  # noqa: E731
@@ -195,7 +196,7 @@ def _get_user_stack_trace(stack_trace_str: str) -> str | None:
     return None
 
 
-def _maybe_get_autograd_trace() -> str | None:
+def _maybe_get_autograd_trace() -> Optional[str]:
     if torch._C._current_autograd_node() is not None:
         tb = torch._C._current_autograd_node().metadata.get("traceback_")  # type: ignore[attr-defined]
         if tb:

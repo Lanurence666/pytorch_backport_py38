@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import heapq
 from collections import Counter, defaultdict
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import torch  # noqa: TC001
 import torch.fx as fx  # noqa: TC001
@@ -54,12 +54,12 @@ class ManualOverlapPreservingBucketer(OverlapPreservingBucketer):
         **kwargs: Any,
     ):
         super().__init__(*args, **kwargs)
-        self.node_to_wait_map: dict[fx.Node, fx.Node] = defaultdict()
+        self.node_to_wait_map: Dict[fx.Node, fx.Node] = defaultdict()
         # Maps bucketed nodes to their type string, scoped to this bucketer
         # instance so metadata doesn't leak across separate invocations.
-        self.bucketed_node_types: dict[fx.Node, str] = {}
+        self.bucketed_node_types: Dict[fx.Node, str] = {}
 
-    def _bucket_group(self, coll_nodes: list[fx.Node]) -> None:
+    def _bucket_group(self, coll_nodes: List[fx.Node]) -> None:
         assert len(coll_nodes) > 0, "bucketed coll_nodes should have nonzero node"
 
         waits = [self.collective_info[n].wait_node for n in coll_nodes]
@@ -122,7 +122,7 @@ class ManualOverlapPreservingBucketer(OverlapPreservingBucketer):
             elif n is new_start:
                 self.bucketed_node_types[n] = node_type
 
-    def manual_bucket_collectives(self, nodes: list[fx.Node]) -> None:
+    def manual_bucket_collectives(self, nodes: List[fx.Node]) -> None:
         """
         Bucket all all-gather/reduce-scatter nodes from nodes into one all-gather/reduce-scatter.
         """
@@ -130,7 +130,7 @@ class ManualOverlapPreservingBucketer(OverlapPreservingBucketer):
         collectives = [n for n in nodes if n in self.collective_info]
         if collectives == []:
             return
-        grouped_collectives: dict[object, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
+        grouped_collectives: Dict[object, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
         for node in collectives:
             if not (
                 is_fsdp_all_gather(node, self.node_ancestors)
@@ -153,10 +153,10 @@ class ManualOverlapScheduler(OverlapScheduler):
     def __init__(
         self,
         gm: fx.GraphModule,
-        module_bucket_plans: list[list[str] | str],
+        module_bucket_plans: Union[List[List[str], str]],
         insert_overlap_deps: bool,
-        module_stack_fn: Callable[[fx.Node], list[tuple[str, type[Any]]]] | None = None,
-        bucket_mode: BucketMode | None = None,
+        module_stack_fn: Callable[[fx.Node], List[Tuple[str, Type[Any]]]] | None = None,
+        bucket_mode: Optional[BucketMode] = None,
     ):
         # Manual overlap historically used "custom_ops" mode for bucketing
         bucket_mode = bucket_mode or "custom_ops"
@@ -181,7 +181,7 @@ class ManualOverlapScheduler(OverlapScheduler):
             bucket_mode=bucket_mode,
         )
         self.module_bucket_plans = module_bucket_plans
-        self.nodes_in_subgraph: list[list[fx.Node]] = []
+        self.nodes_in_subgraph: List[List[fx.Node]] = []
 
         self.bucketer = ManualOverlapPreservingBucketer(
             graph=self.graph,
@@ -255,9 +255,9 @@ class ManualOverlapScheduler(OverlapScheduler):
             So rs_start_i overlaps with module i-1's compute
 
         """
-        delayed_rs_wait_nodes: list[fx.Node] = []
-        current_rs_start_nodes: list[fx.Node] = []
-        overlap_deps: dict[fx.Node, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
+        delayed_rs_wait_nodes: List[fx.Node] = []
+        current_rs_start_nodes: List[fx.Node] = []
+        overlap_deps: Dict[fx.Node, OrderedSet[fx.Node]] = defaultdict(OrderedSet)
 
         # Re-initialize after graph modification in _manual_bucket_collectives
         self.node_idx = {n: i for i, n in enumerate(self.nodes)}
@@ -293,8 +293,8 @@ class ManualOverlapScheduler(OverlapScheduler):
             self._schedule(node)
 
         self.scheduled = OrderedSet(reversed(list(self.scheduled)))
-        picked_ag: list[fx.Node] = []
-        last_compute: fx.Node | None = None
+        picked_ag: List[fx.Node] = []
+        last_compute: Optional[fx.Node] = None
 
         for node in self.scheduled:
             node_type = self.bucketer.bucketed_node_types.get(node, "")
@@ -352,7 +352,7 @@ class ManualOverlapScheduler(OverlapScheduler):
         """
         Obtain nodes in each subgraph from module_bucket_plans
         """
-        graph_view: GraphView | None = make_graph_view(self.graph, self.module_stack_fn)
+        graph_view: Optional[GraphView] = make_graph_view(self.graph, self.module_stack_fn)
         if graph_view is None:
             return
 
@@ -373,10 +373,10 @@ class ManualOverlapScheduler(OverlapScheduler):
 
 def manual_overlap_bucketing(
     gm: torch.fx.GraphModule,
-    module_bucket_plans: list[list[str] | str],
+    module_bucket_plans: Union[List[List[str], str]],
     insert_overlap_deps: bool = False,
-    module_stack_fn: Callable[[fx.Node], list[tuple[str, type[Any]]]] | None = None,
-    bucket_mode: BucketMode | None = None,
+    module_stack_fn: Callable[[fx.Node], List[Tuple[str, Type[Any]]]] | None = None,
+    bucket_mode: Optional[BucketMode] = None,
 ) -> torch.fx.GraphModule:
     """Schedule nodes based on user specifications in module_bucket_plans
     The manual overlapping consists of two steps:

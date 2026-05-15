@@ -1,7 +1,8 @@
 # Owner(s): ["module: dynamo"]
+from __future__ import annotations
 import unittest
 import weakref
-from functools import cache
+from functools import lru_cache
 
 import torch
 import torch._dynamo
@@ -513,7 +514,7 @@ class IsolateRecompilesTests(torch._dynamo.test_case.TestCase):
         def core(x):
             return x.sum()
 
-        @cache
+        @lru_cache(maxsize=None)
         def factory(key):
             @torch.compile(fullgraph=True, dynamic=False, isolate_recompiles=True)
             def frontend(x, n):

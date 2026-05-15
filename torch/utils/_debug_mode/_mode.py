@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 """
 DebugMode is a debugging TorchDispatchMode that intercepts and logs runtime calls
 to a hierarchical string dump. It logs real tensor, DTensor, and optionally FakeTensor
@@ -36,7 +38,7 @@ import contextlib
 import functools
 import logging
 from collections.abc import Callable
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Tuple, Union
 
 import torch
 from torch._logging import warning_once
@@ -232,14 +234,14 @@ class DebugMode(TorchDispatchMode):
         # Records __torch_dispatch__ calls on LocalTensor.
         self.record_localtensor = record_localtensor
 
-        # Optional list[str] of tensor attributes, to be annotated in the string dump.
+        # Optional List[str] of tensor attributes, to be annotated in the string dump.
         self.record_tensor_attributes = record_tensor_attributes or []
 
         # Uses ModTracker to record nn.Module entrances.
         # This flag currently has no effect on torch.compiled-regions.
         self.record_nn_module = record_nn_module
 
-        self.module_tracker: ModTracker | None = None
+        self.module_tracker: Optional[ModTracker] = None
         if self.record_nn_module:
             self.module_tracker_setup()
 
@@ -273,7 +275,7 @@ class DebugMode(TorchDispatchMode):
         self.operators = []
         self.call_depth = 0
         self._tensor_memo = TensorIdTracker()
-        self._output_info: dict[int, object] = {}
+        self._output_info: Dict[int, object] = {}
         self.ignored_record_functions = 0
         self.current_nn_module_stack = []
         self.fx_stack_trace = None
@@ -519,9 +521,9 @@ class DebugMode(TorchDispatchMode):
 
     def _handle_fx_nn_module_stack(
         self,
-        base_stack: list[str],
-        nn_module_stack: dict[str, tuple[str, Any]] | None,
-        fwd_nn_module_stack: dict[str, tuple[str, Any]] | None,
+        base_stack: List[str],
+        nn_module_stack: Dict[str, Tuple[str, Any]] | None,
+        fwd_nn_module_stack: Dict[str, Tuple[str, Any]] | None,
     ) -> None:
         """
         Called when DebugInterpreter observes nn_module_stack or fwd_nn_module_stack metadata
@@ -568,7 +570,7 @@ class DebugMode(TorchDispatchMode):
         arg,
         src_placement,
         dst_placement,
-        transform_info_str: str | None = None,
+        transform_info_str: Optional[str] = None,
         is_explicit: bool = False,
     ):
         try:
@@ -601,14 +603,14 @@ class DebugMode(TorchDispatchMode):
         self._record_call(call)
 
     def record_triton_kernel(
-        self, kernel_name: str, kwargs: dict[str, Any]
+        self, kernel_name: str, kwargs: Dict[str, Any]
     ) -> _TritonKernelCall:
         call = _TritonKernelCall(kernel_name, kwargs, self.call_depth + 1)
         call.stringify_args(self.record_tensor_attributes)
         self.operators.append(call)
         return call
 
-    def debug_string(self, show_stack_trace: bool | None = None) -> str:
+    def debug_string(self, show_stack_trace: Optional[bool] = None) -> str:
         """
         show_stack_trace: option to display one-line stack trace summaries above groups
                         of operations (similar to gm.print_readable() style).
@@ -666,9 +668,9 @@ class DebugMode(TorchDispatchMode):
     @staticmethod
     @contextlib.contextmanager
     def dispatch_hooks(
-        record_hook: Callable | None = None,
-        log_hook: Callable | None = None,
-        pre_log_hook: Callable | None = None,
+        record_hook: Optional[Callable] = None,
+        log_hook: Optional[Callable] = None,
+        pre_log_hook: Optional[Callable] = None,
     ):
         """
         Allows installing post-hooks on arguments to intercepted __torch_dispatch__ calls;
@@ -722,7 +724,7 @@ class DebugMode(TorchDispatchMode):
     @staticmethod
     @contextlib.contextmanager
     def log_tensor_hashes(
-        hash_fn: Callable | str | list[str] = "norm", hash_inputs: bool = False
+        hash_fn: Union[Union[Callable, str], List[str]] = "norm", hash_inputs: bool = False
     ):
         """
         Installs hook for tensor hash logging.
@@ -759,7 +761,7 @@ class DebugMode(TorchDispatchMode):
             fn = lambda x: tuple(fn(x) for fn in fns)  # noqa: E731
         else:
             raise NotImplementedError(
-                f"log_tensor_hashes() expected hash_fn to be callable, str, or list[str], but found {type(hash_fn)}"
+                f"log_tensor_hashes() expected hash_fn to be callable, str, or List[str], but found {type(hash_fn)}"
             )
 
         def _tree_hash(obj):
@@ -840,7 +842,7 @@ class DebugMode(TorchDispatchMode):
     @staticmethod
     def check_hash_mismatches(
         logs1: list, logs2: list, compare_inputs: bool = False
-    ) -> list[dict]:
+    ) -> List[dict]:
         """
         Compares tensor hashes between two DebugMode runs, for checking run-to-run numerical divergence.
 
@@ -1041,7 +1043,7 @@ class DebugMode(TorchDispatchMode):
         return difference_info
 
 
-def get_active_debug_mode() -> DebugMode | None:
+def get_active_debug_mode() -> Optional[DebugMode]:
     # Fast path: if no DebugMode is active, skip the stack walk
     if _ACTIVE_DEBUG_MODE_COUNT == 0:
         return None

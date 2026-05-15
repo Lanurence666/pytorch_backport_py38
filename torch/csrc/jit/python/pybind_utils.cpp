@@ -17,6 +17,7 @@
 #include <limits>
 #include <optional>
 #include <utility>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 namespace torch::jit {
 

@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: inductor"]
 """
 Tests for custom operation autotuning with PyTorch Inductor.

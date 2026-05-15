@@ -1,8 +1,8 @@
+from __future__ import annotations
 """
 Generic linter that greps for a pattern and optionally suggests replacements.
 """
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 from enum import Enum
-from typing import NamedTuple
+from typing import Dict, List, NamedTuple, Union
 
 
 IS_WINDOWS: bool = os.name == "nt"
@@ -31,19 +31,19 @@ class LintSeverity(str, Enum):
 
 
 LINTER_NAME: str = ""
-ERROR_DESCRIPTION: str | None = None
+ERROR_DESCRIPTION: Union[str, None] = None
 
 
 class LintMessage(NamedTuple):
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
 
 def as_posix(name: str) -> str:
@@ -51,7 +51,7 @@ def as_posix(name: str) -> str:
 
 
 def run_command(
-    args: list[str],
+    args: List[str],
 ) -> subprocess.CompletedProcess[bytes]:
     logging.debug("$ %s", " ".join(args))
     start_time = time.monotonic()
@@ -68,11 +68,11 @@ def run_command(
 def print_lint_message(
     name: str,
     severity: LintSeverity = LintSeverity.ERROR,
-    path: str | None = None,
-    line: int | None = None,
-    original: str | None = None,
-    replacement: str | None = None,
-    description: str | None = None,
+    path: Union[str, None] = None,
+    line: Union[int, None] = None,
+    original: Union[str, None] = None,
+    replacement: Union[str, None] = None,
+    description: Union[str, None] = None,
 ) -> None:
     """
     Create a LintMessage and print it as JSON.
@@ -88,7 +88,7 @@ def print_lint_message(
     print(json.dumps(lint_message._asdict()), flush=True)
 
 
-def group_lines_by_file(lines: list[str]) -> dict[str, list[str]]:
+def group_lines_by_file(lines: List[str]) -> Dict[str, List[str]]:
     """
     Group matching lines by filename.
 
@@ -98,7 +98,7 @@ def group_lines_by_file(lines: list[str]) -> dict[str, list[str]]:
     Returns:
         Dictionary mapping filename to list of line remainders (without filename prefix)
     """
-    grouped: dict[str, list[str]] = {}
+    grouped: Dict[str, List[str]] = {}
     for line in lines:
         if not line:
             continue
@@ -162,7 +162,7 @@ def check_allowlist(
 
 def lint_file(
     filename: str,
-    line_remainders: list[str],
+    line_remainders: List[str],
     allowlist_pattern: str,
     replace_pattern: str,
     error_name: str,

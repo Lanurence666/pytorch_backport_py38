@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Utilities for reproducing and debugging issues in Dynamo after graph capture.
 
@@ -24,9 +25,9 @@ import os
 import shutil
 import sys
 import textwrap
-from collections.abc import Callable, Sequence
+
 from importlib import import_module
-from typing import Any
+from typing import Any, Callable, List, Optional, Sequence, Set, Type, Union
 
 import torch
 import torch.fx as fx
@@ -69,7 +70,7 @@ use_buck = inductor_config.is_fbcode()
 def _accuracy_fails(
     gm: torch.fx.GraphModule,
     example_inputs: Sequence[Any],
-    compiler_fn: Callable[[torch.fx.GraphModule, list[Any]], torch.fx.GraphModule],
+    compiler_fn: Callable[[torch.fx.GraphModule, List[Any]], torch.fx.GraphModule],
 ) -> bool:
     return backend_accuracy_fails(
         gm,
@@ -82,7 +83,7 @@ def _accuracy_fails(
 
 class WrapBackendDebug:
     def __init__(
-        self, unconfigured_compiler_fn: CompilerFn, compiler_name: str | None
+        self, unconfigured_compiler_fn: CompilerFn, compiler_name: Optional[str]
     ) -> None:
         functools.wraps(unconfigured_compiler_fn)(self)
         self._torchdynamo_orig_backend = unconfigured_compiler_fn
@@ -95,13 +96,10 @@ class WrapBackendDebug:
             self.get_compiler_config = unconfigured_compiler_fn.get_compiler_config  # type: ignore[attr-defined]
 
     def __call__(
-        self, gm: torch.fx.GraphModule, example_inputs: list[Any], **kwargs: Any
+        self, gm: torch.fx.GraphModule, example_inputs: List[Any], **kwargs: Any
     ) -> torch.fx.GraphModule:
         compiler_fn = functools.partial(self._torchdynamo_orig_backend, **kwargs)
-        if config.repro_after not in ("dynamo", "aot", None):
-            raise AssertionError(
-                f"repro_after must be 'dynamo', 'aot', or None, got {config.repro_after!r}"
-            )
+        assert config.repro_after in ("dynamo", "aot", None)
 
         if config.repro_after == "dynamo":
 
@@ -162,7 +160,7 @@ class WrapBackendDebug:
 
 
 def wrap_backend_debug(
-    unconfigured_compiler_fn: CompilerFn, compiler_name: str | None
+    unconfigured_compiler_fn: CompilerFn, compiler_name: Optional[str]
 ) -> WrapBackendDebug:
     """
     A minifier decorator that wraps the TorchDynamo produced Fx graph modules.
@@ -183,11 +181,11 @@ def wrap_backend_debug(
 def generate_dynamo_fx_repro_string(
     gm: torch.fx.GraphModule,
     args: Sequence[Any],
-    compiler_name: str | None,
+    compiler_name: Optional[str],
     check_accuracy: bool = False,
     *,
     stable_output: bool = False,
-    save_dir: str | None = None,
+    save_dir: Optional[str] = None,
     command: str = "run",
 ) -> str:
     """
@@ -239,7 +237,7 @@ if __name__ == '__main__':
 def dump_backend_repro_as_file(
     gm: torch.fx.GraphModule,
     args: Sequence[Any],
-    compiler_name: str | None,
+    compiler_name: Optional[str],
     check_accuracy: bool = False,
 ) -> None:
     """
@@ -272,7 +270,7 @@ def dump_backend_repro_as_file(
 def dump_backend_state(
     gm: torch.fx.GraphModule,
     args: Sequence[Any],
-    compiler_name: str | None,
+    compiler_name: Optional[str],
     check_accuracy: bool = False,
 ) -> None:
     """
@@ -282,8 +280,7 @@ def dump_backend_state(
     2) If we can't convert Fx GraphModule to a string, we use to_folder to save
     the module and save a tar file.
     """
-    if not NNModuleToString.can_convert_to_string(gm):
-        raise AssertionError("GraphModule cannot be converted to string")
+    assert NNModuleToString.can_convert_to_string(gm)
     return dump_backend_repro_as_file(gm, args, compiler_name, check_accuracy)
     # return dump_backend_repro_as_tarfile(gm, args, compiler_name)
 
@@ -294,7 +291,7 @@ def dump_backend_state(
 
 
 def dump_to_minify_after_dynamo(
-    gm: torch.fx.GraphModule, args: Sequence[Any], compiler_name: str | None
+    gm: torch.fx.GraphModule, args: Sequence[Any], compiler_name: Optional[str]
 ) -> None:
     # TODO: factor this out
     subdir = os.path.join(minifier_dir(), "checkpoints")
@@ -319,7 +316,7 @@ def dump_to_minify_after_dynamo(
 
 @register_debug_backend  # type: ignore[arg-type]
 def dynamo_minifier_backend(
-    gm: fx.GraphModule, example_inputs: Sequence[Any], compiler_name: str | None
+    gm: fx.GraphModule, example_inputs: Sequence[Any], compiler_name: Optional[str]
 ) -> fx.GraphModule:
     from functorch.compile import minifier
 
@@ -361,7 +358,7 @@ def dynamo_minifier_backend(
 
 @register_debug_backend  # type: ignore[arg-type]
 def dynamo_accuracy_minifier_backend(
-    gm: fx.GraphModule, example_inputs: Sequence[Any], compiler_name: str | None
+    gm: fx.GraphModule, example_inputs: Sequence[Any], compiler_name: Optional[str]
 ) -> fx.GraphModule:
     from functorch.compile import minifier
 
@@ -428,7 +425,7 @@ def backend_fails(
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 
-def run_load_args(options: Any, mod: torch.nn.Module, load_args: Any) -> list[Any]:
+def run_load_args(options: Any, mod: torch.nn.Module, load_args: Any) -> List[Any]:
     if not hasattr(load_args, "_version"):
         log.warning(
             "load_args does not have a _version attribute, please file a bug to PyTorch "
@@ -491,8 +488,7 @@ def repro_run(options: Any, mod: torch.nn.Module, load_args: Any) -> None:
         with torch.amp.autocast("cuda", enabled=options.autocast):
             # TODO: disable clone
             args = run_load_args(options, mod, load_args)
-            if not same_two_models(mod, mod, args):  # type: ignore[arg-type]
-                raise AssertionError("Eager itself failed")
+            assert same_two_models(mod, mod, args), "Eager itself failed"  # type: ignore[arg-type]
             if not same_two_models(
                 mod,  # type: ignore[arg-type]
                 opt_mod,  # type: ignore[arg-type]
@@ -521,8 +517,8 @@ def run_repro(
     load_args: Any,
     *,
     command: str = "run",
-    accuracy: bool | str = "",
-    save_dir: str | None = None,
+    accuracy: Union[bool, str] = "",
+    save_dir: Optional[str] = None,
     autocast: bool = False,
     backend: str = "inductor",
     **kwargs: Any,

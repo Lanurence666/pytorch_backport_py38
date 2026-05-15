@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
-from collections.abc import Sequence
-from typing import Any, overload, TypeVar
+from __future__ import annotations
+
+
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Type, TypeVar, Union, overload
 from typing_extensions import deprecated
 
 import torch
@@ -33,17 +35,17 @@ T = TypeVar("T", dict, list, tuple)
 @overload
 def scatter(
     inputs: torch.Tensor,
-    target_gpus: Sequence[int | torch.device],
+    target_gpus: Sequence[Union[int, torch.device]],
     dim: int = ...,
-) -> tuple[torch.Tensor, ...]: ...
+) -> Tuple[torch.Tensor, ...]: ...
 
 
 @overload
 def scatter(
     inputs: T,
-    target_gpus: Sequence[int | torch.device],
+    target_gpus: Sequence[Union[int, torch.device]],
     dim: int = ...,
-) -> list[T]: ...
+) -> List[T]: ...
 
 
 def scatter(inputs, target_gpus, dim=0):
@@ -88,11 +90,11 @@ def scatter(inputs, target_gpus, dim=0):
 
 
 def scatter_kwargs(
-    inputs: tuple[Any, ...],
-    kwargs: dict[str, Any] | None,
-    target_gpus: Sequence[int | torch.device],
+    inputs: Tuple[Any, ...],
+    kwargs: Optional[Dict[str, Any]],
+    target_gpus: Sequence[Union[int, torch.device]],
     dim: int = 0,
-) -> tuple[tuple[Any, ...], tuple[dict[str, Any], ...]]:
+) -> Tuple[Tuple[Any, ...], Tuple[Dict[str, Any], ...]]:
     r"""Scatter with support for kwargs dictionary."""
     scattered_inputs = scatter(inputs, target_gpus, dim) if inputs else []
     scattered_kwargs = scatter(kwargs, target_gpus, dim) if kwargs else []
@@ -107,7 +109,7 @@ def scatter_kwargs(
     return tuple(scattered_inputs), tuple(scattered_kwargs)
 
 
-def gather(outputs: Any, target_device: int | torch.device, dim: int = 0) -> Any:
+def gather(outputs: Any, target_device: Union[int, torch.device], dim: int = 0) -> Any:
     r"""Gather tensors from different GPUs on a specified device.
 
     This function is useful for gathering the results of a distributed computation.
@@ -137,9 +139,9 @@ def gather(outputs: Any, target_device: int | torch.device, dim: int = 0) -> Any
             return type(out)((k, gather_map([d[k] for d in outputs])) for k in out)
         if _is_namedtuple(out):
             # pyrefly: ignore [bad-argument-type]
-            return type(out)._make(map(gather_map, zip(*outputs, strict=True)))
+            return type(out)._make(map(gather_map, _zip_strict(*outputs)))
         # pyrefly: ignore [bad-argument-type]
-        return type(out)(map(gather_map, zip(*outputs, strict=True)))
+        return type(out)(map(gather_map, _zip_strict(*outputs)))
 
     # Recursive function calls like this create reference cycles.
     # Setting the function to None clears the refcycle.

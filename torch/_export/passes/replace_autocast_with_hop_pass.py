@@ -1,7 +1,7 @@
 # mypy: allow-untyped-defs
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Tuple, Union, cast
 
 import torch
 from torch._higher_order_ops.wrap import wrap_with_autocast
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from torch.export.graph_signature import ExportGraphSignature
 
 
-def _is_autocast_node(node: torch.fx.Node) -> torch.fx.Node | bool:
+def _is_autocast_node(node: torch.fx.Node) -> Union[torch.fx.Node, bool]:
     return (
         node
         and node.op == "call_function"
@@ -30,7 +30,7 @@ def _is_autocast_node(node: torch.fx.Node) -> torch.fx.Node | bool:
     )
 
 
-def _is_enter_autocast_node(node: torch.fx.Node) -> torch.fx.Node | bool:
+def _is_enter_autocast_node(node: torch.fx.Node) -> Union[torch.fx.Node, bool]:
     return (
         node
         and node.op == "call_function"
@@ -38,7 +38,7 @@ def _is_enter_autocast_node(node: torch.fx.Node) -> torch.fx.Node | bool:
     )
 
 
-def _is_exit_autocast_node(node: torch.fx.Node) -> torch.fx.Node | bool:
+def _is_exit_autocast_node(node: torch.fx.Node) -> Union[torch.fx.Node, bool]:
     return (
         node
         and node.op == "call_function"
@@ -132,7 +132,7 @@ def _split_autocast(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
     exit_autocast   # 3
     E               # 4
     """
-    enter_autocast_node_stack: list[torch.fx.Node] = []
+    enter_autocast_node_stack: List[torch.fx.Node] = []
     first_node_after_outer_most_exit: bool = False
 
     def node_call_back(node: torch.fx.Node) -> bool:
@@ -165,8 +165,8 @@ def _split_autocast(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
 
 
 def _sequential_split_and_maybe_inline_subgraphs(
-    gm: torch.fx.GraphModule, graph_signature: ExportGraphSignature | None
-) -> tuple[torch.fx.GraphModule, ExportGraphSignature | None]:
+    gm: Optional[torch.fx.GraphModule, graph_signature: ExportGraphSignature]
+) -> Union[Tuple[torch.fx.GraphModule, ExportGraphSignature, None]]:
     """
     Helper function for replace_autocast_with_hop_pass().
     Split the graph module into multiple subgraphs based on the autocast nodes.
@@ -199,8 +199,8 @@ def _sequential_split_and_maybe_inline_subgraphs(
 
 
 def replace_autocast_with_hop_pass(
-    gm: torch.fx.GraphModule, graph_signature: ExportGraphSignature | None
-) -> tuple[torch.fx.GraphModule, ExportGraphSignature | None]:
+    gm: Optional[torch.fx.GraphModule, graph_signature: ExportGraphSignature]
+) -> Union[Tuple[torch.fx.GraphModule, ExportGraphSignature, None]]:
     """
     Split gm into sub-graph-modules using `sequential_split_and_maybe_inline_subgraphs`, and
     then recursively call itself on each of the submodules.

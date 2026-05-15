@@ -1,7 +1,7 @@
 import copy
 import warnings
-from collections.abc import Iterable, Iterator, Sized
-from typing import TypeVar
+from collections.abc import Sized
+from typing import Iterable, Iterator, Type, TypeVar
 
 from torch.utils.data.datapipes.datapipe import IterDataPipe
 

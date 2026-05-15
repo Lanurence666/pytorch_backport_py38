@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+from typing import List, Set, Tuple
 """
 STABLE_SHIM_VERSION: Ensures that function declarations in stable/c/shim.h
 are properly wrapped in TORCH_FEATURE_VERSION macros corresponding to the
 current TORCH_ABI_VERSION.
 """
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -20,17 +21,40 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
 from tools.linter.adapters._stable_shim_utils import (
-    get_current_version,
     LintMessage,
     LintSeverity,
     PreprocessorTracker,
 )
+from tools.setup_helpers.gen_version_header import parse_version
 
 
 LINTER_CODE = "STABLE_SHIM_VERSION"
 
 
-def get_added_lines(filename: str) -> set[int]:
+def get_current_version() -> Tuple[int, int]:
+    """
+    Get the current PyTorch version from version.txt.
+    This uses the same logic as tools/setup_helpers/gen_version_header.py
+    which is used to generate torch/headeronly/version.h from version.h.in.
+
+    Returns (major, minor) tuple or None if not found.
+    """
+    repo_root = Path(__file__).resolve().parents[3]
+    version_file = repo_root / "version.txt"
+
+    if not version_file.exists():
+        raise RuntimeError(
+            "Could not find version.txt. This linter requires version.txt to run"
+        )
+
+    with open(version_file) as f:
+        version = f.read().strip()
+        major, minor, patch = parse_version(version)
+
+    return (major, minor)
+
+
+def get_added_lines(filename: str) -> Set[int]:
     """
     Get the line numbers of added lines in:
     1. Current uncommitted changes (git diff HEAD)
@@ -45,7 +69,7 @@ def get_added_lines(filename: str) -> set[int]:
 
     added_lines = set()
 
-    def parse_diff(diff_output: str) -> set[int]:
+    def parse_diff(diff_output: str) -> Set[int]:
         """Parse git diff output and return line numbers of added lines."""
         lines = set()
         current_line = 0
@@ -121,7 +145,7 @@ def get_added_lines(filename: str) -> set[int]:
     return added_lines
 
 
-def check_file(filename: str) -> list[LintMessage]:
+def check_file(filename: str) -> List[LintMessage]:
     """
     Parse the stable/c/shim.h file and check that:
     1. All function declarations are within TORCH_FEATURE_VERSION blocks
@@ -131,15 +155,15 @@ def check_file(filename: str) -> list[LintMessage]:
     enforce versioning on NEW function declarations, since existing functions
     are intentionally not version-guarded.
     """
-    lint_messages: list[LintMessage] = []
+    lint_messages: List[LintMessage] = []
 
     # Check if this is the AOTI shim - only enforce versioning on new lines
     is_aoti_shim = "torch/csrc/inductor/aoti_torch/c/shim.h" in filename
 
     # Get current version
     current_version = get_current_version()
-    major, minor, patch = current_version
-    expected_version_macro = f"TORCH_VERSION_{major}_{minor}_{patch}"
+    major, minor = current_version
+    expected_version_macro = f"TORCH_VERSION_{major}_{minor}_0"
     expected_version_check = f"#if TORCH_FEATURE_VERSION >= {expected_version_macro}"
 
     # Get lines that are uncommitted or added in the most recent commit

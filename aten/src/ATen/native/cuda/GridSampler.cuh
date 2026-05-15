@@ -1,6 +1,8 @@
 #pragma once
 #include <ATen/native/cuda/KernelUtils.cuh>
 #include <ATen/native/GridSamplerUtils.h>
+#include <ATen/AccumulateType.h>
+#include <ATen/OpMathType.h>
 
 namespace at::native {
 
@@ -52,7 +54,8 @@ scalar_t grid_sampler_unnormalize_set_grad(scalar_t coord, int size,
 template <typename scalar_t>
 __forceinline__ __device__
 scalar_t clip_coordinates(scalar_t in, int clip_limit) {
-  return ::min(static_cast<scalar_t>(clip_limit - 1), ::max(in, static_cast<scalar_t>(0)));
+  using opmath_t = at::opmath_type<scalar_t>;
+  return static_cast<scalar_t>(::min(static_cast<opmath_t>(clip_limit - 1), ::max(static_cast<opmath_t>(in), opmath_t(0))));
 }
 
 // clip_coordinates_set_grad works similarly to clip_coordinates except that
@@ -61,16 +64,16 @@ scalar_t clip_coordinates(scalar_t in, int clip_limit) {
 template <typename scalar_t>
 __forceinline__ __device__
 scalar_t clip_coordinates_set_grad(scalar_t in, int clip_limit, scalar_t *grad_in) {
-  // Note that it is important for the gradient calculation that borders
-  // are considered out of bounds.
-  if (in <= static_cast<scalar_t>(0)) {
+  using opmath_t = at::opmath_type<scalar_t>;
+  auto fin = static_cast<opmath_t>(in);
+  if (fin <= opmath_t(0)) {
     *grad_in = static_cast<scalar_t>(0);
     return static_cast<scalar_t>(0);
   } else {
-    scalar_t max = static_cast<scalar_t>(clip_limit - 1);
-    if (in >= max) {
+    opmath_t fmax = static_cast<opmath_t>(clip_limit - 1);
+    if (fin >= fmax) {
       *grad_in = static_cast<scalar_t>(0);
-      return max;
+      return static_cast<scalar_t>(fmax);
     } else {
       *grad_in = static_cast<scalar_t>(1);
       return in;
@@ -112,35 +115,34 @@ scalar_t reflect_coordinates_set_grad(scalar_t in, int twice_low, int twice_high
     *grad_in = static_cast<scalar_t>(0);
     return static_cast<scalar_t>(0);
   }
+  using opmath_t = at::opmath_type<scalar_t>;
   int grad_in_mult_;
-  scalar_t min = static_cast<scalar_t>(twice_low) / 2;
-  scalar_t span = static_cast<scalar_t>(twice_high - twice_low) / 2;
-  in = in - min;
-  if (in < static_cast<scalar_t>(0)) {
+  opmath_t fmin = static_cast<opmath_t>(twice_low) / 2;
+  opmath_t fspan = static_cast<opmath_t>(twice_high - twice_low) / 2;
+  opmath_t fin = static_cast<opmath_t>(in) - fmin;
+  if (fin < opmath_t(0)) {
     grad_in_mult_ = -1;
-    in = -in;
+    fin = -fin;
   } else {
     grad_in_mult_ = 1;
   }
-  // `fmod` returns same sign as `in`, which is positive after the `if` above.
-  scalar_t extra = ::fmod(in, span);
-  int flips = static_cast<int>(::floor(in / span));
+  opmath_t extra = ::fmod(fin, fspan);
+  int flips = static_cast<int>(::floor(fin / fspan));
   if (flips % 2 == 0) {
     *grad_in = static_cast<scalar_t>(grad_in_mult_);
-    return extra + min;
+    return static_cast<scalar_t>(extra + fmin);
   } else {
     *grad_in = static_cast<scalar_t>(-grad_in_mult_);
-    return span - extra + min;
+    return static_cast<scalar_t>(fspan - extra + fmin);
   }
 }
 
 template<typename scalar_t>
 __forceinline__ __device__
 scalar_t safe_downgrade_to_int_range(scalar_t x){
-  // -100.0 does not have special meaning. This is just to make sure
-  // it's not within_bounds_2d or within_bounds_3d, and does not cause
-  // undefined behavior. See #35506.
-  if (x > INT_MAX-1 || x < INT_MIN || !::isfinite(static_cast<double>(x)))
+  using opmath_t = at::opmath_type<scalar_t>;
+  auto fx = static_cast<opmath_t>(x);
+  if (fx > static_cast<opmath_t>(INT_MAX-1) || fx < static_cast<opmath_t>(INT_MIN) || !::isfinite(static_cast<double>(x)))
     return static_cast<scalar_t>(-100.0);
   return x;
 }

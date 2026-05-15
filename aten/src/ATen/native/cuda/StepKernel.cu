@@ -22,7 +22,8 @@ void nextafter_kernel_cuda(TensorIteratorBase& iter) {
 void heaviside_kernel_cuda(TensorIteratorBase& iter) {
   AT_DISPATCH_ALL_TYPES_AND3(kHalf, kBool, kBFloat16, iter.dtype(), "heaviside_cuda", [&]() {
     gpu_kernel_with_scalars(iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
-      return a == 0 ? b : static_cast<scalar_t>(a > 0);
+      auto fa = static_cast<float>(a);
+      return fa == 0 ? b : static_cast<scalar_t>(fa > 0);
     });
   });
 }

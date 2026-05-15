@@ -108,10 +108,7 @@ def _check_compile_any_backend_with_cudagraph(test_case, fn, args, backend):
     outputs.append(warmup_output)
 
     graph = torch.cuda.CUDAGraph()
-    with (
-        torch.cuda.graph(graph, stream=side_stream),
-        CUDAGraphCaptureControlFlowOpDispatchMode(),
-    ):
+    with torch.cuda.graph(graph, stream=side_stream), CUDAGraphCaptureControlFlowOpDispatchMode():
         captured_output = compiled_fn(*args)
     with torch.cuda.stream(side_stream):
         eager_res = fn(*args)

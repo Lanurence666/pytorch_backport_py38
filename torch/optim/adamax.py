@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
-from typing import cast
+from __future__ import annotations
+
+from typing import Callable, List, Optional, Tuple, Union, cast, overload
 
 import torch
 from torch import Tensor
@@ -30,11 +32,11 @@ class Adamax(Optimizer):
     def __init__(
         self,
         params: ParamsT,
-        lr: float | Tensor = 2e-3,
-        betas: tuple[float, float] = (0.9, 0.999),
+        lr: Union[float, Tensor]= 2e-3,
+        betas: Tuple[float, float] = (0.9, 0.999),
         eps: float = 1e-8,
         weight_decay: float = 0,
-        foreach: bool | None = None,
+        foreach: Optional[bool]= None,
         *,
         maximize: bool = False,
         differentiable: bool = False,
@@ -135,11 +137,11 @@ class Adamax(Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
-            params_with_grad: list[Tensor] = []
-            grads: list[Tensor] = []
-            exp_avgs: list[Tensor] = []
-            exp_infs: list[Tensor] = []
-            state_steps: list[Tensor] = []
+            params_with_grad: List[Tensor] = []
+            grads: List[Tensor] = []
+            exp_avgs: List[Tensor] = []
+            exp_infs: List[Tensor] = []
+            state_steps: List[Tensor] = []
 
             beta1, beta2 = group["betas"]
             eps = group["eps"]
@@ -224,11 +226,11 @@ Adamax.__doc__ = (
 
 
 def _single_tensor_adamax(
-    params: list[Tensor],
-    grads: list[Tensor],
-    exp_avgs: list[Tensor],
-    exp_infs: list[Tensor],
-    state_steps: list[Tensor],
+    params: List[Tensor],
+    grads: List[Tensor],
+    exp_avgs: List[Tensor],
+    exp_infs: List[Tensor],
+    state_steps: List[Tensor],
     *,
     eps: float,
     beta1: float,
@@ -304,11 +306,11 @@ def _single_tensor_adamax(
 
 
 def _multi_tensor_adamax(
-    params: list[Tensor],
-    grads: list[Tensor],
-    exp_avgs: list[Tensor],
-    exp_infs: list[Tensor],
-    state_steps: list[Tensor],
+    params: List[Tensor],
+    grads: List[Tensor],
+    exp_avgs: List[Tensor],
+    exp_infs: List[Tensor],
+    state_steps: List[Tensor],
     *,
     eps: float,
     beta1: float,
@@ -334,7 +336,7 @@ def _multi_tensor_adamax(
         if not all(
             p.device.type == step.device.type
             and p.device.type in capturable_supported_devices
-            for p, step in zip(params, state_steps, strict=True)
+            for p, step in _zip_strict(params, state_steps)
         ):
             raise AssertionError(
                 f"If capturable=True, params and state_steps must be on supported devices: {capturable_supported_devices}."
@@ -352,11 +354,11 @@ def _multi_tensor_adamax(
         grouped_exp_infs_,
         grouped_state_steps_,
     ), _ in grouped_tensors.values():
-        grouped_params = cast(list[Tensor], grouped_params_)
-        grouped_grads = cast(list[Tensor], grouped_grads_)
-        grouped_exp_avgs = cast(list[Tensor], grouped_exp_avgs_)
-        grouped_exp_infs = cast(list[Tensor], grouped_exp_infs_)
-        grouped_state_steps = cast(list[Tensor], grouped_state_steps_)
+        grouped_params = cast(List[Tensor], grouped_params_)
+        grouped_grads = cast(List[Tensor], grouped_grads_)
+        grouped_exp_avgs = cast(List[Tensor], grouped_exp_avgs_)
+        grouped_exp_infs = cast(List[Tensor], grouped_exp_infs_)
+        grouped_state_steps = cast(List[Tensor], grouped_state_steps_)
 
         if has_complex:
             _view_as_real(
@@ -402,7 +404,7 @@ def _multi_tensor_adamax(
         torch._foreach_add_(grouped_grads, eps)
         torch._foreach_maximum_(grouped_exp_infs, grouped_grads)
 
-        bias_corrections: tuple[Tensor, ...] | list[Tensor]
+        bias_corrections: Union[Tuple[Tensor, ...], List[Tensor]]
         if capturable:
             bias_corrections = torch._foreach_pow(beta1, grouped_state_steps)
             # foreach_sub doesn't allow a scalar as the first arg
@@ -423,14 +425,14 @@ def _multi_tensor_adamax(
 
 @_disable_dynamo_if_unsupported(single_tensor_fn=_single_tensor_adamax)
 def adamax(
-    params: list[Tensor],
-    grads: list[Tensor],
-    exp_avgs: list[Tensor],
-    exp_infs: list[Tensor],
-    state_steps: list[Tensor],
+    params: List[Tensor],
+    grads: List[Tensor],
+    exp_avgs: List[Tensor],
+    exp_infs: List[Tensor],
+    state_steps: List[Tensor],
     # kwonly args with defaults are not supported by functions compiled with torchscript issue #70627
     # setting this as kwarg for now as functional API is compiled by torch/distributed/optim
-    foreach: bool | None = None,
+    foreach: Optional[bool]= None,
     maximize: bool = False,
     differentiable: bool = False,
     capturable: bool = False,

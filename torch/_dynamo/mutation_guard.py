@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Mutation tracking and dynamic module detection system for Dynamo.
 
 This module provides mechanisms to track and respond to mutations in PyTorch modules
@@ -15,7 +16,7 @@ to runtime changes in module state and structure.
 import functools
 import weakref
 from collections.abc import MutableMapping
-from typing import Any
+from typing import Any, Dict, List, MutableMapping, Type
 
 import torch.nn
 from torch.nn import Module
@@ -32,7 +33,7 @@ class MutationTracker:
 
     def __init__(self) -> None:
         self.mutation_count: int = 0
-        self.watchers: list[weakref.ReferenceType[Any]] = []
+        self.watchers: List[weakref.ReferenceType[Any]] = []
 
     def on_mutation(self, name: str) -> None:
         self.mutation_count += 1
@@ -83,9 +84,8 @@ class GenerationTracker:
         cls.generation_values[obj] = cls.generation
 
     @staticmethod
-    def mark_class_dynamic(cls: type[torch.nn.Module]) -> None:
-        if not issubclass(cls, torch.nn.Module):
-            raise AssertionError(f"Expected a torch.nn.Module subclass, got {cls}")
+    def mark_class_dynamic(cls: Type[torch.nn.Module]) -> None:
+        assert issubclass(cls, torch.nn.Module)
         GenerationTracker.dynamic_classes[cls] = True
 
     @classmethod

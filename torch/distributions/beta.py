@@ -1,5 +1,7 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import torch
 from torch import Tensor
 from torch.distributions import constraints
@@ -7,6 +9,7 @@ from torch.distributions.dirichlet import Dirichlet
 from torch.distributions.exp_family import ExponentialFamily
 from torch.distributions.utils import broadcast_all
 from torch.types import _Number, _size
+from typing import Optional, Tuple, Union
 
 
 __all__ = ["Beta"]
@@ -40,9 +43,9 @@ class Beta(ExponentialFamily):
 
     def __init__(
         self,
-        concentration1: Tensor | float,
-        concentration0: Tensor | float,
-        validate_args: bool | None = None,
+        concentration1: Union[Tensor, float],
+        concentration0: Union[Tensor, float],
+        validate_args: Optional[bool] = None,
     ) -> None:
         if isinstance(concentration1, _Number) and isinstance(concentration0, _Number):
             concentration1_concentration0 = torch.tensor(
@@ -110,7 +113,7 @@ class Beta(ExponentialFamily):
             return result
 
     @property
-    def _natural_params(self) -> tuple[Tensor, Tensor]:
+    def _natural_params(self) -> Tuple[Tensor, Tensor]:
         return (self.concentration1, self.concentration0)
 
     # pyrefly: ignore [bad-override]

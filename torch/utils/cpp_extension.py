@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
 import glob
 import importlib
@@ -17,6 +19,12 @@ import collections
 from pathlib import Path
 import errno
 import logging
+try:
+    from importlib.metadata import files as _metadata_files
+    from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+except ImportError:
+    from importlib_metadata import files as _metadata_files
+    from importlib_metadata import PackageNotFoundError as _PackageNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +37,7 @@ from torch.torch_version import TorchVersion, Version
 
 
 from setuptools.command.build_ext import build_ext
+from typing import Dict, List, Optional, Set, Tuple, Type, Union, overload
 
 IS_WINDOWS = sys.platform == 'win32'
 IS_MACOS = sys.platform.startswith('darwin')
@@ -48,8 +57,8 @@ SUBPROCESS_DECODE_ARGS = ('oem',) if IS_WINDOWS else ()
 MINIMUM_GCC_VERSION = (5, 0, 0)
 MINIMUM_MSVC_VERSION = (19, 0, 24215)
 
-VersionRange = tuple[tuple[int, ...], tuple[int, ...]]
-VersionMap = dict[str, VersionRange]
+VersionRange = Tuple[Tuple[int, ...], Tuple[int, ...]]
+VersionMap = Dict[str, VersionRange]
 # The following values were taken from the following GitHub gist that
 # summarizes the minimum valid major versions of g++/clang++ for each supported
 # CUDA version: https://gist.github.com/ax3l/9489132
@@ -104,7 +113,7 @@ __all__ = ["get_default_build_root", "check_compiler_ok_for_platform", "get_comp
            "verify_ninja_availability", "remove_extension_h_precompiler_headers", "get_cxx_compiler", "check_compiler_is_gcc"]
 # Taken directly from python stdlib < 3.9
 # See https://github.com/pytorch/pytorch/issues/48617
-def _nt_quote_args(args: list[str] | None) -> list[str]:
+def _nt_quote_args(args: Optional[List[str]]) -> List[str]:
     """Quote command-line arguments for DOS/Windows conventions.
 
     Just wraps every argument which contains blanks in double quotes, and
@@ -115,7 +124,7 @@ def _nt_quote_args(args: list[str] | None) -> list[str]:
         return []
     return [f'"{arg}"' if ' ' in arg else arg for arg in args]
 
-def _find_cuda_home() -> str | None:
+def _find_cuda_home() -> Optional[str]:
     """Find the CUDA install path."""
     # Guess #1
     cuda_home = os.environ.get('CUDA_HOME') or os.environ.get('CUDA_PATH')
@@ -141,7 +150,7 @@ def _find_cuda_home() -> str | None:
         logger.warning("No CUDA runtime is found, using CUDA_HOME='%s'", cuda_home)
     return cuda_home
 
-def _find_rocm_home() -> str | None:
+def _find_rocm_home() -> Optional[str]:
     """Find the ROCm install path."""
     # Guess #1
     rocm_home = os.environ.get('ROCM_HOME') or os.environ.get('ROCM_PATH')
@@ -171,7 +180,7 @@ def _find_rocm_home() -> str | None:
         logger.warning("No ROCm runtime is found, using ROCM_HOME='%s'", rocm_home)
     return rocm_home
 
-def _find_sycl_home() -> str | None:
+def _find_sycl_home() -> Optional[str]:
     sycl_home = None
     icpx_path = shutil.which('icpx')
     # Guess 1: for source code build developer/user, we'll have icpx in PATH,
@@ -184,12 +193,12 @@ def _find_sycl_home() -> str | None:
     # inside intel-sycl-rt, which is automatically installed via pip dependency.
     else:
         try:
-            files = importlib.metadata.files('intel-sycl-rt') or []
+            files = _metadata_files('intel-sycl-rt') or []
             for f in files:
                 if f.name == "libsycl.so":
                     sycl_home = os.path.dirname(Path(f.locate()).parent.resolve())
                     break
-        except importlib.metadata.PackageNotFoundError:
+        except _PackageNotFoundError:
             logger.warning("Trying to find SYCL_HOME from intel-sycl-rt package, but it is not installed.")
     return sycl_home
 
@@ -222,7 +231,7 @@ def _join_sycl_home(*paths) -> str:
 
 
 
-def _wrap_compiler(compiler: str | list[str]) -> list[str]:
+def _wrap_compiler(compiler: Union[str, List[str]]) -> List[str]:
     """Prepend a compiler wrapper (ccache/sccache) if available.
 
     Accepts a compiler as a string or list. Always returns a list with the
@@ -266,7 +275,7 @@ def _windows_quote(arg: str) -> str:
     return ''.join(out)
 
 
-def _shell_join(cmd: list[str]) -> str:
+def _shell_join(cmd: List[str]) -> str:
     """Quote and join ``cmd`` for the current platform's shell.
 
     ``shlex.join`` produces POSIX-style quoting which ninja does not parse
@@ -448,7 +457,7 @@ def _is_binary_build() -> bool:
     return not BUILT_FROM_SOURCE_VERSION_PATTERN.match(torch.version.__version__)
 
 
-def _accepted_compilers_for_platform() -> list[str]:
+def _accepted_compilers_for_platform() -> List[str]:
     # gnu-c++ and gnu-cc are the conda gcc compilers
     return ['clang++', 'clang'] if IS_MACOS else ['g++', 'gcc', 'gnu-c++', 'gnu-cc', 'clang++', 'clang']
 
@@ -531,7 +540,7 @@ def check_compiler_ok_for_platform(compiler: str) -> bool:
     return False
 
 
-def get_compiler_abi_compatibility_and_version(compiler) -> tuple[bool, TorchVersion]:
+def get_compiler_abi_compatibility_and_version(compiler) -> Tuple[bool, TorchVersion]:
     """
     Determine if the given compiler is ABI-compatible with PyTorch alongside its version.
 
@@ -1013,7 +1022,7 @@ class BuildExtension(build_ext):
         def win_hip_flags(cflags):
             return (COMMON_HIPCC_FLAGS + COMMON_HIP_FLAGS + cflags + _get_rocm_arch_flags(cflags))
 
-        def win_filter_msvc_include_dirs(pp_opts) -> list[str]:
+        def win_filter_msvc_include_dirs(pp_opts) -> List[str]:
             """Filter out MSVC include dirs from pp_opts for oneAPI 2025.3+."""
             # oneAPI 2025.3+ changed include path ordering to match MSVC behavior.
             # Filter out MSVC headers to avoid conflicting declarations with oneAPI's std headers.
@@ -1277,7 +1286,7 @@ class BuildExtension(build_ext):
             return ext.export_symbols
         return super().get_export_symbols(ext)
 
-    def _check_abi(self) -> tuple[str, TorchVersion]:
+    def _check_abi(self) -> Tuple[str, TorchVersion]:
         # On some platforms, like Windows, compiler_cxx is not available.
         if hasattr(self.compiler, 'compiler_cxx'):
             compiler = self.compiler.compiler_cxx[0]
@@ -1677,7 +1686,7 @@ def SyclExtension(name, sources, *args, **kwargs):
 
     return setuptools.Extension(name, sources, *args, **kwargs)
 
-def include_paths(device_type: str = "cpu", torch_include_dirs=True) -> list[str]:
+def include_paths(device_type: str = "cpu", torch_include_dirs=True) -> List[str]:
     """
     Get the include paths required to build a C++ or CUDA or SYCL extension.
 
@@ -1717,7 +1726,7 @@ def include_paths(device_type: str = "cpu", torch_include_dirs=True) -> list[str
     return paths
 
 
-def library_paths(device_type: str = "cpu", torch_include_dirs: bool = True, cross_target_platform: str | None = None) -> list[str]:
+def library_paths(device_type: str = "cpu", torch_include_dirs: bool = True, cross_target_platform: Optional[str] = None) -> List[str]:
     """
     Get the library paths required to build a C++ or CUDA extension.
 
@@ -1775,7 +1784,7 @@ def library_paths(device_type: str = "cpu", torch_include_dirs: bool = True, cro
 
 
 def load(name,
-         sources: str | list[str],
+         sources: Union[str, List[str]],
          extra_cflags=None,
          extra_cuda_cflags=None,
          extra_sycl_cflags=None,
@@ -1783,8 +1792,8 @@ def load(name,
          extra_include_paths=None,
          build_directory=None,
          verbose=False,
-         with_cuda: bool | None = None,
-         with_sycl: bool | None = None,
+         with_cuda: Optional[bool] = None,
+         with_sycl: Optional[bool] = None,
          is_python_module=True,
          is_standalone=False,
          keep_intermediates=True):
@@ -1900,7 +1909,7 @@ def load(name,
         keep_intermediates=keep_intermediates)
 
 @deprecated("PyBind11 ABI handling is internal to PyBind11; this will be removed after PyTorch 2.9.0")
-def _get_pybind11_abi_build_flags() -> list[str]:
+def _get_pybind11_abi_build_flags() -> List[str]:
     return []
 
 def check_compiler_is_gcc(compiler) -> bool:
@@ -2267,11 +2276,11 @@ def _jit_compile(name,
                  extra_include_paths,
                  build_directory: str,
                  verbose: bool,
-                 with_cuda: bool | None,
-                 with_sycl: bool | None,
+                 with_cuda: Optional[bool],
+                 with_sycl: Optional[bool],
                  is_python_module,
                  is_standalone,
-                 keep_intermediates=True) -> types.ModuleType | str:
+                 keep_intermediates=True) -> Union[types.ModuleType, str]:
     if is_python_module and is_standalone:
         raise ValueError("`is_python_module` and `is_standalone` are mutually exclusive.")
 
@@ -2375,7 +2384,7 @@ def _get_hipcc_path():
         return _join_rocm_home('bin', 'hipcc')
 
 def _write_ninja_file_and_compile_objects(
-        sources: list[str],
+        sources: List[str],
         objects,
         cflags,
         post_cflags,
@@ -2387,8 +2396,8 @@ def _write_ninja_file_and_compile_objects(
         sycl_dlink_post_cflags,
         build_directory: str,
         verbose: bool,
-        with_cuda: bool | None,
-        with_sycl: bool | None) -> None:
+        with_cuda: Optional[bool],
+        with_sycl: Optional[bool]) -> None:
     verify_ninja_availability()
 
     compiler = get_cxx_compiler()
@@ -2441,7 +2450,7 @@ def _write_ninja_file_and_compile_objects(
 
 def _write_ninja_file_and_build_library(
         name,
-        sources: list[str],
+        sources: List[str],
         extra_cflags,
         extra_cuda_cflags,
         extra_sycl_cflags,
@@ -2449,8 +2458,8 @@ def _write_ninja_file_and_build_library(
         extra_include_paths,
         build_directory: str,
         verbose: bool,
-        with_cuda: bool | None,
-        with_sycl: bool | None,
+        with_cuda: Optional[bool],
+        with_sycl: Optional[bool],
         is_standalone: bool = False) -> None:
     verify_ninja_availability()
 
@@ -2599,7 +2608,7 @@ def _prepare_ldflags(extra_ldflags, with_cuda, with_sycl, verbose, is_standalone
     return extra_ldflags
 
 
-def _get_cuda_arch_flags(cflags: list[str] | None = None) -> list[str]:
+def _get_cuda_arch_flags(cflags: Optional[List[str]] = None) -> List[str]:
     """
     Determine CUDA arch flags to use.
 
@@ -2705,7 +2714,7 @@ def _get_cuda_arch_flags(cflags: list[str] | None = None) -> list[str]:
     return sorted(set(flags))
 
 
-def _get_rocm_arch_flags(cflags: list[str] | None = None) -> list[str]:
+def _get_rocm_arch_flags(cflags: Optional[List[str]] = None) -> List[str]:
     # If cflags is given, there may already be user-provided arch flags in it
     # (from `extra_compile_args`). If user also specified -fgpu-rdc or -fno-gpu-rdc, we
     # assume they know what they're doing. Otherwise, we force -fno-gpu-rdc default.
@@ -2788,7 +2797,7 @@ def _get_build_directory(name: str, verbose: bool) -> str:
     return build_directory
 
 
-def _get_num_workers(verbose: bool) -> int | None:
+def _get_num_workers(verbose: bool) -> Optional[int]:
     max_jobs = os.environ.get('MAX_JOBS')
     if max_jobs is not None and max_jobs.isdigit():
         if verbose:
@@ -2802,7 +2811,7 @@ def _get_num_workers(verbose: bool) -> int | None:
     return None
 
 
-def _get_vc_env(vc_arch: str) -> dict[str, str]:
+def _get_vc_env(vc_arch: str) -> Dict[str, str]:
     try:
         from setuptools import distutils  # type: ignore[attr-defined]
 
@@ -3175,7 +3184,7 @@ e.
 
     # Emit one build rule per source to enable incremental build.
     build = []
-    for source_file, object_file in zip(sources, objects, strict=True):
+    for source_file, object_file in _zip_strict(sources, objects):
         is_cuda_source = _is_cuda_file(source_file) and with_cuda
         is_sycl_source = _is_sycl_file(source_file) and with_sycl
         if is_cuda_source:

@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Dict, Set, cast
 
 import torch
 import torch.utils._pytree as pytree
@@ -78,7 +78,7 @@ def trace_call_delegate(proxy_mode, func_overload, lowered_module, *args):
 # pyre-ignore
 def call_delegate_cpu(lowered_module, *args):
     # FX creates this immutable_dict/list concept. Get rid of this.
-    map_types: dict[type, type] = {
+    map_types: Dict[type, type] = {
         torch.fx.immutable_collections.immutable_dict: dict,
         torch.fx.immutable_collections.immutable_list: list,
     }

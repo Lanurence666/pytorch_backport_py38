@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs, disable-error-code="attr-defined, valid-type"
+from __future__ import annotations
+
 import copy
 import logging
 import math
@@ -17,6 +19,7 @@ from torch._inductor.ir import Buffer, Layout
 from torch._inductor.runtime.runtime_utils import next_power_of_2
 
 from ...utils import IndentedBuffer, is_dynamic, try_import_ck_lib
+from typing import List, Optional, Tuple, Type
 
 
 _, gen_ops_library, gen_ops_preselected, CKGemmOperation = try_import_ck_lib()
@@ -312,11 +315,11 @@ class CKGemmTemplate(CKTemplate):
 
     def __init__(
         self,
-        input_nodes: list[Buffer],
+        input_nodes: List[Buffer],
         layout: Layout,
         alpha: float,
         beta: float,
-        input_reorder: list[int] | None = None,
+        input_reorder: Optional[List[int]]= None,
     ) -> None:
         is_batched = len(layout.size) == 3
         name = "ck_batched_gemm_template" if is_batched else "ck_gemm_template"
@@ -805,7 +808,7 @@ class CKGemmTemplate(CKTemplate):
                     f"std::stoi(argv[{k}])" for k, _ in enumerate(self.size_args(), 1)
                 )
             )
-            size_args = dict(zip(size_arg_strs, size_arg_vals, strict=True))
+            size_args = dict(_zip_strict(size_arg_strs, size_arg_vals))
             runtime_args = dict(
                 zip(
                     [a.name for a in self.get_runtime_arg_info()],
@@ -904,7 +907,7 @@ class CKGemmTemplate(CKTemplate):
         kBatch = min(max(next_power_of_2(total_k_blocks // cus), 1), 128)
         return [kBatch]
 
-    def gen_ops(self) -> list[InductorROCmOp]:
+    def gen_ops(self) -> List[InductorROCmOp]:
         """
         Creates a list of `CKGemmOperation` instances that match the GEMM operation this template represents.
         The instances are guaranteed to have the correct layout, dtype and dimension padding for the GEMM input arguments.

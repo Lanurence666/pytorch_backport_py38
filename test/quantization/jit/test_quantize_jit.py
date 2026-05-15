@@ -2,6 +2,7 @@
 # ruff: noqa: F841
 
 # torch
+from __future__ import annotations
 import io
 import itertools
 import unittest

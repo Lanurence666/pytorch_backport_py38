@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import collections
 import contextlib
 import copy
@@ -14,8 +16,8 @@ import pstats
 import shutil
 import tempfile
 import traceback
-from collections.abc import Callable, Iterator, Sequence
-from typing import Any, IO
+
+from typing import Any, Callable, Dict, IO, Iterator, List, Optional, Sequence, Set, Tuple, Type, Union
 from unittest.mock import patch
 
 import torch
@@ -49,26 +51,26 @@ from .virtualized import V
 log = logging.getLogger(__name__)
 
 # Graph execution tracking for debugging
-GRAPH_EXECUTION_ORDER: list[dict[str, object]] | None = None
+GRAPH_EXECUTION_ORDER: Optional[List[Dict[str, object]]] = None
 RECORD_GRAPH_EXECUTION: bool = False
-GRAPH_COMPILE_IDS: dict[int, str | None] | None = None
+GRAPH_COMPILE_IDS: Optional[Dict[int, Union[str, None]]] = None
 
 ir_pre_fusion_log = getArtifactLogger(__name__, "ir_pre_fusion")
 ir_post_fusion_log = getArtifactLogger(__name__, "ir_post_fusion")
-SchedulerNodeList = list[Any]
+SchedulerNodeList = List[Any]
 BufMeta = collections.namedtuple("BufMeta", ["name", "n_origin"])
 GRAPHVIZ_COMMAND_SCALABLE = ["dot", "-Gnslimit=2", "-Gnslimit1=2", "-Gmaxiter=5000"]
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def has_dot() -> bool:
     return shutil.which("dot") is not None
 
 
 def draw_buffers(
-    nodes: list[BaseSchedulerNode],
+    nodes: List[BaseSchedulerNode],
     print_graph: bool = False,
-    fname: str | None = None,
+    fname: Optional[str] = None,
 ) -> None:
     """
     Draw a graph in fname.svg.
@@ -122,7 +124,7 @@ def draw_buffers(
     )
 
 
-def create_fx_from_snodes(snodes: list[BaseSchedulerNode]) -> fx.Graph:
+def create_fx_from_snodes(snodes: List[BaseSchedulerNode]) -> fx.Graph:
     """
     Creates a FX Graph from a list of SchedulerNode objects.
     """
@@ -174,7 +176,7 @@ def create_fx_from_snodes(snodes: list[BaseSchedulerNode]) -> fx.Graph:
             kwargs = {"device": snode.get_device()}
         fx_node = graph.call_function(node_func, args=(), kwargs=kwargs)  # type: ignore[arg-type]
 
-        def in_output(snode: BaseSchedulerNode | FusedSchedulerNode) -> bool:
+        def in_output(snode: Union[BaseSchedulerNode, FusedSchedulerNode]) -> bool:
             if isinstance(snode, FusedSchedulerNode):
                 return any(in_output(x) for x in snode.snodes)
             return any(
@@ -222,9 +224,9 @@ def create_fx_from_snodes(snodes: list[BaseSchedulerNode]) -> fx.Graph:
 
 
 def update_orig_fx_node_name_to_buf_name(
-    nodes: SchedulerNodeList | None,
-    node_name_to_buf_name: dict[str, str],
-    parent_buf_name: str | None = None,
+    nodes: Optional[SchedulerNodeList],
+    node_name_to_buf_name: Dict[str, str],
+    parent_buf_name: Optional[str] = None,
     n_origins: int = 0,
 ) -> None:
     if nodes is None:
@@ -258,8 +260,8 @@ def update_orig_fx_node_name_to_buf_name(
 
 
 def get_node_name_to_buf_meta(
-    node_name_to_buf_name: dict[str, str],
-) -> dict[str, BufMeta]:
+    node_name_to_buf_name: Dict[str, str],
+) -> Dict[str, BufMeta]:
     buf_name_to_n_node = {}
     for node_name, buf_name in node_name_to_buf_name.items():
         if buf_name not in buf_name_to_n_node:
@@ -282,7 +284,7 @@ def annotate_orig_fx_with_snodes(
     """
     Creates a FX Graph from a list of SchedulerNode objects.
     """
-    node_name_to_buf_name: dict[str, str] = {}
+    node_name_to_buf_name: Dict[str, str] = {}
     update_orig_fx_node_name_to_buf_name(snodes, node_name_to_buf_name)
     if node_name_to_buf_name is None:
         return
@@ -336,11 +338,11 @@ def enable_aot_logging() -> Iterator[None]:
 # Used for provenance tracking
 # They are not stored in DebugContext because they are not set in
 # _inductor_triton_kernel_to_post_grad_node_info's Debug Context
-_inductor_post_to_pre_grad_nodes: dict[str, dict[str, list[str]]] = {}
-_inductor_triton_kernel_to_post_grad_node_info: dict[str, list[str]] = {}
-_pre_grad_graph_id: int | None = None
-_inductor_pre_grad_node_stack_trace: dict[str, str] = {}
-_inductor_kernel_stack_trace: dict[str, list[str]] = {}
+_inductor_post_to_pre_grad_nodes: Dict[str, Dict[str, List[str]]] = {}
+_inductor_triton_kernel_to_post_grad_node_info: Dict[str, List[str]] = {}
+_pre_grad_graph_id: Optional[int] = None
+_inductor_pre_grad_node_stack_trace: Dict[str, str] = {}
+_inductor_kernel_stack_trace: Dict[str, List[str]] = {}
 _inductor_kernel_provenance_debug_handle: int = 0
 
 
@@ -404,7 +406,7 @@ class DebugContext:
     _counter = itertools.count()
 
     @staticmethod
-    def create_debug_dir(folder_name: str) -> str | None:
+    def create_debug_dir(folder_name: str) -> Optional[str]:
         debug_dir = config.trace.debug_dir or get_debug_dir()
         for n in DebugContext._counter:
             dirname = os.path.join(
@@ -517,9 +519,9 @@ class DebugContext:
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: Any | None,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[Any],
     ) -> None:
         if self._prof:
             self._prof.disable()
@@ -541,7 +543,7 @@ class DebugContext:
             stats.sort_stats("tottime")
             stats.print_stats(100)
 
-    def __getattr__(self, name: str) -> Callable[..., None] | None:
+    def __getattr__(self, name: str) -> Optional[Callable[..., None]]:
         if config.trace.enabled and getattr(config.trace, name):
             try:
                 return getattr(DebugFormatter(self), name)
@@ -566,7 +568,7 @@ class DebugFormatter:
     def fx_graph(
         self,
         gm: torch.fx.GraphModule,
-        inputs: list[torch.Tensor],
+        inputs: List[torch.Tensor],
     ) -> None:
         with self.fopen("fx_graph_runnable.py") as fd:
             save_dir = None
@@ -596,7 +598,7 @@ class DebugFormatter:
     def fx_graph_transformed(
         self,
         gm: torch.fx.GraphModule,
-        inputs: list[torch.Tensor],
+        inputs: List[torch.Tensor],
     ) -> None:
         with self.fopen("fx_graph_transformed.py") as fd:
             fd.write(gm.print_readable(print_output=False))
@@ -641,15 +643,15 @@ class DebugFormatter:
     def log_autotuning_results(
         self,
         name: str,
-        input_nodes: list[ir.IRNode],
-        timings: dict["ChoiceCaller", float],  # type: ignore[name-defined] # noqa: F821
+        input_nodes: List[ir.IRNode],
+        timings: Dict["ChoiceCaller", float],  # type: ignore[name-defined] # noqa: F821
         elapse: float,
         precompile_elapse: float,
-        prescreening_elapse: float | None,
+        prescreening_elapse: Optional[float],
     ) -> None:
         from .ir import FixedLayout
 
-        def build_node_info(node: ir.IRNode) -> dict[str, str]:
+        def build_node_info(node: ir.IRNode) -> Dict[str, str]:
             if hasattr(node, "name"):
                 node_name = node.name
             else:
@@ -720,7 +722,7 @@ class DebugFormatter:
             for caller, time in timings.items():
                 info_dict = dict(caller.info_dict())
                 info_dict.update(general_properties)
-                info_dict["benchmark_result"] = time
+                info_Dict["benchmark_result"] = time
                 json.dump(info_dict, fd)
                 fd.write("\n")
 
@@ -739,7 +741,7 @@ def log_ir_post_fusion(nodes: SchedulerNodeList) -> None:
     V.debug.ir_post_fusion(nodes)
 
 
-def _dump_collective_schedule(schedule: list[str | None]) -> None:
+def _dump_collective_schedule(schedule: List[Optional[str]]) -> None:
     try:
         trace_structured(
             "artifact",
@@ -768,29 +770,29 @@ def log_collective_schedule(nodes: Sequence[BaseSchedulerNode]) -> None:
         _dump_collective_schedule(schedule)
 
 
-def log_runtime_and_tensor_meta(node_runtimes: Sequence[tuple[Any, float]]) -> None:
+def log_runtime_and_tensor_meta(node_runtimes: Sequence[Tuple[Any, float]]) -> None:
     """Log per-op runtime estimates and output tensor metadata for TLParse."""
 
     try:
         to_optimization_hints = V.graph.sizevars.optimization_hints
 
-        def to_list(x: Sequence[Any] | None) -> list[Any]:
+        def to_list(x: Optional[Sequence[Any]]) -> List[Any]:
             return list(to_optimization_hints(x)) if x is not None else []
 
-        def dtype_to_str(dtype: Any) -> str | None:
+        def dtype_to_str(dtype: Any) -> Optional[str]:
             if dtype is None:
                 return None
             s = str(dtype)
-            s = s.removeprefix("torch.")
+            s = s[:len("torch.")] if s.startswith("torch.") else s
             return s
 
-        ops: list[dict[str, Any]] = []
+        ops: List[Dict[str, Any]] = []
         for s, runtime_ns in node_runtimes:
             name = getattr(s.node, "python_kernel_name", s.get_name())
             op_type = "collective" if utils.is_collective(s.node) else "compute"
 
             # Build outputs metadata if available
-            outputs: list[dict[str, Any]] = []
+            outputs: List[Dict[str, Any]] = []
             try:
                 for buf in s.get_outputs():
                     irnode = buf.node
@@ -875,15 +877,15 @@ save_args_cnt = itertools.count()
 
 
 def create_mapping_pre_post_grad_nodes(
-    pre_grad_graph_id: int | None,
-    post_to_pre_grad_nodes_json: dict[str, Any],
-) -> dict[str, dict[str, list[str]]]:
+    pre_grad_graph_id: Optional[int],
+    post_to_pre_grad_nodes_json: Dict[str, Any],
+) -> Dict[str, Dict[str, List[str]]]:
     """
     Create bidirectional mappings between pre_grad graph nodes
     and post_grad graph code nodes, and vice versa.
     """
     # return a dummy dict if there's any error
-    empty_return: dict[str, dict[str, list[str]]] = {
+    empty_return: Dict[str, Dict[str, List[str]]] = {
         "preToPost": {},
         "postToPre": {},
     }
@@ -897,12 +899,12 @@ def create_mapping_pre_post_grad_nodes(
         # and there's only a backward graph from backward pass engine
         return empty_return
 
-    pre_to_post: dict[str, Any] = collections.defaultdict(OrderedSet)
-    post_to_pre: dict[str, Any] = collections.defaultdict(OrderedSet)
+    pre_to_post: Dict[str, Any] = collections.defaultdict(OrderedSet)
+    post_to_pre: Dict[str, Any] = collections.defaultdict(OrderedSet)
 
     try:
 
-        def check_format(node: dict[str, Any]) -> bool:
+        def check_format(node: Dict[str, Any]) -> bool:
             if not isinstance(node, dict):
                 log.error(
                     "Provenance tacking error: node provenance in post_to_pre_grad_nodes_json is not a dict"
@@ -942,7 +944,7 @@ def create_mapping_pre_post_grad_nodes(
                         (n, parent_key) for n in current_node.get("from_node", [])
                     )
 
-        def convert_sets_to_lists(d: dict[str, Any]) -> None:
+        def convert_sets_to_lists(d: Dict[str, Any]) -> None:
             for key in d:
                 d[key] = list(d[key])
             d = dict(d)
@@ -972,14 +974,14 @@ def create_mapping_pre_post_grad_nodes(
 
 
 def create_node_mapping_kernel_to_post_grad(
-    triton_kernel_to_post_grad_json: dict[str, Any],
-) -> dict[str, dict[str, Any]]:
+    triton_kernel_to_post_grad_json: Dict[str, Any],
+) -> Dict[str, Dict[str, Any]]:
     """Create bidirectional mappings between triton kernel name and post_grad
     graph code nodes, and vice versa.
     """
 
     # return a dummy dict if there's any error
-    empty_return: dict[str, dict[str, Any]] = {
+    empty_return: Dict[str, Dict[str, Any]] = {
         "cppCodeToPost": {},
         "postToCppCode": {},
     }
@@ -990,7 +992,7 @@ def create_node_mapping_kernel_to_post_grad(
         )
         return empty_return
 
-    post_to_cpp_code: dict[str, Any] = collections.defaultdict(OrderedSet)
+    post_to_cpp_code: Dict[str, Any] = collections.defaultdict(OrderedSet)
 
     try:
         for outer_key, node_array in triton_kernel_to_post_grad_json.items():
@@ -1002,7 +1004,7 @@ def create_node_mapping_kernel_to_post_grad(
             for curr_node in node_array:
                 post_to_cpp_code[curr_node].add(outer_key)
 
-        def convert_sets_to_lists(d: dict[str, Any]) -> None:
+        def convert_sets_to_lists(d: Dict[str, Any]) -> None:
             for key in d:
                 d[key] = list(d[key])
             d = dict(d)
@@ -1031,12 +1033,12 @@ def create_node_mapping_kernel_to_post_grad(
         return empty_return
 
 
-def dump_inductor_provenance_info() -> dict[str, Any]:
+def dump_inductor_provenance_info() -> Dict[str, Any]:
     try:
         global _pre_grad_graph_id
         global _inductor_post_to_pre_grad_nodes
         global _inductor_triton_kernel_to_post_grad_node_info
-        node_mapping: dict[str, Any] = {}
+        node_mapping: Dict[str, Any] = {}
         if _pre_grad_graph_id:
             node_mapping_kernel = create_node_mapping_kernel_to_post_grad(
                 _inductor_triton_kernel_to_post_grad_node_info
@@ -1069,7 +1071,7 @@ def dump_inductor_provenance_info() -> dict[str, Any]:
         return {}
 
 
-def create_kernel_information_json() -> dict[str, dict[str, list[str]]]:
+def create_kernel_information_json() -> Dict[str, Dict[str, List[str]]]:
     """Create kernel information JSON"""
     try:
         global _inductor_post_to_pre_grad_nodes
@@ -1112,10 +1114,10 @@ def create_kernel_information_json() -> dict[str, dict[str, list[str]]]:
 
 
 def set_kernel_post_grad_provenance_tracing(
-    node_schedule: Sequence[BaseSchedulerNode] | ExternKernel,
+    node_schedule: Union[Sequence[BaseSchedulerNode], ExternKernel],
     kernel_name: str,
     is_extern: bool = False,
-) -> int | None:
+) -> Optional[int]:
     """
     Set the mapping between `kernel_name` and the post_grad nodes in `node_schedule`.
 
@@ -1133,7 +1135,7 @@ def set_kernel_post_grad_provenance_tracing(
         global _inductor_kernel_provenance_debug_handle
 
         _inductor_kernel_provenance_debug_handle += 1
-        stack_traces: list[str] = []
+        stack_traces: List[str] = []
         kernel_name = f"{kernel_name}:{_inductor_kernel_provenance_debug_handle}"
         if is_extern:
             assert isinstance(node_schedule, ExternKernel)
@@ -1264,8 +1266,8 @@ def aot_inductor_minifier_wrapper(
     func: Callable[..., str],
     exported_program: torch.export.ExportedProgram,
     *,
-    inductor_configs: dict[str, Any],
-    package_path: FileLike | None = None,
+    inductor_configs: Dict[str, Any],
+    package_path: Optional[FileLike] = None,
 ) -> str:
     from torch._dynamo.debug_utils import AccuracyError
     from torch._dynamo.repro.aoti import dump_to_minify

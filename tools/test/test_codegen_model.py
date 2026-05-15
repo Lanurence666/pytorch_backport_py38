@@ -1,5 +1,6 @@
 # Owner(s): ["module: codegen"]
 
+from __future__ import annotations
 import textwrap
 import unittest
 from typing import cast

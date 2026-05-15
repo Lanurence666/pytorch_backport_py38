@@ -1,12 +1,12 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """Utilities for manipulating the onnx and onnx-script dependencies and ONNX proto."""
 
-from __future__ import annotations
 
 import glob
 import os
 import shutil
-from typing import Any, TYPE_CHECKING
+from typing import Any, Mapping, Set, TYPE_CHECKING, Tuple, Union
 
 import torch
 import torch.serialization
@@ -16,7 +16,7 @@ from torch.onnx._internal.torchscript_exporter import jit_utils, registration
 
 if TYPE_CHECKING:
     import io
-    from collections.abc import Mapping
+    
 
 
 def export_as_test_case(
@@ -73,7 +73,7 @@ def export_as_test_case(
     return test_case_dir
 
 
-def load_test_case(dir: str) -> tuple[bytes, Any, Any]:
+def load_test_case(dir: str) -> Tuple[bytes, Any, Any]:
     """Load a self contained ONNX test case from a directory.
 
     The test case must contain the model and the inputs/outputs data. The directory structure
@@ -164,7 +164,7 @@ def export_data(data, value_info_proto, f: str) -> None:
 
 def _export_file(
     model_bytes: bytes,
-    f: io.BytesIO | str,
+    f: Union[io.BytesIO, str],
     export_map: Mapping[str, bytes],
 ) -> None:
     """export/write model bytes into directory/protobuf/zip"""
@@ -194,7 +194,7 @@ def _add_onnxscript_fn(
     # Iterate graph nodes to insert only the included custom
     # function_proto into model_proto
     onnx_function_list = []  # type: ignore[var-annotated]
-    included_node_func: set[str] = set()
+    included_node_func: Set[str] = set()
     # onnx_function_list and included_node_func are expanded in-place
     _find_onnxscript_op(
         model_proto.graph, included_node_func, custom_opsets, onnx_function_list
@@ -208,7 +208,7 @@ def _add_onnxscript_fn(
 
 def _find_onnxscript_op(
     graph_proto,
-    included_node_func: set[str],
+    included_node_func: Set[str],
     custom_opsets: Mapping[str, int],
     onnx_function_list: list,
 ):

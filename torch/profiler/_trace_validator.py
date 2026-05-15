@@ -1,3 +1,4 @@
+from __future__ import annotations
 # mypy: allow-untyped-defs
 """
 Validates Chrome traces emitted by ``torch.profiler`` against rules derived
@@ -12,13 +13,12 @@ Usage::
         print(v)
 """
 
-from __future__ import annotations
 
 import dataclasses
 import gzip
 import json
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import Callable, Dict, List, Sequence, TYPE_CHECKING, Tuple
 
 
 if TYPE_CHECKING:
@@ -36,7 +36,7 @@ class Violation:
         return f"{self.rule_name}: {self.message}"
 
 
-def _load_events(path: str) -> list[dict]:
+def _load_events(path: str) -> List[dict]:
     opener = gzip.open if path.endswith(".gz") else open
     with opener(path, "rt", encoding="utf-8") as fh:
         data = json.load(fh)
@@ -44,11 +44,11 @@ def _load_events(path: str) -> list[dict]:
     return [e for e in events if isinstance(e, dict)]
 
 
-def _check_gpu_kernel_causality(events: list[dict]) -> list[Violation]:
+def _check_gpu_kernel_causality(events: List[dict]) -> List[Violation]:
     """For each (cudaLaunchKernel, GPU kernel) pair matched by External id,
     the GPU kernel must start at or after its cudaLaunchKernel."""
-    cpu_launches: dict[int, dict] = {}
-    gpu_kernels: dict[int, dict] = {}
+    cpu_launches: Dict[int, dict] = {}
+    gpu_kernels: Dict[int, dict] = {}
 
     for ev in events:
         if ev.get("ph") != "X":
@@ -90,7 +90,7 @@ def _check_gpu_kernel_causality(events: list[dict]) -> list[Violation]:
     return violations
 
 
-def _check_stream_wait_corr_id_populated(events: list[dict]) -> list[Violation]:
+def _check_stream_wait_corr_id_populated(events: List[dict]) -> List[Violation]:
     """Stream Wait Events and Event Synchronize must have
     wait_on_cuda_event_record_corr_id >= 0."""
     TARGET_KINDS = {"Stream Wait Event", "Event Sync"}
@@ -119,7 +119,7 @@ def _check_stream_wait_corr_id_populated(events: list[dict]) -> list[Violation]:
     return violations
 
 
-def _check_stream_sync_overlap(events: list[dict]) -> list[Violation]:
+def _check_stream_sync_overlap(events: List[dict]) -> List[Violation]:
     """For each Stream Synchronize on (device, stream), no kernel on that
     stream should still be running when the sync starts."""
     stream_syncs = []
@@ -141,7 +141,7 @@ def _check_stream_sync_overlap(events: list[dict]) -> list[Violation]:
     if not stream_syncs:
         return []
 
-    kernels_by_stream: dict[tuple, list[dict]] = defaultdict(list)
+    kernels_by_stream: Dict[tuple, List[dict]] = defaultdict(list)
     for ev in events:
         if ev.get("ph") == "X" and ev.get("cat") == "kernel":
             args = ev.get("args", {})
@@ -183,10 +183,10 @@ _CUDA_EVENT_RECORD_NAMES = {
 }
 
 
-def _check_stream_wait_corr_id_in_past(events: list[dict]) -> list[Violation]:
+def _check_stream_wait_corr_id_in_past(events: List[dict]) -> List[Violation]:
     """wait_on_cuda_event_record_corr_id must point to a cudaEventRecord
     with cudaEventRecord.ts <= stream_wait.ts."""
-    event_record_ts: dict[int, float] = {}
+    event_record_ts: Dict[int, float] = {}
     for ev in events:
         if (
             ev.get("ph") == "X"
@@ -250,7 +250,7 @@ _NCCL_REQUIRED_FIELDS = {
 }
 
 
-def _check_nccl_metadata(events: list[dict]) -> list[Violation]:
+def _check_nccl_metadata(events: List[dict]) -> List[Violation]:
     """record_param_comms events must carry: Collective name, dtype,
     In msg nelems, Out msg nelems, Group size."""
     violations = []
@@ -272,9 +272,9 @@ def _check_nccl_metadata(events: list[dict]) -> list[Violation]:
     return violations
 
 
-def _check_backward_seq_id_uniqueness(events: list[dict]) -> list[Violation]:
+def _check_backward_seq_id_uniqueness(events: List[dict]) -> List[Violation]:
     """Per Sequence number, at most one distinct backward op name."""
-    seq_to_ops: dict[int, list[str]] = defaultdict(list)
+    seq_to_ops: Dict[int, List[str]] = defaultdict(list)
     for ev in events:
         if ev.get("ph") != "X":
             continue
@@ -305,7 +305,7 @@ def _check_backward_seq_id_uniqueness(events: list[dict]) -> list[Violation]:
     return violations
 
 
-_RULES: list[Callable[[list[dict]], list[Violation]]] = [
+_RULES: List[Callable[[List[dict]], List[Violation]]] = [
     _check_gpu_kernel_causality,
     _check_stream_wait_corr_id_populated,
     _check_stream_sync_overlap,
@@ -315,7 +315,7 @@ _RULES: list[Callable[[list[dict]], list[Violation]]] = [
 ]
 
 
-def validate_trace(trace_path: str) -> tuple[bool, list[Violation]]:
+def validate_trace(trace_path: str) -> Tuple[bool, List[Violation]]:
     """
     Run all validation rules against a Chrome trace JSON file.
 
@@ -327,7 +327,7 @@ def validate_trace(trace_path: str) -> tuple[bool, list[Violation]]:
         violations were found.
     """
     events = _load_events(trace_path)
-    all_violations: list[Violation] = []
+    all_violations: List[Violation] = []
     for rule in _RULES:
         all_violations.extend(rule(events))
     return len(all_violations) == 0, all_violations

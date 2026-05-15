@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 import io
 import time
-from typing import Any
+from typing import Any, Dict, List, Tuple, Type
 
 import torch
 import torch.distributed as dist
@@ -43,13 +45,13 @@ def rref_local_value(rref: RRef[Tensor]) -> Tensor:
 
 
 @torch.jit.script
-def list_create() -> list[int]:
+def list_create() -> List[int]:
     global_list = [1, 2, 3]
     return global_list
 
 
 @torch.jit.script
-def rref_list_mutate(rref: RRef[list[int]]) -> None:
+def rref_list_mutate(rref: RRef[List[int]]) -> None:
     rref.local_value().append(4)
     rref.to_here().append(5)
     rref.to_here(5.0).append(6)
@@ -318,7 +320,7 @@ class FutureTypingTest:
 
         @torch.jit.script
         def future_return_to_python(
-            dst_rank: int, inputs: tuple[Tensor, Tensor]
+            dst_rank: int, inputs: Tuple[Tensor, Tensor]
         ) -> Future[Tensor]:
             return rpc.rpc_async(f"worker{dst_rank}", two_args_two_kwargs, inputs)
 
@@ -442,7 +444,7 @@ class LocalRRefTest:
 
         def use_rref_on_owner(rref: RRef[MyScriptClass]) -> int:
             args = (rref,)
-            kwargs: dict[str, Any] = {}
+            kwargs: Dict[str, Any] = {}
             fut = rpc.rpc_async(
                 rref.owner(), script_rref_get_value_my_script_class, args, kwargs
             )
@@ -472,7 +474,7 @@ class LocalRRefTest:
 
         def use_rref_on_owner(rref: RRef[MyModuleInterface]) -> Tensor:
             args = (rref,)
-            kwargs: dict[str, Any] = {}
+            kwargs: Dict[str, Any] = {}
             fut = rpc.rpc_async(
                 rref.owner_name(),
                 script_rref_run_forward_my_script_module,
@@ -525,7 +527,7 @@ def raise_script():
 
 @torch.jit.script
 def script_rpc_async_call(
-    dst_worker_name: str, args: tuple[Tensor, Tensor], kwargs: dict[str, Tensor]
+    dst_worker_name: str, args: Tuple[Tensor, Tensor], kwargs: Dict[str, Tensor]
 ):
     fut = rpc.rpc_async(dst_worker_name, two_args_two_kwargs, args, kwargs)
     ret = fut.wait()
@@ -534,7 +536,7 @@ def script_rpc_async_call(
 
 @torch.jit.script
 def script_rpc_sync_call(
-    dst_worker_name: str, args: tuple[Tensor, Tensor], kwargs: dict[str, Tensor]
+    dst_worker_name: str, args: Tuple[Tensor, Tensor], kwargs: Dict[str, Tensor]
 ):
     res = rpc.rpc_sync(dst_worker_name, two_args_two_kwargs, args, kwargs)
     return res
@@ -542,7 +544,7 @@ def script_rpc_sync_call(
 
 @torch.jit.script
 def script_rpc_remote_call(
-    dst_worker_name: str, args: tuple[Tensor, Tensor], kwargs: dict[str, Tensor]
+    dst_worker_name: str, args: Tuple[Tensor, Tensor], kwargs: Dict[str, Tensor]
 ):
     rref_res = rpc.remote(dst_worker_name, two_args_two_kwargs, args, kwargs)
     return rref_res.to_here()
@@ -623,7 +625,7 @@ class JitRpcOpTest:
             # The error JIT gives is,
             # "Dict values must contain only a single type, "
             # "expected: Tensor but found str instead."
-            kwargs: dict[str, Any] = {
+            kwargs: Dict[str, Any] = {
                 "tensor_kwarg": torch.tensor([3, 3]),
                 "str_kwarg": "_str_kwarg",
                 "int_kwarg": 3,
@@ -1021,12 +1023,7 @@ class JitRpcTest(
         n = self.rank + 1
         dst_rank = n % self.world_size
         rref_var = rpc_return_rref(worker_name(dst_rank))
-        with (
-            TemporaryFileName() as fname,
-            self.assertRaisesRegex(
-                RuntimeError, "RRef jit pickling is only allowed inside RPC calls"
-            ),
-        ):
+        with TemporaryFileName() as fname, self.assertRaisesRegex( RuntimeError, "RRef jit pickling is only allowed inside RPC calls" ):
             save_rref(rref_var, fname)
 
     @dist_init

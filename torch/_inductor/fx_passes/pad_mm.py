@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import functools
 import itertools
 import operator
 import typing
-from collections.abc import Callable, Sequence
-from typing import Any
+
+from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 import torch
 import torch._inductor.runtime.runtime_utils
@@ -45,7 +47,7 @@ aten = torch.ops.aten
 _skip_do_bench_times = False
 
 
-def fetch_fake_tensors(match: Match, kwarg_names: Sequence[str]) -> list[Tensor]:
+def fetch_fake_tensors(match: Match, kwarg_names: Sequence[str]) -> List[Tensor]:
     kwargs = match.kwargs
     return [kwargs[name].meta["val"] for name in kwarg_names]
 
@@ -85,8 +87,8 @@ def check_dtype(a: Tensor, b: Tensor) -> bool:
 
 
 def hint_symbols(
-    ds: Sequence[int | torch.SymInt],
-) -> list[int]:
+    ds: Sequence[Union[int, torch.SymInt]],
+) -> List[int]:
     """Helper to convert symbolic dimensions to their concrete hint values."""
     from torch.fx.experimental.symbolic_shapes import optimization_hint
 
@@ -97,7 +99,7 @@ def can_pad(
     mat1: Tensor,
     mat2: Tensor,
     op: torch._ops.OpOverloadPacket,
-    input: Tensor | None = None,
+    input: Optional[Tensor] = None,
 ) -> bool:
     """
     Determines if an operation CAN be padded (safety checks).
@@ -174,7 +176,7 @@ def can_pad(
     return True
 
 
-def get_padded_length(x: int | torch.SymInt, alignment_size: int) -> int:
+def get_padded_length(x: Union[int, torch.SymInt], alignment_size: int) -> int:
     # we don't pad x if it is symbolic
     if isinstance(x, torch.SymInt) or alignment_size == 0 or x % alignment_size == 0:
         return 0
@@ -205,7 +207,7 @@ def should_pad_addmm(match: Match) -> bool:
 
 
 def pad_addmm(
-    input: Tensor | None,
+    input: Optional[Tensor],
     mat1: Tensor,
     mat2: Tensor,
     m_padded_length: int,
@@ -247,7 +249,7 @@ def pad_addmm(
 
 
 def addmm_replace(
-    input: Tensor | None,
+    input: Optional[Tensor],
     mat1: Tensor,
     mat2: Tensor,
     beta: float = 1.0,
@@ -301,7 +303,7 @@ def is_mm_compute_bound(M: int, K: int, N: int, dtype: torch.dtype) -> bool:
     return arithmetic_intensity > machine_balance
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def get_pad_cache() -> torch._inductor.codecache.LocalCache:
     return torch._inductor.codecache.LocalCache()
 
@@ -327,10 +329,10 @@ def should_pad_bench_key(
     mat1: Tensor,
     mat2: Tensor,
     op: torch._ops.OpOverloadPacket,
-    input: Tensor | None = None,
+    input: Optional[Tensor] = None,
     is_base_time_key: bool = False,
 ) -> str:
-    def tensor_key(t: Tensor) -> tuple[torch.Size, tuple[int, ...], torch.dtype]:
+    def tensor_key(t: Tensor) -> Tuple[torch.Size, Tuple[int, ...], torch.dtype]:
         return (t.shape, t.stride(), t.dtype)
 
     tf32_key = (
@@ -340,7 +342,7 @@ def should_pad_bench_key(
         or torch.backends.mkldnn.fp32_precision == "tf32"
     )
 
-    def fmt_pad(name: str) -> str | None:
+    def fmt_pad(name: str) -> Optional[str]:
         if is_base_time_key:
             return None
         return f"exclude_pad:{should_exclude_padding_time(match, name)}"
@@ -457,7 +459,7 @@ def should_pad(
     mat1: Tensor,
     mat2: Tensor,
     op: torch._ops.OpOverloadPacket,
-    input: Tensor | None = None,
+    input: Optional[Tensor] = None,
 ) -> bool:
     _can_pad = can_pad(mat1, mat2, op, input)
     # Note that if you're tempted to insert a dynamo_timed call here, this function can
@@ -481,7 +483,7 @@ def _should_pad(
     mat1: Tensor,
     mat2: Tensor,
     op: torch._ops.OpOverloadPacket,
-    input: Tensor | None = None,
+    input: Optional[Tensor] = None,
 ) -> bool:
     """
     Determines if an operation SHOULD be padded (performance checks).
@@ -736,10 +738,10 @@ def run_autoheuristic(
     ori_time: float,
     ori_time_key: str,
     key: str,
-) -> bool | None:
+) -> Optional[bool]:
     def feedback_fn(
         choice: str,
-    ) -> float | None:
+    ) -> Optional[float]:
         if choice == orig_choice:
             return do_bench(orig_bench_fn)
         elif choice == pad_choice:
@@ -916,8 +918,8 @@ def bmm_replace(mat1: Tensor, mat2: Tensor) -> Tensor:
     )
 
 
-@functools.cache
-def _pad_mm_init(input_device: torch.device | None = None) -> None:
+@functools.lru_cache(maxsize=None)
+def _pad_mm_init(input_device: Optional[torch.device] = None) -> None:
     from .joint_graph import patterns
 
     if input_device:

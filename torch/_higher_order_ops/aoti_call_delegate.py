@@ -47,9 +47,9 @@ class AOTICallDelegate(HigherOrderOperator):
         self,
         lowered_module: AOTI_LOWERED_MODULE,  # type: ignore[valid-type]
         original_gm: torch.fx.GraphModule,
-        weight_args: list[torch.Tensor],
-        input_args: list[torch.Tensor],
-    ) -> list[torch.Tensor]:
+        weight_args: List[torch.Tensor],
+        input_args: List[torch.Tensor],
+    ) -> List[torch.Tensor]:
         # pyrefly: ignore [missing-attribute]
         return super().__call__(lowered_module, original_gm, weight_args, input_args)
 
@@ -65,11 +65,11 @@ aoti_call_delegate.fallthrough(torch._C.DispatchKey.AutocastCPU)
 def call_delegate_cpu(
     lowered_module: AOTI_LOWERED_MODULE,  # type: ignore[valid-type]
     original_gm: torch.fx.GraphModule,
-    weight_args: list[torch.Tensor],
-    input_args: list[torch.Tensor],
-) -> list[torch.Tensor]:
+    weight_args: List[torch.Tensor],
+    input_args: List[torch.Tensor],
+) -> List[torch.Tensor]:
     # FX creates this immutable_dict/list concept. Get rid of this.
-    map_types: dict[type, type] = {
+    map_types: Dict[type, type] = {
         torch.fx.immutable_collections.immutable_dict: dict,
         torch.fx.immutable_collections.immutable_list: list,
     }
@@ -120,8 +120,8 @@ def call_delegate_proxy_torch_dispatch_mode(
     mode: ProxyTorchDispatchMode,
     lowered_module: AOTI_LOWERED_MODULE,  # type: ignore[valid-type]
     original_gm: torch.fx.GraphModule,
-    weight_args: list[torch.Tensor],
-    input_args: list[torch.Tensor],
+    weight_args: List[torch.Tensor],
+    input_args: List[torch.Tensor],
 ):
     res = trace_aoti_call_delegate(
         mode, aoti_call_delegate, lowered_module, original_gm, weight_args, input_args
@@ -134,9 +134,9 @@ def call_delegate_fake_tensor_mode(
     mode: FakeTensorMode,
     lowered_module: AOTI_LOWERED_MODULE,  # type: ignore[valid-type]
     original_gm: torch.fx.GraphModule,
-    weight_args: list[torch.Tensor],
-    input_args: list[torch.Tensor],
-) -> list[torch.Tensor]:
+    weight_args: List[torch.Tensor],
+    input_args: List[torch.Tensor],
+) -> List[torch.Tensor]:
     with mode:
         return call_delegate_cpu(lowered_module, original_gm, weight_args, input_args)
 
@@ -146,8 +146,8 @@ def call_delegate_functionalize(
     ctx,
     lowered_module: AOTI_LOWERED_MODULE,  # type: ignore[valid-type]
     original_gm: torch.fx.GraphModule,
-    weight_args: list[torch.Tensor],
-    input_args: list[torch.Tensor],
+    weight_args: List[torch.Tensor],
+    input_args: List[torch.Tensor],
 ):
     unwrapped_weight_args = tuple(
         ctx.unwrap_tensors(weight_arg) for weight_arg in weight_args

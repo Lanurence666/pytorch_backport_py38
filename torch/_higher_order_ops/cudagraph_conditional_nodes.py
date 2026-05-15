@@ -1,5 +1,6 @@
 # mypy: allow-untyped-defs
-from collections.abc import Generator
+
+from typing import Generator
 from contextlib import contextmanager
 
 import torch
@@ -75,15 +76,7 @@ class ControlFlowOpWarmupDispatchMode(TorchDispatchMode):
                     # We re-enter the mode in case of nested calls to torch.cond()
                     return if_else_node(*args)
             else:
-                with (
-                    torch.cuda.graph(
-                        torch.cuda.CUDAGraph(),
-                        pool=None,
-                        stream=self.capture_stream,
-                        capture_error_mode="relaxed",
-                    ),
-                    self,
-                ):
+                with torch.cuda.graph( torch.cuda.CUDAGraph(), pool=None, stream=self.capture_stream, capture_error_mode="relaxed", ), self:
                     if_else_node(*args)
 
                 return func(*args, **kwargs)

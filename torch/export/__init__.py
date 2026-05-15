@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import logging
 import os
 import warnings
 import zipfile
-from collections.abc import Callable, Mapping
-from typing import Any
+
+from typing import Any, Callable, Dict, IO, List, Mapping, Optional, Tuple, Type, Union
 from typing_extensions import deprecated
 
 import torch
@@ -51,19 +53,19 @@ from .graph_signature import ExportBackwardSignature, ExportGraphSignature
 from .unflatten import FlatArgsAdapter, unflatten, UnflattenedModule
 
 
-PassType = Callable[[torch.fx.GraphModule], PassResult | None]
+PassType = Optional[Callable[[torch.fx.GraphModule], PassResult]]
 
 log: logging.Logger = logging.getLogger(__name__)
 
 
 def export(
     mod: torch.nn.Module,
-    args: tuple[Any, ...],
-    kwargs: Mapping[str, Any] | None = None,
+    args: Tuple[Any, ...],
+    kwargs: Optional[Mapping[str, Any]]= None,
     *,
-    dynamic_shapes: dict[str, Any] | tuple[Any, ...] | list[Any] | None = None,
+    dynamic_shapes: Optional[Union[Dict[str, Any], Tuple[Any, ...], List[Any]]]= None,
     strict: bool = False,
-    preserve_module_call_signature: tuple[str, ...] = (),
+    preserve_module_call_signature: Tuple[str, ...] = (),
     prefer_deferred_runtime_asserts_over_guards: bool = False,
 ) -> ExportedProgram:
     """
@@ -212,8 +214,8 @@ def save(
     ep: ExportedProgram,
     f: FileLike,
     *,
-    extra_files: dict[str, Any] | None = None,
-    opset_version: dict[str, int] | None = None,
+    extra_files: Optional[Dict[str, Any]]= None,
+    opset_version: Optional[Dict[str, int]]= None,
     pickle_protocol: int = DEFAULT_PICKLE_PROTOCOL,
 ) -> None:
     """
@@ -228,7 +230,7 @@ def save(
     Args:
         ep (ExportedProgram): The exported program to save.
 
-        f (str | os.PathLike[str] | IO[bytes]) A file-like object (has to
+        f (Union[str, os.PathLike[str]] | IO[bytes]) A file-like object (has to
          implement write and flush) or a string containing a file name.
 
         extra_files (Optional[Dict[str, Any]]): Map from filename to contents
@@ -283,8 +285,8 @@ def save(
 def load(
     f: FileLike,
     *,
-    extra_files: dict[str, Any] | None = None,
-    expected_opset_version: dict[str, int] | None = None,
+    extra_files: Optional[Dict[str, Any]]= None,
+    expected_opset_version: Optional[Dict[str, int]]= None,
 ) -> ExportedProgram:
     """
 
@@ -299,7 +301,7 @@ def load(
     :func:`torch.export.save <torch.export.save>`.
 
     Args:
-        f (str | os.PathLike[str] | IO[bytes]): A file-like object (has to
+        f (Union[str, os.PathLike[str]] | IO[bytes]): A file-like object (has to
          implement write and flush) or a string containing a file name.
 
         extra_files (Optional[Dict[str, Any]]): The extra filenames given in
@@ -387,10 +389,10 @@ def load(
 
         # Load serialized_ep and serialized_state_dict from the zip file
 
-        serialized_exported_program: bytes | None = None
-        serialized_state_dict: bytes | None = None
-        serialized_constants: bytes | None = None
-        serialized_example_inputs: bytes | None = None
+        serialized_exported_program: Optional[bytes]= None
+        serialized_state_dict: Optional[bytes]= None
+        serialized_constants: Optional[bytes]= None
+        serialized_example_inputs: Optional[bytes]= None
 
         for file_info in zipf.infolist():
             file_content = zipf.read(file_info.filename)
@@ -436,11 +438,11 @@ def load(
 
 def draft_export(
     mod: torch.nn.Module,
-    args: tuple[Any, ...],
-    kwargs: Mapping[str, Any] | None = None,
+    args: Tuple[Any, ...],
+    kwargs: Optional[Mapping[str, Any]]= None,
     *,
-    dynamic_shapes: dict[str, Any] | tuple[Any, ...] | list[Any] | None = None,
-    preserve_module_call_signature: tuple[str, ...] = (),
+    dynamic_shapes: Optional[Union[Dict[str, Any], Tuple[Any, ...], List[Any]]]= None,
+    preserve_module_call_signature: Tuple[str, ...] = (),
     strict: bool = False,
     prefer_deferred_runtime_asserts_over_guards: bool = False,
 ) -> ExportedProgram:
@@ -463,9 +465,9 @@ def draft_export(
 
 
 def register_dataclass(
-    cls: type[Any],
+    cls: Type[Any],
     *,
-    serialized_type_name: str | None = None,
+    serialized_type_name: Optional[str]= None,
 ) -> None:
     """
     Registers a dataclass as a valid input/output type for :func:`torch.export.export`.

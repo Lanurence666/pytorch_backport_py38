@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 r"""Functional interface."""
 
 import math
@@ -16,17 +18,18 @@ from .radam import radam  # type: ignore[attr-defined]  # noqa: F401
 from .rmsprop import rmsprop  # type: ignore[attr-defined]  # noqa: F401
 from .rprop import rprop  # type: ignore[attr-defined]  # noqa: F401
 from .sgd import sgd  # type: ignore[attr-defined]  # noqa: F401
+from typing import List
 
 
 # TODO: use foreach API in optim._functional to do all the computation
 
 
 def sparse_adam(
-    params: list[Tensor],
-    grads: list[Tensor],
-    exp_avgs: list[Tensor],
-    exp_avg_sqs: list[Tensor],
-    state_steps: list[int],
+    params: List[Tensor],
+    grads: List[Tensor],
+    exp_avgs: List[Tensor],
+    exp_avg_sqs: List[Tensor],
+    state_steps: List[int],
     *,
     eps: float,
     beta1: float,

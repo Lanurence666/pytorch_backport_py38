@@ -8,23 +8,26 @@
 # functions should stick around for backwards-compatibility.
 
 
-def build_intlist(data: list[int]) -> list[int]:
+from __future__ import annotations
+from typing import List, Optional, Union
+
+def build_intlist(data: List[int]) -> List[int]:
     return data
 
 
-def build_tensorlist(data: list[object]) -> list[object]:
+def build_tensorlist(data: List[object]) -> List[object]:
     return data
 
 
-def build_doublelist(data: list[float]) -> list[float]:
+def build_doublelist(data: List[float]) -> List[float]:
     return data
 
 
-def build_boollist(data: list[bool]) -> list[bool]:
+def build_boollist(data: List[bool]) -> List[bool]:
     return data
 
 
-def build_tensor_from_id(data: int | object) -> int | None:
+def build_tensor_from_id(data: Union[int, object]) -> Optional[int]:
     if isinstance(data, int):
         # just the id, can't really do anything
         return data

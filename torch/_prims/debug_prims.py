@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 import contextlib
 from collections.abc import Generator, Sequence
 
 import torch
 from torch.utils._content_store import ContentStoreReader
+from typing import Generator, Optional, Sequence, Type
 
 
-LOAD_TENSOR_READER: ContentStoreReader | None = None
+LOAD_TENSOR_READER: Optional[ContentStoreReader]= None
 
 
 @contextlib.contextmanager

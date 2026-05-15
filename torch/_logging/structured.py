@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Utilities for converting data types into structured JSON for dumping.
 """
@@ -5,19 +6,19 @@ Utilities for converting data types into structured JSON for dumping.
 import inspect
 import os
 import traceback
-from collections.abc import Sequence
-from typing import Any
+
+from typing import Any, Dict, List, Optional, Sequence, Set
 
 import torch._logging._internal
 
 
-INTERN_TABLE: dict[str, int] = {}
+INTERN_TABLE: Dict[str, int] = {}
 
 
-DUMPED_FILES: set[str] = set()
+DUMPED_FILES: Set[str] = set()
 
 
-def intern_string(s: str | None) -> int:
+def intern_string(s: Optional[str]) -> int:
     if s is None:
         return -1
 
@@ -48,7 +49,7 @@ def dump_file(filename: str) -> None:
     )
 
 
-def from_traceback(tb: Sequence[traceback.FrameSummary]) -> list[dict[str, Any]]:
+def from_traceback(tb: Sequence[traceback.FrameSummary]) -> List[Dict[str, Any]]:
     # dict naming convention here coincides with
     # python/combined_traceback.cpp
     r = [
@@ -63,7 +64,7 @@ def from_traceback(tb: Sequence[traceback.FrameSummary]) -> list[dict[str, Any]]
     return r
 
 
-def get_user_stack(num_frames: int) -> list[dict[str, Any]]:
+def get_user_stack(num_frames: int) -> List[Dict[str, Any]]:
     from torch._guards import TracingContext
     from torch.utils._traceback import CapturedTraceback
 
@@ -86,7 +87,7 @@ def get_user_stack(num_frames: int) -> list[dict[str, Any]]:
 
 def get_framework_stack(
     num_frames: int = 25, cpp: bool = False
-) -> list[dict[str, Any]]:
+) -> List[Dict[str, Any]]:
     """
     Returns the traceback for the user stack and the framework stack
     """

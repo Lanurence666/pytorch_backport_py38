@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import math
 import warnings
 from collections.abc import Callable
@@ -38,11 +40,11 @@ from .uniform import Uniform
 from .utils import _sum_rightmost, euler_constant as _euler_gamma
 
 
-_KL_REGISTRY: dict[
-    tuple[type, type], Callable
+_KL_REGISTRY: Dict[
+    Tuple[type, type], Callable
 ] = {}  # Source of truth mapping a few general (type, type) pairs to functions.
-_KL_MEMOIZE: dict[
-    tuple[type, type], Callable
+_KL_MEMOIZE: Dict[
+    Tuple[type, type], Callable
 ] = {}  # Memoized version mapping many specific (type, type) pairs to functions.
 
 __all__ = ["register_kl", "kl_divergence"]
@@ -505,7 +507,7 @@ def _kl_transformed_transformed(p, q):
 @register_kl(Uniform, Uniform)
 def _kl_uniform_uniform(p, q):
     result = ((q.high - q.low) / (p.high - p.low)).log()
-    result[(q.low > p.low) | (q.high < p.high)] = inf
+    result[(q.low > p.low) | (q.high < p.high)] = Union[inf]
     return result
 
 
@@ -571,7 +573,7 @@ def _kl_beta_normal(p, q):
 @register_kl(Beta, Uniform)
 def _kl_beta_uniform(p, q):
     result = -p.entropy() + (q.high - q.low).log()
-    result[(q.low > p.support.lower_bound) | (q.high < p.support.upper_bound)] = inf
+    result[(q.low > p.support.lower_bound) | (q.high < p.support.upper_bound)] = Union[inf]
     return result
 
 
@@ -864,7 +866,7 @@ def _kl_uniform_beta(p, q):
         - (q.concentration1 + q.concentration0).lgamma()
     )
     result = t3 + t4 - t1 - t2
-    result[(p.high > q.support.upper_bound) | (p.low < q.support.lower_bound)] = inf
+    result[(p.high > q.support.upper_bound) | (p.low < q.support.lower_bound)] = Union[inf]
     return result
 
 

@@ -1,15 +1,15 @@
+from __future__ import annotations
 """Compatibility analyzer for PyTorch models."""
 
 # mypy: allow-untyped-defs
 
-from __future__ import annotations
 
 import dataclasses
 import operator
 import textwrap
 import traceback
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
 
 import torch
 import torch._export.serde.schema
@@ -38,20 +38,20 @@ class ModelInfo:
     fx_node_target_count: defaultdict[str, int] = dataclasses.field(
         default_factory=lambda: defaultdict(int)
     )
-    dispatch_failures: list[tuple[torch.fx.Node, str]] = dataclasses.field(
+    dispatch_failures: List[Tuple[torch.fx.Node, str]] = dataclasses.field(
         default_factory=list
     )
-    inputs: dict[str, torch._export.serde.schema.TensorMeta] = dataclasses.field(
+    inputs: Dict[str, torch._export.serde.schema.TensorMeta] = dataclasses.field(
         default_factory=dict
     )
-    outputs: dict[str, torch._export.serde.schema.TensorMeta] = dataclasses.field(
+    outputs: Dict[str, torch._export.serde.schema.TensorMeta] = dataclasses.field(
         default_factory=dict
     )
 
 
 def _count_weights(
     exported_program: torch.export.ExportedProgram,
-) -> tuple[defaultdict[torch.dtype, int], defaultdict[torch.dtype, int]]:
+) -> Tuple[defaultdict[torch.dtype, int], defaultdict[torch.dtype, int]]:
     """Count the size of the parameters in the exported program."""
 
     parameter_count: defaultdict[torch.dtype, int] = defaultdict(int)
@@ -143,10 +143,10 @@ def _format_model_info(model_info: ModelInfo) -> str:
     return "\n".join(lines)
 
 
-def _get_io_specs(exported_program: torch.export.ExportedProgram) -> tuple[dict, dict]:
+def _get_io_specs(exported_program: torch.export.ExportedProgram) -> Tuple[dict, dict]:
     """Get the input and output specs of the exported program."""
 
-    nodes: dict[str, torch.fx.Node] = {
+    nodes: Dict[str, torch.fx.Node] = {
         node.name: node for node in exported_program.graph.nodes
     }
     user_inputs = [
@@ -159,8 +159,8 @@ def _get_io_specs(exported_program: torch.export.ExportedProgram) -> tuple[dict,
         for spec in exported_program.graph_signature.output_specs
         if spec.kind == graph_signature.OutputKind.USER_OUTPUT
     ]
-    inputs: dict[str, torch._export.serde.schema.TensorMeta | str] = {}
-    outputs: dict[str, torch._export.serde.schema.TensorMeta | str] = {}
+    inputs: Union[Dict[str, torch._export.serde.schema.TensorMeta, str]]= {}
+    outputs: Union[Dict[str, torch._export.serde.schema.TensorMeta, str]]= {}
     for spec in user_inputs:
         inputs = _log_spec_into_io_specs(spec, nodes, inputs)
     for spec in user_outputs:
@@ -170,9 +170,9 @@ def _get_io_specs(exported_program: torch.export.ExportedProgram) -> tuple[dict,
 
 def _log_spec_into_io_specs(
     spec: graph_signature.InputSpec,
-    nodes: dict[str, torch.fx.Node],
-    inputs_or_outputs: dict[str, torch._export.serde.schema.TensorMeta | str],
-) -> dict[str, torch._export.serde.schema.TensorMeta | str]:
+    nodes: Dict[str, torch.fx.Node],
+    inputs_or_outputs: Union[Dict[str, torch._export.serde.schema.TensorMeta, str],]
+) -> Union[Dict[str, torch._export.serde.schema.TensorMeta, str]]:
     # If dynamic is set to a constant input, it becomes a
     # symbolic argument, which is not a tensor.
     if isinstance(spec.arg, graph_signature.ConstantArgument):
@@ -189,7 +189,7 @@ def _log_spec_into_io_specs(
             graph_signature.SymBoolArgument,
         ),
     ):
-        argument_to_str: dict[type[graph_signature.ArgumentSpec], str] = {
+        argument_to_str: Dict[Type[graph_signature.ArgumentSpec], str] = {
             graph_signature.SymIntArgument: "SymInt",
             graph_signature.SymFloatArgument: "SymFloat",
             graph_signature.SymBoolArgument: "SymBool",
@@ -214,7 +214,7 @@ def _count_fx_targets(
 
 def analyze(
     exported_program: torch.export.ExportedProgram,
-    registry: _registration.ONNXRegistry | None = None,
+    registry: Optional[_registration.ONNXRegistry]= None,
     file=None,
 ) -> None:
     """Analyze the compatibility of the exported program."""
@@ -255,7 +255,7 @@ def analyze(
 
 def compare_ops(
     program_a: torch.export.ExportedProgram, program_b: torch.export.ExportedProgram
-) -> tuple[set[str], set[str]]:
+) -> Tuple[Set[str], Set[str]]:
     """Compare and get unique ops in two exported programs.
 
     Args:

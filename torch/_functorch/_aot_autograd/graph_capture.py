@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 This module dispatches the graphs to either the forward-only or joint compilation
 pathways, taking into account the AOTConfig and the collected ViewAndMutationMetadata.
@@ -5,8 +6,8 @@ pathways, taking into account the AOTConfig and the collected ViewAndMutationMet
 
 import contextlib
 import dataclasses
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.utils._pytree as pytree
@@ -67,7 +68,7 @@ def _extract_tangent_source_stack_traces(
     output_node = list(fx_g.graph.nodes)[-1]
     all_outputs = output_node.args[0]
 
-    stack_traces: list[str | None] = []
+    stack_traces: Union[List[str, None]]= Union[[]]
     got_one = False
 
     for desc in fw_metadata.traced_tangents_descs:
@@ -91,8 +92,8 @@ def _extract_tangent_source_stack_traces(
 
 def _create_graph(
     f: Callable[..., Any],
-    args: list[torch.Tensor],
-    args_descs: list[AOTInput]
+    args: List[torch.Tensor],
+    args_descs: List[AOTInput]
     | None = None,  # keep compat with old clients; maybe we should split into two impls
     *,
     aot_config: AOTConfig,
@@ -123,10 +124,7 @@ def _create_graph(
             _allow_token_discovery=True,
         )
 
-    with (
-        enable_python_dispatcher(),
-        ctx,
-    ):
+    with enable_python_dispatcher(), ctx:
         fx_g = make_fx(
             inner_f,
             decomposition_table=aot_config.decompositions,
@@ -196,7 +194,7 @@ class _GraphCaptureTracingResult:
     fn_to_trace: Callable[..., Any]
     flat_args: Any
     flat_args_descs: Any
-    maybe_subclass_meta: SubclassMeta | None
+    maybe_subclass_meta: Optional[SubclassMeta]
 
 
 def _detach_traced_inputs(flat_args: Any) -> Any:
@@ -219,7 +217,7 @@ def _prepare_graph_capture_tracing(
     fw_metadata: ViewAndMutationMeta,
     aot_config: AOTConfig,
     trace_joint: bool,
-    joint_fn_handle: Any | None = None,
+    joint_fn_handle: Optional[Any] = None
 ) -> _GraphCaptureTracingResult:
     if aot_config.disable_functionalization:
         updated_flat_args, updated_flat_args_descs = flat_args, flat_args_descs
@@ -273,7 +271,7 @@ def _create_graph_and_save_traced_inputs(
     flat_args_descs: Any,
     *,
     aot_config: AOTConfig,
-) -> tuple[torch.fx.GraphModule, Any]:
+) -> Tuple[torch.fx.GraphModule, Any]:
     saved_flat_args = _detach_traced_inputs(flat_args)
     return (
         _create_graph(fn_to_trace, flat_args, flat_args_descs, aot_config=aot_config),
@@ -283,12 +281,12 @@ def _create_graph_and_save_traced_inputs(
 
 def aot_dispatch_base_graph(
     flat_fn: TraceFn,
-    flat_args: list[FxValue],
-    flat_args_descs: list[AOTInput],
+    flat_args: List[FxValue],
+    flat_args_descs: List[AOTInput],
     aot_config: AOTConfig,
     *,
     fw_metadata: ViewAndMutationMeta,
-) -> tuple[torch.fx.GraphModule, list[FxValue], list[AOTInput], SubclassMeta | None]:
+) -> Union[Tuple[torch.fx.GraphModule, List[FxValue], List[AOTInput], SubclassMeta, None]]:
     # aot_dispatch_base requires functionalization, but doesn't need to handle as many cases as the autograd case.
     # The cases that aot_dispatch_base doesn't need to handle include:
     # - outputs that are aliases of graph intermediates
@@ -332,7 +330,7 @@ def aot_dispatch_base_graph(
     if aot_config.is_export and mod_when_exporting_non_strict is not None:
         # For any buffer that is assigned, we want to associate it to the final proxy node
         # that it is assigned to. This node can then be added as a buffer mutation output.
-        assigned_buffers: dict[str, str] = {}
+        assigned_buffers: Dict[str, str] = {}
         hook = register_buffer_assignment_hook(
             mod_when_exporting_non_strict, assigned_buffers
         )
@@ -467,16 +465,16 @@ def aot_dispatch_base_graph(
 # the same storage, so long as they have separate TensorImpls.)
 def aot_dispatch_autograd_graph(
     flat_fn: TraceFn,
-    flat_args: list[Any],
-    flat_args_descs: list[AOTInput],
+    flat_args: List[Any],
+    flat_args_descs: List[AOTInput],
     aot_config: AOTConfig,
     *,
     fw_metadata: ViewAndMutationMeta,
-) -> tuple[
+) -> Tuple[
     torch.fx.GraphModule,
-    tuple[list[Any], list[Any]],
-    tuple[list[AOTInput], list[AOTInput]],
-    SubclassMeta | None,
+    Tuple[List[Any], List[Any]],
+    Tuple[List[AOTInput], List[AOTInput]],
+    Optional[SubclassMeta],
 ]:
     # NB: flat_fn here is the original user function (as far as
     # aot_module_simplified is concerned)

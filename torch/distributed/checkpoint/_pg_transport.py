@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import logging
 import pickle
 import time
-from collections.abc import Callable, Generator
+
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import cast, TypeVar
+from typing import Callable, Dict, Generator, List, Optional, Tuple, Type, TypeVar, Union, cast
 
 import torch
 from torch.distributed import ProcessGroup, Work
@@ -42,7 +44,7 @@ class _TensorMeta:
     shape: torch.Size
     dtype: torch.dtype
     storage_offset: int
-    stride: tuple[int, ...]
+    stride: Tuple[int, ...]
     nbytes: int
 
 
@@ -68,8 +70,8 @@ class _ShardedTensorMeta:
     This must be pickleable so that it can be sent over the wire.
     """
 
-    local_shards_meta: list[_TensorMeta]
-    local_shards_shard_metadata: list[
+    local_shards_meta: List[_TensorMeta]
+    local_shards_shard_metadata: List[
         ShardMetadata
     ]  # Original shard metadata for each local shard
     sharded_tensor_metadata: ShardedTensorMetadata
@@ -93,8 +95,8 @@ class _StateDictMeta:
     """
 
     treespec: TreeSpec
-    paths: list[KeyPath]
-    non_tensor_leaves: list[object | _TensorMeta | _DTensorMeta | _ShardedTensorMeta]
+    paths: List[KeyPath]
+    non_tensor_leaves: Union[List[object, _TensorMeta, _DTensorMeta, _ShardedTensorMeta]]
 
 
 @contextmanager
@@ -105,7 +107,7 @@ def _timeit(name: str) -> Generator[None, None, None]:
     logger.info("%s took %ss", name, dur)
 
 
-def _prepare_tensor(tensor: torch.Tensor) -> tuple[torch.Tensor, _TensorMeta]:
+def _prepare_tensor(tensor: torch.Tensor) -> Tuple[torch.Tensor, _TensorMeta]:
     return (
         _cast_tensor(tensor, torch.uint8),
         _TensorMeta(
@@ -121,15 +123,15 @@ def _prepare_tensor(tensor: torch.Tensor) -> tuple[torch.Tensor, _TensorMeta]:
 def _prepare_state_dict(
     state_dict: object,
     device: torch.device,
-) -> tuple[_StateDictMeta, list[torch.Tensor]]:
-    leaves: list[tuple[KeyPath, object]]
+) -> Tuple[_StateDictMeta, List[torch.Tensor]]:
+    leaves: List[Tuple[KeyPath, object]]
     leaves, treespec = tree_flatten_with_path(state_dict)
 
-    paths: list[KeyPath] = []
-    non_tensor_leaves: list[
-        object | _TensorMeta | _DTensorMeta | _ShardedTensorMeta
+    paths: List[KeyPath] = []
+    non_tensor_leaves: List[
+        object | {**_TensorMeta, **_DTensorMeta} | _ShardedTensorMeta
     ] = []
-    tensors: list[torch.Tensor] = []
+    tensors: List[torch.Tensor] = []
     for key_path, v in leaves:
         paths.append(key_path)
 
@@ -220,15 +222,15 @@ class PGTransport:
         pg: ProcessGroup,
         timeout: timedelta,
         device: torch.device,
-        state_dict: Callable[[], object] | None = None,
+        state_dict: Optional[Callable[[], object]]= None,
     ) -> None:
-        self._work: list[Work] = []
+        self._work: List[Work] = []
         self._pg = pg
         self._timeout = timeout
         self._device = device
         self._state_dict = state_dict
 
-    def send_checkpoint(self, dst_ranks: list[int], state_dict: object) -> None:
+    def send_checkpoint(self, dst_ranks: List[int], state_dict: object) -> None:
         """
         Send a checkpoint to multiple destination ranks.
 
@@ -289,7 +291,7 @@ class PGTransport:
         state_dict = self._state_dict() if self._state_dict else {}
         state_dict_leaves, _ = tree_flatten_with_path(state_dict)
 
-        dst_tensors: dict[KeyPath, object] = dict(state_dict_leaves)
+        dst_tensors: Dict[KeyPath, object] = dict(state_dict_leaves)
 
         len_t = torch.zeros(1, dtype=torch.int64, device=self._device)
         self._pg.recv([len_t], src_rank, tag=1).wait()
@@ -301,7 +303,7 @@ class PGTransport:
         meta: _StateDictMeta = pickle.loads(buf.cpu().numpy().tobytes())
 
         i: int = 0
-        works: list[Work] = []
+        works: List[Work] = []
 
         def recv(path: KeyPath, v: _TensorMeta) -> torch.Tensor:
             nonlocal i
@@ -336,7 +338,7 @@ class PGTransport:
                 storage_offset=v.storage_offset,
             )
 
-        values: list[object] = []
+        values: List[object] = []
         for path, v in zip(meta.paths, meta.non_tensor_leaves):
             if isinstance(v, _TensorMeta):
                 values.append(recv(path, v))

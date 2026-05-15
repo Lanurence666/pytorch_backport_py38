@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextlib
 import os
 
@@ -8,9 +10,10 @@ from torch._dynamo.test_case import (
 from torch._functorch import config as functorch_config
 from torch._inductor import config
 from torch._inductor.utils import fresh_cache
+from typing import Tuple, Union
 
 
-def run_tests(needs: str | tuple[str, ...] = ()) -> None:
+def run_tests(needs: Union[str, Tuple[str, ...]] = ()) -> None:
     dynamo_run_tests(needs)
 
 

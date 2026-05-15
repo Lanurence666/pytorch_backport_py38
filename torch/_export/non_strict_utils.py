@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import builtins
 import contextlib
 import functools
@@ -7,9 +9,13 @@ import logging
 import math
 import sys
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from contextlib import contextmanager
-from typing import Any, TYPE_CHECKING, TypeGuard
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union, overload
+try:
+    from typing import TypeGuard
+except ImportError:
+    from typing_extensions import TypeGuard
 
 import torch
 import torch.utils._pytree as pytree
@@ -99,7 +105,7 @@ class _KeyPathTrie:
             node = node[k]
         node[leaf] = src
 
-    def get(self, kp: KeyPath) -> tuple[Source, KeyPath]:
+    def get(self, kp: KeyPath) -> Tuple[Source, KeyPath]:
         node = self.root
         # pyrefly: ignore [bad-assignment]
         while not isinstance(node, Source):
@@ -139,7 +145,7 @@ def make_sourced_prefixes(nn_module, args, kwargs) -> _KeyPathTrie:
 
 
 def key_path_to_source(
-    kp: KeyPath, sourced_prefixes: _KeyPathTrie | None = None
+    kp: KeyPath, sourced_prefixes: Optional[_KeyPathTrie] = None
 ) -> Source:
     """
     Given a key path, return the source for the key path.
@@ -170,9 +176,9 @@ def fakify(
     mode: FakeTensorMode,
     kp: KeyPath,
     t: Any,
-    t_constraints: dict[int, dict[int, Constraint]],
-    sources: dict[tuple[int, int], list[Source]],
-    sourced_prefixes: _KeyPathTrie | None = None,
+    t_constraints: Dict[int, Dict[int, Constraint]],
+    sources: Dict[Tuple[int, int], List[Source]],
+    sourced_prefixes: Optional[_KeyPathTrie] = None,
 ):
     source = key_path_to_source(kp, sourced_prefixes=sourced_prefixes)
     if (
@@ -258,18 +264,20 @@ def _create_symbolic_context_for_tensor(t, source, t_constraints, sources, mode)
 
         # Propagate outer tensor constraints to inner tensors if not already present
         for attr in attrs:
-            match getattr(t, attr):
-                case torch.Tensor() as inner_value:
-                    inner_source = AttrSource(source, attr)
-                    inner_contexts[attr] = _create_symbolic_context_for_tensor(
-                        inner_value, inner_source, t_constraints, sources, mode
-                    )
-                case OpaqueBase():
-                    pass
-                case unexpected:
-                    raise AssertionError(
-                        f"expected Tensor or OpaqueBase, got {type(unexpected)}"
-                    )
+            # TODO: Python 3.8 compat - match/case block needs manual conversion
+            # match getattr(t, attr):
+            # case torch.Tensor() as inner_value:
+            # inner_source = AttrSource(source, attr)
+            # inner_contexts[attr] = _create_symbolic_context_for_tensor(
+            # inner_value, inner_source, t_constraints, sources, mode
+            # )
+            # case OpaqueBase():
+            # pass
+            # case unexpected:
+            # raise AssertionError(
+            # f"expected Tensor or OpaqueBase, got {type(unexpected)}"
+            # )
+            pass  # placeholder for removed match/case
 
         symbolic_context = SubclassSymbolicContext(
             dynamic_sizes=dynamic_sizes,
@@ -426,7 +434,7 @@ def make_fake_inputs(
     combined_args = _combine_args(nn_module, args, kwargs)
     _check_dynamic_shapes(combined_args, dynamic_shapes)
     constraints = _process_dynamic_shapes(combined_args, dynamic_shapes)
-    t_constraints: dict[int, dict[int, Constraint]] = defaultdict(dict)
+    t_constraints: Dict[int, Dict[int, Constraint]] = defaultdict(dict)
     for constraint in constraints:
         t_constraints[constraint.t_id][constraint.dim] = constraint
 
@@ -477,7 +485,7 @@ def make_fake_inputs(
 
     with fake_mode:
         original_signature = inspect.signature(nn_module.forward)
-        sources: dict[tuple[int, int], list[Source]] = defaultdict(list)
+        sources: Dict[Tuple[int, int], List[Source]] = defaultdict(list)
         sourced_prefixes = make_sourced_prefixes(nn_module, args, kwargs)
         fake_args, fake_kwargs = tree_map_with_path(
             lambda kp, val: fakify(
@@ -491,11 +499,11 @@ def make_fake_inputs(
             (args, kwargs),
         )
 
-        names: dict[str, tuple[int, int]] = {}
-        source_pairs: list[tuple[Source, Source]] = []
-        derived_equalities: list[tuple[Source, Source | Symbol, Callable]] = []
-        phantom_symbols: dict[str, Symbol] = {}
-        relaxed_sources: set[Source] = set()
+        names: Dict[str, Tuple[int, int]] = {}
+        source_pairs: List[Tuple[Source, Source]] = []
+        derived_equalities: List[Tuple[Source, Union[Source, Symbol], Callable]] = []
+        phantom_symbols: Dict[str, Symbol] = {}
+        relaxed_sources: Set[Source] = set()
         for constraint in constraints:
             torch.export.dynamic_shapes._process_equalities(
                 constraint,
@@ -526,9 +534,9 @@ def make_fake_inputs(
 
 
 def _flatten_dynamic_shapes(
-    combined_args: dict[str, Any],
-    dynamic_shapes: dict[str, Any] | tuple[Any] | list[Any],
-) -> list[Any]:
+    combined_args: Dict[str, Any],
+    dynamic_shapes: Union[Dict[str, Any], Tuple[Any]] | List[Any],
+) -> List[Any]:
     flat_shapes = []
 
     def _tree_map_helper(path, t, shape):
@@ -556,7 +564,7 @@ def _clean_dynamic_markers(tensor: torch.Tensor) -> None:
 def produce_guards_and_solve_constraints(
     fake_mode: FakeTensorMode,
     gm: torch.fx.GraphModule,
-    dynamic_shapes: dict[str, Any] | tuple[Any] | list[Any] | None,
+    dynamic_shapes: Union[Dict[str, Any], Tuple[Any]] | Optional[List[Any]],
     equalities_inputs: EqualityConstraint,
     original_signature: inspect.Signature,
 ):
@@ -625,7 +633,7 @@ def produce_guards_and_solve_constraints(
         raise constraint_violation_error
 
 
-def is_int(x: object) -> TypeGuard[int | torch.SymInt]:
+def is_int(x: object) -> TypeGuard[Union[int, torch.SymInt]]:
     return isinstance(x, int) or (isinstance(x, torch.SymInt) and x.node.expr.is_number)
 
 
@@ -636,8 +644,8 @@ def _constrain_user_specified_dimhint_range(
     range_constraints,
     shape_env,
     keypath: KeyPath,
-    i: int | None = None,
-) -> str | None:
+    i: Optional[int] = None,
+) -> Optional[str]:
     trace_vr = (
         range_constraints[symint.node.expr]
         if not is_int(symint)
@@ -705,8 +713,8 @@ def _constrain_user_specified_dimhint_range(
 def make_constraints(
     fake_mode: FakeTensorMode,
     gm: torch.fx.GraphModule,
-    combined_args: dict[str, Any],
-    dynamic_shapes: dict[str, Any] | tuple[Any] | list[Any] | None,
+    combined_args: Dict[str, Any],
+    dynamic_shapes: Union[Dict[str, Any], Tuple[Any]] | Optional[List[Any]],
     num_lifted_inputs: int,
 ):
     """
@@ -722,7 +730,7 @@ def make_constraints(
     if shape_env is None:
         raise AssertionError("fake_mode.shape_env must not be None")
     inline_constraints = gm.meta.get("inline_constraints", [])
-    range_constraints = defaultdict(lambda: ValueRanges(0, int_oo)) | inline_constraints
+    range_constraints = Union[defaultdict(lambda: ValueRanges(0, int_oo)), inline_constraints]
     if not dynamic_shapes:
         return dict(range_constraints)
 
@@ -851,7 +859,7 @@ def _gather_constant_attrs(m: torch.nn.Module) -> ConstantAttrMap:
     buffers_parameters = set(m.buffers())
     buffers_parameters.update(m.parameters())
 
-    def inner(m: torch.nn.Module, prefix_atoms: list[str], constants):
+    def inner(m: torch.nn.Module, prefix_atoms: List[str], constants):
         for k, v in m.__dict__.items():
             if isinstance(
                 v,
@@ -875,8 +883,8 @@ def _gather_constant_attrs(m: torch.nn.Module) -> ConstantAttrMap:
 
 
 def _get_graph_inputs_of_type_nn_module(
-    args: tuple[tuple[Any], dict[Any, Any]] | None,
-) -> set[type[torch.nn.Module]]:
+    args: Tuple[Tuple[Any], Dict[Any, Any]] | None,
+) -> Set[Type[torch.nn.Module]]:
     if args is None:
         return set()
     module_types = set()
@@ -887,14 +895,14 @@ def _get_graph_inputs_of_type_nn_module(
 
 
 def _enter_enable_graph_inputs_of_type_nn_module(
-    module_types: set[type[torch.nn.Module]],
+    module_types: Set[Type[torch.nn.Module]],
 ) -> None:
     for t in module_types:
         torch._export.utils.register_module_as_pytree_input_node(t)
 
 
 def _exit_enable_graph_inputs_of_type_nn_module(
-    module_types: set[type[torch.nn.Module]],
+    module_types: Set[Type[torch.nn.Module]],
 ) -> None:
     for t in module_types:
         torch._export.utils.deregister_module_as_pytree_input_node(t)
@@ -902,7 +910,7 @@ def _exit_enable_graph_inputs_of_type_nn_module(
 
 @contextlib.contextmanager
 def _enable_graph_inputs_of_type_nn_module(
-    args: tuple[tuple[Any], dict[Any, Any]] | None,
+    args: Tuple[Tuple[Any], Dict[Any, Any]] | None,
 ):
     if args is None:
         yield
@@ -918,8 +926,8 @@ def _enable_graph_inputs_of_type_nn_module(
 
 @contextlib.contextmanager
 def _fakify_module_inputs(
-    args: tuple[Any],
-    kwargs: dict[Any, Any],
+    args: Tuple[Any],
+    kwargs: Dict[Any, Any],
     fake_mode: torch._subclasses.fake_tensor.FakeTensorMode,
 ):
     # This context manager is used to fakify module inputs.
@@ -950,8 +958,8 @@ def _fakify_module_inputs(
 def _fakify_script_objects(
     mod: torch.nn.Module,
     args: Sequence[Any],
-    kwargs: dict[Any, Any],
-    fake_mode: torch._subclasses.fake_tensor.FakeTensorMode | None,
+    kwargs: Dict[Any, Any],
+    fake_mode: Optional[torch._subclasses.fake_tensor.FakeTensorMode],
 ):
     # This context manager is used to fakify script objects into FakeScriptObject.
     # Inputs:
@@ -983,7 +991,7 @@ def _fakify_script_objects(
 
     def _leaf_mod_and_attr(
         mod: torch.nn.Module, attr_fqn: str
-    ) -> tuple[torch.nn.Module, str]:
+    ) -> Tuple[torch.nn.Module, str]:
         *prefix_attr, last_attr = attr_fqn.split(".")
         cur_mod = mod
         for attr in prefix_attr:

@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Optional
 
 
 _pandas: Any = None
-_WITH_PANDAS: bool | None = None
+_WITH_PANDAS: Optional[bool]= None
 
 
 def _try_import_pandas() -> bool:

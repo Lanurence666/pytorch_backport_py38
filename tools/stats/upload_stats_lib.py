@@ -9,14 +9,14 @@ import time
 import zipfile
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, cast, TYPE_CHECKING
+from typing import Any, Dict, List, TYPE_CHECKING, Union, cast
 
 import boto3  # type: ignore[import]
 import requests
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    pass
 
 
 PYTORCH_REPO = "https://api.github.com/repos/pytorch/pytorch"
@@ -35,14 +35,14 @@ GHA_ARTIFACTS_BUCKET = "gha-artifacts"
 MAX_RETRY_IN_NON_DISABLED_MODE = 3 * 3
 
 
-def _get_request_headers() -> dict[str, str]:
+def _get_request_headers() -> Dict[str, str]:
     return {
         "Accept": "application/vnd.github.v3+json",
         "Authorization": "token " + os.environ["GITHUB_TOKEN"],
     }
 
 
-def _get_artifact_urls(prefix: str, workflow_run_id: int) -> dict[Path, str]:
+def _get_artifact_urls(prefix: str, workflow_run_id: int) -> Dict[Path, str]:
     """Get all workflow artifacts with 'test-report' in the name."""
     response = requests.get(
         f"{PYTORCH_REPO}/actions/runs/{workflow_run_id}/artifacts?per_page=100",
@@ -94,8 +94,8 @@ def download_s3_artifacts(
     prefix: str,
     workflow_run_id: int,
     workflow_run_attempt: int,
-    job_id: int | None = None,
-) -> list[Path]:
+    job_id: Union[int, None] = None,
+) -> List[Path]:
     bucket = get_s3_resource().Bucket(GHA_ARTIFACTS_BUCKET)
     objs = bucket.objects.filter(
         Prefix=f"pytorch/pytorch/{workflow_run_id}/{workflow_run_attempt}/artifact/{prefix}"
@@ -124,7 +124,7 @@ def download_s3_artifacts(
 
 def download_gha_artifacts(
     prefix: str, workflow_run_id: int, workflow_run_attempt: int
-) -> list[Path]:
+) -> List[Path]:
     artifact_urls = _get_artifact_urls(prefix, workflow_run_id)
     paths = []
     for name, url in artifact_urls.items():
@@ -135,8 +135,8 @@ def download_gha_artifacts(
 def upload_to_dynamodb(
     dynamodb_table: str,
     repo: str,
-    docs: list[Any],
-    generate_partition_key: Callable[[str, dict[str, Any]], str] | None,
+    docs: List[Any],
+    generate_partition_key: Union[Callable[[str, Dict[str, Any]], str], None],
 ) -> None:
     print(f"Writing {len(docs)} documents to DynamoDB {dynamodb_table}")
     # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/dynamodb.html#batch-writing
@@ -153,7 +153,7 @@ def upload_to_dynamodb(
 def upload_to_s3(
     bucket_name: str,
     key: str,
-    docs: list[dict[str, Any]],
+    docs: List[Dict[str, Any]],
 ) -> None:
     print(f"Writing {len(docs)} documents to S3 {bucket_name}/{key}")
     body = io.StringIO()
@@ -175,7 +175,7 @@ def upload_to_s3(
 def read_from_s3(
     bucket_name: str,
     key: str,
-) -> list[dict[str, Any]]:
+) -> List[Dict[str, Any]]:
     print(f"Reading from s3://{bucket_name}/{key}")
     body = (
         get_s3_resource()
@@ -211,7 +211,7 @@ def upload_workflow_stats_to_s3(
     workflow_run_id: int,
     workflow_run_attempt: int,
     collection: str,
-    docs: list[dict[str, Any]],
+    docs: List[Dict[str, Any]],
 ) -> None:
     bucket_name = "ossci-raw-job-status"
     key = f"{collection}/{workflow_run_id}/{workflow_run_attempt}"
@@ -258,7 +258,7 @@ def is_rerun_disabled_tests(
     report: Path,
     workflow_run_id: int,
     workflow_run_attempt: int,
-    tests: dict[str, dict[str, int]],
+    tests: Dict[str, Dict[str, int]],
 ) -> bool:
     """
     Check if the test report is coming from rerun_disabled_tests workflow where
@@ -274,7 +274,7 @@ def is_rerun_disabled_tests(
     return job_name is not None and "rerun_disabled_tests" in job_name
 
 
-def get_job_id(report: Path) -> int | None:
+def get_job_id(report: Path) -> Union[int, None]:
     # [Job id in artifacts]
     # Retrieve the job id from the report path. In our GHA workflows, we append
     # the job id to the end of the report name, so `report` looks like:
@@ -288,8 +288,8 @@ def get_job_id(report: Path) -> int | None:
 
 @lru_cache
 def get_job_name(
-    id: int | None, workflow_id: int | None, workflow_run_attempt: int | None
-) -> str | None:
+    id: Union[int, None], workflow_id: Union[int, None], workflow_run_attempt: Union[int, None]
+) -> Union[str, None]:
     if id is None:
         return None
     try:
@@ -304,8 +304,8 @@ def get_job_name(
         else:
 
             @lru_cache
-            def _get_jobs(workflow_id: int) -> dict[int, str]:
-                jobs: dict[int, str] = {}
+            def _get_jobs(workflow_id: int) -> Dict[int, str]:
+                jobs: Dict[int, str] = {}
                 # Paginate
                 page = 1
                 while True:

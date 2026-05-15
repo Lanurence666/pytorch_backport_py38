@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Any
 
 from torch._inductor.runtime import triton_heuristics

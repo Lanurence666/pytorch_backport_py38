@@ -7,6 +7,7 @@
 #include <ATen/native/cuda/Loops.cuh>
 #include <c10/core/Scalar.h>
 #include <c10/core/ScalarType.h>
+#include <ATen/OpMathType.h>
 
 
 namespace at::native {
@@ -27,7 +28,7 @@ void isposinf_kernel_impl(TensorIteratorBase &iter) {
   AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.input_dtype(), "isposinf_cuda", [&]() {
     gpu_kernel(
       iter,
-      [] GPU_LAMBDA (scalar_t a) -> bool { return a == std::numeric_limits<scalar_t>::infinity(); }
+      [] GPU_LAMBDA (scalar_t a) -> bool { return static_cast<float>(a) == std::numeric_limits<float>::infinity(); }
     );
   });
 }
@@ -36,7 +37,7 @@ void isneginf_kernel_impl(TensorIteratorBase &iter) {
   AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.input_dtype(), "isneginf_cuda", [&]() {
     gpu_kernel(
       iter,
-      [] GPU_LAMBDA (scalar_t a) -> bool { return a == -std::numeric_limits<scalar_t>::infinity(); }
+      [] GPU_LAMBDA (scalar_t a) -> bool { return static_cast<float>(a) == -std::numeric_limits<float>::infinity(); }
     );
   });
 }
@@ -44,13 +45,14 @@ void isneginf_kernel_impl(TensorIteratorBase &iter) {
 void clamp_kernel_impl(TensorIteratorBase& iter) {
   AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, iter.common_dtype(), "clamp_cuda", [&] {
     gpu_kernel(iter, []GPU_LAMBDA(scalar_t v, scalar_t lower, scalar_t upper) -> scalar_t {
-      scalar_t result = ::min(::max(v, lower), upper);
+      using opmath_t = at::opmath_type<scalar_t>;
+      opmath_t result = ::min(::max(static_cast<opmath_t>(v), static_cast<opmath_t>(lower)), static_cast<opmath_t>(upper));
 
-      result = at::_isnan(upper) ? upper : result;
-      result = at::_isnan(lower) ? lower : result;
-      result = at::_isnan(v) ? v : result;
+      result = at::_isnan(upper) ? static_cast<opmath_t>(upper) : result;
+      result = at::_isnan(lower) ? static_cast<opmath_t>(lower) : result;
+      result = at::_isnan(v) ? static_cast<opmath_t>(v) : result;
 
-      return result;
+      return static_cast<scalar_t>(result);
     });
   });
 }

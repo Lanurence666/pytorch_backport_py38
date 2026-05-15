@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Union
 """Argsort operator implementation."""
 
 import random
@@ -16,7 +18,7 @@ class ArgsortOperator(Operator):
         super().__init__("argsort")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.argsort"
 
@@ -27,7 +29,7 @@ class ArgsortOperator(Operator):
         # argsort returns indices, so it must be integer type (long)
         return output_spec.dtype == torch.long and len(output_spec.size) > 0
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input spec for argsort operation.
 
         torch.argsort(input, dim=-1, descending=False) returns a tensor with:
@@ -50,7 +52,7 @@ class ArgsortOperator(Operator):
         return [TensorSpec(size=input_size, stride=input_stride, dtype=input_dtype)]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for argsort operation."""
         if not isinstance(output_spec, TensorSpec):

@@ -133,7 +133,7 @@ C10_DEVICE scalar_t stirling_approx_tail(scalar_t k) {
     0.00925546218271273,
     0.00833056343336287
   };
-  if (k < std::size(kTailValues)) {
+  if (static_cast<float>(k) < static_cast<float>(std::size(kTailValues))) {
     return kTailValues[static_cast<size_t>(k)];
   }
   scalar_t kp1sq = (k + 1) * (k + 1);
@@ -153,7 +153,7 @@ C10_DEVICE scalar_t binomial_inversion(scalar_t count, scalar_t prob, BaseSample
     U = standard_uniform.sample();
     accscalar_t geom = compat_ceil(compat_log(U) / logprob);
     geom_sum += geom;
-    if (geom_sum > count) {
+    if (geom_sum > static_cast<accscalar_t>(count)) {
       break;
     }
     num_geom = num_geom + 1;
@@ -187,7 +187,7 @@ C10_DEVICE scalar_t btrs(scalar_t count, scalar_t prob, BaseSampler<accscalar_t,
     k = static_cast<scalar_t>(compat_floor((2 * a / us + b) * U + c));
 
     // Reject non-sensical answers.
-    if (k < 0 || k > count) {
+    if (static_cast<accscalar_t>(k) < 0 || static_cast<accscalar_t>(k) > static_cast<accscalar_t>(count)) {
       continue;
     }
     // Region for which the box is tight, and we can return our calculated value.
@@ -216,26 +216,22 @@ C10_DEVICE scalar_t btrs(scalar_t count, scalar_t prob, BaseSampler<accscalar_t,
 
 template<typename scalar_t, typename accscalar_t, typename uniform_sampler_t>
 C10_DEVICE scalar_t sample_binomial(scalar_t count, scalar_t prob, BaseSampler<accscalar_t, uniform_sampler_t>& standard_uniform) {
-  if (count <= 0.0 || prob <= 0.0) {
+  if (static_cast<accscalar_t>(count) <= accscalar_t(0.0) || static_cast<accscalar_t>(prob) <= accscalar_t(0.0)) {
     return 0;
-  } else if (prob >= 1.0) {
+  } else if (static_cast<accscalar_t>(prob) >= accscalar_t(1.0)) {
     return count;
-  } else if (prob <= 0.5) {
-    if (count * prob >= 10.0) {
-      // btrs
+  } else if (static_cast<accscalar_t>(prob) <= accscalar_t(0.5)) {
+    if (static_cast<accscalar_t>(count) * static_cast<accscalar_t>(prob) >= accscalar_t(10.0)) {
       return btrs<scalar_t, accscalar_t, uniform_sampler_t>(count, prob, standard_uniform);
     } else {
-      // binomial inversion
       return binomial_inversion<scalar_t, accscalar_t, uniform_sampler_t>(count, prob, standard_uniform);
     }
-  } else if (prob > 0.5) {
-    scalar_t qprob = 1.0 - prob;
-    if (count * qprob >= 10.0) {
-      // btrs
-      return count - btrs<scalar_t, accscalar_t, uniform_sampler_t>(count, qprob, standard_uniform);
+  } else if (static_cast<accscalar_t>(prob) > accscalar_t(0.5)) {
+    scalar_t qprob = static_cast<scalar_t>(1.0 - static_cast<accscalar_t>(prob));
+    if (static_cast<accscalar_t>(count) * static_cast<accscalar_t>(qprob) >= accscalar_t(10.0)) {
+      return static_cast<scalar_t>(static_cast<accscalar_t>(count) - static_cast<accscalar_t>(btrs<scalar_t, accscalar_t, uniform_sampler_t>(count, qprob, standard_uniform)));
     } else {
-      // count - binomial inversion
-      return count - binomial_inversion<scalar_t, accscalar_t, uniform_sampler_t>(count, qprob, standard_uniform);
+      return static_cast<scalar_t>(static_cast<accscalar_t>(count) - static_cast<accscalar_t>(binomial_inversion<scalar_t, accscalar_t, uniform_sampler_t>(count, qprob, standard_uniform)));
     }
   } else {
     // prob is nan?

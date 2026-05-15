@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import importlib
 import logging
 import sys
@@ -8,7 +10,7 @@ from pickle import (
     whichmodule as _pickle_whichmodule,  # pyrefly: ignore [missing-module-attribute]
 )
 from types import ModuleType
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from ._mangling import demangle, get_mangle_prefix, is_mangled
 
@@ -46,7 +48,7 @@ class Importer(ABC):
         assert obj1 is obj2
     """
 
-    modules: dict[str, ModuleType]
+    modules: Dict[str, ModuleType]
 
     @abstractmethod
     def import_module(self, module_name: str) -> ModuleType:
@@ -55,7 +57,7 @@ class Importer(ABC):
         The contract is the same as for importlib.import_module.
         """
 
-    def get_name(self, obj: Any, name: str | None = None) -> tuple[str, str]:
+    def get_name(self, obj: Any, name: Optional[str] = None) -> Tuple[str, str]:
         """Given an object, return a name that can be used to retrieve the
         object from this environment.
 
@@ -198,7 +200,7 @@ class OrderedImporter(Importer):
     """
 
     def __init__(self, *args):
-        self._importers: list[Importer] = list(args)
+        self._importers: List[Importer] = list(args)
 
     def _is_torchpackage_dummy(self, module):
         """Returns true iff this module is an empty PackageNode in a torch.package.
@@ -218,7 +220,7 @@ class OrderedImporter(Importer):
             return True
         return module.__file__ is None
 
-    def get_name(self, obj: Any, name: str | None = None) -> tuple[str, str]:
+    def get_name(self, obj: Any, name: Optional[str] = None) -> Tuple[str, str]:
         for importer in self._importers:
             try:
                 return importer.get_name(obj, name)

@@ -1,13 +1,13 @@
+from __future__ import annotations
 """
 Python polyfills for heapq
 """
 
-from __future__ import annotations
 
 import heapq
 import importlib
 import sys
-from typing import TYPE_CHECKING, TypeVar
+from typing import Dict, List, Set, TYPE_CHECKING, Type, TypeVar
 
 from ..decorators import substitute_in_graph
 
@@ -21,7 +21,7 @@ _T = TypeVar("_T")
 
 # Partially copied from CPython test/support/import_helper.py
 # https://github.com/python/cpython/blob/bb8791c0b75b5970d109e5557bfcca8a578a02af/Lib/test/support/import_helper.py
-def _save_and_remove_modules(names: set[str]) -> dict[str, ModuleType]:
+def _save_and_remove_modules(names: Set[str]) -> Dict[str, ModuleType]:
     orig_modules = {}
     prefixes = tuple(name + "." for name in names)
     for modname in list(sys.modules):
@@ -30,7 +30,7 @@ def _save_and_remove_modules(names: set[str]) -> dict[str, ModuleType]:
     return orig_modules
 
 
-def import_fresh_module(name: str, blocked: list[str]) -> ModuleType:
+def import_fresh_module(name: str, blocked: List[str]) -> ModuleType:
     # Keep track of modules saved for later restoration as well
     # as those which just need a blocking entry removed
     names = {name, *blocked}
@@ -65,42 +65,42 @@ __all__ = [
 
 
 @substitute_in_graph(heapq._heapify_max)
-def _heapify_max(heap: list[_T], /) -> None:
+def _heapify_max(heap: List[_T], /) -> None:
     return py_heapq._heapify_max(heap)
 
 
 @substitute_in_graph(heapq._heappop_max)  # type: ignore[attr-defined]
-def _heappop_max(heap: list[_T]) -> _T:
+def _heappop_max(heap: List[_T]) -> _T:
     return py_heapq._heappop_max(heap)
 
 
 @substitute_in_graph(heapq._heapreplace_max)  # type: ignore[attr-defined]
-def _heapreplace_max(heap: list[_T], item: _T) -> _T:
+def _heapreplace_max(heap: List[_T], item: _T) -> _T:
     return py_heapq._heapreplace_max(heap, item)
 
 
 @substitute_in_graph(heapq.heapify)
-def heapify(heap: list[_T], /) -> None:
+def heapify(heap: List[_T], /) -> None:
     return py_heapq.heapify(heap)
 
 
 @substitute_in_graph(heapq.heappop)
-def heappop(heap: list[_T], /) -> _T:
+def heappop(heap: List[_T], /) -> _T:
     return py_heapq.heappop(heap)
 
 
 @substitute_in_graph(heapq.heappush)
-def heappush(heap: list[_T], item: _T) -> None:
+def heappush(heap: List[_T], item: _T) -> None:
     return py_heapq.heappush(heap, item)
 
 
 @substitute_in_graph(heapq.heappushpop)
-def heappushpop(heap: list[_T], item: _T) -> _T:
+def heappushpop(heap: List[_T], item: _T) -> _T:
     return py_heapq.heappushpop(heap, item)
 
 
 @substitute_in_graph(heapq.heapreplace)
-def heapreplace(heap: list[_T], item: _T) -> _T:
+def heapreplace(heap: List[_T], item: _T) -> _T:
     return py_heapq.heapreplace(heap, item)
 
 

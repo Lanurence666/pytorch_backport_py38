@@ -1,23 +1,23 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Dict
 
 
 class KernelTemplateParams(ABC):
     """Abstract base class for kernel template parameters."""
 
     @abstractmethod
-    def to_kwargs(self) -> dict[str, Any]:
+    def to_kwargs(self) -> Dict[str, Any]:
         """Convert params to kwargs dict for template.choice_or_none()"""
 
     @abstractmethod
-    def to_serializeable_dict(self) -> dict[str, Any]:
+    def to_serializeable_dict(self) -> Dict[str, Any]:
         """Convert params to serializable dict for storage/caching"""
 
     @classmethod
     @abstractmethod
-    def from_dict(cls, data: dict[str, Any]) -> KernelTemplateParams:
+    def from_dict(cls, data: Dict[str, Any]) -> KernelTemplateParams:
         """Create params instance from dict"""
 
 
@@ -28,15 +28,15 @@ class DictKernelTemplateParams(KernelTemplateParams):
     # has time to define their own params class, with meaningful
     # defaults etc.
 
-    def __init__(self, kwargs: dict[str, Any]):
+    def __init__(self, kwargs: Dict[str, Any]):
         self.kwargs = kwargs
 
-    def to_kwargs(self) -> dict[str, Any]:
+    def to_kwargs(self) -> Dict[str, Any]:
         return self.kwargs.copy()
 
-    def to_serializeable_dict(self) -> dict[str, Any]:
+    def to_serializeable_dict(self) -> Dict[str, Any]:
         return self.kwargs.copy()
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> DictKernelTemplateParams:
+    def from_dict(cls, data: Dict[str, Any]) -> DictKernelTemplateParams:
         return cls(data)

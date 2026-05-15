@@ -4,6 +4,7 @@
 #include <torch/csrc/python_headers.h>
 #include <cstdarg>
 #include <string>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 // NB: It's a list of *optional* CUDAStream; when nullopt, that means to use
 // whatever the current stream of the device the input is associated with was.

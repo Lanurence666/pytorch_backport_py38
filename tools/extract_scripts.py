@@ -6,13 +6,13 @@ import argparse
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Union
 from typing_extensions import TypedDict  # Python 3.11+
 
 import yaml
 
 
-Step = dict[str, Any]
+Step = Dict[str, Any]
 
 
 class Script(TypedDict):
@@ -20,7 +20,7 @@ class Script(TypedDict):
     script: str
 
 
-def extract(step: Step) -> Script | None:
+def extract(step: Step) -> Union[Script, None]:
     run = step.get("run")
 
     # https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions#using-a-specific-shell

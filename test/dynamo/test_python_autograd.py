@@ -1,4 +1,5 @@
 # Owner(s): ["module: dynamo"]
+from __future__ import annotations
 from typing import NamedTuple, TYPE_CHECKING
 
 import torch

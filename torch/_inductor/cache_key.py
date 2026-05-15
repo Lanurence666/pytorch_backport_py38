@@ -4,11 +4,11 @@ import base64
 import dataclasses
 import hashlib
 import json
-from typing import Any, Literal, Protocol
-from typing_extensions import assert_never
+from typing import Any, Optional, Tuple, Type, Union
+from typing_extensions import Literal, Protocol, assert_never
 
 
-CacheKeyComponent = str | bytes | bytearray | memoryview
+CacheKeyComponent = Union[str, bytes, bytearray, memoryview]
 
 
 class _HashLike(Protocol):
@@ -31,7 +31,7 @@ class CacheKeyStrategy:
     name: str
     digest_format: Literal["base32", "hex"]
     prefix: str = ""
-    separator: bytes | None = None
+    separator: Optional[bytes]= None
     base32_length: int = 51
 
     @staticmethod
@@ -46,7 +46,7 @@ class CacheKeyStrategy:
             return component.tobytes()
         raise TypeError(f"Unsupported cache key component: {type(component)!r}")
 
-    def _hasher(self, components: tuple[CacheKeyComponent, ...]) -> _HashLike:
+    def _hasher(self, components: Tuple[CacheKeyComponent, ...]) -> _HashLike:
         hasher = hashlib.sha256()
         for idx, component in enumerate(components):
             if idx > 0 and self.separator is not None:

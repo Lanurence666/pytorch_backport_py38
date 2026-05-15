@@ -5,7 +5,7 @@ import os
 import re
 from collections import Counter, defaultdict, namedtuple
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Dict, List, Set, TYPE_CHECKING, Union
 
 import yaml
 
@@ -42,10 +42,10 @@ ParsedExternalYaml = namedtuple(
 
 def parse_backend_yaml(
     backend_yaml_path: str,
-    grouped_native_functions: Sequence[NativeFunction | NativeFunctionsGroup],
-    backend_indices: dict[DispatchKey, BackendIndex],
+    grouped_native_functions: Sequence[Union[NativeFunction, NativeFunctionsGroup]],
+    backend_indices: Dict[DispatchKey, BackendIndex],
 ) -> ParsedExternalYaml:
-    native_functions_map: dict[OperatorName, NativeFunction] = {
+    native_functions_map: Dict[OperatorName, NativeFunction] = {
         f.func.name: f
         for f in concatMap(
             lambda f: [f] if isinstance(f, NativeFunction) else list(f.functions()),
@@ -136,14 +136,14 @@ def parse_backend_yaml(
         )
 
     def create_backend_index(
-        backend_ops: list[str],
-        symint_ops: set[str],
+        backend_ops: List[str],
+        symint_ops: Set[str],
         dispatch_key: DispatchKey,
         *,
         use_out_as_primary: bool,
         use_device_guard: bool,
     ) -> BackendIndex:
-        metadata: dict[OperatorName, BackendMetadata] = {}
+        metadata: Dict[OperatorName, BackendMetadata] = {}
         for op in backend_ops:
             op_name = OperatorName.parse(op)
             if op_name not in native_functions_map:
@@ -165,7 +165,7 @@ def parse_backend_yaml(
             index=metadata,
         )
 
-    backend_key: DispatchKey | None = None
+    backend_key: Union[DispatchKey, None] = None
     if len(supported) > 0:
         with context(
             lambda: f'The provided value for "backend" must be a valid DispatchKey, but got {backend}.'
@@ -183,7 +183,7 @@ def parse_backend_yaml(
             raise AssertionError(f"Duplicate backend key: {backend_key}")
         backend_indices[backend_key] = backend_idx
 
-    autograd_key: DispatchKey | None = None
+    autograd_key: Union[DispatchKey, None] = None
     if len(supported_autograd) > 0:
         with context(
             lambda: f'The "autograd" key was specified, which indicates that you would like to override \
@@ -266,12 +266,12 @@ the behavior of autograd for some operators on your backend. However "Autograd{b
 
 def error_on_missing_kernels(
     native_functions: Sequence[NativeFunction],
-    backend_indices: dict[DispatchKey, BackendIndex],
+    backend_indices: Dict[DispatchKey, BackendIndex],
     backend_key: DispatchKey,
-    autograd_key: DispatchKey | None,
+    autograd_key: Union[DispatchKey, None],
     class_name: str,
     kernel_defn_file_path: str,
-    full_codegen: list[OperatorName] | None = None,
+    full_codegen: Union[List[OperatorName], None] = None,
 ) -> None:
     try:
         with open(kernel_defn_file_path) as f:
@@ -289,7 +289,7 @@ def error_on_missing_kernels(
     )
     # Quick mapping from each OperatorName used by the external backend
     # to its backend kernel name
-    expected_backend_op_names: dict[OperatorName, str] = dict(
+    expected_backend_op_names: Dict[OperatorName, str] = dict(
         list(
             concatMap(
                 lambda index: [
@@ -299,12 +299,12 @@ def error_on_missing_kernels(
             )
         )
     )
-    expected_backend_native_funcs: list[NativeFunction] = [
+    expected_backend_native_funcs: List[NativeFunction] = [
         f
         for f in native_functions
         if f.func.name in expected_backend_op_names and f.func.name not in full_codegen
     ]
-    expected_backend_kernel_name_counts: dict[str, list[NativeFunction]] = defaultdict(
+    expected_backend_kernel_name_counts: Dict[str, List[NativeFunction]] = defaultdict(
         list
     )
     for native_f in expected_backend_native_funcs:
@@ -377,10 +377,10 @@ def gen_dispatchkey_nativefunc_headers(
     fm: FileManager,
     class_name: str,
     cpp_namespace: str,
-    backend_indices: dict[DispatchKey, BackendIndex],
-    grouped_native_functions: Sequence[NativeFunction | NativeFunctionsGroup],
+    backend_indices: Dict[DispatchKey, BackendIndex],
+    grouped_native_functions: Sequence[Union[NativeFunction, NativeFunctionsGroup]],
     backend_dispatch_key: DispatchKey,
-    autograd_dispatch_key: DispatchKey | None,
+    autograd_dispatch_key: Union[DispatchKey, None],
     backend_name: str = "",
 ) -> None:
     if class_name is None:
@@ -435,8 +435,8 @@ def gen_dispatcher_registrations(
     fm: FileManager,
     output_dir: str,
     class_name: str,
-    backend_indices: dict[DispatchKey, BackendIndex],
-    grouped_native_functions: Sequence[NativeFunction | NativeFunctionsGroup],
+    backend_indices: Dict[DispatchKey, BackendIndex],
+    grouped_native_functions: Sequence[Union[NativeFunction, NativeFunctionsGroup]],
     backend_dispatch_key: DispatchKey,
     dispatch_key: DispatchKey,
     selector: SelectiveBuilder,
@@ -547,7 +547,7 @@ TORCH_API void Register${backend_name}${dispatch_key}NativeFunctions() {
 
 
 def run(
-    source_yaml: str, output_dir: str, dry_run: bool, impl_path: str | None = None
+    source_yaml: str, output_dir: str, dry_run: bool, impl_path: Union[str, None] = None
 ) -> None:
     # Assumes that this file lives at torchgen/gen_backend_stubs.py
     root = Path(__file__).absolute().parent.parent

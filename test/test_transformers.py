@@ -1,5 +1,6 @@
 # Owner(s): ["module: sdpa"]
 
+from __future__ import annotations
 import contextlib
 from functools import partial
 from collections import namedtuple
@@ -41,7 +42,6 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_TORCHDYNAMO,
     TEST_XPU,
     xfailIfNoAcceleratorTriton,
-    setSdpaBackendsToDefaultFinally,
 )
 from torch._dynamo.testing import CompileCounterWithBackend
 
@@ -817,7 +817,7 @@ class TestTransformers(NNTestCase):
             torch.arange(3)[None, :].cpu() >= input_seq_len[:, None]
         )
 
-        with (self.assertNoLogs(None) if not TEST_WITH_TORCHDYNAMO else contextlib.nullcontext()):
+        with self.assertNoLogs(None) if not TEST_WITH_TORCHDYNAMO else contextlib.nullcontext():
             encoder(
                 inputs,
                 mask=src_mask,
@@ -4031,7 +4031,6 @@ class TestSDPACudaOnly(NNTestCase):
         "Does not support SDPA or pre-SM80 hardware",
     )
     @unittest.skipIf(IS_JETSON, "causing sigkill on Jetson")
-    @setSdpaBackendsToDefaultFinally
     @parametrize("batch_size", [1, 8])
     @parametrize("seq_len_q", [4, 143, 2048])
     @parametrize("seq_len_k", [4, 127, 579, 2048])

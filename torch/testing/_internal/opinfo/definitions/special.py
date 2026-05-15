@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 import unittest
 from functools import partial
 from itertools import product
@@ -121,7 +123,7 @@ def sample_inputs_erfcx(op_info, device, dtype, requires_grad, **kwargs):
 _unsigned_int_types = (torch.uint16, torch.uint32, torch.uint64)
 
 
-op_db: list[OpInfo] = [
+op_db: List[OpInfo] = [
     UnaryUfuncInfo(
         "special.i0e",
         aten_name="special_i0e",
@@ -862,7 +864,7 @@ op_db: list[OpInfo] = [
     ),
 ]
 
-python_ref_db: list[OpInfo] = [
+python_ref_db: List[OpInfo] = [
     #
     # Elementwise Unary Special OpInfos
     #

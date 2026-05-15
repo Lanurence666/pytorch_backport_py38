@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 import sympy
@@ -6,6 +8,7 @@ from torch._inductor.utils import _IntLike, argsort_sym
 from torch.utils._sympy.functions import FloorDiv, ModularIndexing
 
 from .virtualized import V
+from typing import List, Optional, Tuple
 
 
 def static_eq(a: _IntLike, b: _IntLike) -> bool:
@@ -15,12 +18,12 @@ def static_eq(a: _IntLike, b: _IntLike) -> bool:
 @dataclass
 class Term:
     coefficient: _IntLike
-    range: _IntLike | None  # None for unbounded
+    range: Optional[_IntLike]  # None for unbounded
     original_expr: sympy.Expr
     reconstruction_multiplier: _IntLike  # The multiplier needed for reconstruction
 
 
-def generate_inverse_formula(expr: sympy.Expr, var: sympy.Symbol) -> sympy.Expr | None:
+def generate_inverse_formula(expr: sympy.Expr, var: sympy.Symbol) -> Optional[sympy.Expr]:
     """
      Analyze an expression to see if it matches a specific invertible pattern that we
      know how to reverse.
@@ -86,7 +89,7 @@ def generate_inverse_formula(expr: sympy.Expr, var: sympy.Symbol) -> sympy.Expr 
     return generate_reconstruction_expr(terms, var)
 
 
-def parse_terms(expr: sympy.Expr, var: sympy.Symbol) -> list[Term] | None:
+def parse_terms(expr: sympy.Expr, var: sympy.Symbol) -> Optional[List[Term]]:
     """Parse expression into terms."""
     if not isinstance(expr, sympy.Add):
         # Single term
@@ -104,7 +107,7 @@ def parse_terms(expr: sympy.Expr, var: sympy.Symbol) -> list[Term] | None:
     return terms
 
 
-def parse_single_term(term: sympy.Expr, var: sympy.Symbol) -> Term | None:
+def parse_single_term(term: sympy.Expr, var: sympy.Symbol) -> Optional[Term]:
     """Parse a single term and extract coefficient, range, and reconstruction multiplier."""
     # Extract coefficient and expression parts
     coefficient, expr_parts = term.as_coeff_mul()
@@ -138,7 +141,7 @@ def parse_single_term(term: sympy.Expr, var: sympy.Symbol) -> Term | None:
 
 def analyze_expression_properties(
     expr: sympy.Expr, var: sympy.Symbol
-) -> tuple[_IntLike | None, _IntLike | None]:
+) -> Tuple[Optional[_IntLike], Optional[_IntLike]]:
     """Analyze an expression to determine its range and reconstruction multiplier."""
     # ModularIndexing(var, divisor, modulo) = (var // divisor) % modulo
     if isinstance(expr, ModularIndexing):
@@ -164,7 +167,7 @@ def analyze_expression_properties(
     return None, None
 
 
-def check_invertibility(terms: list[Term]) -> bool:
+def check_invertibility(terms: List[Term]) -> bool:
     """Check if the terms represent an invertible transformation."""
     if not terms:
         return False
@@ -187,7 +190,7 @@ def check_invertibility(terms: list[Term]) -> bool:
     return True
 
 
-def generate_reconstruction_expr(terms: list[Term], var: sympy.Symbol) -> sympy.Expr:
+def generate_reconstruction_expr(terms: List[Term], var: sympy.Symbol) -> sympy.Expr:
     y = var
     reconstruction = sympy.S.Zero
     remainder = y

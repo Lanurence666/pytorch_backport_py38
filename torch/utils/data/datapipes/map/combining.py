@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 from collections.abc import Sized
-from typing import TypeVar
+from typing import Tuple, Type, TypeVar
 
 from torch.utils.data.datapipes._decorator import functional_datapipe
 from torch.utils.data.datapipes.datapipe import MapDataPipe
@@ -16,7 +18,7 @@ class ConcaterMapDataPipe(MapDataPipe):
     r"""
     Concatenate multiple Map DataPipes (functional name: ``concat``).
 
-    The new index is the cumulative sum of source DataPipes.
+    The new index of is the cumulative sum of source DataPipes.
     For example, if there are 2 source DataPipes both with length 5,
     index 0 to 4 of the resulting `ConcatMapDataPipe` would refer to
     elements of the first DataPipe, and 5 to 9 would refer to elements
@@ -35,7 +37,7 @@ class ConcaterMapDataPipe(MapDataPipe):
         [0, 1, 2, 0, 1, 2]
     """
 
-    datapipes: tuple[MapDataPipe]
+    datapipes: Tuple[MapDataPipe]
 
     def __init__(self, *datapipes: MapDataPipe) -> None:
         if len(datapipes) == 0:
@@ -64,11 +66,11 @@ class ConcaterMapDataPipe(MapDataPipe):
 
 
 @functional_datapipe("zip")
-class ZipperMapDataPipe(MapDataPipe[tuple[_T_co, ...]]):
+class ZipperMapDataPipe(MapDataPipe[Tuple[_T_co, ...]]):
     r"""
     Aggregates elements into a tuple from each of the input DataPipes (functional name: ``zip``).
 
-    This MapDataPipe is out of bounds as soon as the shortest input DataPipe is exhausted.
+    This MataPipe is out of bound as soon as the shortest input DataPipe is exhausted.
 
     Args:
         *datapipes: Map DataPipes being aggregated
@@ -83,7 +85,7 @@ class ZipperMapDataPipe(MapDataPipe[tuple[_T_co, ...]]):
         [(0, 10), (1, 11), (2, 12)]
     """
 
-    datapipes: tuple[MapDataPipe[_T_co], ...]
+    datapipes: Tuple[MapDataPipe[_T_co], ...]
 
     def __init__(self, *datapipes: MapDataPipe[_T_co]) -> None:
         if len(datapipes) == 0:
@@ -95,7 +97,7 @@ class ZipperMapDataPipe(MapDataPipe[tuple[_T_co, ...]]):
             raise TypeError("Expected all inputs to be `Sized`")
         self.datapipes = datapipes
 
-    def __getitem__(self, index) -> tuple[_T_co, ...]:
+    def __getitem__(self, index) -> Tuple[_T_co, ...]:
         res = []
         for dp in self.datapipes:
             try:

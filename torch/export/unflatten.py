@@ -1,16 +1,18 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import abc
 import copy
 import logging
 import operator
 import re
 from collections import defaultdict
-from collections.abc import Callable
+
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, cast
+from typing import Any, Callable, Dict, List, Mapping, Optional, Set, Tuple, Type, Union, cast
 
 import torch
 import torch.fx._pytree as fx_pytree
@@ -81,7 +83,7 @@ def _disable_interpreter():
 # Assign attribute 'from_obj' to the qualified name 'target' on 'to_module
 # This installs empty Modules where none exist yet if they are subpaths of target
 def _assign_attr(
-    from_obj: torch.Tensor | torch.ScriptObject | torch.nn.Module,
+    from_obj: Union[Union[torch.Tensor, torch.ScriptObject], torch.nn.Module],
     to_module: torch.nn.Module,
     target: str,
     attr_kind: _AttrKind,
@@ -96,7 +98,7 @@ def _assign_attr(
     # foo.bar, foo.bar@1, foo.bar@2, foo@1.bar, foo@1.bar@1, foo@1.bar@2.
     to_modules = {to_module}
     for item in prefix:
-        ts: set[torch.nn.Module] = set()
+        ts: Set[torch.nn.Module] = set()
         for to_module in to_modules:
             if not hasattr(to_module, item):
                 setattr(to_module, item, torch.nn.Module())
@@ -145,9 +147,9 @@ def _assign_attr(
 
 
 class _SubmoduleBase:
-    _ty: str | None
+    _ty: Optional[str]
 
-    def type_name(self) -> str | None:
+    def type_name(self) -> Optional[str]:
         """
         Subclass of this class - InterpreterModule, InterpreterModuleDispatcher, represents
         corresponding model in eager model. To get this type information for those modules
@@ -162,12 +164,12 @@ class InterpreterModule(_SubmoduleBase, torch.nn.Module):
     and makes it easier to debug execution.
     """
 
-    graph_module: torch.fx.GraphModule | None
+    graph_module: Optional[torch.fx.GraphModule]
 
     def __init__(
         self,
         graph: torch.fx.Graph,
-        ty: str | None = None,
+        ty: Optional[str] = None,
     ):
         super().__init__()
         self.graph = graph
@@ -258,7 +260,7 @@ class InterpreterModuleDispatcher(_SubmoduleBase, torch.nn.Module):
     to the next InterpreterModule, and wraps back around after the last.
     """
 
-    def __init__(self, attrs: set[str], call_modules: list[InterpreterModule]):
+    def __init__(self, attrs: Set[str], call_modules: List[InterpreterModule]):
         super().__init__()
         if not call_modules:
             raise AssertionError("call_modules must not be empty")
@@ -310,14 +312,14 @@ class FlatArgsAdapter(abc.ABC):
         self,
         target_spec: pytree.TreeSpec,
         input_spec: pytree.TreeSpec,
-        input_args: list[Any],
-        metadata: dict[str, Any] | None = None,
-        obj: Any | None = None,
-    ) -> list[Any]:
+        input_args: List[Any],
+        metadata: Optional[Dict[str, Any]] = None,
+        obj: Optional[Any] = None,
+    ) -> List[Any]:
         """NOTE: This adapter may mutate given ``input_args_with_path``."""
         ...
 
-    def get_flat_arg_paths(self) -> list[str]:
+    def get_flat_arg_paths(self) -> List[str]:
         """Returns a list of paths that are used to access the flat args."""
         return []
 
@@ -326,7 +328,7 @@ class UnflattenedModule(_SubmoduleBase, torch.nn.Module):
     def __init__(
         self,
         export_module: ExportedProgram,
-        flat_args_adapter: FlatArgsAdapter | None = None,
+        flat_args_adapter: Optional[FlatArgsAdapter] = None,
     ):
         super().__init__()
         if export_module.graph_signature.backward_signature is not None:
@@ -344,9 +346,9 @@ class UnflattenedModule(_SubmoduleBase, torch.nn.Module):
             return id(obj)
 
         fqn_list = [entry.fqn for entry in export_module.module_call_graph]
-        if fqn_list[0] != "":
+        if fqn_List[0] != "":
             raise AssertionError(
-                f"expected first fqn to be empty string, got {fqn_list[0]!r}"
+                f"expected first fqn to be empty string, got {fqn_List[0]!r}"
             )
         export_graph = deepcopy(export_module.graph)
         self.graph_signature = deepcopy(export_module.graph_signature)
@@ -390,12 +392,12 @@ class UnflattenedModule(_SubmoduleBase, torch.nn.Module):
         # the state_dict as module attributes, but only keep the used tensors in the
         # graph's forward pass (_sink_params).
         state_dict = export_module.state_dict
-        assigned_params: set[str] = set()  # tracking unused params
-        id_to_param: dict[
-            int | _TensorID, torch.nn.Parameter
+        assigned_params: Set[str] = set()  # tracking unused params
+        id_to_param: Dict[
+            Union[int, _TensorID], torch.nn.Parameter
         ] = {}  # handling weight-sharing
         for name in self.graph_signature.parameters:  # this loop adds used params
-            param = state_dict[name]
+            param = state_Dict[name]
             if _id(param) not in id_to_param:
                 id_to_param[_id(param)] = torch.nn.Parameter(
                     param.clone(), requires_grad=param.requires_grad
@@ -410,15 +412,15 @@ class UnflattenedModule(_SubmoduleBase, torch.nn.Module):
             assigned_params.add(name)
 
         non_persistent_buffers = set(self.graph_signature.non_persistent_buffers)
-        assigned_buffers: set[str] = set()  # tracking unused buffers
-        id_to_buffer: dict[int | _TensorID, tuple[torch.nn.Parameter, bool]] = {}
+        assigned_buffers: Set[str] = set()  # tracking unused buffers
+        id_to_buffer: Dict[Union[int, _TensorID], Tuple[torch.nn.Parameter, bool]] = {}
         for name in self.graph_signature.buffers:  # this loop adds used buffers
             if name in non_persistent_buffers:
                 persistent = False
                 buffer = export_module.constants[name]
             else:
                 persistent = True
-                buffer = state_dict[name]
+                buffer = state_Dict[name]
 
             if _id(buffer) not in id_to_buffer:
                 id_to_buffer[_id(buffer)] = (buffer.clone(), persistent)
@@ -470,7 +472,7 @@ class UnflattenedModule(_SubmoduleBase, torch.nn.Module):
                 )
 
         # use id map so we don't double-clone aliased constants
-        id_to_const: dict[int | _TensorID, torch.Tensor | torch._C.ScriptObject] = {}
+        id_to_const: Dict[Union[int, _TensorID], Union[torch.Tensor, torch._C.ScriptObject]] = {}
         for fqn, constant in export_module.constants.items():
             if _id(constant) not in id_to_const:
                 if isinstance(constant, torch.Tensor):
@@ -486,8 +488,8 @@ class UnflattenedModule(_SubmoduleBase, torch.nn.Module):
 
         # This is to handle parameters/buffers that point to the same tensor
         # object id -> list of (node_name, target_name)
-        consts_map: dict[int | _TensorID, list[tuple[str, str]]] = defaultdict(list)
-        consts_targets: set[str] = set()
+        consts_map: Dict[Union[int, _TensorID], List[Tuple[str, str]]] = defaultdict(list)
+        consts_targets: Set[str] = set()
 
         def add_to_consts_map(obj_id, node_name, target_name):
             name_list = consts_map[obj_id]
@@ -495,7 +497,7 @@ class UnflattenedModule(_SubmoduleBase, torch.nn.Module):
 
         # track aliased/unused params, buffers
         # prefer using untyped_storage() over id() when it's available
-        added_params_buffers: set[str] = set()
+        added_params_buffers: Set[str] = set()
         for s in self.graph_signature.input_specs:
             if s.kind == InputKind.PARAMETER or (
                 s.kind == InputKind.BUFFER and s.persistent
@@ -509,7 +511,7 @@ class UnflattenedModule(_SubmoduleBase, torch.nn.Module):
                         f"expected s.target to be str, got {type(s.target)}"
                     )
                 add_to_consts_map(
-                    _id(export_module.state_dict[s.target]),
+                    _id(export_module.state_Dict[s.target]),
                     s.arg.name,
                     s.target,
                 )
@@ -561,7 +563,7 @@ class UnflattenedModule(_SubmoduleBase, torch.nn.Module):
                 add_to_consts_map(tensor_id, ph_name, fqn)
 
         # node name -> list of possible targets
-        inputs_to_state: dict[str, list[str]] = {}
+        inputs_to_state: Dict[str, List[str]] = {}
         for node_target in consts_map.values():
             targets = [t[1] for t in node_target]
             for n, _ in node_target:
@@ -793,7 +795,7 @@ class UnflattenedModule(_SubmoduleBase, torch.nn.Module):
 
 
 def unflatten(
-    module: ExportedProgram, flat_args_adapter: FlatArgsAdapter | None = None
+    module: ExportedProgram, flat_args_adapter: Optional[FlatArgsAdapter] = None
 ) -> UnflattenedModule:
     """Unflatten an ExportedProgram, producing a module with the same module
     hierarchy as the original eager module. This can be useful if you are trying
@@ -903,7 +905,7 @@ def _inplace_buffer_and_input_mutations(
     output_node.args = ((user_outputs),)
 
 
-def _root_module_type(graph: torch.fx.Graph) -> str | None:
+def _root_module_type(graph: torch.fx.Graph) -> Optional[str]:
     for node in graph.nodes:
         if "nn_module_stack" not in node.meta:
             continue
@@ -979,7 +981,7 @@ def _compute_accessor(parent_fqn: str, child_fqn: str) -> str:
 def _check_graph_equivalence(x: torch.nn.Module, y: torch.nn.Module):
     def graph_dump(graph: torch.fx.Graph) -> str:
         ret = []
-        nodes_idx: dict[int, int] = {}
+        nodes_idx: Dict[int, int] = {}
 
         def arg_dump(arg) -> str:
             if isinstance(arg, torch.fx.Node):
@@ -1025,7 +1027,7 @@ def _generate_flatten(gm: torch.fx.GraphModule, node) -> torch.fx.Node:
 
 
 def _generate_flatten_spec(
-    gm: torch.fx.GraphModule | InterpreterModule | UnflattenedModule, node, spec
+    gm: Union[Union[torch.fx.GraphModule, InterpreterModule], UnflattenedModule], node, spec
 ) -> torch.fx.Node:
     name = _add_spec(gm, spec)
     spec_node = gm.graph.get_attr(name)
@@ -1033,7 +1035,7 @@ def _generate_flatten_spec(
 
 
 def _generate_unflatten(
-    gm: torch.fx.GraphModule | InterpreterModule | UnflattenedModule, nodes, spec
+    gm: Union[Union[torch.fx.GraphModule, InterpreterModule], UnflattenedModule], nodes, spec
 ) -> torch.fx.Node:
     name = _add_spec(gm, spec)
     spec_node = gm.graph.get_attr(name)
@@ -1098,16 +1100,16 @@ class _ModuleFrame:
     def __init__(
         self,
         flat_graph: torch.fx.Graph,
-        nodes: tuple[torch.fx.Node, ...],
+        nodes: Tuple[torch.fx.Node, ...],
         seen_nodes,
         seen_modules,
         seen_attrs,
         created_modules,
         parent,
-        module_stack: list[tuple[str, str | None, int]],
+        module_stack: List[Tuple[str, Optional[str], int]],
         module_id,
-        module_call_graph: dict[str, ModuleCallSignature],
-        module: torch.fx.GraphModule | UnflattenedModule | None = None,
+        module_call_graph: Dict[str, ModuleCallSignature],
+        module: Optional[Union[torch.fx.GraphModule, UnflattenedModule]] = None,
     ):
         self.flat_graph = flat_graph
         self.nodes = nodes
@@ -1126,7 +1128,7 @@ class _ModuleFrame:
         # generate call name for self.fqn
         self.child_fqn = _call_name(self.fqn, num_calls + 1)
 
-        self.module: torch.fx.GraphModule | UnflattenedModule | InterpreterModule
+        self.module: Union[Union[torch.fx.GraphModule, UnflattenedModule], InterpreterModule]
         if module is not None:
             self.module = module
             self.ivals = module.ivals if hasattr(module, "ivals") else {}  # type: ignore[var-annotated]
@@ -1140,10 +1142,10 @@ class _ModuleFrame:
         self.graph = self.module.graph
 
         # Mapping of nodes in the flat graph to nodes in this graph.
-        self.node_map: dict[torch.fx.Node, torch.fx.Node] = {}
+        self.node_map: Dict[torch.fx.Node, torch.fx.Node] = {}
         self.node_to_placeholder = {}
 
-        self.parent_call_module: torch.fx.Node | None = None
+        self.parent_call_module: Optional[torch.fx.Node] = None
         if parent is not None:
             accessor = _compute_accessor(parent.fqn, self.child_fqn)
 
@@ -1225,7 +1227,7 @@ class _ModuleFrame:
                         )
 
             with self.parent.graph.inserting_before(self.parent_call_module):
-                input_nodes: list[torch.fx.Node | None] = []
+                input_nodes: List[Optional[torch.fx.Node]] = []
                 for input in signature.inputs:
                     if isinstance(input, ConstantArgument):
                         input_nodes.append(input.value)  # type: ignore[arg-type]
@@ -1422,10 +1424,10 @@ class _ModuleFrame:
                 tuple(get_actual_output_node(output) for output in orig_outputs),
                 signature.out_spec,
             )
-            parent_out: torch.fx.Node | None = _generate_flatten_spec(
+            parent_out: Optional[torch.fx.Node] = _generate_flatten_spec(
                 self.parent.module, self.parent_call_module, signature.out_spec
             )
-            graph_outputs: torch.fx.Node | list[torch.fx.Node] = tree_out_node
+            graph_outputs: Union[torch.fx.Node, List[torch.fx.Node]] = tree_out_node
         else:
             graph_outputs = []
             # Iterate through nodes we have copied into self.graph.
@@ -1610,10 +1612,10 @@ class _SubmoduleEntry:
 
 
 def _outline_submodules(orig_graph: torch.fx.Graph, root_module: UnflattenedModule):
-    seen_nodes: dict[str, torch.fx.Node] = {}
-    seen_modules: dict[int, list[_SubmoduleEntry]] = defaultdict(list)
-    seen_attrs: dict[str, set[str]] = defaultdict(set)
-    created_modules: dict[str, torch.nn.Module] = {}
+    seen_nodes: Dict[str, torch.fx.Node] = {}
+    seen_modules: Dict[int, List[_SubmoduleEntry]] = defaultdict(list)
+    seen_attrs: Dict[str, Set[str]] = defaultdict(set)
+    created_modules: Dict[str, torch.nn.Module] = {}
     _ModuleFrame(
         orig_graph,
         tuple(orig_graph.nodes),
@@ -1635,7 +1637,7 @@ def _outline_submodules(orig_graph: torch.fx.Graph, root_module: UnflattenedModu
 
 
 def _reorder_submodules(
-    parent: torch.nn.Module, fqn_order: dict[str, int], prefix: str = ""
+    parent: torch.nn.Module, fqn_order: Dict[str, int], prefix: str = ""
 ):
     # TODO Can be optimized by adding submodules ahead of time.
     if prefix == "":
@@ -1731,7 +1733,7 @@ class _IVals:
 def _copy_graph_attrs(
     gm: torch.fx.GraphModule,
     root_module: UnflattenedModule,
-    seen_attrs: dict[str, set[str]],
+    seen_attrs: Dict[str, Set[str]],
 ):
     for child_fqn, names in seen_attrs.items():
         module = _get_attr(root_module, child_fqn) if child_fqn else root_module
@@ -1785,9 +1787,9 @@ def _deduplicate_modules(partitions):
 
 def _sink_params(
     module: torch.nn.Module,
-    inputs_to_state: dict[str, list[str]],
-    scope: list[str],
-    module_id_to_inputs_removed: dict[int, set[str]] | None = None,
+    inputs_to_state: Dict[str, List[str]],
+    scope: List[str],
+    module_id_to_inputs_removed: Dict[int, Set[str]] | None = None,
 ):
     """Sink params, buffers, and constants from graph inputs into get_attr nodes.
 
@@ -1849,7 +1851,7 @@ def _sink_params(
             )
 
     # Filter out inputs_to_state corresponding to current scope.
-    inputs_to_state_of_scope: dict[torch.fx.Node, list[str]] = {}
+    inputs_to_state_of_scope: Dict[torch.fx.Node, List[str]] = {}
     for node in inputs:
         if node.name not in inputs_to_state:
             continue
@@ -1876,7 +1878,7 @@ def _sink_params(
         inputs_to_state_of_scope[node] = state_name
 
     # Record name of remove inputs for return purpose.
-    inputs_removed: set[str] = set()
+    inputs_removed: Set[str] = set()
 
     for node, state_name in inputs_to_state_of_scope.items():
         if len(node.users) > 0:

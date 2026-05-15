@@ -3,6 +3,7 @@
 #include <torch/csrc/Layout.h>
 #include <torch/csrc/utils/object_ptr.h>
 #include <torch/csrc/utils/tensor_layouts.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 namespace torch::utils {
 

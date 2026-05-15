@@ -136,20 +136,7 @@ class ConfigTest(TestCase):
         the _versioned_config function returns the corresponding boolean value
         regardless of other configuration settings.
         """
-        with (
-            self.FOO_ENV_VAR_OVERRIDE_LOCK.acquire(timeout=1),
-            patch.dict(
-                os.environ,
-                {
-                    self.FOO_ENV_VAR_OVERRIDE: "1" if enabled else "0",
-                },
-            ),
-            patch(
-                "torch._inductor.runtime.caching.config.is_fbcode",
-                return_value=False,
-            ),
-            patch.object(self, "FOO_OSS_DEFAULT", not enabled),
-        ):
+        with self.FOO_ENV_VAR_OVERRIDE_LOCK.acquire(timeout=1), patch.dict( os.environ, { self.FOO_ENV_VAR_OVERRIDE: "1" if enabled else "0", }, ), patch( "torch._inductor.runtime.caching.config.is_fbcode", return_value=False, ), patch.object(self, "FOO_OSS_DEFAULT", not enabled):
             self.assert_versioned_config(enabled)
 
     @parametrize("enabled", [True, False])
@@ -163,18 +150,7 @@ class ConfigTest(TestCase):
         is enabled when the JustKnobs version matches the expected version, and disabled when
         the version differs. This ensures proper rollout control through version management.
         """
-        with (
-            self.FOO_ENV_VAR_OVERRIDE_LOCK.acquire(timeout=1),
-            patch.dict(os.environ, {}, clear=True),
-            patch(
-                "torch._inductor.runtime.caching.config.is_fbcode",
-                return_value=True,
-            ),
-            patch(
-                "torch._utils_internal.justknobs_getval_int",
-                return_value=self.FOO_THIS_VERSION + (-1 if enabled else 1),
-            ),
-        ):
+        with self.FOO_ENV_VAR_OVERRIDE_LOCK.acquire(timeout=1), patch.dict(os.environ, {}, clear=True), patch( "torch._inductor.runtime.caching.config.is_fbcode", return_value=True, ), patch( "torch._utils_internal.justknobs_getval_int", return_value=self.FOO_THIS_VERSION + (-1 if enabled else 1), ):
             self.assert_versioned_config(enabled)
 
     @parametrize("enabled", [True, False])
@@ -188,15 +164,7 @@ class ConfigTest(TestCase):
         environment variable overrides, the configuration falls back to the OSS default
         value. This ensures proper behavior for open-source PyTorch distributions.
         """
-        with (
-            self.FOO_ENV_VAR_OVERRIDE_LOCK.acquire(timeout=1),
-            patch.dict(os.environ, {}, clear=True),
-            patch(
-                "torch._inductor.runtime.caching.config.is_fbcode",
-                return_value=False,
-            ),
-            patch.object(self, "FOO_OSS_DEFAULT", enabled),
-        ):
+        with self.FOO_ENV_VAR_OVERRIDE_LOCK.acquire(timeout=1), patch.dict(os.environ, {}, clear=True), patch( "torch._inductor.runtime.caching.config.is_fbcode", return_value=False, ), patch.object(self, "FOO_OSS_DEFAULT", enabled):
             self.assert_versioned_config(enabled)
 
     def test_versioned_config_jk_failure(self) -> None:
@@ -206,18 +174,7 @@ class ConfigTest(TestCase):
         environment variable overrides, the configuration falls back to the OSS default
         value. This ensures proper behavior for open-source PyTorch distributions.
         """
-        with (
-            self.FOO_ENV_VAR_OVERRIDE_LOCK.acquire(timeout=1),
-            patch.dict(os.environ, {}, clear=True),
-            patch(
-                "torch._inductor.runtime.caching.config.is_fbcode",
-                return_value=True,
-            ),
-            patch(
-                "torch._utils_internal.justknobs_getval_int",
-                return_value=0,
-            ),
-        ):
+        with self.FOO_ENV_VAR_OVERRIDE_LOCK.acquire(timeout=1), patch.dict(os.environ, {}, clear=True), patch( "torch._inductor.runtime.caching.config.is_fbcode", return_value=True, ), patch( "torch._utils_internal.justknobs_getval_int", return_value=0, ):
             self.assert_versioned_config(False)
 
 
@@ -1842,10 +1799,7 @@ class ForceDisableCachesTest(TestMixin, TestCase):
         """
         # Setup: patch the base config to return True (enabled)
         # and force_disable_caches to return True
-        with (
-            patch.object(config, "_is_caching_module_enabled_base", return_value=True),
-            patch.object(config, "_is_force_disable_caches", return_value=True),
-        ):
+        with patch.object(config, "_is_caching_module_enabled_base", return_value=True), patch.object(config, "_is_force_disable_caches", return_value=True):
             # Execute & Assert: IS_CACHING_MODULE_ENABLED should return False
             self.assertFalse(config.IS_CACHING_MODULE_ENABLED())
 
@@ -1856,10 +1810,7 @@ class ForceDisableCachesTest(TestMixin, TestCase):
         enables caching, IS_CACHING_MODULE_ENABLED() returns True.
         """
         # Setup: patch both configs to enabled states
-        with (
-            patch.object(config, "_is_caching_module_enabled_base", return_value=True),
-            patch.object(config, "_is_force_disable_caches", return_value=False),
-        ):
+        with patch.object(config, "_is_caching_module_enabled_base", return_value=True), patch.object(config, "_is_force_disable_caches", return_value=False):
             # Execute & Assert: IS_CACHING_MODULE_ENABLED should return True
             self.assertTrue(config.IS_CACHING_MODULE_ENABLED())
 
@@ -1870,10 +1821,7 @@ class ForceDisableCachesTest(TestMixin, TestCase):
         IS_CACHING_MODULE_ENABLED() returns False regardless of force_disable_caches.
         """
         # Setup: patch base config to False, force_disable to False
-        with (
-            patch.object(config, "_is_caching_module_enabled_base", return_value=False),
-            patch.object(config, "_is_force_disable_caches", return_value=False),
-        ):
+        with patch.object(config, "_is_caching_module_enabled_base", return_value=False), patch.object(config, "_is_force_disable_caches", return_value=False):
             # Execute & Assert: IS_CACHING_MODULE_ENABLED should return False
             self.assertFalse(config.IS_CACHING_MODULE_ENABLED())
 
@@ -1885,10 +1833,7 @@ class ForceDisableCachesTest(TestMixin, TestCase):
         always execute (no caching) and replay always raises KeyError.
         """
         # Setup: enable force_disable_caches
-        with (
-            patch.object(config, "_is_caching_module_enabled_base", return_value=True),
-            patch.object(config, "_is_force_disable_caches", return_value=True),
-        ):
+        with patch.object(config, "_is_caching_module_enabled_base", return_value=True), patch.object(config, "_is_force_disable_caches", return_value=True):
             memoizer = Memoizer()
             call_count = 0
 

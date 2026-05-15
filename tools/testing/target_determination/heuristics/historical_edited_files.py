@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, List
 
 from tools.stats.import_test_stats import (
     ADDITIONAL_CI_FILES_FOLDER,
@@ -26,7 +26,7 @@ class HistorialEditedFiles(HeuristicInterface):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-    def get_prediction_confidence(self, tests: list[str]) -> TestPrioritizations:
+    def get_prediction_confidence(self, tests: List[str]) -> TestPrioritizations:
         test_ratings = get_ratings_for_tests(
             ADDITIONAL_CI_FILES_FOLDER / TD_HEURISTIC_HISTORICAL_EDITED_FILES
         )

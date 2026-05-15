@@ -13,6 +13,7 @@
 
 #if defined(USE_ROCM)
 #include <hip/hip_runtime_api.h>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 #endif
 
 /**

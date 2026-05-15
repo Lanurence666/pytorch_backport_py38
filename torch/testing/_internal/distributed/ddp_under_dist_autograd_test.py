@@ -5,7 +5,9 @@ import enum
 import logging
 import os
 import threading
-from typing import NamedTuple
+from typing import Set, Tuple
+from typing_extensions import NamedTuple
+
 
 import torch
 import torch.distributed as dist
@@ -242,9 +244,8 @@ class Trainer:
             sparse_microbatch = torch.split(sparse_features, 2)
             values_microbatch = torch.split(values, 2)
             batches = []
-            for d, s, v in zip(
-                dense_microbatch, sparse_microbatch, values_microbatch, strict=True
-            ):
+            for d, s, v in _zip_strict(
+                dense_microbatch, sparse_microbatch, values_microbatch):
                 feature_set = FeatureSet(dense_features=d, sparse_features=s, values=v)
                 batches.append(feature_set)
 
@@ -259,11 +260,7 @@ class Trainer:
             else:
                 input_batches = batches
 
-        with (
-            self.hybrid_module.join()
-            if simulate_uneven_inputs
-            else contextlib.nullcontext()
-        ):
+        with self.hybrid_module.join() if simulate_uneven_inputs else contextlib.nullcontext():
             for b in input_batches:
                 with dist_autograd.context() as context_id:
                     output = self.hybrid_module.forward(b)

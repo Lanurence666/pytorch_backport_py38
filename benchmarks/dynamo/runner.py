@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 
 """
 A wrapper over the benchmark infrastructure to generate commonly used commands,
@@ -556,7 +557,7 @@ def build_summary(args):
         gh_fh.write(comment)
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def archive_data(archive_name):
     if archive_name is not None:
         prefix_match = re.search(r"\w+(?=_performance)", archive_name)
@@ -576,7 +577,7 @@ def archive_data(archive_name):
     return day, prefix
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def default_archive_name(dtype):
     _, prefix = archive_data(None)
     return f"{prefix}_performance_{dtype}_{randint(100, 999)}"

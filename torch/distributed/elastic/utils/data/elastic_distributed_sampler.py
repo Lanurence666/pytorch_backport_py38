@@ -6,9 +6,11 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import math
-from collections.abc import Iterator, Sized
-from typing import cast, TypeVar
+from collections.abc import Sized
+from typing import Iterator, Optional, Type, TypeVar, cast
 
 import torch
 from torch.utils.data import Dataset
@@ -44,8 +46,8 @@ class ElasticDistributedSampler(DistributedSampler[T]):
     def __init__(
         self,
         dataset: Dataset[T],
-        num_replicas: int | None = None,
-        rank: int | None = None,
+        num_replicas: Optional[int]= None,
+        rank: Optional[int]= None,
         start_index: int = 0,
     ):
         super().__init__(dataset=dataset, num_replicas=num_replicas, rank=rank)

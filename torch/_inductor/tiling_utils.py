@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import dataclasses
 import itertools
 from collections import Counter, defaultdict
-from collections.abc import Callable
-from typing import Literal, overload, TYPE_CHECKING, TypeVar, Union
+
+from typing import Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type, TypeVar, Union, overload
+from typing_extensions import Literal
+
 
 import sympy
 
@@ -21,8 +25,8 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
-Split = tuple[sympy.Expr, ...]
-VarsAndRanges = tuple[list[sympy.Symbol], list[sympy.Expr]]
+Split = Tuple[sympy.Expr, ...]
+VarsAndRanges = Tuple[List[sympy.Symbol], List[sympy.Expr]]
 
 
 loop_tiling_log = torch._logging.getArtifactLogger(__name__, "loop_tiling")
@@ -33,7 +37,7 @@ if TYPE_CHECKING:
     from torch._inductor.scheduler import FusedSchedulerNode, SchedulerNode
 
 
-def solve_for_zero(expr: sympy.Expr) -> sympy.Expr | None:
+def solve_for_zero(expr: sympy.Expr) -> Optional[sympy.Expr]:
     """
     Given an expr with a single free symbol, solve for a constant relation that would make
     this expression 0.
@@ -54,7 +58,7 @@ def solve_for_zero(expr: sympy.Expr) -> sympy.Expr | None:
     return out[1]
 
 
-def solve_for_tiling(expr: sympy.Expr) -> sympy.Expr | None:
+def solve_for_tiling(expr: sympy.Expr) -> Optional[sympy.Expr]:
     """
     Giving an expr with a single free symbol, try to find a tiling that would
     make the expression coalesced with respect to that symbol.
@@ -71,7 +75,7 @@ def solve_for_tiling(expr: sympy.Expr) -> sympy.Expr | None:
 
     free_symbol = next(iter(expr.free_symbols))
 
-    def _solve_simple_expr(expr: sympy.Expr) -> sympy.Expr | None:
+    def _solve_simple_expr(expr: sympy.Expr) -> Optional[sympy.Expr]:
         assert not expr.has(ModularIndexing) and not expr.has(FloorDiv)
         if len(expr.free_symbols) != 1:
             return None
@@ -119,7 +123,7 @@ def solve_for_tiling(expr: sympy.Expr) -> sympy.Expr | None:
     def indexing_div_rep(
         x: sympy.Expr,
         y: sympy.Expr,
-        z: sympy.Expr | None = None,
+        z: Optional[sympy.Expr] = None,
     ) -> sympy.Expr:
         return x / y
 
@@ -145,7 +149,7 @@ def solve_for_tiling(expr: sympy.Expr) -> sympy.Expr | None:
 
 
 def find_broadcast_var(
-    index: sympy.Expr, var_ranges: dict[sympy.Expr, int]
+    index: sympy.Expr, var_ranges: Dict[sympy.Expr, int]
 ) -> sympy.Expr | None:
     """
     Try to find the variable that this index is broadcast over.
@@ -153,7 +157,7 @@ def find_broadcast_var(
     access the same memory location (e.g., x // 10).
     """
     # Approximate analysis by evaluating at 1 and 0
-    variables: dict[sympy.Symbol, int] = {}
+    variables: Dict[sympy.Symbol, int] = {}
     for v in index.free_symbols:
         if v in var_ranges:
             variables[v] = 0
@@ -180,7 +184,7 @@ def find_broadcast_var(
 
 
 def find_coalesced_var(
-    index: sympy.Expr, var_ranges: dict[sympy.Expr, int]
+    index: sympy.Expr, var_ranges: Dict[sympy.Expr, int]
 ) -> sympy.Expr | None:
     """
     Try to find the symbol which coalesces this index
@@ -191,7 +195,7 @@ def find_coalesced_var(
             return v
 
     # Approximate analysis by evaluating at 1 and 0
-    variables: dict[sympy.Symbol, int] = {}
+    variables: Dict[sympy.Symbol, int] = {}
     for v in index.free_symbols:
         if v in var_ranges:
             variables[v] = 0
@@ -232,9 +236,9 @@ class FusedNormalizedReadsWrites:
 
     index_vars: OrderedSet[sympy.Symbol]
     reduce_vars: OrderedSet[sympy.Symbol]
-    reads: dict[sympy.Expr, OrderedSet[str]]
-    writes: dict[sympy.Expr, OrderedSet[str]]
-    var_ranges: dict[sympy.Symbol, int]
+    reads: Dict[sympy.Expr, OrderedSet[str]]
+    writes: Dict[sympy.Expr, OrderedSet[str]]
+    var_ranges: Dict[sympy.Symbol, int]
 
 
 @overload
@@ -243,7 +247,7 @@ def get_pw_red_splits(
     pointwise_numel: sympy.Expr,
     red_numel: sympy.Expr,
     none_if_not_divisible: Literal[True],
-) -> tuple[VarsAndRanges, VarsAndRanges] | None: ...
+) -> Optional[Tuple[VarsAndRanges, VarsAndRanges]]: ...
 
 
 @overload
@@ -252,7 +256,7 @@ def get_pw_red_splits(
     pointwise_numel: sympy.Expr,
     red_numel: sympy.Expr,
     none_if_not_divisible: Literal[False] = False,
-) -> tuple[VarsAndRanges, VarsAndRanges]: ...
+) -> Tuple[VarsAndRanges, VarsAndRanges]: ...
 
 
 def get_pw_red_splits(
@@ -260,7 +264,7 @@ def get_pw_red_splits(
     pointwise_numel: sympy.Expr,
     red_numel: sympy.Expr,
     none_if_not_divisible: bool = False,
-) -> tuple[VarsAndRanges, VarsAndRanges] | None:
+) -> Optional[Tuple[VarsAndRanges, VarsAndRanges]]:
     # nb: use statically_known_equals here to mimic scheduler.
     # TODO : store type of split/broadcast on fused node itself,
     # instead of re-deriving it.
@@ -315,11 +319,11 @@ class NodeSplitGetter:
         self.pointwise_numel: sympy.Expr = node.group[1][0]
         self.red_numel: sympy.Expr = node.group[1][1]
 
-        self.pw_split_options: dict[int, OrderedSet[Split]] = defaultdict(OrderedSet)
-        self.red_split_options: dict[int, OrderedSet[Split]] = defaultdict(OrderedSet)
+        self.pw_split_options: Dict[int, OrderedSet[Split]] = defaultdict(OrderedSet)
+        self.red_split_options: Dict[int, OrderedSet[Split]] = defaultdict(OrderedSet)
 
         self.reduction_split: Split = ()
-        self.all_node_sizes: OrderedSet[tuple[Split, Split]] = OrderedSet()
+        self.all_node_sizes: OrderedSet[Tuple[Split, Split]] = OrderedSet()
 
         fused_group = node.group[1]
         for n in reversed(node.get_nodes()):
@@ -356,7 +360,7 @@ class NodeSplitGetter:
 
         self.seen_pw_splits: OrderedSet[Split] = OrderedSet()
 
-    def get_node_splits(self) -> tuple[Split, Split]:
+    def get_node_splits(self) -> Tuple[Split, Split]:
         """
         Get a compatible pointwise, reduction split of the node
         """
@@ -371,7 +375,7 @@ class NodeSplitGetter:
         max_red_split = max(self.red_split_options.keys())
 
         def add_combined_split_options(
-            split_options: dict[int, OrderedSet[Split]], curr_length: int
+            split_options: Dict[int, OrderedSet[Split]], curr_length: int
         ) -> None:
             for split in split_options[curr_length]:
                 for i in range(len(split) - 1):
@@ -398,7 +402,7 @@ class NodeSplitGetter:
         # if for whatever reason we couldn't split above, return default split
         return ((self.pointwise_numel,), (self.red_numel,))
 
-    def try_split(self, pw: Split, red: Split) -> tuple[Split, Split] | None:
+    def try_split(self, pw: Split, red: Split) -> Optional[Tuple[Split, Split]]:
         """
         See if this split is compatible, and potentially returning a longer split
         than the input.
@@ -433,13 +437,13 @@ class NodeSplitGetter:
 
 
 def apply_var_mapping(
-    iter_vars: list[sympy.Symbol],
-    red_vars: list[sympy.Symbol],
-    norm_pw_vars: list[sympy.Symbol],
-    norm_red_vars: list[sympy.Symbol],
-    new_ranges: list[list[sympy.Expr]],
-    return_getters_groups: list[list[Callable[[list[sympy.Expr]], sympy.Expr]]],
-) -> dict[sympy.Symbol, sympy.Expr]:
+    iter_vars: List[sympy.Symbol],
+    red_vars: List[sympy.Symbol],
+    norm_pw_vars: List[sympy.Symbol],
+    norm_red_vars: List[sympy.Symbol],
+    new_ranges: List[List[sympy.Expr]],
+    return_getters_groups: List[List[Callable[[List[sympy.Expr]], sympy.Expr]]],
+) -> Dict[sympy.Symbol, sympy.Expr]:
     """Maps original variables to expressions using normalized variables."""
 
     # the output of split_iteration_range is a new_ranges, return_getters_groups
@@ -482,9 +486,8 @@ def apply_var_mapping(
 
     count = 0
     flat_vars_to_new_vars = {}
-    for new_range, new_var in zip(
-        new_ranges, norm_pw_vars + norm_red_vars, strict=True
-    ):
+    for new_range, new_var in _zip_strict(
+        new_ranges, norm_pw_vars + norm_red_vars):
         range_vars = []
         for _ in range(len(new_range)):
             range_vars.append(flat_vars[count])
@@ -503,10 +506,10 @@ def apply_var_mapping(
 
 def extract_normalized_read_writes(
     node: Union["FusedSchedulerNode", "SchedulerNode"],
-) -> FusedNormalizedReadsWrites | None:
+) -> Optional[FusedNormalizedReadsWrites]:
     """Extracts index variables, reduce variables, read/write expressions, and variable ranges from a fused node."""
-    reads: dict[sympy.Expr, OrderedSet[str]] = defaultdict(OrderedSet)
-    writes: dict[sympy.Expr, OrderedSet[str]] = defaultdict(OrderedSet)
+    reads: Dict[sympy.Expr, OrderedSet[str]] = defaultdict(OrderedSet)
+    writes: Dict[sympy.Expr, OrderedSet[str]] = defaultdict(OrderedSet)
 
     all_output_names = node.get_buffer_names()
     op_names = node.get_operation_names()
@@ -538,8 +541,8 @@ def extract_normalized_read_writes(
 
         body = n._body
 
-        n_reads: dict[sympy.Expr, OrderedSet[str]] = defaultdict(OrderedSet)
-        n_writes: dict[sympy.Expr, OrderedSet[str]] = defaultdict(OrderedSet)
+        n_reads: Dict[sympy.Expr, OrderedSet[str]] = defaultdict(OrderedSet)
+        n_writes: Dict[sympy.Expr, OrderedSet[str]] = defaultdict(OrderedSet)
 
         # TODO - will the names for all the inputs/outputs accurately
         # reflect mutation, or do I need to remap with mutation_real_name
@@ -624,7 +627,7 @@ def extract_normalized_read_writes(
 
 
 def get_score(
-    addr: sympy.Expr, var_ranges: dict[sympy.Symbol, int], buf_names: OrderedSet[str]
+    addr: sympy.Expr, var_ranges: Dict[sympy.Symbol, int], buf_names: OrderedSet[str]
 ) -> int:
     """
     Score addr according to its approximate size.
@@ -641,14 +644,14 @@ def get_score(
     return V.graph.sizevars.optimization_hint(sympy_product(var_sizes))
 
 
-def try_get_buf_size(buf_name: str) -> int | None:
+def try_get_buf_size(buf_name: str) -> Optional[int]:
     buf = V.graph.try_get_buffer(buf_name)
     if not buf:
         return None
     return V.graph.sizevars.optimization_hint(sympy_product(buf.get_size()))
 
 
-def get_hint(v: sympy.Expr | int) -> int:
+def get_hint(v: Union[sympy.Expr, int]) -> int:
     if isinstance(v, int):
         return v
     else:
@@ -671,18 +674,18 @@ class CoalesceVarAnalysis:
     # Var -> Memory Score - not strictly the amount of memory
     # because we multiply writes x2
     # TODO: separate into dataclass that olds mem, dtype, is_write
-    coalesced_by_var: dict[sympy.Expr, int]
+    coalesced_by_var: Dict[sympy.Expr, int]
 
-    uncoalesced_addrs: dict[sympy.Expr, int]
+    uncoalesced_addrs: Dict[sympy.Expr, int]
 
     norm_read_writes: FusedNormalizedReadsWrites
 
-    suggested_split: VarTiling | None = None
+    suggested_split: Optional[VarTiling] = None
 
 
 def analyze_memory_coalescing(
     fused_node: Union["FusedSchedulerNode", "SchedulerNode"],
-) -> CoalesceVarAnalysis | None:
+) -> Optional[CoalesceVarAnalysis]:
     """
     Find variables that coalesce the reads and writes and score the total size.
 
@@ -705,8 +708,8 @@ def analyze_memory_coalescing(
     writes = norm_read_writes.writes
     var_ranges = norm_read_writes.var_ranges
 
-    coalesced_by_var: dict[sympy.Symbol, int] = Counter()
-    uncoalesced_addrs: dict[sympy.Expr, int] = Counter()
+    coalesced_by_var: Dict[sympy.Symbol, int] = Counter()
+    uncoalesced_addrs: Dict[sympy.Expr, int] = Counter()
 
     for is_read, (memory_expr, buf_names) in itertools.chain(
         ((True, item) for item in reads.items()),
@@ -755,7 +758,7 @@ def analyze_memory_coalescing(
         )
 
     # map from var -> tiling -> total_score
-    tiling_scores: dict[sympy.Expr, dict[int, int]] = defaultdict(Counter)
+    tiling_scores: Dict[sympy.Expr, Dict[int, int]] = defaultdict(Counter)
 
     for uncoalesced_expr, addr_score in uncoalesced_addrs.items():
         if has_indirect_access(uncoalesced_expr):
@@ -809,7 +812,7 @@ def analyze_memory_coalescing(
             norm_read_writes=norm_read_writes,
         )
 
-    best_tiling: tuple[sympy.Expr, int] | None = None
+    best_tiling: Optional[Tuple[sympy.Expr, int]] = None
     best_tiling_score = 0
 
     for var, tiling_counter in tiling_scores.items():

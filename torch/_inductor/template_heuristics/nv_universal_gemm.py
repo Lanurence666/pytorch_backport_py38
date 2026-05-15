@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Type
 
 import torch
 from torch._inductor import config
@@ -27,7 +27,7 @@ autotuning_log = getArtifactLogger(__name__, "autotuning")
 # Currently matches on (tile_m, tile_n, cluster_m, cluster_n).
 # tile_k excluded because nvMatmulHeuristics and cutlass_api use it to mean different things.
 # TODO(nikhilap): Extend config key for stages/split_k https://github.com/pytorch/pytorch/issues/177578
-ConfigKey = tuple[int, int, int, int]
+ConfigKey = Tuple[int, int, int, int]
 
 
 @dataclass
@@ -52,7 +52,7 @@ def _make_config_key_from_heuristic(cfg: HeuristicConfig) -> ConfigKey:
     return (cfg.tile_m, cfg.tile_n, cfg.cluster_m, cfg.cluster_n)
 
 
-def _make_config_key_from_kernel_design(design) -> ConfigKey | None:
+def _make_config_key_from_kernel_design(design) -> Optional[ConfigKey]:
     """Build config key from cutlass_api kernel metadata.design."""
     if (
         hasattr(design, "tile_shape")
@@ -155,7 +155,7 @@ class NVUniversalGemmHeuristics(GemmMaxAutotuneTemplateConfigHeuristics):
             return kernels[:count]
 
         # Match kernels to heuristic configs
-        matched: list[tuple] = []
+        matched: List[tuple] = []
         for cfg in heuristic_configs:
             key = _make_config_key_from_heuristic(cfg)
             kernels_for_key = config_to_kernels.get(key)
@@ -244,9 +244,9 @@ class NVUniversalGemmHeuristics(GemmMaxAutotuneTemplateConfigHeuristics):
 
         return result
 
-    def _extract_config_to_kernels(self, kernels: list) -> dict[ConfigKey, list]:
+    def _extract_config_to_kernels(self, kernels: list) -> Dict[ConfigKey, list]:
         """Build a map from config key to kernels."""
-        config_to_kernels: dict[ConfigKey, list] = defaultdict(list)
+        config_to_kernels: Dict[ConfigKey, list] = defaultdict(list)
 
         for kernel in kernels:
             key = _make_config_key_from_kernel_design(kernel.metadata.design)
@@ -292,9 +292,9 @@ class NVUniversalGemmHeuristics(GemmMaxAutotuneTemplateConfigHeuristics):
         valid_configs: OrderedSet[ConfigKey],
         accumulator_type: torch.dtype = torch.float32,
         batch_size: int = 1,
-        dtype_b: torch.dtype | None = None,
-        out_dtype: torch.dtype | None = None,
-    ) -> list[HeuristicConfig]:
+        dtype_b: Optional[torch.dtype]= None,
+        out_dtype: Optional[torch.dtype]= None,
+    ) -> List[HeuristicConfig]:
         """
         Get kernel configurations recommended by nvMatmulHeuristics.
 
@@ -427,7 +427,7 @@ class NVUniversalGemmHeuristics(GemmMaxAutotuneTemplateConfigHeuristics):
 
 
 # Singleton instance for use in add_nv_universal_gemm_choices
-_nvgemm_heuristics: NVUniversalGemmHeuristics | None = None
+_nvgemm_heuristics: Optional[NVUniversalGemmHeuristics]= None
 
 
 def get_nvgemm_heuristics() -> NVUniversalGemmHeuristics:

@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Unit tests for the _tensors module."""
 
-from __future__ import annotations
 
 import onnxscript
 

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Lazy Triton kernel compilation for C++ wrapper.
 
@@ -11,12 +12,11 @@ The workflow is:
    for the specific kernel to be ready, then runs it with autotuning
 """
 
-from __future__ import annotations
 
 import dataclasses
 import logging
 import re
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from .triton_heuristics import CachingAutotuner
 
@@ -30,15 +30,15 @@ class TritonKernelCompileResult:
     mangled_name: str
     num_warps: int
     shared_mem: int
-    xblocks: list[int]
-    yblocks: list[int]
-    zblocks: list[int]
-    r0blocks: list[int]
+    xblocks: List[int]
+    yblocks: List[int]
+    zblocks: List[int]
+    r0blocks: List[int]
     rsplit: int
     rsplit_size: int
-    config_index: int | None
-    global_scratch: int | None
-    profile_scratch: int | None
+    config_index: Optional[int]
+    global_scratch: Optional[int]
+    profile_scratch: Optional[int]
 
 
 _async_compile: Any = None
@@ -54,7 +54,7 @@ def _get_async_compile() -> Any:
     return _async_compile
 
 
-def _wrap_tma_args(args: list[Any], kernel_fn: CachingAutotuner) -> list[Any]:
+def _wrap_tma_args(args: List[Any], kernel_fn: CachingAutotuner) -> List[Any]:
     """Wrap tensor args with TMA descriptors where the signature requires them."""
     signature = kernel_fn.triton_meta.get("signature", {})
     sig_items = list(signature.items())
@@ -97,7 +97,7 @@ def _wrap_tma_args(args: list[Any], kernel_fn: CachingAutotuner) -> list[Any]:
 
 
 def start_kernel_compile(
-    pending_kernels: dict[str, Any], kernel_name: str, kernel_source: str
+    pending_kernels: Dict[str, Any], kernel_name: str, kernel_source: str
 ) -> None:
     """
     This function is called from C++ at model initialization time for each kernel.
@@ -120,10 +120,10 @@ def start_kernel_compile(
 
 
 def run_triton_kernel_with_autotune(
-    pending_kernels: dict[str, Any],
+    pending_kernels: Dict[str, Any],
     kernel_name: str,
     stream: Any,
-    args: list[Any],
+    args: List[Any],
 ) -> TritonKernelCompileResult:
     """
     Run a Triton kernel with full autotuning using actual tensor arguments.
@@ -157,7 +157,7 @@ def run_triton_kernel_with_autotune(
         raise RuntimeError("Kernel run did not produce any launchers")
     launcher = kernel_fn.launchers[0]
 
-    cached_params: dict[str, Any] | None = CudaKernelParamCache.get(kernel_name)
+    cached_params: Optional[Dict[str, Any]]= CudaKernelParamCache.get(kernel_name)
     if cached_params is None:
         raise RuntimeError(f"Failed to get cached params for kernel {kernel_name}")
 
@@ -211,8 +211,8 @@ def run_triton_kernel_with_autotune(
                 config_index = idx
                 break
 
-    global_scratch: int | None = cached_params.get("global_scratch")
-    profile_scratch: int | None = cached_params.get("profile_scratch")
+    global_scratch: Optional[int]= cached_params.get("global_scratch")
+    profile_scratch: Optional[int]= cached_params.get("profile_scratch")
 
     log.debug(
         "Successfully autotuned Triton kernel: cubin_path=%s, mangled_name=%s, "

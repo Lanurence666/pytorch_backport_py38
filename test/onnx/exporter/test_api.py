@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Simple API tests for the ONNX exporter."""
 
-from __future__ import annotations
 
 import io
 import logging

@@ -1,3 +1,4 @@
+from __future__ import annotations
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
@@ -6,7 +7,6 @@
 # ///
 """Adapter for https://github.com/charliermarsh/ruff."""
 
-from __future__ import annotations
 
 import argparse
 import concurrent.futures
@@ -18,7 +18,7 @@ import os
 import subprocess
 import sys
 import time
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Dict, List, Union
 
 
 LINTER_CODE = "RUFF"
@@ -39,17 +39,17 @@ class LintSeverity(str, enum.Enum):
 class LintMessage:
     """A lint message defined by https://docs.rs/lintrunner/latest/lintrunner/lint_message/struct.LintMessage.html."""
 
-    path: str | None
-    line: int | None
-    char: int | None
+    path: Union[str, None]
+    line: Union[int, None]
+    char: Union[int, None]
     code: str
     severity: LintSeverity
     name: str
-    original: str | None
-    replacement: str | None
-    description: str | None
+    original: Union[str, None]
+    replacement: Union[str, None]
+    description: Union[str, None]
 
-    def asdict(self) -> dict[str, Any]:
+    def asdict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
 
     def display(self) -> None:
@@ -62,13 +62,13 @@ def as_posix(name: str) -> str:
 
 
 def _run_command(
-    args: list[str],
+    args: List[str],
     *,
-    timeout: int | None,
-    stdin: BinaryIO | None,
-    input: bytes | None,
+    timeout: Union[int, None],
+    stdin: Union[BinaryIO, None],
+    input: Union[bytes, None],
     check: bool,
-    cwd: os.PathLike[Any] | None,
+    cwd: Union[os.PathLike[Any], None],
 ) -> subprocess.CompletedProcess[bytes]:
     logging.debug("$ %s", " ".join(args))
     start_time = time.monotonic()
@@ -99,14 +99,14 @@ def _run_command(
 
 
 def run_command(
-    args: list[str],
+    args: List[str],
     *,
     retries: int = 0,
-    timeout: int | None = None,
-    stdin: BinaryIO | None = None,
-    input: bytes | None = None,
+    timeout: Union[int, None] = None,
+    stdin: Union[BinaryIO, None] = None,
+    input: Union[bytes, None] = None,
     check: bool = False,
-    cwd: os.PathLike[Any] | None = None,
+    cwd: Union[os.PathLike[Any], None] = None,
 ) -> subprocess.CompletedProcess[bytes]:
     remaining_retries = retries
     while True:
@@ -202,7 +202,7 @@ def get_issue_severity(code: str) -> LintSeverity:
 
 
 def format_lint_message(
-    message: str, code: str, rules: dict[str, str], show_disable: bool
+    message: str, code: str, rules: Dict[str, str], show_disable: bool
 ) -> str:
     if rules:
         message += f".\n{rules.get(code) or ''}"
@@ -213,15 +213,15 @@ def format_lint_message(
 
 
 def check_files(
-    filenames: list[str],
-    severities: dict[str, LintSeverity],
+    filenames: List[str],
+    severities: Dict[str, LintSeverity],
     *,
-    config: str | None,
+    config: Union[str, None],
     retries: int,
     timeout: int,
     explain: bool,
     show_disable: bool,
-) -> list[LintMessage]:
+) -> List[LintMessage]:
     try:
         proc = run_command(
             [
@@ -272,7 +272,7 @@ def check_files(
     else:
         rules = {}
 
-    def lint_message(vuln: dict[str, Any]) -> LintMessage:
+    def lint_message(vuln: Dict[str, Any]) -> LintMessage:
         code = vuln["code"] or SYNTAX_ERROR
         return LintMessage(
             path=vuln["filename"],
@@ -299,10 +299,10 @@ def check_files(
 def check_file_for_fixes(
     filename: str,
     *,
-    config: str | None,
+    config: Union[str, None],
     retries: int,
     timeout: int,
-) -> list[LintMessage]:
+) -> List[LintMessage]:
     try:
         with open(filename, "rb") as f:
             original = f.read()
@@ -417,7 +417,7 @@ def main() -> None:
         stream=sys.stderr,
     )
 
-    severities: dict[str, LintSeverity] = {}
+    severities: Dict[str, LintSeverity] = {}
     if args.severity:
         for severity in args.severity:
             parts = severity.split(":", 1)

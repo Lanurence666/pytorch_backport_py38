@@ -1,13 +1,17 @@
+from __future__ import annotations
 """
 Python polyfills for itertools
 """
 
-from __future__ import annotations
 
 import itertools
 import operator
-from collections.abc import Callable
-from typing import overload, TYPE_CHECKING, TypeAlias, TypeVar
+
+from typing import Callable, Iterable, Iterator, Optional, TYPE_CHECKING, Tuple, Type, TypeVar, Union, overload
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 from ..decorators import substitute_in_graph
 
@@ -25,12 +29,14 @@ __all__ = [
     "dropwhile",
     "filterfalse",
     "islice",
-    "pairwise",
     "starmap",
     "takewhile",
     "tee",
     "zip_longest",
 ]
+
+if hasattr(itertools, "pairwise"):
+    __all__.append("pairwise")
 
 
 _T = TypeVar("_T")
@@ -53,7 +59,7 @@ def accumulate(
     iterable: Iterable[_T],
     func: Callable[[_T, _T], _T] | None = None,
     *,
-    initial: _T | None = None,
+    initial: Optional[_T] = None,
 ) -> Iterator[_T]:
     # call iter outside of the generator to match cypthon behavior
     iterator = iter(iterable)
@@ -145,7 +151,7 @@ def takewhile(predicate: _Predicate[_T], iterable: Iterable[_T], /) -> Iterator[
 @overload
 def starmap(
     function: Callable[[], _U],
-    iterable: Iterable[tuple[()]],
+    iterable: Iterable[Tuple[()]],
     /,
 ) -> itertools.starmap[_U]: ...
 
@@ -153,7 +159,7 @@ def starmap(
 @overload
 def starmap(
     function: Callable[[_T], _U],
-    iterable: Iterable[tuple[_T]],
+    iterable: Iterable[Tuple[_T]],
     /,
 ) -> itertools.starmap[_U]: ...
 
@@ -161,7 +167,7 @@ def starmap(
 @overload
 def starmap(
     function: Callable[[_T, _T1], _U],
-    iterable: Iterable[tuple[_T, _T1]],
+    iterable: Iterable[Tuple[_T, _T1]],
     /,
 ) -> itertools.starmap[_U]: ...
 
@@ -169,7 +175,7 @@ def starmap(
 @overload
 def starmap(
     function: Callable[[_T, _T1, _T2], _U],
-    iterable: Iterable[tuple[_T, _T1, _T2]],
+    iterable: Iterable[Tuple[_T, _T1, _T2]],
     /,
 ) -> itertools.starmap[_U]: ...
 
@@ -197,7 +203,7 @@ def filterfalse(function: _Predicate[_T], iterable: Iterable[_T], /) -> Iterator
 
 # Reference: https://docs.python.org/3/library/itertools.html#itertools.islice
 @substitute_in_graph(itertools.islice, is_embedded_type=True)  # type: ignore[arg-type]
-def islice(iterable: Iterable[_T], /, *args: int | None) -> Iterator[_T]:
+def islice(iterable: Iterable[_T], /, *args: Optional[int]) -> Iterator[_T]:
     s = slice(*args)
     start = 0 if s.start is None else s.start
     stop = s.stop
@@ -225,21 +231,22 @@ def islice(iterable: Iterable[_T], /, *args: int | None) -> Iterator[_T]:
 
 
 # Reference: https://docs.python.org/3/library/itertools.html#itertools.pairwise
-@substitute_in_graph(itertools.pairwise, is_embedded_type=True)  # type: ignore[arg-type]
-def pairwise(iterable: Iterable[_T], /) -> Iterator[tuple[_T, _T]]:
-    a = None
-    first = True
-    for b in iterable:
-        if first:
-            first = False
-        else:
-            yield a, b  # type: ignore[misc]
-        a = b
+if hasattr(itertools, "pairwise"):
+    @substitute_in_graph(itertools.pairwise, is_embedded_type=True)  # type: ignore[arg-type]
+    def pairwise(iterable: Iterable[_T], /) -> Iterator[Tuple[_T, _T]]:
+        a = None
+        first = True
+        for b in iterable:
+            if first:
+                first = False
+            else:
+                yield a, b  # type: ignore[misc]
+            a = b
 
 
 # Reference: https://docs.python.org/3/library/itertools.html#itertools.tee
 @substitute_in_graph(itertools.tee)
-def tee(iterable: Iterable[_T], n: int = 2, /) -> tuple[Iterator[_T], ...]:
+def tee(iterable: Iterable[_T], n: int = 2, /) -> Tuple[Iterator[_T], ...]:
     iterator = iter(iterable)
     shared_link = [None, None]
 
@@ -264,7 +271,7 @@ def zip_longest(
     /,
     *,
     fillvalue: _U = ...,
-) -> Iterator[tuple[_T1]]: ...
+) -> Iterator[Tuple[_T1]]: ...
 
 
 @overload
@@ -273,7 +280,7 @@ def zip_longest(
     iter1: Iterable[_T1],
     iter2: Iterable[_T2],
     /,
-) -> Iterator[tuple[_T1 | None, _T2 | None]]: ...
+) -> Iterator[Tuple[Optional[_T1], Optional[_T2]]]: ...
 
 
 @overload
@@ -284,7 +291,7 @@ def zip_longest(
     /,
     *,
     fillvalue: _U = ...,
-) -> Iterator[tuple[_T1 | _U, _T2 | _U]]: ...
+) -> Iterator[Tuple[Union[_T1, _U], Union[_T2, _U]]]: ...
 
 
 @overload
@@ -295,7 +302,7 @@ def zip_longest(
     iter3: Iterable[_T],
     /,
     *iterables: Iterable[_T],
-) -> Iterator[tuple[_T | None, ...]]: ...
+) -> Iterator[Tuple[Optional[_T], ...]]: ...
 
 
 @overload
@@ -307,7 +314,7 @@ def zip_longest(
     /,
     *iterables: Iterable[_T],
     fillvalue: _U = ...,
-) -> Iterator[tuple[_T | _U, ...]]: ...
+) -> Iterator[Tuple[Union[_T, _U], ...]]: ...
 
 
 # Reference: https://docs.python.org/3/library/itertools.html#itertools.zip_longest
@@ -315,7 +322,7 @@ def zip_longest(
 def zip_longest(
     *iterables: Iterable[_T],
     fillvalue: _U = None,  # type: ignore[assignment]
-) -> Iterator[tuple[_T | _U, ...]]:
+) -> Iterator[Tuple[Union[_T, _U], ...]]:
     # zip_longest('ABCD', 'xy', fillvalue='-') -> Ax By C- D-
 
     iterators = list(map(iter, iterables))

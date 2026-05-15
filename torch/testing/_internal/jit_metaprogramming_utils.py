@@ -1,6 +1,8 @@
 # mypy: ignore-errors
 
 # Torch
+from __future__ import annotations
+
 from torch.jit.annotations import BroadcastingList2, BroadcastingList3  # noqa: F401
 import torch.nn.functional as F
 import torch
@@ -13,7 +15,7 @@ from torch.testing._internal.common_utils import is_iterable_of_tensors, noncont
 
 import collections
 from copy import deepcopy
-from typing import Any
+from typing import Any, Dict, List, Set, Type, Union
 import math  # noqa: F401
 
 # Testing utils
@@ -362,9 +364,9 @@ def get_constant(x):
     return x
 
 def get_script_args(args):
-    formals: list[str] = []
-    tensors: list[torch.Tensor | list[torch.Tensor]] = []
-    actuals: list[str] = []
+    formals: List[str] = []
+    tensors: Union[List[torch.Tensor, List[torch.Tensor]]]= Union[[]]
+    actuals: List[str] = []
     for arg in args:
         if isinstance(arg, torch.Tensor):
             name = f'i{len(formals)}'
@@ -406,14 +408,14 @@ def create_script_fn(self, method_name, func_type):
     return script_fn
 
 class SplitInputs:
-    all_tensors: list[Any]
-    tensor_args: list[Any]
-    nontensor_args: list[Any]
-    arg_types: list[str]
-    tensor_kwargs: dict[str, Any]
-    kwarg_order: list[str]
-    nontensor_kwargs: dict[str, Any]
-    kwarg_types: dict[str, Any]
+    all_tensors: List[Any]
+    tensor_args: List[Any]
+    nontensor_args: List[Any]
+    arg_types: List[str]
+    tensor_kwargs: Dict[str, Any]
+    kwarg_order: List[str]
+    nontensor_kwargs: Dict[str, Any]
+    kwarg_types: Dict[str, Any]
 
     @staticmethod
     def _is_tensor_input(arg):
@@ -426,8 +428,8 @@ class SplitInputs:
         self.nontensor_args = [arg for arg in args if not self._is_tensor_input(arg)]
         self.tensor_kwargs = {k: v for k, v in kwargs.items() if self._is_tensor_input(v)}
         self.nontensor_kwargs = {k: v for k, v in kwargs.items() if not self._is_tensor_input(v)}
-        self.all_tensors = [*self.tensor_args, *self.tensor_kwargs.values()]
-        self.kwarg_order = list(kwargs.keys())
+        self.all_tensors = [*self.tensor_args, *[v for k, v in self.tensor_kwargs.items()]]
+        self.kwarg_order = [k for k, v in kwargs.items()]
 
     def nontensors_match(self, other: 'SplitInputs'):
         if self.arg_types != other.arg_types:

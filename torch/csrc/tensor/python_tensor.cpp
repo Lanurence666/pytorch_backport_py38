@@ -24,6 +24,7 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 namespace torch::tensors {
 

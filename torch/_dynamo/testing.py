@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Testing utilities and infrastructure for Dynamo.
 
 This module provides a comprehensive set of testing utilities including:
@@ -23,8 +24,8 @@ import re
 import sys
 import types
 import unittest
-from collections.abc import Callable, Generator, Sequence
-from typing import Any, overload, TypeVar
+
+from typing import Any, Callable, Dict, Generator, List, Optional, Sequence, Tuple, Type, TypeVar, Union, cast, overload
 from typing_extensions import ParamSpec
 from unittest.mock import patch
 
@@ -45,7 +46,7 @@ from .types import ConvertFrameReturn, DynamoFrameType, wrap_guarded_code
 from .utils import CompileCounterInt, same
 
 
-np: types.ModuleType | None = None
+np: Optional[types.ModuleType]= None
 try:
     import numpy as np
 except ModuleNotFoundError:
@@ -60,7 +61,7 @@ log = logging.getLogger(__name__)
 _P = ParamSpec("_P")
 
 
-def clone_me(x: torch.Tensor | None) -> torch.Tensor | None:
+def clone_me(x: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
     if x is None:
         return None
     return x.detach().clone().requires_grad_(x.requires_grad)
@@ -95,7 +96,7 @@ def extract_graph(fn, *args, **kwargs):  # type: ignore[no-untyped-def]
 
 def collect_results(
     model: torch.nn.Module, prediction: Any, loss: Any, example_inputs: Any
-) -> list[Any]:
+) -> List[Any]:
     results = []
     results.append(prediction)
     results.append(loss)
@@ -151,11 +152,11 @@ def reduce_to_scalar_loss(out: torch.Tensor) -> torch.Tensor: ...
 
 @overload
 def reduce_to_scalar_loss(
-    out: list[Any] | tuple[Any, ...] | dict[Any, Any],
+    out: Union[List[Any], Tuple[Any, ...], Dict[Any, Any],]
 ) -> float: ...
 
 
-def reduce_to_scalar_loss(out: Any) -> torch.Tensor | float:
+def reduce_to_scalar_loss(out: Any) -> Union[torch.Tensor, float]:
     """Reduce the output of a model to get scalar loss"""
     if isinstance(out, torch.Tensor):
         # Mean does not work on integer tensors
@@ -196,7 +197,7 @@ def debug_insert_nops(
 ) -> ConvertFrameReturn:
     """used to debug jump updates"""
 
-    def insert_nops(instructions: list[Any], code_options: Any) -> None:
+    def insert_nops(instructions: List[Any], code_options: Any) -> None:
         instructions.insert(0, create_instruction("NOP"))
         instructions.insert(0, create_instruction("NOP"))
 
@@ -233,11 +234,11 @@ def debug_insert_nops(
 
 class CompileCounter:
     def __init__(self) -> None:
-        self.frame_count: int | CompileCounterInt = 0
+        self.frame_count: Union[int, CompileCounterInt] = 0
         self.clear()
 
     def __call__(
-        self, gm: torch.fx.GraphModule, example_inputs: list[torch.Tensor]
+        self, gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]
     ) -> Callable[..., Any]:
         self.frame_count += 1
         for node in gm.graph.nodes:
@@ -255,13 +256,13 @@ class CompileCounter:
 
 class CompileCounterWithBackend:
     def __init__(self, backend: str) -> None:
-        self.frame_count: int | CompileCounterInt = 0
+        self.frame_count: Union[int, CompileCounterInt] = 0
         self.backend = backend
-        self.graphs: list[torch.fx.GraphModule] = []
+        self.graphs: List[torch.fx.GraphModule] = []
         self.clear()
 
     def __call__(
-        self, gm: torch.fx.GraphModule, example_inputs: list[torch.Tensor]
+        self, gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]
     ) -> Callable[..., Any]:
         from .backends.registry import lookup_backend
 
@@ -285,10 +286,10 @@ class CompileCounterWithBackend:
 # we can assert on
 class EagerAndRecordGraphs:
     def __init__(self) -> None:
-        self.graphs: list[torch.fx.GraphModule] = []
+        self.graphs: List[torch.fx.GraphModule] = []
 
     def __call__(
-        self, gm: torch.fx.GraphModule, example_inputs: list[torch.Tensor]
+        self, gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]
     ) -> Callable[..., Any]:
         self.graphs.append(gm)
         return gm.forward
@@ -296,23 +297,23 @@ class EagerAndRecordGraphs:
 
 class AotEagerAndRecordGraphs:
     def __init__(self) -> None:
-        self.graphs: list[torch.fx.GraphModule] = []
-        self.fw_graphs: list[torch.fx.GraphModule] = []
-        self.bw_graphs: list[torch.fx.GraphModule] = []
+        self.graphs: List[torch.fx.GraphModule] = []
+        self.fw_graphs: List[torch.fx.GraphModule] = []
+        self.bw_graphs: List[torch.fx.GraphModule] = []
 
     def __call__(
-        self, gm: torch.fx.GraphModule, example_inputs: list[torch.Tensor]
+        self, gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]
     ) -> Callable[..., Any]:
         self.graphs.append(gm)
 
         def fw_compiler(
-            gm: torch.fx.GraphModule, example_inputs: list[torch.Tensor]
+            gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]
         ) -> Callable[..., Any]:
             self.fw_graphs.append(gm)
             return gm.forward
 
         def bw_compiler(
-            gm: torch.fx.GraphModule, example_inputs: list[torch.Tensor]
+            gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]
         ) -> Callable[..., Any]:
             self.bw_graphs.append(gm)
             return gm.forward
@@ -327,8 +328,8 @@ class AotEagerAndRecordGraphs:
 
 class InductorAndRecordGraphs:
     def __init__(self) -> None:
-        self.graphs: list[torch.fx.GraphModule] = []
-        self.inductor_graphs: list[torch.fx.GraphModule] = []
+        self.graphs: List[torch.fx.GraphModule] = []
+        self.inductor_graphs: List[torch.fx.GraphModule] = []
 
     def __call__(self, gm, example_inputs):  # type: ignore[no-untyped-def]
         import torch._inductor.compile_fx as compile_fx_mod
@@ -355,7 +356,7 @@ def remove_trailing_space(code: str) -> str:
 
 def _squash_blank_lines(code: str) -> str:
     lines = code.split("\n")
-    result: list[str] = []
+    result: List[str] = []
     saw_blank = False
     for line in lines:
         if line.strip() == "":
@@ -388,8 +389,8 @@ def standard_test(
     self: Any,
     fn: Callable[..., Any],
     nargs: int,
-    expected_ops: int | None = None,
-    expected_ops_dynamic: int | None = None,
+    expected_ops: Optional[int]= None,
+    expected_ops_dynamic: Optional[int]= None,
     expected_frame_count: int = 1,
 ) -> None:
     if not config.assume_static_by_default and expected_ops_dynamic is not None:
@@ -418,7 +419,7 @@ def standard_test(
 
 
 def dummy_fx_compile(
-    gm: fx.GraphModule, example_inputs: list[torch.Tensor]
+    gm: fx.GraphModule, example_inputs: List[torch.Tensor]
 ) -> Callable[..., Any]:
     return gm.forward
 
@@ -440,7 +441,7 @@ def rand_strided(
     size: Sequence[int],
     stride: Sequence[int],
     dtype: torch.dtype = torch.float32,
-    device: str | torch.device = "cpu",
+    device: Union[str, torch.device]= "cpu",
     extra_size: int = 0,
 ) -> torch.Tensor:
     needed_size = extra_size
@@ -494,7 +495,7 @@ def make_test_cls_with_patches(
     cls_prefix: str,
     fn_suffix: str,
     *patches: Any,
-    xfail_prop: str | None = None,
+    xfail_prop: Optional[str]= None,
     decorator: Callable[[Callable[..., Any]], Callable[..., Any]] = lambda x: x,
 ) -> type:
     DummyTestClass = type(f"{cls_prefix}{cls.__name__}", cls.__bases__, {})
@@ -592,7 +593,7 @@ _testing_invoke_subgraph_inductor_compile_captured_gms = None
 
 @contextlib.contextmanager
 def _testing_capture_invoke_subgraph_inductor_compile_gms() -> Generator[
-    list[torch.fx.GraphModule]
+    List[torch.fx.GraphModule]
 ]:
     """
     Context manager to capture graph modules compiled by invoke_subgraph_inductor_compile.

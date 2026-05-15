@@ -10,6 +10,7 @@
 #include <ATen/native/cuda/Loops.cuh>
 #include <ATen/native/ForeachUtils.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/OpMathType.h>
 
 
 namespace {

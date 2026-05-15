@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 import copy
 import gc
 import inspect
@@ -10,10 +12,10 @@ import sys
 import threading
 import unittest
 from collections import namedtuple
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Iterable
 from enum import Enum
 from functools import partial, wraps
-from typing import Any, ClassVar, TypeVar
+from typing import Any, Callable, ClassVar, Collection, Dict, Iterable, List, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 from typing_extensions import ParamSpec
 
 import torch
@@ -338,7 +340,7 @@ class DeviceTypeTestBase(TestCase):
     # These are intentionally placed on DeviceTypeTestBase (rather than solely on
     # PrivateUse1TestBase) so that in-tree backends can adopt the same mechanism
     # in the future.
-    op_overrides = None  # type: Optional[dict[str, list[DecorateInfo]]]
+    op_overrides = None  # type: Optional[Dict[str, List[DecorateInfo]]]
 
     # An optional mechanism to limit which ops generate test variants.
     # When set, only ops whose full_name is in this collection will generate tests.
@@ -356,7 +358,7 @@ class DeviceTypeTestBase(TestCase):
     #       "TestClassA": ["test_a", "test_b"],   # Selective: Skips specific
     #       "TestClassB": "*",                    # Global: Skips the entire class
     #   }
-    test_exclusions: ClassVar[dict[str, Collection[str]] | None] = None
+    test_exclusions: ClassVar[Dict[str, Collection[str]]]
 
     # Flag to disable test suite early due to unrecoverable error such as CUDA error.
     _stop_test_suite = False
@@ -484,26 +486,6 @@ class DeviceTypeTestBase(TestCase):
             self.precision = self._get_precision_override(test, dtype)
             self.precision, self.rel_tol = self._get_tolerance_override(test, dtype)
 
-    @classmethod
-    def set_test_configs(
-        cls,
-        *,
-        op_overrides=None,
-        op_allowlist=None,
-        test_exclusions=None,
-    ):
-        """
-        Sets or resets the test configuration fields.
-
-        WARNING: This method is designed to perform a FULL replacement of the
-        current configuration. Calling this method without any arguments will
-        act as a "reset", clearing all stored configurations back to their
-        default `None` state.
-        """
-        cls.op_overrides = op_overrides
-        cls.op_allowlist = op_allowlist
-        cls.test_exclusions = test_exclusions
-
     # Creates device-specific tests.
     @classmethod
     def instantiate_test(cls, name, test, *, generic_cls=None):
@@ -576,7 +558,7 @@ class DeviceTypeTestBase(TestCase):
 
             def dtype_parametrize_fn(test, generic_cls, device_cls, dtypes=dtypes):
                 for dtype in dtypes:
-                    param_kwargs: dict[str, Any] = {}
+                    param_kwargs: Dict[str, Any] = {}
                     _update_param_kwargs(param_kwargs, "dtype", dtype)
 
                     # Note that an empty test suffix is set here so that the dtype can be appended
@@ -810,7 +792,7 @@ class PrivateUse1TestBase(DeviceTypeTestBase):
 def get_device_type_test_bases():
     # set type to List[Any] due to mypy list-of-union issue:
     # https://github.com/python/mypy/issues/3351
-    test_bases: list[Any] = []
+    test_bases: List[Any] = []
 
     if IS_SANDCASTLE or IS_FBCODE:
         if IS_REMOTE_GPU:
@@ -1178,8 +1160,8 @@ class ops(_TestParametrizer):
         self,
         op_list,
         *,
-        dtypes: OpDTypes | Sequence[torch.dtype] = OpDTypes.supported,
-        allowed_dtypes: Sequence[torch.dtype] | None = None,
+        dtypes: Union[OpDTypes, Sequence[torch.dtype]]= OpDTypes.supported,
+        allowed_dtypes: Optional[Sequence[torch.dtype]]= None,
         skip_if_dynamo=True,
     ):
         self.op_list = list(op_list)
@@ -1205,7 +1187,7 @@ class ops(_TestParametrizer):
         op = check_exhausted_iterator = object()
         for op in self.op_list:
             # Determine the set of dtypes to use.
-            dtypes: set[torch.dtype] | set[None]
+            dtypes: Union[Set[torch.dtype], Set[None]]
             if isinstance(self.opinfo_dtypes, Sequence):
                 dtypes = set(self.opinfo_dtypes)
             elif self.opinfo_dtypes == OpDTypes.unsupported_backward:
@@ -1461,7 +1443,7 @@ def _has_sufficient_memory(device, size):
     if device_type == "xla":
         raise unittest.SkipTest("TODO: Memory availability checks for XLA?")
 
-    if device_type not in ["cpu", "mps"]:
+    if device_type != "cpu":
         raise unittest.SkipTest("Unknown device type")
 
     # CPU
@@ -1559,7 +1541,7 @@ class expectedFailure:
 
 
 class onlyOn:
-    def __init__(self, device_type: str | list):
+    def __init__(self, device_type: Union[str, list]):
         self.device_type = device_type
 
     def __call__(self, fn):
@@ -2078,7 +2060,7 @@ def skipCUDAIfNotMiopenSuggestNHWC(fn):
 
 
 # Skips a test for specified CUDA versions, given in the form of a list of [major, minor]s.
-def skipCUDAVersionIn(versions: list[tuple[int, int]] | None = None):
+def skipCUDAVersionIn(versions: List[Tuple[int, int]] | None = None):
     def dec_fn(fn):
         @wraps(fn)
         def wrap_fn(self, *args, **kwargs):
@@ -2096,7 +2078,7 @@ def skipCUDAVersionIn(versions: list[tuple[int, int]] | None = None):
 
 
 # Skips a test for CUDA versions less than specified, given in the form of [major, minor].
-def skipCUDAIfVersionLessThan(versions: tuple[int, int] | None = None):
+def skipCUDAIfVersionLessThan(versions: Optional[Tuple[int, int]] = None):
     def dec_fn(fn):
         @wraps(fn)
         def wrap_fn(self, *args, **kwargs):
@@ -2197,7 +2179,7 @@ def skipPRIVATEUSE1(fn):
 
 # TODO: the "all" in the name isn't true anymore for quite some time as we have also have for example XLA and MPS now.
 #  This should probably enumerate all available device type test base classes.
-def get_all_device_types() -> list[str]:
+def get_all_device_types() -> List[str]:
     return ["cpu"] if not torch.cuda.is_available() else ["cpu", "cuda"]
 
 

@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import collections
 import logging
-from typing import Any
+from typing import Any, Dict, List, Optional, Type, Union
 
 import torch
 from torch._export.verifier import SpecViolationError
@@ -39,14 +41,14 @@ class ConstantAttrMap(collections.abc.MutableMapping):
 
     def __init__(self) -> None:
         # Underlying dict that we use to implement this mapping.
-        self._constant_attrs: dict[
-            int | torch.Tensor | FakeScriptObject | torch.utils._pytree.TreeSpec,
-            list[Any],
+        self._constant_attrs: Dict[
+            Union[Union[int, torch.Tensor], Union[FakeScriptObject, torch.utils._pytree.TreeSpec]],
+            List[Any],
         ] = {}
         # Map from the hash(ScriptObject) to the ScriptObject itself. Used for
         # APIs like `__iter__` that should look like they're returning the
         # original ScriptObjects.
-        self._script_object_map: dict[int, torch.ScriptObject] = {}
+        self._script_object_map: Dict[int, torch.ScriptObject] = {}
 
     def __getitem__(self, key: _ConstantAttributeType) -> Any:
         real_key = hash(key) if isinstance(key, torch.ScriptObject) else key
@@ -123,7 +125,7 @@ def _get_first_fqn(
     return fqns[0] if fqns else None
 
 
-def _unused_constant(node: torch.fx.Node) -> list[torch.fx.Node] | None:
+def _unused_constant(node: torch.fx.Node) -> Optional[List[torch.fx.Node]]:
     """
     If there is a tensor constant created while tracing, here is how the graph
     looks like:
@@ -181,7 +183,7 @@ def lift_constants_pass(
     gm: torch.fx.GraphModule,
     graph_signature: ExportGraphSignature,
     constant_attrs: ConstantAttrMap,
-) -> dict[str, _ConstantAttributeType]:
+) -> Dict[str, _ConstantAttributeType]:
     """
     Takes a graph module, graph signature, and modifies them inplace to lift any
     constants (tensors or custom classes) as inputs to the graph. Returns a
@@ -199,7 +201,7 @@ def lift_constants_pass(
     Returns:
         A dictionary of fqn => constant value.
     """
-    all_constants: dict[str, _ConstantAttributeType] = {}
+    all_constants: Dict[str, _ConstantAttributeType] = {}
 
     input_specs = graph_signature.input_specs
     num_custom_obj = sum(
@@ -408,13 +410,13 @@ def lift_constants_pass(
 
 def rewrite_script_object_meta(
     gm: torch.fx.GraphModule,
-) -> dict[str, _ConstantAttributeType]:
+) -> Dict[str, _ConstantAttributeType]:
     """When tracing, we produce a graph with FakeScriptObject in the
     meta["val"].
 
     For now, we rewrie meta["val"] to be a placeholder CustomObjArgument
     """
-    constants: dict[
+    constants: Dict[
         str,
         _ConstantAttributeType,
     ] = {}
@@ -443,7 +445,7 @@ def _materialize_and_lift_constants(
     gm: torch.fx.GraphModule,
     export_graph_signature: ExportGraphSignature,
     constant_attrs: ConstantAttrMap,
-) -> dict[str, _ConstantAttributeType]:
+) -> Dict[str, _ConstantAttributeType]:
     constants = rewrite_script_object_meta(gm)
     constants.update(lift_constants_pass(gm, export_graph_signature, constant_attrs))
     return constants

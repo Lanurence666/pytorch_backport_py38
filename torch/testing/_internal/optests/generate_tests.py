@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 import datetime
 import difflib
 import functools
@@ -10,8 +12,8 @@ import re
 import tempfile
 import threading
 import unittest
-from collections.abc import Callable, Sequence
-from typing import Any
+from collections.abc import Callable
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union, overload
 
 import torch
 import torch._dynamo
@@ -46,12 +48,12 @@ def is_abstract(tensor: torch.Tensor) -> bool:
 
 def safe_schema_check(
     op: torch._ops.OpOverload,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
     *,
     copy_inputs: bool = True,
-    rtol: float | None = None,
-    atol: float | None = None,
+    rtol: Optional[float] = None,
+    atol: Optional[float] = None,
 ) -> Any:
     if copy_inputs:
         args, kwargs = deepcopy_tensors((args, kwargs))
@@ -64,12 +66,12 @@ def safe_schema_check(
 
 def safe_autograd_registration_check(
     op: torch._ops.OpOverload,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
     *,
     copy_inputs: bool = True,
-    rtol: float | None = None,
-    atol: float | None = None,
+    rtol: Optional[float] = None,
+    atol: Optional[float] = None,
 ) -> None:
     if pytree.tree_any_only(torch.Tensor, is_abstract, (args, kwargs)):
         return
@@ -85,12 +87,12 @@ def safe_autograd_registration_check(
 
 def safe_fake_check(
     op: torch._ops.OpOverload,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
     *,
     copy_inputs: bool = True,
-    rtol: float | None = None,
-    atol: float | None = None,
+    rtol: Optional[float] = None,
+    atol: Optional[float] = None,
 ) -> None:
     if pytree.tree_any_only(torch.Tensor, is_abstract, (args, kwargs)):
         return None
@@ -101,13 +103,13 @@ def safe_fake_check(
 
 def safe_aot_autograd_check(
     op: torch._ops.OpOverload,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
     dynamic: bool,
     *,
     copy_inputs: bool = True,
-    rtol: float | None = None,
-    atol: float | None = None,
+    rtol: Optional[float] = None,
+    atol: Optional[float] = None,
 ) -> Any:
     # NB: copy_inputs does nothing for aot_autograd_check: it always needs to copy
     # inputs.
@@ -177,10 +179,10 @@ DEPRECATED_DEFAULT_TEST_UTILS = DEFAULT_TEST_UTILS + [
 
 def generate_opcheck_tests(
     testcase: Any,
-    namespaces: list[str],
-    failures_dict_path: str | None = None,
-    additional_decorators: dict[str, Callable] | None = None,
-    test_utils: list[str] = DEFAULT_TEST_UTILS,
+    namespaces: List[str],
+    failures_dict_path: Optional[str] = None,
+    additional_decorators: Optional[Dict[str, Callable]] = None,
+    test_utils: List[str] = DEFAULT_TEST_UTILS,
 ) -> None:
     """Given an existing TestCase, use the existing tests to generate
     additional validation tests for custom operators.
@@ -384,7 +386,7 @@ def validate_failures_dict_formatting(failures_dict_path: str) -> None:
 
 
 def validate_failures_dict_structure(
-    failure_dict: "FailuresDict", test_utils: list[str], testcase: Any
+    failure_dict: "FailuresDict", test_utils: List[str], testcase: Any
 ) -> None:
     """Validates the failures dict.
 
@@ -470,7 +472,7 @@ class OpCheckMode(TorchFunctionMode):
 
     def __init__(
         self,
-        namespaces: list[str],
+        namespaces: List[str],
         test_util_name: str,
         test_util: Callable,
         failures_dict: "FailuresDict",
@@ -649,15 +651,15 @@ def should_print_better_repro() -> None:
 
 
 def opcheck(
-    op: torch._ops.OpOverload | torch._ops.OpOverloadPacket | CustomOpDef,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any] | None = None,
+    op: Union[Union[torch._ops.OpOverload, torch._ops.OpOverloadPacket], CustomOpDef],
+    args: Tuple[Any, ...],
+    kwargs: Optional[Dict[str, Any]] = None,
     *,
-    test_utils: str | Sequence[str] = DEFAULT_TEST_UTILS,
+    test_utils: Union[str, Sequence[str]] = DEFAULT_TEST_UTILS,
     raise_exception: bool = True,
-    rtol: float | None = None,
-    atol: float | None = None,
-) -> dict[str, str]:
+    rtol: Optional[float] = None,
+    atol: Optional[float] = None,
+) -> Dict[str, str]:
     """See torch.library.opcheck for docstring"""
 
     if (rtol is None) ^ (atol is None):
@@ -711,8 +713,8 @@ class OpCheckError(Exception):
 def generate_repro(
     test: str,
     op: torch._ops.OpOverload,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
     *,
     save_data: bool,
     dry_run: bool = False,
@@ -777,7 +779,7 @@ def resolve_unique_overload_or_throw(
 DUMP_OPTIONS = {"indent": 2, "sort_keys": True}
 
 
-FailuresDictData = dict[str, dict[str, dict[str, str]]]
+FailuresDictData = Dict[str, Dict[str, Dict[str, str]]]
 
 
 VERSION = 1
@@ -817,7 +819,7 @@ class FailuresDict:
                     )
         return FailuresDict(path, dct["data"])
 
-    def _save(self, to_str=False) -> str | None:
+    def _save(self, to_str=False) -> Optional[str]:
         to_dump = {
             "_description": DESCRIPTION,
             "data": self.data,
@@ -849,7 +851,7 @@ class FailuresDict:
         test_name: str,
         status: str,
         *,
-        comment: str | None = None,
+        comment: Optional[str] = None,
     ):
         if qualname not in self.data:
             self.data[qualname] = {}

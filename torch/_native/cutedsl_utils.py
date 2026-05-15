@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import functools
 import logging
 import sys
-from typing import cast
+from typing import Optional, Set, Tuple, cast
 
 from torch._vendor.packaging.version import Version
 
@@ -25,7 +27,7 @@ log = logging.getLogger(__name__)
 
 
 _CUTEDSL_DSL_NAME = "cutedsl"
-_CUTEDSL_REQUIRED_VERSIONS: set[Version] = {
+_CUTEDSL_REQUIRED_VERSIONS: Set[Version] = {
     # Current version - Note Version.from_part(release=(4.4.1)) is better
     #                   but > v26 of packaging.
     Version(f"{4}.{4}.{1}"),
@@ -33,8 +35,8 @@ _CUTEDSL_REQUIRED_VERSIONS: set[Version] = {
 }
 
 
-@functools.cache
-def _check_runtime_available() -> tuple[bool, Version | None]:
+@functools.lru_cache(maxsize=None)
+def _check_runtime_available() -> Tuple[bool, Optional[Version]]:
     """
     Check if cutedsl (and deps) are available.
 
@@ -69,12 +71,12 @@ def runtime_available() -> bool:
     return available
 
 
-def runtime_version() -> None | Version:
+def runtime_version() -> Optional[Version]:
     _, version = _check_runtime_available()
     return version
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _version_is_ok() -> bool:
     _, version = _check_runtime_available()
     if check_native_version_skip() or (version in _CUTEDSL_REQUIRED_VERSIONS):
@@ -100,7 +102,7 @@ def register_op_override(
     lib_symbol: str,
     op_symbol: str,
     dispatch_key: str,
-    cond: _OpCondFn | None,
+    cond: Optional[_OpCondFn],
     impl: _OpImplFn,
     *,
     allow_multiple_override: bool = False,

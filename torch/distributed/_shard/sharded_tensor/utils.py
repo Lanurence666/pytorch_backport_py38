@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import collections.abc
 import copy
 import itertools
-from collections.abc import Sequence
-from typing import TYPE_CHECKING
+
+from typing import List, Optional, Sequence, TYPE_CHECKING, Type
 
 import torch
 from torch.distributed import distributed_c10d as c10d, rpc
@@ -56,7 +58,7 @@ def _validate_output_tensor_for_gather(
     my_rank: int,
     dst_rank: int,
     size: torch.Size,
-    dst_tensor: torch.Tensor | None,
+    dst_tensor: Optional[torch.Tensor],
 ) -> None:
     if dst_rank == my_rank:
         if dst_tensor is None:
@@ -113,14 +115,14 @@ def _raise_if_mismatch(expected, actual, prop_name, ranks, is_local=True):
 
 
 def build_metadata_from_local_shards(
-    local_shards: list[Shard],
+    local_shards: List[Shard],
     global_size: torch.Size,
     current_rank: int,
     pg: c10d.ProcessGroup,
 ) -> ShardedTensorMetadata:
     if len(local_shards) <= 0:
         raise AssertionError("must have local shards!")
-    local_shard_metadatas: list[ShardMetadata] = []
+    local_shard_metadatas: List[ShardMetadata] = []
 
     first_shard_dtype = local_shards[0].tensor.dtype
     first_shard_layout = local_shards[0].tensor.layout
@@ -205,7 +207,7 @@ def build_metadata_from_local_shards(
 
 
 def build_global_metadata(
-    gathered_metadatas: Sequence[ShardedTensorMetadata | None],
+    gathered_metadatas: Sequence[Optional[ShardedTensorMetadata]],
     recalc_metadata: bool = False,
 ):
     global_sharded_tensor_metadata = None

@@ -7,9 +7,11 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import datetime
 import logging
-from typing import cast
+from typing import Optional, cast
 
 from torch.distributed import PrefixStore, Store, TCPStore
 from torch.distributed.elastic.rendezvous import (
@@ -51,7 +53,7 @@ class StaticTCPRendezvous(RendezvousHandler):
         self.world_size = world_size
         self.run_id = run_id
         self.timeout = datetime.timedelta(seconds=timeout)
-        self._store: Store | None = None
+        self._store: Optional[Store] = None
 
     def get_backend(self) -> str:
         return "static"

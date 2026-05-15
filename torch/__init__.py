@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 The torch package contains data structures for multi-dimensional
 tensors and defines mathematical operations over these tensors.
@@ -7,6 +8,12 @@ Tensors and arbitrary types, and other useful utilities.
 It has a CUDA counterpart, that enables you to run your tensor computations
 on an NVIDIA GPU with compute capability >= 3.0.
 """
+
+import sys as _sys
+if _sys.version_info < (3, 9):
+    from torch._py38_compat import apply_patches as _apply_py38_patches
+    _apply_py38_patches()
+del _sys
 
 # mypy: allow-untyped-defs
 
@@ -25,16 +32,33 @@ import threading
 import warnings
 from collections.abc import Callable as _Callable
 from typing import (
+    Any,
     Any as _Any,
-    get_origin as _get_origin,
-    overload as _overload,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Set,
     TYPE_CHECKING,
-    TypeGuard as _TypeGuard,
+    Tuple,
+    Type,
+    TypeVar,
     TypeVar as _TypeVar,
+    Union,
+    cast,
+    get_origin as _get_origin,
+    overload,
+    overload as _overload,
 )
+
+
+
+
 from typing_extensions import (
     deprecated as _deprecated,
     ParamSpec as _ParamSpec,
+    TypeGuard as _TypeGuard,
     TypeIs as _TypeIs,
 )
 
@@ -288,7 +312,7 @@ if sys.platform == "win32":
     del _load_dll_libraries
 
 
-def _get_cuda_dep_paths(path: str, lib_folder: str, lib_name: str) -> list[str]:
+def _get_cuda_dep_paths(path: str, lib_folder: str, lib_name: str) -> List[str]:
     # Libraries can either be in
     # path/nvidia/lib_folder/lib or
     # path/nvidia/cuXX/lib (since CUDA 13.0) or
@@ -326,8 +350,8 @@ def _preload_cuda_lib(lib_folder: str, lib_name: str, required: bool = True) -> 
         ctypes.CDLL(lib_path)
 
 
-def _preload_cuda_deps(err: OSError | None = None) -> None:
-    cuda_libs: list[tuple[str, str]] = [
+def _preload_cuda_deps(err: Optional[OSError] = None) -> None:
+    cuda_libs: List[Tuple[str, str]] = [
         # NOTE: Order matters! We must preload libcublasLt BEFORE libcublas to prevent
         # libcublas from loading a mismatched system-wide libcublasLt via its RUNPATH.
         # Without this, if a different CUDA Toolkit version exists in the system PATH,
@@ -626,7 +650,7 @@ class SymInt:
             # https://github.com/arogozhnikov/einops/blob/6181e1e95dc58c00a3143c1726da1c6ee0463164/einops/einops.py#L237
             # return hash(builtins.int(self))
 
-    def as_integer_ratio(self) -> tuple["SymInt", builtins.int]:
+    def as_integer_ratio(self) -> Tuple["SymInt", builtins.int]:
         """Represent this int as an exact integer ratio"""
         return self, 1
 
@@ -741,7 +765,7 @@ class SymFloat:
         """Return True if the float is an integer."""
         raise TypeError("type stub not overridden")
 
-    def as_integer_ratio(self) -> tuple[builtins.int, builtins.int]:
+    def as_integer_ratio(self) -> Tuple[builtins.int, builtins.int]:
         """Represent this float as an exact integer ratio"""
         return builtins.float(self).as_integer_ratio()
 
@@ -916,17 +940,17 @@ def sym_max(a, b):
         return builtins.max(a, b)  # type: ignore[call-overload]
 
 
-def __all_and_float_types() -> tuple[tuple[type, ...], tuple[type, ...]]:
+def __all_and_float_types() -> Tuple[Tuple[type, ...], Tuple[type, ...]]:
     try:
         import numpy as np
 
-        all_types: tuple[type, ...] = (
+        all_types: Tuple[type, ...] = (
             np.integer,
             np.floating,
             builtins.int,
             builtins.float,
         )
-        float_types: tuple[type, ...] = (np.floating, builtins.float)
+        float_types: Tuple[type, ...] = (np.floating, builtins.float)
     except ModuleNotFoundError:
         all_types = (builtins.int, builtins.float)
         float_types = (builtins.float,)
@@ -1172,7 +1196,7 @@ def is_tensor(obj: _Any, /) -> _TypeIs["torch.Tensor"]:
     return isinstance(obj, torch.Tensor)
 
 
-def is_storage(obj: _Any, /) -> _TypeGuard["TypedStorage | UntypedStorage"]:
+def is_storage(obj: _Any, /) -> _TypeGuard["Union[TypedStorage, UntypedStorage]"]:
     r"""Returns True if `obj` is a PyTorch storage object.
 
     Args:
@@ -1300,7 +1324,7 @@ def set_default_device(device: "Device") -> None:
     _GLOBAL_DEVICE_CONTEXT.device_context = device_context
 
 
-def set_default_tensor_type(t: type["torch.Tensor"] | str, /) -> None:
+def set_default_tensor_type(t: Union[Type["torch.Tensor"], str], /) -> None:
     r"""
     .. warning::
 
@@ -1548,7 +1572,7 @@ def is_deterministic_algorithms_warn_only_enabled() -> builtins.bool:
     return _C._get_deterministic_algorithms_warn_only()
 
 
-def set_deterministic_debug_mode(debug_mode: builtins.int | str) -> None:
+def set_deterministic_debug_mode(debug_mode: Union[builtins.int, str]) -> None:
     r"""Sets the debug mode for deterministic operations.
 
     .. note:: This is an alternative interface for
@@ -1710,7 +1734,7 @@ def is_warn_always_enabled() -> builtins.bool:
 
 def _check_with(
     error_type,
-    cond: builtins.bool | SymBool,
+    cond: Union[builtins.bool, SymBool],
     message: _Callable[[], str],
 ):
     if not isinstance(cond, (builtins.bool, SymBool)):
@@ -2123,7 +2147,7 @@ class QUInt2x4Storage(_LegacyStorage):
         return torch.quint2x4
 
 
-_storage_classes: set[type[TypedStorage | UntypedStorage]] = {
+_storage_classes: Set[Type[Union[TypedStorage, UntypedStorage]]] = {
     UntypedStorage,
     DoubleStorage,
     FloatStorage,
@@ -2146,7 +2170,7 @@ _storage_classes: set[type[TypedStorage | UntypedStorage]] = {
 }
 
 # The _tensor_classes set is initialized by the call to initialize_python_bindings.
-_tensor_classes: set[type["torch.Tensor"]] = set()
+_tensor_classes: Set[Type["torch.Tensor"]] = set()
 
 # If you edit these imports, please update torch/__init__.py.in as well
 from torch import amp as amp, random as random, serialization as serialization
@@ -2410,7 +2434,7 @@ class _TorchCompileInductorWrapper:
     def __init__(self, mode, options, dynamic, name=None):
         from torch._inductor.compiler_bisector import CompilerBisector
 
-        self.config: dict[str, _Any] = {}
+        self.config: Dict[str, _Any] = {}
         self.dynamic = dynamic
         self.name = name
         self.apply_mode(mode)
@@ -2442,19 +2466,19 @@ class _TorchCompileInductorWrapper:
             and self.name == other.name
         )
 
-    def apply_mode(self, mode: str | None):
+    def apply_mode(self, mode: Optional[str]):
         if mode and mode != "default":
             from torch._inductor import list_mode_options
 
             self.apply_options(list_mode_options(mode, self.dynamic))
 
-    def apply_options(self, options: dict[str, _Any] | None):
+    def apply_options(self, options: Optional[Dict[str, _Any]]):
         if not options:
             return
 
         from torch._inductor import config
 
-        current_config: dict[str, _Any] = config.get_config_copy()
+        current_config: Dict[str, _Any] = config.get_config_copy()
 
         for key, val in options.items():
             attr_name = key.replace("-", "_")
@@ -2522,11 +2546,7 @@ class _TorchCompileAOTInductorWrapper(_TorchCompileInductorWrapper):
             if fake_mode
             else nullcontext()
         )
-        with (
-            V.set_aot_compilation(True),
-            ctx,
-            torch._inductor.config.patch("enable_autograd_for_aot", True),
-        ):
+        with V.set_aot_compilation(True), ctx, torch._inductor.config.patch("enable_autograd_for_aot", True):
             return super().__call__(model_, inputs_, config_patches=config_patches)
 
 
@@ -2574,11 +2594,11 @@ def compile(
     model: _Callable[_InputT, _RetT],
     *,
     fullgraph: builtins.bool = False,
-    dynamic: builtins.bool | None = None,
-    backend: str | _Callable = "inductor",
-    mode: str | None = None,
-    options: dict[str, str | builtins.int | builtins.bool | _Callable] | None = None,
-    name: str | None = None,
+    dynamic: Optional[builtins.bool] = None,
+    backend: Union[str, _Callable] = "inductor",
+    mode: Optional[str] = None,
+    options: Union[Dict[str, str, builtins.int, builtins.bool, _Callable], None] = None,
+    name: Optional[str] = None,
     disable: builtins.bool = False,
 ) -> _Callable[_InputT, _RetT]: ...
 
@@ -2588,26 +2608,26 @@ def compile(
     model: None = None,
     *,
     fullgraph: builtins.bool = False,
-    dynamic: builtins.bool | None = None,
-    backend: str | _Callable = "inductor",
-    mode: str | None = None,
-    options: dict[str, str | builtins.int | builtins.bool | _Callable] | None = None,
-    name: str | None = None,
+    dynamic: Optional[builtins.bool] = None,
+    backend: Union[str, _Callable] = "inductor",
+    mode: Optional[str] = None,
+    options: Union[Dict[str, str, builtins.int, builtins.bool, _Callable], None] = None,
+    name: Optional[str] = None,
     disable: builtins.bool = False,
 ) -> _Callable[[_Callable[_InputT, _RetT]], _Callable[_InputT, _RetT]]: ...
 
 
 def compile(
-    model: _Callable[_InputT, _RetT] | None = None,
+    model: Optional[_Callable[_InputT, _RetT]] = None,
     *,
     fullgraph: builtins.bool = False,
-    dynamic: builtins.bool | None = None,
-    backend: str | _Callable | None = None,
-    mode: str | None = None,
-    options: dict[str, str | builtins.int | builtins.bool | _Callable] | None = None,
-    name: str | None = None,
+    dynamic: Optional[builtins.bool] = None,
+    backend: Optional[Union[str, _Callable]] = None,
+    mode: Optional[str] = None,
+    options: Union[Dict[str, str, builtins.int, builtins.bool, _Callable], None] = None,
+    name: Optional[str] = None,
     disable: builtins.bool = False,
-    recompile_limit: builtins.int | None = None,
+    recompile_limit: Optional[builtins.int] = None,
     isolate_recompiles: builtins.bool = False,
 ) -> (
     _Callable[[_Callable[_InputT, _RetT]], _Callable[_InputT, _RetT]]
@@ -2884,7 +2904,7 @@ from torch import compiler as compiler
 
 class _TritonLibrary:
     lib = torch.library.Library("triton", "DEF")
-    ops_table: dict[tuple[str, str], _Callable] = {}
+    ops_table: Dict[Tuple[str, str], _Callable] = {}
 
     @classmethod
     def registerOp(cls, op_key, full_schema, op_impl, dispatch_key):
@@ -2950,8 +2970,8 @@ else:
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
-@functools.cache
-def get_device_module(device: torch.device | str | None = None):
+@functools.lru_cache(maxsize=None)
+def get_device_module(device: Optional[Union[torch.device, str]] = None):
     """
     Returns the module associated with a given device(e.g., torch.device('cuda'), "mtia:0", "xpu", ...).
     If no device is given, return the module for the current accelerator or CPU if none is present.
@@ -2977,8 +2997,8 @@ def get_device_module(device: torch.device | str | None = None):
 
 def _constrain_as_size(
     symbol,
-    min: builtins.int | None = None,
-    max: builtins.int | None = None,
+    min: Optional[builtins.int] = None,
+    max: Optional[builtins.int] = None,
 ):
     """
     This indicates that a given int is size-like, and can be used in any context where a size is expected.
@@ -3012,10 +3032,17 @@ def _import_device_backends():
     Leverage the Python plugin mechanism to load out-of-the-tree device extensions.
     See this RFC: https://github.com/pytorch/pytorch/issues/122468
     """
-    from importlib.metadata import entry_points
+    try:
+        from importlib.metadata import entry_points
+    except ImportError:
+        from importlib_metadata import entry_points
 
     group_name = "torch.backends"
-    backend_extensions = entry_points(group=group_name)
+    eps = entry_points()
+    if isinstance(eps, dict):
+        backend_extensions = eps.get(group_name, [])
+    else:
+        backend_extensions = eps.select(group=group_name)
 
     for backend_extension in backend_extensions:
         try:

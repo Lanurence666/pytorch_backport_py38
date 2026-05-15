@@ -7,7 +7,7 @@ import pickle
 import random
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, Generator, List, Optional, Sequence, TYPE_CHECKING, Tuple, Type, Union
 from typing_extensions import ParamSpec, TypeVar
 
 import sympy
@@ -30,7 +30,7 @@ from .partitioners import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Sequence
+    
 
     from torch.fx.node import Node
     from torch.types import IntLikeType
@@ -122,7 +122,7 @@ def _draw_graph_compile(
 
 def draw_graph_compile(
     name: str,
-) -> Callable[[fx.GraphModule, list[Any]], fx.GraphModule]:
+) -> Callable[[fx.GraphModule, List[Any]], fx.GraphModule]:
     return make_boxed_compiler(partial(_draw_graph_compile, name=name))
 
 
@@ -143,7 +143,7 @@ class DebugInterpreter(fx.Interpreter):
     def run(
         self,
         *args: Any,
-        initial_env: dict[Node, Any] | None = None,
+        initial_env: Optional[Dict[Node, Any]] = None,
         enable_io_processing: bool = True,
     ) -> Any:
         self.symbol_mapping = bind_symbols(
@@ -164,7 +164,7 @@ class DebugInterpreter(fx.Interpreter):
                 raise AssertionError(f"expected r to be a number, got {r}")
             return int(r)
 
-        def subst_symint_tuple(nis: tuple[IntLikeType, ...]) -> tuple[int, ...]:
+        def subst_symint_tuple(nis: Tuple[IntLikeType, ...]) -> Tuple[int, ...]:
             return tuple(subst_symint(ni) for ni in nis)
 
         def check_significant_strides(a: torch.Tensor, b: torch.Tensor) -> bool:
@@ -214,7 +214,7 @@ class DebugInterpreter(fx.Interpreter):
 @make_boxed_compiler
 def debug_nop(
     fx_g: fx.GraphModule, _: Any
-) -> Callable[[DebugInterpreter, Any, dict[Node, Any] | None, bool], Any]:
+) -> Optional[Callable[[DebugInterpreter, Any, Dict[Node, Any]], bool], Any]:
     """
     Returns a (slow) interpreter over the FX graph module that also checks
     various debugging properties (e.g., that tracing strides matched real
@@ -272,9 +272,9 @@ def print_compile(fx_g: fx.GraphModule, _: Any) -> fx.GraphModule:
 
 
 def memory_efficient_fusion(
-    fn: Callable[_P, _R] | nn.Module,
+    fn: Union[Callable[_P, _R], nn.Module],
     **kwargs: Any,
-) -> Callable[_P, _R] | nn.Module:
+) -> Union[Callable[_P, _R], nn.Module]:
     """
     Wrapper function over :func:`aot_function` and :func:`aot_module` to perform
     memory efficient fusion. It uses the
@@ -345,11 +345,11 @@ with torch.jit.fuser("fuser2"):
 graph_index: int = 0
 
 
-def get_inputs(input_data_path: str) -> list[torch.Tensor]:
+def get_inputs(input_data_path: str) -> List[torch.Tensor]:
     """
     Return a random input for the given inputs meta generated from _save_fx_default.
     """
-    inputs: list[torch.Tensor] = []
+    inputs: List[torch.Tensor] = []
     with open(input_data_path, "rb") as f:
         inputs_meta = pickle.load(f)
         inputs = []
@@ -381,7 +381,7 @@ def _save_fx_default(
     folder_name: str,
     dump_example_input: bool,
     gm: torch.fx.GraphModule,
-    example_inputs: list[torch.Tensor],
+    example_inputs: List[torch.Tensor],
 ) -> nn.Module:
     """
     The forward, backward, and joint computation graph will be stored in
@@ -400,7 +400,7 @@ def _save_fx_default(
     """
     from functorch.compile import aot_module_simplified
 
-    def get_input_meta(args: Any) -> list[Any]:
+    def get_input_meta(args: Any) -> List[Any]:
         input_meta = []
         if len(args) > 0 and isinstance(args[0], tuple):  # joint input
             input_meta += get_input_meta(args[0])
@@ -451,13 +451,13 @@ def _save_fx_default(
             )
 
     def graph_saver_forward(
-        gm: fx.GraphModule, example_inputs: list[torch.Tensor]
+        gm: fx.GraphModule, example_inputs: List[torch.Tensor]
     ) -> fx.GraphModule:
         graph_saver_helper(gm, example_inputs, "forward")
         return gm
 
     def graph_saver_backward(
-        gm: fx.GraphModule, example_inputs: list[torch.Tensor]
+        gm: fx.GraphModule, example_inputs: List[torch.Tensor]
     ) -> fx.GraphModule:
         graph_saver_helper(gm, example_inputs, "backward")
         global graph_index
@@ -465,8 +465,8 @@ def _save_fx_default(
         return gm
 
     def graph_saver_joint(
-        gm: fx.GraphModule, joint_args: list[torch.Tensor]
-    ) -> tuple[fx.GraphModule, fx.GraphModule]:
+        gm: fx.GraphModule, joint_args: List[torch.Tensor]
+    ) -> Tuple[fx.GraphModule, fx.GraphModule]:
         graph_saver_helper(gm, joint_args, "joint")
         return default_partition(gm, joint_args)  # pyrefly: ignore[missing-argument]
 

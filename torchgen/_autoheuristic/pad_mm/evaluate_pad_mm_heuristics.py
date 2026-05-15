@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+from typing import Tuple, Union
 import argparse
 import csv
 import functools
@@ -21,7 +23,7 @@ def set_precision(dtype, float32_precision: str = "highest") -> None:
     torch.set_float32_matmul_precision(precision)
 
 
-def get_heuristic_decision(m: int, k: int, n: int, dtype: torch.dtype) -> str | None:
+def get_heuristic_decision(m: int, k: int, n: int, dtype: torch.dtype) -> Union[str, None]:
     from torch._inductor.autoheuristic.autoheuristic import AutoHeuristic, LocalFeedback
     from torch._inductor.fx_passes.pad_mm import (
         get_alignment_size,
@@ -80,7 +82,7 @@ def benchmark_both_choices(
     dtype: torch.dtype,
     num_reps: int = 3,
     float32_precision: str = "highest",
-) -> tuple[float, float]:
+) -> Tuple[float, float]:
     set_precision(dtype, float32_precision)
     a = torch.randn(m, k, dtype=dtype, device="cuda")
     b = torch.randn(k, n, dtype=dtype, device="cuda")
@@ -139,7 +141,7 @@ def load_shapes_from_csv(csv_file: str) -> list:
     return shapes
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def get_shared_mem_size():
     return get_gpu_shared_memory()
 

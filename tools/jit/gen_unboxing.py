@@ -7,7 +7,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TYPE_CHECKING
+from typing import List, Literal, TYPE_CHECKING, Union
 
 import yaml
 
@@ -165,7 +165,7 @@ def gen_unboxing(
     cpu_fm: FileManager,
     selector: SelectiveBuilder,
 ) -> None:
-    def key_func(fn: NativeFunction | NativeFunctionsGroup) -> str:
+    def key_func(fn: Union[NativeFunction, NativeFunctionsGroup]) -> str:
         return fn.root_name
 
     selected_op_num: int = len(selector.operators)
@@ -204,7 +204,7 @@ def gen_unboxing(
     )
 
 
-def main(args: list[str]) -> None:
+def main(args: List[str]) -> None:
     parser = argparse.ArgumentParser(description="Generate unboxing source files")
     parser.add_argument(
         "-s",

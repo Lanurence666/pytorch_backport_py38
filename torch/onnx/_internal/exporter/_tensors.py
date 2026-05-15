@@ -1,9 +1,9 @@
+from __future__ import annotations
 """Subclass of ir.Value that supports Python operators."""
 
 # mypy: allow-untyped-defs
-from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Type
 
 from torch.onnx._internal._lazy_import import onnx_ir as ir
 
@@ -18,11 +18,11 @@ class SymbolicTensor(ir.Value):
     def __init__(
         self,
         opset: onnxscript.values.Opset,
-        name: str | None = None,
-        shape: ir.Shape | None = None,
-        type: ir.TypeProtocol | None = None,
-        doc_string: str | None = None,
-        const_value: ir.TensorProtocol | None = None,
+        name: Optional[str]= None,
+        shape: Optional[ir.Shape]= None,
+        type: Optional[ir.TypeProtocol]= None,
+        doc_string: Optional[str]= None,
+        const_value: Optional[ir.TensorProtocol]= None,
     ) -> None:
         super().__init__(
             name=name,
@@ -34,7 +34,7 @@ class SymbolicTensor(ir.Value):
         self._opset = opset
 
     @property
-    def rank(self) -> int | None:
+    def rank(self) -> Optional[int]:
         if self.shape is None:
             return None
         return len(self.shape)

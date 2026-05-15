@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 r"""Implementation for the RAdam algorithm."""
 
-from typing import cast
+from typing import Callable, List, Optional, Tuple, Union, cast, overload
 
 import torch
 from torch import Tensor
@@ -32,13 +34,13 @@ class RAdam(Optimizer):
     def __init__(
         self,
         params: ParamsT,
-        lr: float | Tensor = 1e-3,
-        betas: tuple[float, float] = (0.9, 0.999),
+        lr: Union[float, Tensor]= 1e-3,
+        betas: Tuple[float, float] = (0.9, 0.999),
         eps: float = 1e-8,
         weight_decay: float = 0,
         decoupled_weight_decay: bool = False,
         *,
-        foreach: bool | None = None,
+        foreach: Optional[bool]= None,
         maximize: bool = False,
         capturable: bool = False,
         differentiable: bool = False,
@@ -140,12 +142,12 @@ class RAdam(Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
-            params_with_grad: list[Tensor] = []
-            grads: list[Tensor] = []
-            exp_avgs: list[Tensor] = []
-            exp_avg_sqs: list[Tensor] = []
-            state_steps: list[Tensor] = []
-            beta1, beta2 = cast(tuple[float, float], group["betas"])
+            params_with_grad: List[Tensor] = []
+            grads: List[Tensor] = []
+            exp_avgs: List[Tensor] = []
+            exp_avg_sqs: List[Tensor] = []
+            state_steps: List[Tensor] = []
+            beta1, beta2 = cast(Tuple[float, float], group["betas"])
 
             has_complex = self._init_group(
                 group, params_with_grad, grads, exp_avgs, exp_avg_sqs, state_steps
@@ -254,11 +256,11 @@ RAdam.__doc__ = (
 
 
 def _single_tensor_radam(
-    params: list[Tensor],
-    grads: list[Tensor],
-    exp_avgs: list[Tensor],
-    exp_avg_sqs: list[Tensor],
-    state_steps: list[Tensor],
+    params: List[Tensor],
+    grads: List[Tensor],
+    exp_avgs: List[Tensor],
+    exp_avg_sqs: List[Tensor],
+    state_steps: List[Tensor],
     *,
     beta1: float,
     beta2: float,
@@ -359,11 +361,11 @@ def _single_tensor_radam(
 
 
 def _multi_tensor_radam(
-    params: list[Tensor],
-    grads: list[Tensor],
-    exp_avgs: list[Tensor],
-    exp_avg_sqs: list[Tensor],
-    state_steps: list[Tensor],
+    params: List[Tensor],
+    grads: List[Tensor],
+    exp_avgs: List[Tensor],
+    exp_avg_sqs: List[Tensor],
+    state_steps: List[Tensor],
     *,
     beta1: float,
     beta2: float,
@@ -390,7 +392,7 @@ def _multi_tensor_radam(
         if not all(
             p.device.type == step.device.type
             and p.device.type in capturable_supported_devices
-            for p, step in zip(params, state_steps, strict=True)
+            for p, step in _zip_strict(params, state_steps)
         ):
             raise AssertionError(
                 f"If capturable=True, params and state_steps must be on supported devices: {capturable_supported_devices}."
@@ -408,11 +410,11 @@ def _multi_tensor_radam(
         grouped_exp_avg_sqs_,
         grouped_state_steps_,
     ), _ in grouped_tensors.values():
-        grouped_params = cast(list[Tensor], grouped_params_)
-        grouped_grads = cast(list[Tensor], grouped_grads_)
-        grouped_exp_avgs = cast(list[Tensor], grouped_exp_avgs_)
-        grouped_exp_avg_sqs = cast(list[Tensor], grouped_exp_avg_sqs_)
-        grouped_state_steps = cast(list[Tensor], grouped_state_steps_)
+        grouped_params = cast(List[Tensor], grouped_params_)
+        grouped_grads = cast(List[Tensor], grouped_grads_)
+        grouped_exp_avgs = cast(List[Tensor], grouped_exp_avgs_)
+        grouped_exp_avg_sqs = cast(List[Tensor], grouped_exp_avg_sqs_)
+        grouped_state_steps = cast(List[Tensor], grouped_state_steps_)
 
         # Update steps
         # If steps are on CPU, foreach will fall back to the slow path, which is a for-loop calling t.add(1) over
@@ -436,9 +438,9 @@ def _multi_tensor_radam(
         # maximum length of the approximated SMA
         rho_inf = 2 / (1 - beta2) - 1
         # compute the length of the approximated SMA
-        bias_correction1: tuple[Tensor, ...] | list[Tensor]
-        bias_correction2: tuple[Tensor, ...] | list[Tensor]
-        rho_t_list: tuple[Tensor, ...] | list[Tensor]
+        bias_correction1: Union[Tuple[Tensor, ...], List[Tensor]]
+        bias_correction2: Union[Tuple[Tensor, ...], List[Tensor]]
+        rho_t_list: Union[Tuple[Tensor, ...], List[Tensor]]
         if capturable:
             bias_correction1 = torch._foreach_pow(beta2, grouped_state_steps)
             torch._foreach_neg_(bias_correction1)
@@ -500,7 +502,7 @@ def _multi_tensor_radam(
             # TODO(mlazos): we should try and get a foreach_where op https://github.com/pytorch/pytorch/issues/117884
             rect = [
                 torch.where(rho_t > 5.0, n, 0.0)
-                for n, rho_t in zip(num, rho_t_list, strict=True)
+                for n, rho_t in _zip_strict(num, rho_t_list)
             ]
             del num
             del rho_t_list
@@ -544,13 +546,12 @@ def _multi_tensor_radam(
             ]
             unrect_step_size = [
                 (lr * rect / bc) * -1
-                for rect, bc in zip(unrectified, bias_correction1, strict=True)
+                for rect, bc in _zip_strict(unrectified, bias_correction1)
             ]
             bias_correction2 = [
                 ((1 - beta2 ** _get_value(step)) ** 0.5) * (lr * rect / bc) * -1
-                for step, rect, bc in zip(
-                    grouped_state_steps, rect, bias_correction1, strict=True
-                )
+                for step, rect, bc in _zip_strict(
+                    grouped_state_steps, rect, bias_correction1)
             ]
 
         buffer = torch._foreach_sqrt(grouped_exp_avg_sqs)
@@ -565,15 +566,15 @@ def _multi_tensor_radam(
 
 @_disable_dynamo_if_unsupported(single_tensor_fn=_single_tensor_radam)
 def radam(
-    params: list[Tensor],
-    grads: list[Tensor],
-    exp_avgs: list[Tensor],
-    exp_avg_sqs: list[Tensor],
-    state_steps: list[Tensor],
+    params: List[Tensor],
+    grads: List[Tensor],
+    exp_avgs: List[Tensor],
+    exp_avg_sqs: List[Tensor],
+    state_steps: List[Tensor],
     # kwonly args with defaults are not supported by functions compiled with torchscript issue #70627
     # setting this as kwarg for now as functional API is compiled by torch/distributed/optim
     decoupled_weight_decay: bool = False,
-    foreach: bool | None = None,
+    foreach: Optional[bool]= None,
     differentiable: bool = False,
     capturable: bool = False,
     has_complex: bool = False,

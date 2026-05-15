@@ -1,6 +1,8 @@
-from collections.abc import Iterator
+from __future__ import annotations
+
+
 from contextlib import contextmanager
-from typing import Any, TYPE_CHECKING
+from typing import Any, Iterator, Optional, TYPE_CHECKING, Tuple, Type
 
 from torch.fx.graph_module import (
     _format_import_block,
@@ -55,12 +57,12 @@ def _use_lazy_graph_module(should_use: bool) -> Iterator[None]:
 
 
 @compatibility(is_backward_compatible=False)
-def _get_graph_module_cls() -> type[GraphModule]:
+def _get_graph_module_cls() -> Type[GraphModule]:
     return _LazyGraphModule if _use_lazy_graph_module_flag else GraphModule
 
 
 def _make_graph_module(
-    *args: Any, graph_module_cls: type[GraphModule] | None = None, **kwargs: Any
+    *args: Any, graph_module_cls: Optional[Type[GraphModule]] = None, **kwargs: Any
 ) -> GraphModule:
     if graph_module_cls is None:
         graph_module_cls = _get_graph_module_cls()
@@ -137,7 +139,7 @@ class _LazyGraphModule(GraphModule):
 
     def __reduce_package__(
         self, exporter: PackageExporter
-    ) -> tuple[Any, tuple[Any, str]]:
+    ) -> Tuple[Any, Tuple[Any, str]]:
         """
         Follow GraphModule.__reduce__ but call 'self._real_recompile' rather
         than 'self.recompile' since for a _LazyGraphModule, self.recompile just
@@ -157,7 +159,7 @@ class _LazyGraphModule(GraphModule):
             (dict_without_graph, generated_module_name),
         )
 
-    def __reduce__(self) -> tuple[Any, tuple[Any, str]]:
+    def __reduce__(self) -> Tuple[Any, Tuple[Any, str]]:
         """
         Follow GraphModule.__reduce__ but call 'self._real_recompile' rather
         than 'self.recompile' since for a _LazyGraphModule, self.recompile just

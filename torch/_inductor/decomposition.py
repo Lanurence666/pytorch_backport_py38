@@ -1,11 +1,17 @@
 # mypy: allow-untyped-decorators
+from __future__ import annotations
+
 import functools
 import logging
 import math
 import operator
 import sys
-from collections.abc import Callable
-from typing import Any, TypeAlias, TypeVar
+
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 from typing_extensions import ParamSpec
 
 import torch
@@ -49,7 +55,7 @@ from .utils import (
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
-_GenericOperator: TypeAlias = torch._ops.OperatorBase | torch._ops.OpOverloadPacket
+_GenericOperator = Union[torch._ops.OperatorBase, torch._ops.OpOverloadPacket]
 
 log = logging.getLogger(__name__)
 aten = torch.ops.aten
@@ -109,7 +115,7 @@ decompositions = {**core_aten_decompositions(), **inductor_decompositions}
 
 # Remove unwanted decompositions included via the core ATen decompositions from
 # the Inductor decomp table.
-decomps_to_exclude: list[torch._ops.OpOverload | torch._ops.OpOverloadPacket] = [
+decomps_to_exclude: List[Union[torch._ops.OpOverload, torch._ops.OpOverloadPacket]] = [
     aten._unsafe_index,
     aten._unsafe_masked_index,
     aten._unsafe_masked_index_put_accumulate,
@@ -146,7 +152,7 @@ remove_decompositions(decompositions, decomps_to_exclude)
 
 
 def register_decomposition(
-    ops: _GenericOperator | list[_GenericOperator],
+    ops: Union[_GenericOperator, List[_GenericOperator]],
 ) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
     for op in ops if isinstance(ops, list) else [ops]:
         if op in decompositions:
@@ -208,10 +214,10 @@ def _embedding_dense_backward(
 def _native_layer_norm(
     input: torch.Tensor,
     normalized_shape: utils.ShapeType,
-    weight: torch.Tensor | None,
-    bias: torch.Tensor | None,
+    weight: Optional[torch.Tensor],
+    bias: Optional[torch.Tensor],
     eps: float,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if input.is_mtia:
         return NotImplemented
     # We can write a util function to update decomp table if we have more ops to fallback.
@@ -222,8 +228,8 @@ def _native_layer_norm(
 def sym_constrain_range_for_size(
     symbol: torch.SymInt,
     *,
-    min: torch.types.Number | None = None,
-    max: torch.types.Number | None = None,
+    min: Optional[torch.types.Number] = None,
+    max: Optional[torch.types.Number] = None,
 ) -> None:
     return
 
@@ -232,8 +238,8 @@ def sym_constrain_range_for_size(
 @pw_cast_for_opmath_non_tensor_args
 def clamp(
     x: torch.Tensor,
-    min: torch.types.Number | None = None,
-    max: torch.types.Number | None = None,
+    min: Optional[torch.types.Number] = None,
+    max: Optional[torch.types.Number] = None,
 ) -> torch.Tensor:
     if min is not None:
         x = x.clamp_min(min)
@@ -253,7 +259,7 @@ def silu(x: torch.Tensor) -> torch.Tensor:
 
 @register_decomposition([aten.full])
 def full(
-    size: list[int | torch.SymInt],
+    size: List[Union[int, torch.SymInt]],
     fill_value: torch.types.Number,
     **kwargs: Any,
 ) -> torch.Tensor:
@@ -288,8 +294,8 @@ def index_add(
 # cool with strides and everything goes to empty_strided)
 @register_decomposition([aten.empty_permuted.default])
 def empty_permuted(
-    size: list[int | torch.SymInt],
-    physical_layout: list[int],
+    size: List[Union[int, torch.SymInt]],
+    physical_layout: List[int],
     **kwargs: Any,
 ) -> torch.Tensor:
     is_identity = list(physical_layout) == list(range(len(physical_layout)))
@@ -308,15 +314,15 @@ def convolution_backward(
     grad_output: torch.Tensor,
     input: torch.Tensor,
     weight: torch.Tensor,
-    bias_sizes: list[int],
-    stride: int | list[int],
-    padding: int | list[int],
-    dilation: int | list[int],
+    bias_sizes: List[int],
+    stride: Union[int, List[int]],
+    padding: Union[int, List[int]],
+    dilation: Union[int, List[int]],
     transposed: bool,
-    output_padding: list[int],
+    output_padding: List[int],
     groups: int,
-    output_mask: list[bool],
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    output_mask: List[bool],
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if not output_mask[2] or not is_gpu(grad_output.device.type):
         return NotImplemented
     grad_bias = aten.sum(grad_output, [0] + list(range(2, grad_output.dim())))
@@ -347,7 +353,7 @@ def round_dec(x: torch.Tensor, decimals: int = 0) -> torch.Tensor:
 def bmm(
     self: torch.Tensor,
     batch2: torch.Tensor,
-    out_dtype: torch.dtype | None = None,
+    out_dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
     # Outer-product specialization: [B, M, 1] x [B, 1, N] -> [B, M, N].
     # This avoids introducing a reduction and maps directly to broadcasted mul.
@@ -381,7 +387,7 @@ def addmm(
     self: torch.Tensor,
     mat1: torch.Tensor,
     mat2: torch.Tensor,
-    out_dtype: torch.dtype | None = None,
+    out_dtype: Optional[torch.dtype] = None,
     beta: torch.types.Number = 1,
     alpha: torch.types.Number = 1,
 ) -> torch.Tensor:
@@ -420,7 +426,7 @@ def addmm(
 def mm(
     self: torch.Tensor,
     input2: torch.Tensor,
-    out_dtype: torch.dtype | None = None,
+    out_dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
     # Our matrix vector multiplies only achieve peak bandwidth with coordinate descent tuning.
     # todo: Look into why and fix it (hopefully)
@@ -464,7 +470,7 @@ def mm(
 #   don't remove ALL empty tensors, only the naughty ones)
 @register_decomposition([aten.cat.default])
 def cat(
-    tensors: list[torch.Tensor],
+    tensors: List[torch.Tensor],
     dim: int = 0,
 ) -> torch.Tensor:
     def non_empty_tensor(x: torch.Tensor) -> bool:
@@ -549,7 +555,7 @@ def add(
     x: torch.Tensor,
     y: torch.Tensor,
     *,
-    alpha: torch.types.Number | None = None,
+    alpha: Optional[torch.types.Number] = None,
 ) -> torch.Tensor:
     # Require both x and y to be complex tensors.
     x_is_complex_tensor = torch.is_tensor(x) and x.is_complex()
@@ -637,7 +643,7 @@ def fmax(self: torch.Tensor, other: torch.Tensor) -> torch.Tensor:
 @register_decomposition(aten.amax)
 def amax(
     self: torch.Tensor,
-    dim: int | None = None,
+    dim: Optional[int] = None,
     keepdim: bool = False,
 ) -> torch.Tensor:
     if self.dtype == torch.bool:
@@ -648,7 +654,7 @@ def amax(
 @register_decomposition(aten.amin)
 def amin(
     self: torch.Tensor,
-    dim: int | None = None,
+    dim: Optional[int] = None,
     keepdim: bool = False,
 ) -> torch.Tensor:
     if self.dtype == torch.bool:
@@ -673,7 +679,7 @@ def narrow_copy(
 @register_decomposition([aten.view_copy.default])
 def view_copy_default(
     self: torch.Tensor,
-    size: list[int | torch.SymInt],
+    size: List[Union[int, torch.SymInt]],
 ) -> torch.Tensor:
     return aten.view(self, size).clone()
 
@@ -688,7 +694,7 @@ def view_copy_dtype(
 
 def _get_shape_permutation_like(
     self: torch.Tensor,
-) -> tuple[utils.ShapeType, utils.StrideType]:
+) -> Tuple[utils.ShapeType, utils.StrideType]:
     physical_layout, _ = utils.compute_elementwise_output_logical_to_physical_perm(self)
     shape = [self.shape[l] for l in physical_layout]
 
@@ -702,11 +708,11 @@ def _get_shape_permutation_like(
 @register_decomposition(aten.full_like)
 def full_like(
     self: torch.Tensor,
-    fill_value: int | float,
+    fill_value: Union[int, float],
     *,
-    dtype: torch.dtype | None = None,
-    layout: torch.layout | None = None,
-    device: torch.device | None = None,
+    dtype: Optional[torch.dtype] = None,
+    layout: Optional[torch.layout] = None,
+    device: Optional[torch.device] = None,
     pin_memory: bool = False,
     requires_grad: bool = False,
     memory_format: torch.memory_format = torch.preserve_format,
@@ -748,8 +754,8 @@ def _rand_like(
     rand_fn: Callable[..., torch.Tensor],
     self: torch.Tensor,
     *,
-    dtype: torch.dtype | None = None,
-    device: torch.device | None = None,
+    dtype: Optional[torch.dtype] = None,
+    device: Optional[torch.device] = None,
     memory_format: torch.memory_format = torch.preserve_format,
     **kwargs: Any,
 ) -> torch.Tensor:
@@ -801,7 +807,7 @@ def randint_like_low(
 @register_decomposition(aten.randint.default)
 def randint(
     high: int,
-    size: list[int | torch.SymInt],
+    size: List[Union[int, torch.SymInt]],
     **kwargs: Any,
 ) -> torch.Tensor:
     return aten.randint.low(0, high, size, **kwargs)
@@ -811,7 +817,7 @@ def randint(
 def linear_dynamic_fp16_unpacked_weight(
     input: torch.Tensor,
     weight: torch.Tensor,
-    bias: torch.Tensor | None = None,
+    bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     packed_weight = torch.ops._quantized.wrapped_fbgemm_pack_gemm_matrix_fp16(weight)
     return torch.ops._quantized.wrapped_fbgemm_linear_fp16_weight(
@@ -896,10 +902,10 @@ def grid_sampler_2d(
 
 @register_decomposition(aten._foreach_lerp.Scalar)
 def _foreach_lerp_scalar(
-    start_tensors: list[torch.Tensor],
-    end_tensors: list[torch.Tensor],
+    start_tensors: List[torch.Tensor],
+    end_tensors: List[torch.Tensor],
     weight: torch.types.Number,
-) -> list[torch.Tensor]:
+) -> List[torch.Tensor]:
     return aten._foreach_add.List(
         start_tensors,
         aten._foreach_mul.Scalar(
@@ -910,10 +916,10 @@ def _foreach_lerp_scalar(
 
 @register_decomposition(aten._foreach_lerp.ScalarList)
 def _foreach_lerp_scalarlist(
-    start_tensors: list[torch.Tensor],
-    end_tensors: list[torch.Tensor],
-    scalars: list[torch.types.Number],
-) -> list[torch.Tensor]:
+    start_tensors: List[torch.Tensor],
+    end_tensors: List[torch.Tensor],
+    scalars: List[torch.types.Number],
+) -> List[torch.Tensor]:
     return aten._foreach_add.List(
         start_tensors,
         aten._foreach_mul.ScalarList(
@@ -927,13 +933,13 @@ def _foreach_lerp_scalarlist(
 def miopen_batch_norm(
     input: torch.Tensor,
     weight: torch.Tensor,
-    bias: torch.Tensor | None,
-    running_mean: torch.Tensor | None,
-    running_var: torch.Tensor | None,
+    bias: Optional[torch.Tensor],
+    running_mean: Optional[torch.Tensor],
+    running_var: Optional[torch.Tensor],
     training: bool,
     exponential_average_factor: float,
     epsilon: float,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     a, b, c = aten.native_batch_norm(
         input,
         weight,
@@ -954,14 +960,14 @@ def miopen_batch_norm(
     )
 
 
-@functools.cache
-def fast_random_decomps() -> dict[Any, Callable[..., Any]]:
+@functools.lru_cache(maxsize=None)
+def fast_random_decomps() -> Dict[Any, Callable[..., Any]]:
     return {**decompositions, **extra_random_decomps}
 
 
 # TODO(aakhundov): replace this (and the above) Any by more
 # specific type and fix all the cascading mypy errors
-def select_decomp_table() -> dict[Any, Callable[..., Any]]:
+def select_decomp_table() -> Dict[Any, Callable[..., Any]]:
     """decomps can change based on config"""
     if config.fallback_random:
         return decompositions
@@ -999,7 +1005,7 @@ def choose_qparams_tensor(
     quant_max: int,
     eps: float,
     dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     min_val, max_val = torch.aminmax(input)
     scale = (max_val - min_val) / float(quant_max - quant_min)
     scale = torch.max(scale, torch.Tensor([eps]))
@@ -1065,14 +1071,6 @@ def index_reduce(
     *,
     include_self: bool = True,
 ) -> torch.Tensor:
-    torch._check(
-        self.device == index.device and self.device == src.device,
-        lambda: (
-            f"index_reduce(): self, index and source expected to be in the same device, "
-            f"but got (self) {self.device}, (index) {index.device}, "
-            f"and (source) {src.device}"
-        ),
-    )
     if reduction_type == "mean" and not needs_fallback_due_to_atomic_add_limitations(
         self.dtype
     ):
@@ -1119,13 +1117,13 @@ def index_reduce(
 
 def _max_pool_with_indices(
     x: torch.Tensor,
-    kernel_size: list[int],
-    stride: int | list[int] | None,
-    padding: int | list[int],
-    dilation: int | list[int],
+    kernel_size: List[int],
+    stride: Union[int, Optional[List[int]]],
+    padding: Union[int, List[int]],
+    dilation: Union[int, List[int]],
     ceil_mode: bool,
     dim: int,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     if dilation == 1:
         dilation = [1] * dim
 
@@ -1176,12 +1174,12 @@ def _max_pool_with_indices(
 @register_decomposition(aten.max_pool2d_with_indices)
 def max_pool2d_with_indices(
     x: torch.Tensor,
-    kernel_size: list[int],
-    stride: int | list[int] | None = None,
-    padding: int | list[int] = 0,
-    dilation: int | list[int] = 1,
+    kernel_size: List[int],
+    stride: Union[int, List[int]] | None = None,
+    padding: Union[int, List[int]] = 0,
+    dilation: Union[int, List[int]] = 1,
     ceil_mode: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     return _max_pool_with_indices(
         x, kernel_size, stride, padding, dilation, ceil_mode, dim=2
     )
@@ -1190,12 +1188,12 @@ def max_pool2d_with_indices(
 @register_decomposition(aten.max_pool3d_with_indices)
 def max_pool3d_with_indices(
     x: torch.Tensor,
-    kernel_size: list[int],
-    stride: int | list[int] | None = None,
-    padding: int | list[int] = 0,
-    dilation: int | list[int] = 1,
+    kernel_size: List[int],
+    stride: Union[int, List[int]] | None = None,
+    padding: Union[int, List[int]] = 0,
+    dilation: Union[int, List[int]] = 1,
     ceil_mode: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     return _max_pool_with_indices(
         x, kernel_size, stride, padding, dilation, ceil_mode, dim=3
     )
@@ -1203,8 +1201,8 @@ def max_pool3d_with_indices(
 
 @register_decomposition(aten.adaptive_max_pool2d)
 def adaptive_max_pool2d(
-    x: torch.Tensor, output_size: list[int]
-) -> tuple[torch.Tensor, torch.Tensor]:
+    x: torch.Tensor, output_size: List[int]
+) -> Tuple[torch.Tensor, torch.Tensor]:
     *batch, h_in, w_in = x.shape
     h_out, w_out = output_size
 
@@ -1226,8 +1224,8 @@ def searchsorted_scalar(
     *,
     out_int32: bool = False,
     right: bool = False,
-    side: str | None = None,
-    sorter: torch.Tensor | None = None,
+    side: Optional[str] = None,
+    sorter: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     return aten.searchsorted(
         sorted_sequence,
@@ -1262,8 +1260,8 @@ def rrelu_with_noise_functional(
     lower: float = 0.125,
     upper: float = 0.3333333333333333,
     training: bool = False,
-    generator: torch.Generator | None = None,
-) -> tuple[torch.Tensor, torch.Tensor]:
+    generator: Optional[torch.Generator] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
     if training:
         not_positive = self <= 0
         r = aten.uniform(self, lower, upper, generator=generator)
@@ -1278,7 +1276,7 @@ def rrelu_with_noise_functional(
 @register_decomposition(aten.repeat_interleave.Tensor)
 def repeat_interleave_Tensor(
     repeat: torch.Tensor,
-    output_size: int | None = None,
+    output_size: Optional[int] = None,
 ) -> torch.Tensor:
     if config.triton.autotune_at_compile_time:
         # We can't compile-time auto-tune this because
@@ -1302,10 +1300,10 @@ def repeat_interleave_Tensor(
 def conv1d_to_conv2d(
     input: torch.Tensor,
     weight: torch.Tensor,
-    bias: torch.Tensor | None = None,
-    stride: tuple[int] = (1,),
-    padding: tuple[int] = (0,),
-    dilation: tuple[int] = (1,),
+    bias: Optional[torch.Tensor] = None,
+    stride: Tuple[int] = (1,),
+    padding: Tuple[int] = (0,),
+    dilation: Tuple[int] = (1,),
     groups: int = 1,
 ) -> torch.Tensor:
     # Shapes:

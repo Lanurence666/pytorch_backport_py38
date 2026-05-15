@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Functions in this module do most of the "work" of AOTAutograd.
 An aot_dispatch_* function:
@@ -18,9 +19,9 @@ import threading
 import time
 import traceback
 from collections import defaultdict
-from collections.abc import Callable, Generator
+
 from contextlib import contextmanager, nullcontext
-from typing import Any
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Type, Union
 
 import torch
 import torch.utils._pytree as pytree
@@ -152,7 +153,7 @@ def maybe_skip_decompose(aot_config: AOTConfig) -> Generator[None, None, None]:
 # which contains node.meta with additional information about that fx.Node.
 # Warning: This API may change without backward compatibility.
 @contextmanager
-def _saved_tensor_hook_context(state: dict[str, Any]) -> Generator[None, None, None]:
+def _saved_tensor_hook_context(state: Dict[str, Any]) -> Generator[None, None, None]:
     previous_state = getattr(_thread_local, "state", None)
     try:
         _thread_local.state = state
@@ -166,7 +167,7 @@ def _saved_tensor_hook_context(state: dict[str, Any]) -> Generator[None, None, N
                 delattr(_thread_local, "state")
 
 
-def _get_saved_tensor_hook_context() -> dict[str, Any] | None:
+def _get_saved_tensor_hook_context() -> Optional[Dict[str, Any]]:
     return getattr(_thread_local, "state", None)
 
 
@@ -181,10 +182,10 @@ aten = torch.ops.aten
 # Returns a Callable and a ViewAndMutationMeta.
 # Currently, only export needs the ViewAndMutationMeta after this function.
 # TODO: Refactor this
-DispatchReturn = tuple[Callable[..., Any], ViewAndMutationMeta]
+DispatchReturn = Tuple[Callable[..., Any], ViewAndMutationMeta]
 
 
-def _create_wrappers_for_dispatch(needs_autograd: bool) -> list[CompilerWrapper]:
+def _create_wrappers_for_dispatch(needs_autograd: bool) -> List[CompilerWrapper]:
     """
     Wrappers that run on every dispatch function
     """
@@ -196,16 +197,16 @@ def aot_stage1_graph_capture(
     orig_flat_fn: FlatFn,
 ) -> AOTGraphCapture:
     # NB: flat_fn at this point coincides with the initial info from forward
-    # metadata collection returning a list[Tensor].  We are now going to
-    # augment the output to return a tuple[list[Tensor], list[AOTOutput]] and
+    # metadata collection returning a List[Tensor].  We are now going to
+    # augment the output to return a Tuple[List[Tensor], List[AOTOutput]] and
     # then preserve this convention through the rest of the passes.
 
     # TODO: We could test for consistency with fw_metadata, but this is not a
     # big deal
     @simple_wraps(orig_flat_fn)
-    def orig_flat_fn2(*args: FxValue) -> tuple[list[FxValue], list[AOTOutput]]:
+    def orig_flat_fn2(*args: FxValue) -> Tuple[List[FxValue], List[AOTOutput]]:
         out = orig_flat_fn(*args)
-        out_descs: list[AOTOutput] = type(out)(  # type: ignore[assignment]
+        out_descs: List[AOTOutput] = type(out)(  # type: ignore[assignment]
             PlainAOTOutput(i)  # type: ignore[misc]
             for i in range(len(out))  # type: ignore[misc]
         )
@@ -228,7 +229,7 @@ def aot_stage1_graph_capture(
     # NB: This is currently only used for backwards, where fwd/bwd
     # deterministic TLS can be different
     aot_state.fw_metadata.deterministic = torch.are_deterministic_algorithms_enabled()
-    updated_flat_args: list[Any] | tuple[list[Any], list[Any]]
+    updated_flat_args: Union[List[Any], Tuple[List[Any]], List[Any]]
 
     with maybe_skip_decompose(aot_config):
         # if config.selective_decompose, skip decomposition and apply selective_decompose
@@ -309,8 +310,30 @@ def aot_stage2_export(
     return compiled_fn, aot_state.fw_metadata
 
 
+def sanitize_aot_config(input: AOTConfig) -> AOTConfig:
+    return AOTConfig(
+        fw_compiler=None,
+        bw_compiler=None,
+        partition_fn=None,
+        decompositions={},
+        inference_compiler=None,
+        num_params_buffers=input.num_params_buffers,
+        aot_id=input.aot_id,
+        keep_inference_input_mutations=input.keep_inference_input_mutations,
+        is_export=input.is_export,
+        no_tangents=input.no_tangents,
+        aot_autograd_arg_pos_to_source=input.aot_autograd_arg_pos_to_source,
+        dynamic_shapes=input.dynamic_shapes,
+        enable_log=input.enable_log,
+        static_input_indices=input.static_input_indices,
+        pre_dispatch=input.pre_dispatch,
+        cache_info=None,
+        precompile_backend_id=input.precompile_backend_id,
+    )
+
+
 def _get_inner_meta(
-    maybe_subclass_meta: SubclassMeta | None,
+    maybe_subclass_meta: Optional[SubclassMeta],
     fw_metadata: ViewAndMutationMeta,
 ) -> ViewAndMutationMeta:
     """
@@ -339,9 +362,9 @@ def aot_stage2_compile(
     # pyrefly: ignore [implicit-any]
     fw_compiler: Callable,
     # pyrefly: ignore [implicit-any]
-    bw_compiler: Callable | None = None,
+    bw_compiler: Optional[Callable] = None,
     # pyrefly: ignore [implicit-any]
-    inference_compiler: Callable | None = None,
+    inference_compiler: Optional[Callable] = None,
 ) -> DispatchReturn:
     if bw_compiler is None:
         bw_compiler = fw_compiler
@@ -362,7 +385,7 @@ def aot_stage2_compile(
 def _log_inference_graph(
     fw_module: torch.fx.GraphModule,
     aot_config: AOTConfig,
-) -> str | None:
+) -> Optional[str]:
     """
     Log the inference graph to the structured logger.
     Return a str representation of the graph.
@@ -394,8 +417,8 @@ def _log_inference_graph(
 
 def _aot_stage2b_inference_compile(
     fw_module: torch.fx.GraphModule,
-    updated_flat_args: list[Any],
-    maybe_subclass_meta: SubclassMeta | None,
+    updated_flat_args: List[Any],
+    maybe_subclass_meta: Optional[SubclassMeta],
     fw_metadata: ViewAndMutationMeta,
     aot_config: AOTConfig,
     # pyrefly: ignore [implicit-any]
@@ -450,21 +473,6 @@ def aot_stage2_inference(
 
         fw_module = remat_using_tags_for_fwd_loss_bwd_graph(fw_module)
 
-    if _has_invoke_subgraph_node(fw_module):
-        trace_structured(
-            "artifact",
-            metadata_fn=lambda: {
-                "name": "aot_inference_graph_after_hop_passes",
-                "encoding": "string",
-            },
-            payload_fn=lambda: fw_module.print_readable(
-                print_output=False,
-                include_stride=True,
-                include_device=True,
-                expanded_def=True,
-            ),
-        )
-
     compiled_fw = _aot_stage2b_inference_compile(
         fw_module,
         updated_flat_args,  # type: ignore[arg-type]
@@ -494,16 +502,16 @@ def aot_stage2_inference(
 def _cache_inference_info(
     aot_config: AOTConfig,
     fw_metadata: ViewAndMutationMeta,
-    maybe_subclass_meta: SubclassMeta | None,
+    maybe_subclass_meta: Optional[SubclassMeta],
     compiled_fw: Callable[..., Any],
-    aot_forward_graph_str: str | None,
-    wrappers: list[CompilerWrapper],
-) -> GenericAOTAutogradResult[Any, Any] | None:
+    aot_forward_graph_str: Optional[str],
+    wrappers: List[CompilerWrapper],
+) -> Optional[GenericAOTAutogradResult[Any, Any]]:
     make_runtime_safe(fw_metadata, maybe_subclass_meta)
 
     cache_info = aot_config.cache_info
 
-    entry: GenericAOTAutogradResult[Any, Any] | None = None
+    entry: Optional[GenericAOTAutogradResult[Any, Any]] = None
     if cache_info is not None and _should_save_cache(compiled_fw):
         time_taken_ns = time.time_ns() - cache_info.start_time_ns
         guards_expr = AOTAutogradCache.generate_guards_expression(cache_info)
@@ -520,7 +528,7 @@ def _cache_inference_info(
             indices_of_inps_to_detach=[],
             forward_time_taken_ns=time_taken_ns,
             backward_time_taken_ns=0,
-            sanitized_aot_config=aot_config.to_cacheable(),
+            sanitized_aot_config=sanitize_aot_config(aot_config),
             guards_expr=guards_expr,
             backward_state_indices=None,
             num_symints_saved_for_bw=None,
@@ -540,8 +548,8 @@ def _aot_stage2c_make_inference_function(
     aot_config: AOTConfig,
     fw_metadata: ViewAndMutationMeta,
     compiled_fw: Callable[..., Any],
-    wrappers: list[CompilerWrapper],
-    entry: GenericAOTAutogradResult[Any, Any] | None,
+    wrappers: List[CompilerWrapper],
+    entry: Optional[GenericAOTAutogradResult[Any, Any]],
 ) -> DispatchReturn:
     if entry is not None:
         compiled_fw = SerializableCompiledFunction(compiled_fw, lambda: entry)
@@ -564,11 +572,11 @@ def _aot_stage2c_make_inference_function(
 
 
 def collect_fw_donated_buffer_idxs(
-    fw_ins: list[FakeTensor | None],
-    user_fw_outs: list[FakeTensor | None],
-    bw_outs: list[FakeTensor | None],
-    saved_tensors: list[FakeTensor | None],
-) -> list[int]:
+    fw_ins: List[Optional[FakeTensor]],
+    user_fw_outs: List[Optional[FakeTensor]],
+    bw_outs: List[Optional[FakeTensor]],
+    saved_tensors: List[Optional[FakeTensor]],
+) -> List[int]:
     """
     Checks if the saved tensors are donated buffers, which means a saved tensor is not
     an alias of any tensors in fw_ins, user_fw_outs, and bw_outs.
@@ -600,7 +608,7 @@ def collect_bw_donated_buffer_idxs(
     fw_module: torch.fx.GraphModule,
     bw_module: torch.fx.GraphModule,
     fw_metadata: ViewAndMutationMeta,
-) -> list[int]:
+) -> List[int]:
     """
     Collects backward donated buffer indexes from fw_module and bw_module.
     """
@@ -664,13 +672,13 @@ class InvokeSubgraphHopGraphs:
 
     # To avoid re-partitioning subgraphs
     partitioning_done: bool = False
-    old_num_fw_outputs: int | None = None
-    old_num_fw_inputs: int | None = None
+    old_num_fw_outputs: Optional[int] = None
+    old_num_fw_inputs: Optional[int] = None
 
-    new_fw_hop_gm: torch.fx.GraphModule | None = None
-    new_bw_hop_gm: torch.fx.GraphModule | None = None
-    new_num_sym_nodes: int | None = None
-    new_num_saved_nodes: int | None = None
+    new_fw_hop_gm: Optional[torch.fx.GraphModule] = None
+    new_bw_hop_gm: Optional[torch.fx.GraphModule] = None
+    new_num_sym_nodes: Optional[int] = None
+    new_num_saved_nodes: Optional[int] = None
 
 
 def prepare_for_partitioner(
@@ -719,7 +727,7 @@ def prepare_for_partitioner(
 
 def _get_partition_fn(
     fw_hop_node: torch.fx.Node, aot_config: AOTConfig
-) -> tuple[bool, Callable[..., tuple[torch.fx.GraphModule, torch.fx.GraphModule]]]:
+) -> Tuple[bool, Callable[..., Tuple[torch.fx.GraphModule, torch.fx.GraphModule]]]:
     """
     Return either the default `partition_fn` in aot_config or a HOP specific partition
     function.
@@ -749,17 +757,16 @@ def _get_partition_fn(
                     f"expected hop_partition_fn to be str, got {type(hop_partition_fn)}"
                 )
             else:
-                match hop_partition_fn:
-                    case "default_partition":
-                        raw_partitioner = (
-                            torch._functorch.partitioners.default_partition
-                        )
-                    case "min_cut_rematerialization_partition":
-                        raw_partitioner = torch._functorch.partitioners.min_cut_rematerialization_partition
-                    case _:
-                        raise ValueError(
-                            f"Unknown HOP partitioner config: {hop_partition_fn}"
-                        )
+                if hop_partition_fn == "default_partition":
+                    raw_partitioner = (
+                        torch._functorch.partitioners.default_partition
+                    )
+                elif hop_partition_fn == "min_cut_rematerialization_partition":
+                    raw_partitioner = torch._functorch.partitioners.min_cut_rematerialization_partition
+                else:
+                    raise ValueError(
+                        f"Unknown HOP partitioner config: {hop_partition_fn}"
+                    )
 
             # Route through Inductor's `partition_fn` so joint-graph passes
             # (e.g. scatter_upon_const_tensor) run on the HOP subgraph before
@@ -778,15 +785,6 @@ def _get_partition_fn(
     if aot_config.partition_fn is None:
         raise AssertionError("aot_config.partition_fn must not be None")
     return used_hop_custom_partition, aot_config.partition_fn
-
-
-def _has_invoke_subgraph_node(gm: torch.fx.GraphModule):
-    from torch._higher_order_ops import invoke_subgraph
-
-    for node in gm.graph.nodes:
-        if node.op == "call_function" and node.target is invoke_subgraph:
-            return True
-    return False
 
 
 def run_joint_graph_passes_on_hops(
@@ -833,7 +831,7 @@ def run_joint_graph_passes_on_hops(
     def num_inputs(mod: torch.fx.GraphModule) -> int:
         return len(mod.graph.find_nodes(op="placeholder"))
 
-    new_hop_graphs: dict[str, InvokeSubgraphHopGraphs] = defaultdict(
+    new_hop_graphs: Dict[str, InvokeSubgraphHopGraphs] = defaultdict(
         lambda: InvokeSubgraphHopGraphs()
     )
 
@@ -875,7 +873,7 @@ def run_joint_graph_passes_on_hops(
     # InvokeSubgraphAutogradOp's fw/bw on each FX node. This is unambiguous
     # regardless of how autograd dispatched the backward (single outer
     # `.backward()`, per-iter `.backward()` in a loop, interleaved regions).
-    fws_by_call_id: dict[int, torch.fx.Node] = {}
+    fws_by_call_id: Dict[int, torch.fx.Node] = {}
     for fw in fw_hop_nodes:
         cid = fw.meta.get("custom", {}).get("call_id")
         if cid is None:
@@ -887,8 +885,8 @@ def run_joint_graph_passes_on_hops(
             )
         fws_by_call_id[cid] = fw
 
-    bw_to_fw_hop_node: dict[torch.fx.Node, torch.fx.Node] = {}
-    paired_fws: set[torch.fx.Node] = set()
+    bw_to_fw_hop_node: Dict[torch.fx.Node, torch.fx.Node] = {}
+    paired_fws: Set[torch.fx.Node] = set()
     for bw in bw_hop_nodes:
         cid = bw.meta.get("custom", {}).get("call_id")
         if cid is None:
@@ -909,7 +907,7 @@ def run_joint_graph_passes_on_hops(
     # rewritten to call the new partitioned fw subgraph, otherwise the output
     # signatures diverge from the rewritten paired fws. Key by the bw
     # identifier so the key matches `new_hop_graphs`.
-    fw_args_to_bw_identifier: dict[str, str] = {}
+    fw_args_to_bw_identifier: Dict[str, str] = {}
     for bw, fw in bw_to_fw_hop_node.items():
         fw_arg = fw.args[1]
         bw_arg = bw.args[1]
@@ -918,8 +916,8 @@ def run_joint_graph_passes_on_hops(
                 f"expected fw/bw invoke_subgraph HOP args[1] to be str identifiers, "
                 f"got fw={type(fw_arg)}, bw={type(bw_arg)}"
             )
-        fw_args_to_bw_identifier.setdefault(fw_arg, bw_arg.removeprefix("bw"))
-    extra_fws_by_id: dict[str, list[torch.fx.Node]] = defaultdict(list)
+        fw_args_to_bw_identifier.setdefault(fw_arg, bw_arg[:len("bw")] if bw_arg.startswith("bw") else bw_arg)
+    extra_fws_by_id: Dict[str, List[torch.fx.Node]] = defaultdict(list)
     for fw in fw_hop_nodes:
         if fw in paired_fws:
             continue
@@ -929,7 +927,7 @@ def run_joint_graph_passes_on_hops(
         extra_fws_by_id[bw_ident_key].append(fw)
 
     for node in bw_hop_nodes:
-        identifier = node.args[1].removeprefix("bw")
+        identifier = node.args[1][2:] if node.args[1].startswith("bw") else node.args[1]
 
         # If partitioning already done for this identifier, skip. This saves
         # redundant joint graph passes for same subgraphs.
@@ -975,7 +973,7 @@ def run_joint_graph_passes_on_hops(
 
         # TODO: invoke_subgraph should track which of its inputs static indices
         # so it can propagate them to the partitioner (and use in cudagraphs)
-        static_lifetime_input_indices: list[int] = []
+        static_lifetime_input_indices: List[int] = []
 
         used_hop_custom_partition, partition_fn = _get_partition_fn(
             fw_hop_node, aot_config
@@ -1078,7 +1076,7 @@ def run_joint_graph_passes_on_hops(
         new_call_function_node.meta["val"] = tuple(out_example_vals)
 
     for bw_node in reversed(bw_hop_nodes):
-        identifier = bw_node.args[1].removeprefix("bw")
+        identifier = bw_node.args[1][2:] if bw_node.args[1].startswith("bw") else bw_node.args[1]
 
         # Make changes to the corresponding fw and bw node pair simultaneously.
         # The removes the need of any bookkeeping.
@@ -1245,7 +1243,7 @@ def maybe_log_graph(
     graph_name: str,
     aot_config: AOTConfig,
     structured_log_prefix_fn: Callable[[], str],
-    out_structured_logs: list[str] | None = None,
+    out_structured_logs: Optional[List[str]] = None,
 ) -> None:
     if not aot_config.enable_log:
         return
@@ -1279,8 +1277,8 @@ def maybe_log_graph(
 
 
 def create_wrap_fn(
-    fn: Callable[..., Any], args: tuple[Any, ...]
-) -> tuple[Callable[..., Any], tuple[Any, ...]]:
+    fn: Callable[..., Any], args: Tuple[Any, ...]
+) -> Tuple[Callable[..., Any], Tuple[Any, ...]]:
     from torch.fx.experimental.proxy_tensor import maybe_enable_thunkify
 
     from .functional_utils import from_fun, has_data_mutation, to_fun
@@ -1308,7 +1306,7 @@ def create_wrap_fn(
 
 
 def prepare_hook_gm(
-    aot_config: AOTConfig, fn: Callable[..., Any], args: tuple[Any, ...]
+    aot_config: AOTConfig, fn: Callable[..., Any], args: Tuple[Any, ...]
 ) -> torch.fx.GraphModule:
     from torch._functorch._aot_autograd.graph_capture import _create_graph
 
@@ -1329,7 +1327,7 @@ def maybe_inline_graph_saved_tensors_hooks(
     num_inner_fwd_outputs: int,
     inner_meta: ViewAndMutationMeta,
     aot_config: AOTConfig,
-    static_input_indices: list[int],
+    static_input_indices: List[int],
 ) -> None:
     if torch._dynamo.compiled_autograd.in_compiled_autograd_region:
         return
@@ -1345,7 +1343,7 @@ def maybe_inline_graph_saved_tensors_hooks(
 
     pack_hook_gm, unpack_hook_gm = hooks
 
-    structured_logs: list[str] = []
+    structured_logs: List[str] = []
     maybe_log_graph(
         fw_module,
         "Forward graph pre saved_tensors_hooks inlining",
@@ -1450,7 +1448,7 @@ def maybe_inline_graph_saved_tensors_hooks(
         if not isinstance(val, torch.Tensor):
             continue
 
-        def _get_extra_info() -> dict[str, Any]:
+        def _get_extra_info() -> Dict[str, Any]:
             return {"_fw_graph": fw_g, "_bw_graph": bw_g, "_node": saved}
 
         with _saved_tensor_hook_context(_get_extra_info()):
@@ -1565,8 +1563,8 @@ def maybe_inline_graph_saved_tensors_hooks(
             )
 
         def find_saved_in_bw_inputs(
-            bw_inputs: list[torch.fx.Node],
-        ) -> torch.fx.Node | None:
+            bw_inputs: List[torch.fx.Node],
+        ) -> Optional[torch.fx.Node]:
             for n in bw_inputs:
                 if n.name == saved.name:  # type: ignore[union-attr]
                     return n
@@ -1605,11 +1603,7 @@ def maybe_inline_graph_saved_tensors_hooks(
                     # Inserting packed sym scalars before first saved tensor input.
                     # Inserting packed tensors before last saved tensor input.
                     # Saved tensor inputs between them will be removed.
-                    with (
-                        bw_g.inserting_before(bw_g_inputs[0])
-                        if is_sym
-                        else bw_g.inserting_before(bw_g_input)
-                    ):
+                    with bw_g.inserting_before(bw_g_inputs[0]) if is_sym else bw_g.inserting_before(bw_g_input):
                         new_n = bw_g.placeholder(new_node_name)
                         if new_n.name != new_node_name:
                             raise AssertionError(
@@ -1739,7 +1733,7 @@ def maybe_inline_graph_saved_tensors_hooks(
 def _log_joint_graph(
     fx_g: torch.fx.GraphModule,
     aot_config: AOTConfig,
-) -> str | None:
+) -> Optional[str]:
     """
     Log the joint graph to the structured logger.
     Return a str representation of the graph.
@@ -1773,10 +1767,10 @@ def _log_joint_graph(
 def _log_fw_bw_graphs(
     fw_module: torch.fx.GraphModule,
     bw_module: torch.fx.GraphModule,
-    maybe_subclass_meta: SubclassMeta | None,
+    maybe_subclass_meta: Optional[SubclassMeta],
     fw_metadata: ViewAndMutationMeta,
     aot_config: AOTConfig,
-) -> tuple[str | None, str | None]:
+) -> Tuple[Optional[str], Optional[str]]:
     """
     Log the fw and bw graphs to the structured logger.
     Return str representations of the graphs.
@@ -1865,11 +1859,11 @@ def _log_fw_bw_graphs(
 
 def _partition_joint_graph_into_fw_bw(
     fx_g: torch.fx.GraphModule,
-    joint_inputs: list[Any] | tuple[list[Any], list[Any]],
+    joint_inputs: Union[List[Any], Tuple[List[Any]], List[Any]],
     inner_meta: ViewAndMutationMeta,
     fw_metadata: ViewAndMutationMeta,
     aot_config: AOTConfig,
-) -> tuple[torch.fx.GraphModule, torch.fx.GraphModule, int]:
+) -> Tuple[torch.fx.GraphModule, torch.fx.GraphModule, int]:
     # See Note: [Partitioner handling for Subclasses, Part 1]
     # See Note: [Recomputing subclass mutation handling]
     mutated_inp_runtime_indices = compute_inner_mutated_inp_indices_from_subclass_meta(
@@ -1913,19 +1907,19 @@ def _partition_joint_graph_into_fw_bw(
 
 
 def _joint_inputs_for_forward(
-    joint_inputs: list[Any] | tuple[list[Any], list[Any]],
-) -> list[Any]:
+    joint_inputs: Union[List[Any], Tuple[List[Any]], List[Any]],
+) -> List[Any]:
     return joint_inputs[0] if isinstance(joint_inputs, tuple) else joint_inputs
 
 
 def _maybe_unlift_partitioned_effect_tokens(
     fw_module: torch.fx.GraphModule,
     bw_module: torch.fx.GraphModule,
-    joint_inputs: list[Any] | tuple[list[Any], list[Any]],
+    joint_inputs: Union[List[Any], Tuple[List[Any]], List[Any]],
     fw_metadata: ViewAndMutationMeta,
     aot_config: AOTConfig,
     num_inner_fwd_outputs: int,
-) -> tuple[int, list[Any] | tuple[list[Any], list[Any]]]:
+) -> Union[Tuple[int, List[Any], Tuple[List[Any]], List[Any]]]:
     num_tokens = len(fw_metadata.tokens)
 
     # See Note [Side-Effectful Tokens in AOTAutograd]
@@ -1951,7 +1945,7 @@ def _categorize_saved_tensors_for_backward(
     inner_meta: ViewAndMutationMeta,
     fw_metadata: ViewAndMutationMeta,
     num_inner_fwd_outputs: int,
-) -> tuple[int, int]:
+) -> Tuple[int, int]:
     fw_outs = next(iter(fw_module.graph.find_nodes(op="output"))).args[0]
     # we only need to bookkeep the symints that are saved for bw, not any symints
     # the user forward might have returned in its own output
@@ -1968,7 +1962,7 @@ def _categorize_saved_tensors_for_backward(
         elif isinstance(node, torch.fx.Node) and "val" in getattr(node, "meta", {}):
             if isinstance(node.meta["val"], FakeTensor):
                 # record dynamic tensor activations
-                dynamic_dims: set[int] = {
+                dynamic_dims: Set[int] = {
                     dim
                     for dim, size in enumerate(node.meta["val"].shape)
                     if not isinstance(size, int)
@@ -2063,10 +2057,10 @@ def _categorize_saved_tensors_for_backward(
 # Meaning we'll need to use `retain_graph=True` to be able to backprop through x the second time.
 def _compute_indices_of_inps_to_detach(
     bw_module: torch.fx.GraphModule,
-    maybe_subclass_meta: SubclassMeta | None,
+    maybe_subclass_meta: Optional[SubclassMeta],
     inner_meta: ViewAndMutationMeta,
     fw_metadata: ViewAndMutationMeta,
-) -> list[int]:
+) -> List[int]:
     # TODO: we should apply the below "detach inputs if their gradients are statically known to be None"
     # optimization even if we have subclass inputs/outputs (we do not handle this today).
     # Computing which our our inputs get None gradients is a bit more complicated,
@@ -2077,7 +2071,7 @@ def _compute_indices_of_inps_to_detach(
     if maybe_subclass_meta is not None:
         return []
 
-    indices_of_inps_to_detach: list[int] = []
+    indices_of_inps_to_detach: List[int] = []
 
     # reversed() since we expect output at end of graph
     bw_output = next(reversed(bw_module.graph.find_nodes(op="output")))
@@ -2124,11 +2118,11 @@ def _compute_indices_of_inps_to_detach(
 
 def _aot_stage2a_partition(
     fx_g: torch.fx.GraphModule,
-    joint_inputs: list[Any] | tuple[list[Any], list[Any]],
-    maybe_subclass_meta: SubclassMeta | None,
+    joint_inputs: Union[List[Any], Tuple[List[Any]], List[Any]],
+    maybe_subclass_meta: Optional[SubclassMeta],
     fw_metadata: ViewAndMutationMeta,
     aot_config: AOTConfig,
-) -> tuple[torch.fx.GraphModule, torch.fx.GraphModule, int, int, list[int], list[Any]]:
+) -> Tuple[torch.fx.GraphModule, torch.fx.GraphModule, int, int, List[int], List[Any]]:
     """
     Partition the joint graph into a forward graph and a backward graph. Returns:
     - the forward and backward graphs
@@ -2199,13 +2193,13 @@ def _aot_stage2a_partition(
 
 def _aot_stage2b_fw_compile(
     fw_module: torch.fx.GraphModule,
-    adjusted_flat_args: list[Any],
-    maybe_subclass_meta: SubclassMeta | None,
+    adjusted_flat_args: List[Any],
+    maybe_subclass_meta: Optional[SubclassMeta],
     fw_metadata: ViewAndMutationMeta,
     num_fw_outs_saved_for_bw: int,
     aot_config: AOTConfig,
     # pyrefly: ignore [implicit-any]
-) -> tuple[list[tuple[int, ...] | None] | None, Callable]:
+) -> Optional[Tuple[List[Tuple[int, ...]]] | None, Callable]:
     return _aot_stage2b_compile_forward_or_inference(
         fw_module,
         adjusted_flat_args,
@@ -2219,13 +2213,13 @@ def _aot_stage2b_fw_compile(
 
 def _aot_stage2b_bw_compile(
     bw_module: torch.fx.GraphModule,
-    maybe_subclass_meta: SubclassMeta | None,
+    maybe_subclass_meta: Optional[SubclassMeta],
     fw_metadata: ViewAndMutationMeta,
-    fwd_output_strides: list[tuple[int, ...] | None] | None,
+    fwd_output_strides: Optional[List[Tuple[int, ...]]] | None,
     num_symints_saved_for_bw: int,
     aot_config: AOTConfig,
     # pyrefly: ignore [implicit-any]
-) -> tuple[AutogradLazyBackwardCompileInfo, Callable | None]:
+) -> Tuple[AutogradLazyBackwardCompileInfo, Optional[Callable]]:
     """
     Compile the backward graph. Returns:
     - the placeholder list for the backward graph
@@ -2250,7 +2244,7 @@ def _aot_stage2b_bw_compile(
             # tensor passed in for compiling the backward graph using the
             # saved tensor's stride.
             for i in range(len(placeholder_list)):
-                ph_arg = placeholder_list[i]
+                ph_arg = placeholder_List[i]
                 if not isinstance(ph_arg, torch.Tensor):
                     continue
 
@@ -2307,7 +2301,7 @@ def _aot_stage2b_bw_compile(
 
                     ph_size = ph_arg.size()
 
-                    placeholder_list[i] = ph_arg.as_strided(ph_size, real_stride)
+                    placeholder_List[i] = ph_arg.as_strided(ph_size, real_stride)
             compiled_bw_func = None
             if (
                 num_symints_saved_for_bw > 0
@@ -2473,16 +2467,16 @@ def aot_stage2_autograd(
 
 def _aot_stage2c_make_autograd_function(
     aot_config: AOTConfig,
-    flat_args: list[Any],
+    flat_args: List[Any],
     fw_metadata: ViewAndMutationMeta,
-    maybe_subclass_meta: SubclassMeta | None,
-    wrappers: list[CompilerWrapper],
+    maybe_subclass_meta: Optional[SubclassMeta],
+    wrappers: List[CompilerWrapper],
     compiled_fw_func: Callable[..., Any],
-    compiled_bw_func: Callable[..., Any] | None,
-    lazy_backward_info: AutogradLazyBackwardCompileInfo | None,
+    compiled_bw_func: Optional[Callable[..., Any]],
+    lazy_backward_info: Optional[AutogradLazyBackwardCompileInfo],
     try_save_cache_entry: Callable[..., Any],
-    entry: GenericAOTAutogradResult[Any, Any] | None,
-    _indices_of_inps_to_detach: list[int],
+    entry: Optional[GenericAOTAutogradResult[Any, Any]],
+    _indices_of_inps_to_detach: List[int],
     num_symints_saved_for_bw: int,
 ) -> DispatchReturn:
     backward_state_indices = [
@@ -2513,7 +2507,7 @@ def _aot_stage2c_make_autograd_function(
         compiled_fn = SerializableCompiledFunction(compiled_fn, lambda: entry)
 
     if config.debug_assert:
-        flat_requires_grad: list[bool | None] = [
+        flat_requires_grad: List[Optional[bool]] = [
             a.requires_grad if isinstance(a, Tensor) else None for a in flat_args
         ]
         compiled_fn = DebugAssertWrapper(
@@ -2531,22 +2525,22 @@ def _aot_stage2c_make_autograd_function(
 
 def _cache_autograd_info(
     aot_config: AOTConfig,
-    flat_args: list[Any],
+    flat_args: List[Any],
     compiled_fw_func: Callable[..., Any],
-    compiled_bw_func: Callable[..., Any] | None,
-    fw_module_str: str | None,
-    bw_module_str: str | None,
-    joint_graph_str: str | None,
-    wrappers: list[CompilerWrapper],
-    maybe_subclass_meta: SubclassMeta | None,
+    compiled_bw_func: Optional[Callable[..., Any]],
+    fw_module_str: Optional[str],
+    bw_module_str: Optional[str],
+    joint_graph_str: Optional[str],
+    wrappers: List[CompilerWrapper],
+    maybe_subclass_meta: Optional[SubclassMeta],
     fw_metadata: ViewAndMutationMeta,
     num_fw_outs_saved_for_bw: int,
-    _indices_of_inps_to_detach: list[int],
+    _indices_of_inps_to_detach: List[int],
     num_symints_saved_for_bw: int,
-    bw_module: torch.fx.GraphModule | None,
-    min_cut_info_str: str | None,
-) -> tuple[
-    GenericAOTAutogradResult[Any, Any] | None,
+    bw_module: Optional[torch.fx.GraphModule],
+    min_cut_info_str: Optional[str],
+) -> Tuple[
+    Optional[GenericAOTAutogradResult[Any, Any]],
     Callable[..., Any],
 ]:
     backward_state_indices = [
@@ -2559,8 +2553,8 @@ def _cache_autograd_info(
 
     make_runtime_safe(fw_metadata, maybe_subclass_meta)
 
-    try_save_cache_entry: Callable[..., Any] | None = None
-    entry: GenericAOTAutogradResult[Any, Any] | None = None
+    try_save_cache_entry: Optional[Callable[..., Any]] = None
+    entry: Optional[GenericAOTAutogradResult[Any, Any]] = None
 
     if aot_config.cache_info is not None:
         forward_time_taken_ns = time.time_ns() - aot_config.cache_info.start_time_ns
@@ -2573,7 +2567,7 @@ def _cache_autograd_info(
             bw_module: torch.fx.GraphModule,
             _fw_metadata: ViewAndMutationMeta,
             aot_config: AOTConfig,
-        ) -> GenericAOTAutogradResult[Any, Any] | None:
+        ) -> Optional[GenericAOTAutogradResult[Any, Any]]:
             cache_info = aot_config.cache_info
 
             if cache_info is not None and _should_save_cache(
@@ -2589,9 +2583,9 @@ def _cache_autograd_info(
                 # update backward_time_taken_ns to be more inclusive
                 backward_time_taken_ns = getattr(compiled_bw_func, "_time_taken_ns", 0)
 
-                aot_forward_graph_str: str | None = fw_module_str
-                aot_backward_graph_str: str | None = bw_module_str
-                aot_joint_graph_str: str | None = joint_graph_str
+                aot_forward_graph_str: Optional[str] = fw_module_str
+                aot_backward_graph_str: Optional[str] = bw_module_str
+                aot_joint_graph_str: Optional[str] = joint_graph_str
                 guards_expr = AOTAutogradCache.generate_guards_expression(cache_info)
 
                 entry = AOTAutogradCache.make_entry(
@@ -2607,7 +2601,7 @@ def _cache_autograd_info(
                     _indices_of_inps_to_detach,
                     forward_time_taken_ns,
                     backward_time_taken_ns,
-                    sanitized_aot_config=aot_config.to_cacheable(),
+                    sanitized_aot_config=sanitize_aot_config(aot_config),
                     guards_expr=guards_expr,
                     backward_state_indices=backward_state_indices,
                     num_symints_saved_for_bw=num_symints_saved_for_bw,
@@ -2641,15 +2635,15 @@ def _cache_autograd_info(
 
 def _aot_stage2b_compile_forward_or_inference(
     fw_module: torch.fx.GraphModule,
-    adjusted_flat_args: list[Any],
-    maybe_subclass_meta: SubclassMeta | None,
+    adjusted_flat_args: List[Any],
+    maybe_subclass_meta: Optional[SubclassMeta],
     fw_metadata: ViewAndMutationMeta,
     aot_config: AOTConfig,
     *,
     is_inference: bool,
-    num_fw_outs_saved_for_bw: int | None = None,
+    num_fw_outs_saved_for_bw: Optional[int] = None,
     # pyrefly: ignore [implicit-any]
-) -> tuple[list[tuple[int, ...] | None] | None, Callable]:
+) -> Optional[Tuple[List[Tuple[int, ...]]] | None, Callable]:
     """
     Compile the forward or inference graph. Returns:
     - the output strides of the forward graph

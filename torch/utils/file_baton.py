@@ -1,7 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import os
 import time
 import warnings
+from typing import Optional
 
 
 class FileBaton:
@@ -23,7 +26,7 @@ class FileBaton:
         self.fd = None
         self.warn_after_seconds = warn_after_seconds
 
-    def try_acquire(self) -> bool | None:
+    def try_acquire(self) -> Optional[bool]:
         """
         Try to atomically create a file under exclusive access.
 

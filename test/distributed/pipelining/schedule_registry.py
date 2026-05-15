@@ -2,6 +2,7 @@
 # Owner(s): ["oncall: distributed"]
 # This file is a Schedule zoo for testing torch.distributed.pipelining.
 # It includes schedules designed purely for testing purposes
+from __future__ import annotations
 from collections.abc import Callable
 
 from torch.distributed.pipelining.schedules import (

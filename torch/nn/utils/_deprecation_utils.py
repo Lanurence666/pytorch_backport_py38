@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import importlib
 import warnings
 from collections.abc import Callable
+from typing import Callable, List
 
 
 _MESSAGE_TEMPLATE = (
@@ -9,7 +12,7 @@ _MESSAGE_TEMPLATE = (
 
 
 def lazy_deprecated_import(
-    all: list[str],
+    all: List[str],
     old_module: str,
     new_module: str,
 ) -> Callable:

@@ -488,7 +488,8 @@ static PyObject* THPModule_addDocStr(PyObject* _unused, PyObject* args) {
         Py_TYPE(obj)->tp_name);
   }
 
-  return Py_NewRef(obj);
+  Py_INCREF(obj);
+  return obj;
 }
 
 static PyObject* THPModule_inferSize(PyObject* _unused, PyObject* args) {

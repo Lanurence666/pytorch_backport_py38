@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Logic for converting human-readable benchmarks into executable form.
 
 This is mostly string manipulation, with just a bit of importlib magic.

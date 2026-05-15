@@ -739,21 +739,9 @@ class MixOrderReductionTest(TestBase):
         gm = make_fx(lambda: torch.zeros(2, 3))()
         graph = GraphLowering(gm)
 
-        with (
-            V.set_graph_handler(graph),
-            inductor_config.patch(
-                {"triton.mix_order_reduction_non_strict_mode": False}
-            ),
-        ):
+        with V.set_graph_handler(graph), inductor_config.patch( {"triton.mix_order_reduction_non_strict_mode": False} ):
             self.assertFalse(MixOrderReduction.can_fuse(mock_node_1, mock_node_2))
-        with (
-            V.set_graph_handler(graph),
-            inductor_config.patch(
-                {
-                    "triton.mix_order_reduction_non_strict_mode": True,
-                }
-            ),
-        ):
+        with V.set_graph_handler(graph), inductor_config.patch( { "triton.mix_order_reduction_non_strict_mode": True, } ):
             self.assertTrue(MixOrderReduction.can_fuse(mock_node_1, mock_node_2))
 
     @inductor_config.patch({"triton.mix_order_reduction_non_strict_mode": True})

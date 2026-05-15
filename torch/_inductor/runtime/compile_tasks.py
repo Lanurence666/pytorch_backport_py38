@@ -8,13 +8,13 @@ import time
 import warnings
 from pathlib import Path
 from types import ModuleType
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Dict, Set, TYPE_CHECKING, Tuple, Type
 
 from torch._utils_internal import log_triton_builds
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
 
     from torch._inductor.runtime.triton_heuristics import CachingAutotuner
 
@@ -38,7 +38,7 @@ def _reload_python_module(
         return mod
 
 
-@functools.cache
+@functools.lru_cache(maxsize=None)
 def _set_triton_ptxas_path() -> None:
     if os.environ.get("TRITON_PTXAS_PATH") is not None:
         return
@@ -116,9 +116,9 @@ def _set_triton_libdevice_path_impl() -> None:
 
 def _worker_compile_triton(
     load_kernel: Callable[[], CachingAutotuner],
-    extra_env: dict[str, str],
-    extra_config: dict[str, Any],
-) -> tuple[CachingAutotuner, int]:
+    extra_env: Dict[str, str],
+    extra_config: Dict[str, Any],
+) -> Tuple[CachingAutotuner, int]:
     _set_triton_ptxas_path()
     os.environ.update(extra_env)
     # Set libdevice path if passed via env from main process

@@ -1,5 +1,6 @@
 # Owner(s): ["module: unknown"]
 
+from __future__ import annotations
 import torch
 from torch.testing._internal.common_utils import TestCase, run_tests, skipIfTorchDynamo
 

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import copy
 import logging
 import operator
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 import torch
 from torch import Tensor
@@ -18,7 +20,7 @@ aten = torch.ops.aten
 prims = torch.ops.prims
 
 
-def _factory_args(fake_tensor: Tensor) -> dict[str, Any]:
+def _factory_args(fake_tensor: Tensor) -> Dict[str, Any]:
     return {
         "device": fake_tensor.device,
         "dtype": fake_tensor.dtype,
@@ -62,24 +64,24 @@ class ChunkingApplier:
         self.num_chunk = num_chunk
 
         # tangent node to the all-one tensor
-        self.overriden_tangent: dict[Node, Node | None] = {}
+        self.overriden_tangent: Dict[Node, Optional[Node]] = {}
 
-        self.subgraph_input: list[Node] = []
-        self.subgraph_body: list[Node] = []
-        self.subgraph_output: list[Node] = []
+        self.subgraph_input: List[Node] = []
+        self.subgraph_body: List[Node] = []
+        self.subgraph_output: List[Node] = []
         self._categorize_subgraph_nodes()
 
-        self.chunk_sizes: list[int] | None = None
+        self.chunk_sizes: Optional[List[int]] = None
 
         # First index is node index,
         # Second index is chunk index.
         # Node index may be different to the index for self.subgraph_input
         # since not every subgraph_input may be chunked.
         # check self.chunk_subgraph_input for more details
-        self.chunked_subgraph_input: list[list[Node]] = []
+        self.chunked_subgraph_input: List[List[Node]] = []
 
-        self.accumulators: dict[Node, Node | None] = {}
-        self.chunks_for_recovering: dict[Node, list[Node]] = {}
+        self.accumulators: Dict[Node, Optional[Node]] = {}
+        self.chunks_for_recovering: Dict[Node, List[Node]] = {}
         for node in self.subgraph_output:
             meta = get_chunking_meta(node)
             assert meta
@@ -89,7 +91,7 @@ class ChunkingApplier:
                 # the accumulator nodes is created later
                 self.accumulators[node] = None
 
-        self.chunk_size_to_gm_attr: dict[int, str] = {}
+        self.chunk_size_to_gm_attr: Dict[int, str] = {}
 
     def _categorize_subgraph_nodes(self) -> None:
         """
@@ -211,7 +213,7 @@ class ChunkingApplier:
         to avoid involving dynamic shapes.
         """
         new_graph = Graph()
-        env: dict[Node, Node] = {}
+        env: Dict[Node, Node] = {}
 
         def _create_placeholder_node(input_node: Node) -> Node:
             new_node = new_graph.placeholder(input_node.name)

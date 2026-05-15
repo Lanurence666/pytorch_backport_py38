@@ -11,7 +11,7 @@ import collections
 import unittest
 import os
 
-from torch.testing._internal.common_utils import TestCase, run_tests, TEST_WITH_CROSSREF, TEST_WITH_TORCHDYNAMO
+from torch.testing._internal.common_utils import TestCase, run_tests, TEST_WITH_CROSSREF
 from torch.overrides import (
     handle_torch_function,
     has_torch_function,
@@ -534,7 +534,7 @@ class TestTorchFunctionOverride(TestCase):
 
     def test_tensor_subclass_propagation(self):
         """this test exercises the functionality described in
-        docs/source/notes/extending.md#subclassing-torch-tensor"""
+        docs/source/notes/extending.rst#subclassing-torchtensor"""
         t1 = torch.tensor([5])
         t2 = torch.tensor([6])
 
@@ -960,7 +960,7 @@ def generate_tensor_like_override_tests(cls):
             for arg in annotated_args[func]:
                 # Guess valid input to aten function based on type of argument
                 t = arg["simple_type"]
-                t = t.removesuffix("?")
+                t = (t[:-len("?")] if "?" and t.endswith("?") else t)
                 if t == "Tensor" and is_method and arg["name"] == "self":
                     # See "Note: properties and __get__"
                     func = func.__get__(instance_gen())
@@ -1450,7 +1450,6 @@ class TestTorchFunctionMode(TestCase):
             self.assertEqual(torch.split(None, [2]), -1)  # python side
             self.assertEqual(bar(x), -1)
 
-    @unittest.skipIf(TEST_WITH_TORCHDYNAMO, "https://github.com/pytorch/pytorch/issues/182317")
     def test_factory_override(self):
         class A(TorchFunctionMode):
             def __torch_function__(self, *args, **kwargs):
@@ -1805,7 +1804,6 @@ class TestTorchFunctionMode(TestCase):
 
         self.assertFalse(called)
 
-    @unittest.skipIf(TEST_WITH_TORCHDYNAMO, "https://github.com/pytorch/pytorch/issues/182318")
     def test_disable_enable_subclass(self):
         class A(torch.Tensor):
             pass

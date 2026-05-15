@@ -1,19 +1,22 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import importlib.util
 
 import numpy as np
 
 from torch._prims_common import ShapeType
 from torch.distributed.tensor._utils import _compute_local_shape_and_global_offset
+from typing import List, Tuple, Type
 
 
 __all__ = ["visualize_sharding"]
 
-Color = tuple[float, float, float]
+Color = Tuple[float, float, float]
 
 
 def _create_table(
-    shards: list[tuple[tuple[int, int], tuple[int, int], int]], device_kind: str = ""
+    shards: List[Tuple[Tuple[int, int], Tuple[int, int], int]], device_kind: str = ""
 ):
     """
     Creates a tabulate table given row and column ranges with device name
@@ -65,7 +68,7 @@ def _get_text_color(color: str) -> str:
 
 def _create_rich_table(
     shape: ShapeType,
-    shards: list[tuple[tuple[int, int], tuple[int, int], int]],
+    shards: List[Tuple[Tuple[int, int], Tuple[int, int], int]],
     device_kind: str = "",
     scale: float = 1.0,
     min_width: int = 9,

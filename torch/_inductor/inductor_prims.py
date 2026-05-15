@@ -4,7 +4,7 @@ from __future__ import annotations
 import functools
 import logging
 import operator
-from typing import TYPE_CHECKING
+from typing import Optional, Sequence, TYPE_CHECKING, Tuple, Type
 
 import torch
 from torch import _prims, Tensor
@@ -23,7 +23,7 @@ def make_prim(
     impl_aten,
     return_type=_prims.RETURN_TYPE.NEW,
     doc: str = "",
-    tags: Sequence[torch.Tag] | None = None,
+    tags: Sequence[torch.Optional[Tag]] = None
 ):
     if isinstance(return_type, tuple):
 
@@ -56,7 +56,7 @@ def eager_force_stride(input_tensor: Tensor, stride) -> Tensor:
     return new_tensor
 
 
-def eager_prepare_softmax(x: Tensor, dim: int) -> tuple[Tensor, Tensor]:
+def eager_prepare_softmax(x: Tensor, dim: int) -> Tuple[Tensor, Tensor]:
     amax = torch.amax(x, dim, keepdim=True)
     return amax, torch.sum(torch.exp(x - amax), dim, keepdim=True)
 

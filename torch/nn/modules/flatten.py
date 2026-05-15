@@ -1,9 +1,12 @@
 # mypy: allow-untyped-defs
 
+from __future__ import annotations
+
 from torch import Tensor
 from torch.types import _size
 
 from .module import Module
+from typing import List, Tuple, Type, Union
 
 
 __all__ = ["Flatten", "Unflatten"]
@@ -108,13 +111,13 @@ class Unflatten(Module):
         torch.Size([2, 2, 5, 5])
     """
 
-    NamedShape = tuple[tuple[str, int]]
+    NamedShape = Tuple[Tuple[str, int]]
 
     __constants__ = ["dim", "unflattened_size"]
-    dim: int | str
-    unflattened_size: _size | NamedShape
+    dim: Union[int, str]
+    unflattened_size: Union[_size, NamedShape]
 
-    def __init__(self, dim: int | str, unflattened_size: _size | NamedShape) -> None:
+    def __init__(self, dim: Union[int, str], unflattened_size: Union[_size, NamedShape]) -> None:
         super().__init__()
 
         if isinstance(dim, int):

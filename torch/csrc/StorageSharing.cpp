@@ -44,7 +44,8 @@ static PyObject* THPStorage_sharedDecref(PyObject* self, PyObject* noargs) {
       ctx->decref();
     }
   }
-  return Py_NewRef(self);
+  Py_INCREF(self);
+  return self;
   END_HANDLE_TH_ERRORS
 }
 

@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 import itertools
-from collections.abc import Callable
-from typing import Any
+
+from typing import Any, Callable, List, Set, Tuple, Union, cast
 
 import torch
 import torch._prims_common as utils
@@ -408,8 +410,8 @@ def trace_associative_scan(
     proxy_mode,
     func_overload,
     combine_fn: Callable,
-    xs: list[torch.Tensor],
-    additional_inputs: tuple[torch.Tensor],
+    xs: List[torch.Tensor],
+    additional_inputs: Tuple[torch.Tensor],
 ):
     from torch._dynamo.utils import clone_input
 
@@ -442,10 +444,10 @@ def trace_associative_scan(
             f"expected combine_fn to return {len(xs)} results but got {len(outputs)}"
         )
 
-    xs_fake_tensors: list[torch.Tensor | torch.SymInt | int] = [
+    xs_fake_tensors: Union[List[torch.Tensor, torch.SymInt, int]]= [
         first_slice_copy(x) for x in xs
     ]
-    output_fake_tensors: list[torch.Tensor | torch.SymInt | int] = [
+    output_fake_tensors: Union[List[torch.Tensor, torch.SymInt, int]]= [
         c.meta["val"] for c in outputs
     ]
     check_meta_consistency(
@@ -897,7 +899,7 @@ def associative_scan_functionalize(ctx, combine_fn, xs, additional_inputs):
 
 def _fake_associative_scan(combine_fn, xs, dim, reverse=False):
     inp_leaves, spec = pytree.tree_flatten(xs)
-    result_flat: list[Any] = []
+    result_flat: List[Any] = []
     num_leaves = len(inp_leaves)
     op = reversed if reverse else lambda x: x
 

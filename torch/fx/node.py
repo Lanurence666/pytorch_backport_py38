@@ -1,13 +1,21 @@
 # Nodes represent a definition of a value in our graph of operators.
+from __future__ import annotations
+
 import builtins
 import inspect
 import logging
 import operator
 import types
 import typing
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from typing import Any, Optional, TYPE_CHECKING, TypeAlias, Union
-from typing_extensions import ParamSpec, TypeVar
+
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, TYPE_CHECKING, Tuple, Type, Union
+if not hasattr(types, 'GenericAlias'):
+    types.GenericAlias = type(List[int])
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
+from typing_extensions import NamedTuple, ParamSpec, TypeVar
 
 import torch
 from torch._C import _fx_map_aggregate, _fx_map_arg, _NodeBase
@@ -47,11 +55,11 @@ BaseArgumentTypes = Union[  # noqa: UP007
 ]
 base_types = typing.get_args(BaseArgumentTypes)
 
-Target: TypeAlias = Callable[..., Any] | str
+Target: TypeAlias = Union[Callable[..., Any], str]
 
 Argument = Optional[  # noqa: UP045
     Union[
-        tuple["Argument", ...],
+        Tuple["Argument", ...],
         Sequence["Argument"],
         Mapping[str, "Argument"],
         slice,  # Slice[Argument, Argument, Argument], but slice is not a templated type in typing
@@ -77,10 +85,10 @@ _legal_ops = dict.fromkeys(
     ]
 )
 
-# Dynamo is unable to trace global set[Callable].__contains__.
+# Dynamo is unable to trace global Set[Callable].__contains__.
 # See https://github.com/pytorch/pytorch/issues/145761. Since we only have
 # a handful of ops so switch to list of callables.
-_side_effectful_need_to_be_preserved_pre_dispatch: list[Callable[..., Any]] = [
+_side_effectful_need_to_be_preserved_pre_dispatch: List[Callable[..., Any]] = [
     torch._C._set_grad_enabled,
     torch.amp._enter_autocast,
     torch.amp._exit_autocast,
@@ -96,7 +104,7 @@ _side_effectful_need_to_be_preserved_pre_dispatch: list[Callable[..., Any]] = [
 # This _side_effectful_functions set is only for:
 # - Legacy functions that aren't operators (e.g., profiler ops, asserts)
 # - Things that cannot be marked via the normal effects system
-_side_effectful_functions: set[Callable[..., Any]] = {
+_side_effectful_functions: Set[Callable[..., Any]] = {
     torch._assert,
     torch._assert_async,
     _ops.aten._assert_async.msg,
@@ -158,7 +166,7 @@ def _type_repr(obj: object) -> str:
     typically enough to uniquely identify a type.  For everything
     else, we fall back on repr(obj).
     """
-    # Extension: If we don't ignore GenericAlias then `list[int]` will print
+    # Extension: If we don't ignore GenericAlias then `List[int]` will print
     # simply "list".
     if isinstance(obj, type) and not isinstance(obj, types.GenericAlias):
         if obj.__module__ == "builtins":
@@ -200,7 +208,7 @@ def _get_qualified_name(func: Callable[..., Any]) -> str:
     if module == "torch" and name == "segment_reduce":
         name = "_" + name
     if module == "torch.nn.functional" and name in ("_ScalingType", "_SwizzleType"):
-        name = name.removeprefix("_")
+        name = name[:len("_")] if name.startswith("_") else name
     return f"{module}.{name}"
 
 
@@ -263,8 +271,8 @@ class Node(_NodeBase):
       in the Graph printout.
     """
 
-    _args: tuple["Argument", ...]
-    _kwargs: dict[str, "Argument"]
+    _args: Tuple["Argument", ...]
+    _kwargs: Dict[str, "Argument"]
     graph: "Graph"
     # unique name of value being created
     name: str
@@ -276,12 +284,12 @@ class Node(_NodeBase):
     # All `Node`-valued inputs. Key is the Node, value is don't-care.
     # The public API for this is `all_input_nodes`, this private attribute
     # should not be accessed directly.
-    _input_nodes: dict["Node", None]
+    _input_nodes: Dict["Node", None]
     # All of the nodes that use the value produced by this Node
     # Note one user may correspond to several uses, e.g. the node for ``x + x``
     # would appear once here, but represents two uses.
     # Is a dict to act as an "ordered set". Keys are significant, value dont-care
-    users: dict["Node", None]
+    users: Dict["Node", None]
     # Type expression representing the output value of this node.
     # This should contain the same class of Type objects that would appear
     # as type annotations for function inputs/outputs.
@@ -292,14 +300,14 @@ class Node(_NodeBase):
     # generated function return type. (Note this is a special case. ``return``
     # does not produce a value, it's more of a notation. Thus, this value
     # describes the type of args[0] in the ``return`` node.
-    # TODO: narrow this to TensorType | _DynType | None
-    type: Any | None
+    # TODO: narrow this to Union[TensorType, Optional[_DynType]]
+    type: Optional[Any]
     _sort_key: Any
     # If set, use this fn to print this node
-    _repr_fn: Callable[["Node"], str] | None
+    _repr_fn: Optional[Callable[["Node"], str]]
     # Dictionary to store metadata passes need to do their
     # transformations. This metadata is preserved across node copies
-    meta: dict[str, Any]
+    meta: Dict[str, Any]
 
     @compatibility(is_backward_compatible=True)
     def __init__(
@@ -308,9 +316,9 @@ class Node(_NodeBase):
         name: str,
         op: str,
         target: "Target",
-        args: tuple["Argument", ...],
-        kwargs: dict[str, "Argument"],
-        return_type: Any | None = None,
+        args: Tuple["Argument", ...],
+        kwargs: Dict[str, "Argument"],
+        return_type: Optional[Any]= None,
     ) -> None:
         """
         Instantiate an instance of ``Node``. Note: most often, you want to use the
@@ -355,7 +363,7 @@ class Node(_NodeBase):
         super().__init__(graph, name, op, target, return_type)
         self._update_args_kwargs(args, kwargs)
 
-    def __getstate__(self) -> dict[str, Any]:
+    def __getstate__(self) -> Dict[str, Any]:
         return {
             **self.__dict__,
             "graph": self.graph,
@@ -375,7 +383,7 @@ class Node(_NodeBase):
             "meta": self.meta,
         }
 
-    def __setstate__(self, state: dict[str, Any]) -> None:
+    def __setstate__(self, state: Dict[str, Any]) -> None:
         for k, v in state.items():
             setattr(self, k, v)
 
@@ -430,7 +438,7 @@ class Node(_NodeBase):
         self._next._prepend(x)
 
     @property
-    def args(self) -> tuple[Argument, ...]:
+    def args(self) -> Tuple[Argument, ...]:
         """
         The tuple of arguments to this ``Node``. The interpretation of arguments
         depends on the node's opcode. See the :class:`Node` docstring for more
@@ -442,7 +450,7 @@ class Node(_NodeBase):
         return self._args
 
     @args.setter
-    def args(self, a: tuple[Argument, ...]) -> None:
+    def args(self, a: Tuple[Argument, ...]) -> None:
         """
         Set the tuple of arguments to this Node. The interpretation of arguments
         depends on the node's opcode. See the ``fx.Graph`` docstring for more
@@ -453,7 +461,7 @@ class Node(_NodeBase):
         self._update_args_kwargs(a, self._kwargs)
 
     @property
-    def kwargs(self) -> dict[str, Argument]:
+    def kwargs(self) -> Dict[str, Argument]:
         """
         The dict of keyword arguments to this ``Node``. The interpretation of arguments
         depends on the node's opcode. See the :class:`Node` docstring for more
@@ -465,7 +473,7 @@ class Node(_NodeBase):
         return self._kwargs
 
     @kwargs.setter
-    def kwargs(self, k: dict[str, Argument]) -> None:
+    def kwargs(self, k: Dict[str, Argument]) -> None:
         """
         Set the dict of kwargs to this Node. The interpretation of arguments
         depends on the node's opcode. See the ``fx.Graph`` docstring for more
@@ -476,7 +484,7 @@ class Node(_NodeBase):
         self._update_args_kwargs(self._args, k)
 
     @property
-    def all_input_nodes(self) -> list["Node"]:
+    def all_input_nodes(self) -> List["Node"]:
         """
         Return all Nodes that are inputs to this Node. This is equivalent to
         iterating over ``args`` and ``kwargs`` and only collecting the values that
@@ -507,7 +515,7 @@ class Node(_NodeBase):
     @compatibility(is_backward_compatible=True)
     def insert_arg(self, idx: int, arg: Argument) -> None:
         """
-        Insert a positional argument to the argument list with given index.
+        Insert an positional argument to the argument list with given index.
 
         Args:
 
@@ -523,7 +531,7 @@ class Node(_NodeBase):
 
         self._args = args_left + (arg,) + args_right
 
-        _new_input_nodes: dict[Node, None] = {}
+        _new_input_nodes: Dict[Node, None] = {}
         _fx_map_arg(arg, _new_input_nodes.setdefault)
 
         for new_use in _new_input_nodes:
@@ -545,7 +553,7 @@ class Node(_NodeBase):
         self.kwargs = {**self.kwargs, key: arg}
 
     @property
-    def stack_trace(self) -> str | None:
+    def stack_trace(self) -> Optional[str]:
         """
         Return the Python stack trace that was recorded during tracing, if any.
         When traced with fx.Tracer, this property is usually populated by
@@ -559,7 +567,7 @@ class Node(_NodeBase):
         return self.meta.get("stack_trace", None)
 
     @stack_trace.setter
-    def stack_trace(self, trace: str | None) -> None:
+    def stack_trace(self, trace: Optional[str]) -> None:
         self.meta["stack_trace"] = trace
 
     def __repr__(self) -> str:
@@ -595,11 +603,11 @@ class Node(_NodeBase):
     @compatibility(is_backward_compatible=True)
     def format_node(
         self,
-        placeholder_names: list[str] | None = None,
-        maybe_return_typename: list[str] | None = None,
+        placeholder_names: Optional[List[str]]= None,
+        maybe_return_typename: Optional[List[str]]= None,
         *,
         include_tensor_metadata: bool = False,
-    ) -> str | None:
+    ) -> Optional[str]:
         """
         Return a descriptive string representation of ``self``.
 
@@ -693,10 +701,10 @@ class Node(_NodeBase):
     def replace_all_uses_with(
         self,
         replace_with: "Node",
-        delete_user_cb: Callable[["Node"], bool] | None = None,
+        delete_user_cb: Optional[Callable[["Node"], bool]]= None,
         *,
         propagate_meta: bool = False,
-    ) -> list["Node"]:
+    ) -> List["Node"]:
         """
         Replace all uses of ``self`` in the Graph with the Node ``replace_with``.
 
@@ -791,10 +799,10 @@ class Node(_NodeBase):
     def normalized_arguments(
         self,
         root: torch.nn.Module,
-        arg_types: tuple[Any] | None = None,
-        kwarg_types: dict[str, Any] | None = None,
+        arg_types: Optional[Tuple[Any]]= None,
+        kwarg_types: Optional[Dict[str, Any]]= None,
         normalize_to_only_use_kwargs: bool = False,
-    ) -> ArgsKwargsPair | None:
+    ) -> Optional[ArgsKwargsPair]:
         """
         Returns normalized arguments to Python targets. This means that
         `args/kwargs` will be matched up to the module/functional's

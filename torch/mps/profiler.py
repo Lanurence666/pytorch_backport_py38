@@ -1,6 +1,8 @@
 import contextlib
-from collections.abc import Iterator
-from typing import Literal
+
+from typing import Iterator
+from typing_extensions import Literal
+
 
 import torch
 

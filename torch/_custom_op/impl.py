@@ -1,4 +1,8 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+from typing import Optional, Union
+
+
 import dataclasses
 import functools
 import inspect
@@ -59,7 +63,7 @@ def warn_deprecated():
     )
 
 
-def custom_op(qualname: str, manual_schema: str | None = None) -> typing.Callable:
+def custom_op(qualname: str, manual_schema: Optional[str] = None) -> typing.Callable:
     r"""
     This API is deprecated, please use torch.library.custom_op instead
     """
@@ -123,7 +127,7 @@ def custom_op(qualname: str, manual_schema: str | None = None) -> typing.Callabl
 # An example usage is FakeTensor: FakeTensor checks if a specific operator
 # has an implementation registered via the CustomOp API.
 # Indexed by qualname (e.g. aten::foo)
-global_registry: dict[str, "CustomOp"] = {}
+global_registry: Dict[str, "CustomOp"] = {}
 
 
 class CustomOp:
@@ -153,7 +157,7 @@ class CustomOp:
         self.__name__ = None  # mypy requires this
         # NB: Some of these impls are registered as kernels to DispatchKeys.
         # Modifying the _impls dict directly won't do anything in that case.
-        self._impls: dict[str, FuncAndLocation | None] = {}
+        self._impls: Dict[str, Optional[FuncAndLocation]] = {}
         # See NOTE [CustomOp autograd kernel indirection]
         self._registered_autograd_kernel_indirection = False
 
@@ -218,7 +222,7 @@ class CustomOp:
 
     def impl(
         self,
-        device_types: str | typing.Iterable[str],
+        device_types: Union[str, typing.Iterable[str]],
         _stacklevel=2,
     ) -> typing.Callable:
         r"""
@@ -519,7 +523,7 @@ def validate_schema(schema: FunctionSchema) -> None:
         )
 
 
-def parse_qualname(qualname: str) -> tuple[str, str]:
+def parse_qualname(qualname: str) -> Tuple[str, str]:
     names = qualname.split("::", 1)
     if len(names) != 2:
         raise ValueError(
@@ -556,7 +560,7 @@ def validate_function_matches_schema(
 ) -> None:
     sig = inspect.signature(func)
 
-    if not all(supported_param(p) for p in sig.parameters.values()):
+    if not all(supported_param(p) for _, p in sig.parameters.items()):
         raise ValueError(
             f"custom_op(..., manual_schema)(func): positional-only args, "
             f"varargs, and kwargs are not supported. Please rewrite `func` "
@@ -565,7 +569,8 @@ def validate_function_matches_schema(
 
     if (
         any(
-            p.annotation is not inspect.Parameter.empty for p in sig.parameters.values()
+            p.annotation is not inspect.Parameter.empty
+            for _, p in sig.parameters.items()
         )
         or sig.return_annotation is not inspect.Signature.empty
     ):

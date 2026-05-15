@@ -1,10 +1,11 @@
+from __future__ import annotations
 """Functional interface."""
 
 import importlib
 import math
 import warnings
-from collections.abc import Callable
-from typing import Any as _Any, Optional, TYPE_CHECKING
+
+from typing import Any, Any as _Any, Callable, List, Optional, Set, TYPE_CHECKING, Tuple, Type, Union, cast, overload
 
 import torch
 from torch import _VF, sym_int as _sym_int, Tensor
@@ -441,8 +442,8 @@ def fractional_max_pool2d_with_indices(
     output_size: Optional[BroadcastingList2[int]] = None,  # noqa: UP045
     output_ratio: Optional[BroadcastingList2[float]] = None,  # noqa: UP045
     return_indices: bool = False,
-    _random_samples: Tensor | None = None,
-) -> tuple[Tensor, Tensor]:
+    _random_samples: Optional[Tensor] = None,
+) -> Tuple[Tensor, Tensor]:
     r"""
     fractional_max_pool2d(input, kernel_size, output_size=None, output_ratio=None, return_indices=False, _random_samples=None)
 
@@ -519,7 +520,7 @@ def _fractional_max_pool2d(
     output_size: Optional[BroadcastingList2[int]] = None,  # noqa: UP045
     output_ratio: Optional[BroadcastingList2[float]] = None,  # noqa: UP045
     return_indices: bool = False,
-    _random_samples: Tensor | None = None,
+    _random_samples: Optional[Tensor] = None,
 ) -> Tensor:
     if has_torch_function_variadic(input, _random_samples):
         return handle_torch_function(
@@ -554,8 +555,8 @@ def fractional_max_pool3d_with_indices(
     output_size: Optional[BroadcastingList3[int]] = None,  # noqa: UP045
     output_ratio: Optional[BroadcastingList3[float]] = None,  # noqa: UP045
     return_indices: bool = False,
-    _random_samples: Tensor | None = None,
-) -> tuple[Tensor, Tensor]:
+    _random_samples: Optional[Tensor] = None,
+) -> Tuple[Tensor, Tensor]:
     r"""
     fractional_max_pool3d(input, kernel_size, output_size=None, output_ratio=None, return_indices=False, _random_samples=None)
 
@@ -636,7 +637,7 @@ def _fractional_max_pool3d(
     output_size: Optional[BroadcastingList3[int]] = None,  # noqa: UP045
     output_ratio: Optional[BroadcastingList3[float]] = None,  # noqa: UP045
     return_indices: bool = False,
-    _random_samples: Tensor | None = None,
+    _random_samples: Optional[Tensor] = None,
 ) -> Tensor:
     if has_torch_function_variadic(input, _random_samples):
         return handle_torch_function(
@@ -673,7 +674,7 @@ def max_pool1d_with_indices(
     dilation: BroadcastingList1[int] = 1,
     ceil_mode: bool = False,
     return_indices: bool = False,
-) -> tuple[Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor]:
     r"""
     max_pool1d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False, return_indices=False)
 
@@ -712,7 +713,7 @@ def max_pool1d_with_indices(
             return_indices=return_indices,
         )
     if stride is None:
-        stride = torch.jit.annotate(list[int], [])
+        stride = torch.jit.annotate(List[int], [])
     return torch.max_pool1d_with_indices(
         input, kernel_size, stride, padding, dilation, ceil_mode
     )
@@ -740,7 +741,7 @@ def _max_pool1d(
             return_indices=return_indices,
         )
     if stride is None:
-        stride = torch.jit.annotate(list[int], [])
+        stride = torch.jit.annotate(List[int], [])
     return torch.max_pool1d(input, kernel_size, stride, padding, dilation, ceil_mode)
 
 
@@ -763,7 +764,7 @@ def max_pool2d_with_indices(
     dilation: BroadcastingList2[int] = 1,
     ceil_mode: bool = False,
     return_indices: bool = False,
-) -> tuple[Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor]:
     r"""
     max_pool2d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False, return_indices=False)
 
@@ -802,7 +803,7 @@ def max_pool2d_with_indices(
             return_indices=return_indices,
         )
     if stride is None:
-        stride = torch.jit.annotate(list[int], [])
+        stride = torch.jit.annotate(List[int], [])
     return torch._C._nn.max_pool2d_with_indices(
         input, kernel_size, stride, padding, dilation, ceil_mode
     )
@@ -830,7 +831,7 @@ def _max_pool2d(
             return_indices=return_indices,
         )
     if stride is None:
-        stride = torch.jit.annotate(list[int], [])
+        stride = torch.jit.annotate(List[int], [])
     return torch.max_pool2d(input, kernel_size, stride, padding, dilation, ceil_mode)
 
 
@@ -853,7 +854,7 @@ def max_pool3d_with_indices(
     dilation: BroadcastingList3[int] = 1,
     ceil_mode: bool = False,
     return_indices: bool = False,
-) -> tuple[Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor]:
     r"""
     max_pool3d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False, return_indices=False)
 
@@ -892,7 +893,7 @@ def max_pool3d_with_indices(
             return_indices=return_indices,
         )
     if stride is None:
-        stride = torch.jit.annotate(list[int], [])
+        stride = torch.jit.annotate(List[int], [])
     if not torch.jit.is_scripting():
         if input.is_cuda and torch.are_deterministic_algorithms_enabled():
             return importlib.import_module(
@@ -927,7 +928,7 @@ def _max_pool3d(
             return_indices=return_indices,
         )
     if stride is None:
-        stride = torch.jit.annotate(list[int], [])
+        stride = torch.jit.annotate(List[int], [])
     return torch.max_pool3d(input, kernel_size, stride, padding, dilation, ceil_mode)
 
 
@@ -944,13 +945,13 @@ max_pool3d = boolean_dispatch(
 
 def _unpool_output_size(
     input: Tensor,
-    kernel_size: list[int],
-    stride: list[int],
-    padding: list[int],
-    output_size: list[int] | None,
-) -> list[int]:
+    kernel_size: List[int],
+    stride: List[int],
+    padding: List[int],
+    output_size: Optional[List[int]],
+) -> List[int]:
     input_size = input.size()
-    default_size = torch.jit.annotate(list[int], [])
+    default_size = torch.jit.annotate(List[int], [])
     for d in range(len(kernel_size)):
         default_size.append(
             (input_size[-len(kernel_size) + d] - 1) * stride[d]
@@ -1086,7 +1087,7 @@ def max_unpool3d(
 
 def lp_pool3d(
     input: Tensor,
-    norm_type: int | float,
+    norm_type: Union[int, float],
     kernel_size: BroadcastingList3[int],
     stride: Optional[BroadcastingList3[int]] = None,  # noqa: UP045
     ceil_mode: bool = False,
@@ -1127,7 +1128,7 @@ def lp_pool3d(
 
 def lp_pool2d(
     input: Tensor,
-    norm_type: int | float,
+    norm_type: Union[int, float],
     kernel_size: BroadcastingList2[int],
     stride: Optional[BroadcastingList2[int]] = None,  # noqa: UP045
     ceil_mode: bool = False,
@@ -1166,7 +1167,7 @@ def lp_pool2d(
 
 def lp_pool1d(
     input: Tensor,
-    norm_type: int | float,
+    norm_type: Union[int, float],
     kernel_size: int,
     stride: Optional[BroadcastingList1[int]] = None,  # noqa: UP045
     ceil_mode: bool = False,
@@ -1207,7 +1208,7 @@ def adaptive_max_pool1d_with_indices(
     input: Tensor,
     output_size: BroadcastingList1[int],
     return_indices: bool = False,
-) -> tuple[Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor]:
     r"""
     adaptive_max_pool1d(input, output_size, return_indices=False)
 
@@ -1262,7 +1263,7 @@ def adaptive_max_pool2d_with_indices(
     input: Tensor,
     output_size: BroadcastingList2[int],
     return_indices: bool = False,
-) -> tuple[Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor]:
     r"""adaptive_max_pool2d(input, output_size, return_indices=False)
 
     Applies a 2D adaptive max pooling over an input signal composed of
@@ -1319,7 +1320,7 @@ def adaptive_max_pool3d_with_indices(
     input: Tensor,
     output_size: BroadcastingList3[int],
     return_indices: bool = False,
-) -> tuple[Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor]:
     r"""
     adaptive_max_pool3d(input, output_size, return_indices=False)
 
@@ -2094,9 +2095,9 @@ def _get_softmax_dim(name: str, ndim: int, stacklevel: int) -> int:
 
 def softmin(
     input: Tensor,
-    dim: int | None = None,
+    dim: Optional[int] = None,
     _stacklevel: int = 3,
-    dtype: DType | None = None,
+    dtype: Optional[DType] = None,
 ) -> Tensor:
     r"""Apply a softmin function.
 
@@ -2127,9 +2128,9 @@ def softmin(
 
 def softmax(
     input: Tensor,
-    dim: int | None = None,
+    dim: Optional[int] = None,
     _stacklevel: int = 3,
-    dtype: DType | None = None,
+    dtype: Optional[DType] = None,
 ) -> Tensor:
     r"""Apply a softmax function.
 
@@ -2244,9 +2245,9 @@ def gumbel_softmax(
 
 def log_softmax(
     input: Tensor,
-    dim: int | None = None,
+    dim: Optional[int] = None,
     _stacklevel: int = 3,
-    dtype: DType | None = None,
+    dtype: Optional[DType] = None,
 ) -> Tensor:
     r"""Apply a softmax followed by a logarithm.
 
@@ -2454,15 +2455,15 @@ def _no_grad_embedding_renorm_(
     max_norm: float,
     norm_type: float,
     # pyrefly: ignore [bad-return]
-) -> tuple[Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor]:
     torch.embedding_renorm_(weight.detach(), input, max_norm, norm_type)
 
 
 def embedding(
     input: Tensor,
     weight: Tensor,
-    padding_idx: int | None = None,
-    max_norm: float | None = None,
+    padding_idx: Optional[int] = None,
+    max_norm: Optional[float] = None,
     norm_type: float = 2.0,
     scale_grad_by_freq: bool = False,
     sparse: bool = False,
@@ -2576,15 +2577,15 @@ def embedding(
 def embedding_bag(
     input: Tensor,
     weight: Tensor,
-    offsets: Tensor | None = None,
-    max_norm: float | None = None,
+    offsets: Optional[Tensor] = None,
+    max_norm: Optional[float] = None,
     norm_type: float = 2,
     scale_grad_by_freq: bool = False,
     mode: str = "mean",
     sparse: bool = False,
-    per_sample_weights: Tensor | None = None,
+    per_sample_weights: Optional[Tensor] = None,
     include_last_offset: bool = False,
-    padding_idx: int | None = None,
+    padding_idx: Optional[int] = None,
 ) -> Tensor:
     r"""Compute sums, means or maxes of `bags` of embeddings.
 
@@ -2795,7 +2796,7 @@ if embedding_bag.__doc__:
     embedding_bag.__doc__ = embedding_bag.__doc__.format(**reproducibility_notes)
 
 
-def _verify_batch_size(size: list[int]) -> None:
+def _verify_batch_size(size: List[int]) -> None:
     # XXX: JIT script does not support the reduce from functools, and mul op is a
     # builtin, which cannot be used as a value to a func yet, so rewrite this size
     # check to a simple equivalent for loop
@@ -2816,10 +2817,10 @@ def _verify_batch_size(size: list[int]) -> None:
 
 def batch_norm(
     input: Tensor,
-    running_mean: Tensor | None,
-    running_var: Tensor | None,
-    weight: Tensor | None = None,
-    bias: Tensor | None = None,
+    running_mean: Optional[Tensor],
+    running_var: Optional[Tensor],
+    weight: Optional[Tensor] = None,
+    bias: Optional[Tensor] = None,
     training: bool = False,
     momentum: float = 0.1,
     eps: float = 1e-5,
@@ -2866,7 +2867,7 @@ def batch_norm(
     )
 
 
-def _verify_spatial_size(size: list[int]) -> None:
+def _verify_spatial_size(size: List[int]) -> None:
     # Verify that there is > 1 spatial element for instance norm calculation.
     size_prods = 1
     for i in range(2, len(size)):
@@ -2879,10 +2880,10 @@ def _verify_spatial_size(size: list[int]) -> None:
 
 def instance_norm(
     input: Tensor,
-    running_mean: Tensor | None = None,
-    running_var: Tensor | None = None,
-    weight: Tensor | None = None,
-    bias: Tensor | None = None,
+    running_mean: Optional[Tensor] = None,
+    running_var: Optional[Tensor] = None,
+    weight: Optional[Tensor] = None,
+    bias: Optional[Tensor] = None,
     use_input_stats: bool = True,
     momentum: float = 0.1,
     eps: float = 1e-5,
@@ -2923,9 +2924,9 @@ def instance_norm(
 
 def layer_norm(
     input: Tensor,
-    normalized_shape: list[int],
-    weight: Tensor | None = None,
-    bias: Tensor | None = None,
+    normalized_shape: List[int],
+    weight: Optional[Tensor] = None,
+    bias: Optional[Tensor] = None,
     eps: float = 1e-5,
 ) -> Tensor:
     r"""Apply Layer Normalization for last certain number of dimensions.
@@ -2949,9 +2950,9 @@ def layer_norm(
 
 def rms_norm(
     input: Tensor,
-    normalized_shape: list[int],
-    weight: Tensor | None = None,
-    eps: float | None = None,
+    normalized_shape: List[int],
+    weight: Optional[Tensor] = None,
+    eps: Optional[float] = None,
 ) -> Tensor:
     r"""Apply Root Mean Square Layer Normalization.
 
@@ -2967,8 +2968,8 @@ def rms_norm(
 def group_norm(
     input: Tensor,
     num_groups: int,
-    weight: Tensor | None = None,
-    bias: Tensor | None = None,
+    weight: Optional[Tensor] = None,
+    bias: Optional[Tensor] = None,
     eps: float = 1e-5,
 ) -> Tensor:
     r"""Apply Group Normalization for last certain number of dimensions.
@@ -3132,10 +3133,10 @@ if ctc_loss.__doc__:
 def nll_loss(
     input: Tensor,
     target: Tensor,
-    weight: Tensor | None = None,
-    size_average: bool | None = None,
+    weight: Optional[Tensor] = None,
+    size_average: Optional[bool] = None,
     ignore_index: int = -100,
-    reduce: bool | None = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
 ) -> Tensor:
     r"""Compute the negative log likelihood loss.
@@ -3201,9 +3202,9 @@ def poisson_nll_loss(
     target: Tensor,
     log_input: bool = True,
     full: bool = False,
-    size_average: bool | None = None,
+    size_average: Optional[bool] = None,
     eps: float = 1e-8,
-    reduce: bool | None = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
 ) -> Tensor:
     r"""Compute the Poisson negative log likelihood loss.
@@ -3259,7 +3260,7 @@ def poisson_nll_loss(
 def gaussian_nll_loss(
     input: Tensor,
     target: Tensor,
-    var: Tensor | float,
+    var: Union[Tensor, float],
     full: bool = False,
     eps: float = 1e-6,
     reduction: str = "mean",
@@ -3353,8 +3354,8 @@ def gaussian_nll_loss(
 def kl_div(
     input: Tensor,
     target: Tensor,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
     log_target: bool = False,
 ) -> Tensor:
@@ -3430,10 +3431,10 @@ def kl_div(
 def cross_entropy(
     input: Tensor,
     target: Tensor,
-    weight: Tensor | None = None,
-    size_average: bool | None = None,
+    weight: Optional[Tensor] = None,
+    size_average: Optional[bool] = None,
     ignore_index: int = -100,
-    reduce: bool | None = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
     label_smoothing: float = 0.0,
 ) -> Tensor:
@@ -3524,9 +3525,9 @@ def cross_entropy(
 def binary_cross_entropy(
     input: Tensor,
     target: Tensor,
-    weight: Tensor | None = None,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    weight: Optional[Tensor] = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
 ) -> Tensor:
     r"""Compute Binary Cross Entropy between the target and input probabilities.
@@ -3586,11 +3587,11 @@ def binary_cross_entropy(
 def binary_cross_entropy_with_logits(
     input: Tensor,
     target: Tensor,
-    weight: Tensor | None = None,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    weight: Optional[Tensor] = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
-    pos_weight: Tensor | None = None,
+    pos_weight: Optional[Tensor] = None,
 ) -> Tensor:
     r"""Compute Binary Cross Entropy between target and input logits.
 
@@ -3658,9 +3659,9 @@ def linear_cross_entropy(
     linear_weight: Tensor,
     target: Tensor,
     *,
-    weight: Tensor | None = None,
+    weight: Optional[Tensor] = None,
     reduction: str = "mean",
-    ignore_index: int | None = None,
+    ignore_index: Optional[int] = None,
     label_smoothing: float = 0.0,
 ) -> Tensor:
     r"""Compute the cross entropy loss between inputs, transformed linearly, and target.
@@ -3808,8 +3809,8 @@ def linear_cross_entropy(
 def smooth_l1_loss(
     input: Tensor,
     target: Tensor,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
     beta: float = 1.0,
 ) -> Tensor:
@@ -3881,7 +3882,7 @@ def huber_loss(
     target: Tensor,
     reduction: str = "mean",
     delta: float = 1.0,
-    weight: Tensor | None = None,
+    weight: Optional[Tensor] = None,
 ) -> Tensor:
     r"""Compute the Huber loss, with optional weighting.
 
@@ -3967,10 +3968,10 @@ def huber_loss(
 def l1_loss(
     input: Tensor,
     target: Tensor,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
-    weight: Tensor | None = None,
+    weight: Optional[Tensor] = None,
 ) -> Tensor:
     r"""Compute the L1 loss, with optional weighting.
 
@@ -4043,10 +4044,10 @@ def l1_loss(
 def mse_loss(
     input: Tensor,
     target: Tensor,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
-    weight: Tensor | None = None,
+    weight: Optional[Tensor] = None,
 ) -> Tensor:
     r"""Compute the element-wise mean squared error, with optional weighting.
 
@@ -4123,8 +4124,8 @@ def margin_ranking_loss(
     input2: Tensor,
     target: Tensor,
     margin: float = 0,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
 ) -> Tensor:
     r"""Compute the margin ranking loss.
@@ -4173,8 +4174,8 @@ def hinge_embedding_loss(
     input: Tensor,
     target: Tensor,
     margin: float = 1.0,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
 ) -> Tensor:
     r"""Compute the hinge embedding loss.
@@ -4216,8 +4217,8 @@ def hinge_embedding_loss(
 def multilabel_margin_loss(
     input: Tensor,
     target: Tensor,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
 ) -> Tensor:
     r"""Compute the multilabel margin loss.
@@ -4258,8 +4259,8 @@ def multilabel_margin_loss(
 def soft_margin_loss(
     input: Tensor,
     target: Tensor,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
 ) -> Tensor:
     r"""Compute the soft margin loss.
@@ -4300,9 +4301,9 @@ def soft_margin_loss(
 def multilabel_soft_margin_loss(
     input: Tensor,
     target: Tensor,
-    weight: Tensor | None = None,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    weight: Optional[Tensor] = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
 ) -> Tensor:
     r"""Compute the multilabel soft margin loss.
@@ -4362,8 +4363,8 @@ def cosine_embedding_loss(
     input2: Tensor,
     target: Tensor,
     margin: float = 0,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
 ) -> Tensor:
     r"""Compute the cosine embedding loss.
@@ -4409,9 +4410,9 @@ def multi_margin_loss(
     target: Tensor,
     p: int = 1,
     margin: float = 1.0,
-    weight: Tensor | None = None,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    weight: Optional[Tensor] = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
 ) -> Tensor:
     r"""Compute the multi margin loss, with optional weighting.
@@ -4606,10 +4607,10 @@ Examples::
 @_overload
 def upsample(
     input: Tensor,
-    size: int | None = None,
-    scale_factor: float | None = None,
+    size: Optional[int] = None,
+    scale_factor: Optional[float] = None,
     mode: str = "nearest",
-    align_corners: bool | None = None,
+    align_corners: Optional[bool] = None,
     # pyrefly: ignore [bad-return]
 ) -> Tensor:
     pass
@@ -4618,10 +4619,10 @@ def upsample(
 @_overload
 def upsample(  # noqa: F811
     input: Tensor,
-    size: list[int] | None = None,
-    scale_factor: float | None = None,
+    size: Optional[List[int]] = None,
+    scale_factor: Optional[float] = None,
     mode: str = "nearest",
-    align_corners: bool | None = None,
+    align_corners: Optional[bool] = None,
     # pyrefly: ignore [bad-return]
 ) -> Tensor:
     pass
@@ -4719,11 +4720,11 @@ def _is_integer(x) -> bool:
 @_overload
 def interpolate(
     input: Tensor,
-    size: int | None = None,
-    scale_factor: list[float] | None = None,
+    size: Optional[int] = None,
+    scale_factor: Optional[List[float]] = None,
     mode: str = "nearest",
-    align_corners: bool | None = None,
-    recompute_scale_factor: bool | None = None,
+    align_corners: Optional[bool] = None,
+    recompute_scale_factor: Optional[bool] = None,
     antialias: bool = False,
     # pyrefly: ignore [bad-return]
 ) -> Tensor:
@@ -4733,11 +4734,11 @@ def interpolate(
 @_overload
 def interpolate(  # noqa: F811
     input: Tensor,
-    size: list[int] | None = None,
-    scale_factor: list[float] | None = None,
+    size: Optional[List[int]] = None,
+    scale_factor: Optional[List[float]] = None,
     mode: str = "nearest",
-    align_corners: bool | None = None,
-    recompute_scale_factor: bool | None = None,
+    align_corners: Optional[bool] = None,
+    recompute_scale_factor: Optional[bool] = None,
     antialias: bool = False,
     # pyrefly: ignore [bad-return]
 ) -> Tensor:
@@ -4747,11 +4748,11 @@ def interpolate(  # noqa: F811
 @_overload
 def interpolate(  # noqa: F811
     input: Tensor,
-    size: int | None = None,
-    scale_factor: float | None = None,
+    size: Optional[int] = None,
+    scale_factor: Optional[float] = None,
     mode: str = "nearest",
-    align_corners: bool | None = None,
-    recompute_scale_factor: bool | None = None,
+    align_corners: Optional[bool] = None,
+    recompute_scale_factor: Optional[bool] = None,
     antialias: bool = False,
     # pyrefly: ignore [bad-return]
 ) -> Tensor:
@@ -4761,11 +4762,11 @@ def interpolate(  # noqa: F811
 @_overload
 def interpolate(  # noqa: F811
     input: Tensor,
-    size: list[int] | None = None,
-    scale_factor: float | None = None,
+    size: Optional[List[int]] = None,
+    scale_factor: Optional[float] = None,
     mode: str = "nearest",
-    align_corners: bool | None = None,
-    recompute_scale_factor: bool | None = None,
+    align_corners: Optional[bool] = None,
+    recompute_scale_factor: Optional[bool] = None,
     antialias: bool = False,
     # pyrefly: ignore [bad-return]
 ) -> Tensor:
@@ -4774,11 +4775,11 @@ def interpolate(  # noqa: F811
 
 def interpolate(  # noqa: F811
     input: Tensor,
-    size: int | None = None,
-    scale_factor: list[float] | None = None,
+    size: Optional[int] = None,
+    scale_factor: Optional[List[float]] = None,
     mode: str = "nearest",
-    align_corners: bool | None = None,
-    recompute_scale_factor: bool | None = None,
+    align_corners: Optional[bool] = None,
+    recompute_scale_factor: Optional[bool] = None,
     antialias: bool = False,
 ) -> Tensor:
     r"""Down/up samples the input.
@@ -4815,9 +4816,8 @@ def interpolate(  # noqa: F811
             for out-of-boundary values, making this operation *independent* of input size
             when :attr:`scale_factor` is kept the same. This only has an effect when :attr:`mode`
             is ``'linear'``, ``'bilinear'``, ``'bicubic'`` or ``'trilinear'``.
-            Default: ``None``. ``None`` leaves :attr:`align_corners` unset for modes
-            that do not use it. For modes that use :attr:`align_corners`, ``None``
-            is treated as ``False``.
+            Default: ``None``. When ``None`` and :attr:`mode` is one of the linear modes,
+            it is treated as ``False``.
         recompute_scale_factor (bool, optional): recompute the scale_factor for use in the
             interpolation calculation. If `recompute_scale_factor` is ``True``, then
             `scale_factor` must be passed in and `scale_factor` is used to compute the
@@ -4873,7 +4873,7 @@ def interpolate(  # noqa: F811
         if align_corners is not None:
             raise ValueError(
                 "align_corners option can only be set with the "
-                "interpolating modes: linear | bilinear | bicubic | trilinear"
+                "interpolating modes: Union[Union[linear, bilinear], Union[bicubic, trilinear]]"
             )
     else:
         if align_corners is None:
@@ -5119,7 +5119,7 @@ def interpolate(  # noqa: F811
 
     raise NotImplementedError(
         "Input Error: Only 3D, 4D and 5D input Tensors supported"
-        f" (got {input.dim()}D) for the modes: nearest | linear | bilinear | bicubic | trilinear | lanczos | area | nearest-exact"
+        f" (got {input.dim()}D) for the modes: Union[Union[nearest, linear], Union[bilinear, bicubic]] | Union[Union[trilinear, lanczos], Union[area, nearest]]-exact"
         f" (got {mode})"
     )
 
@@ -5131,8 +5131,8 @@ if interpolate.__doc__:
 @_overload
 def upsample_nearest(
     input: Tensor,
-    size: int | None = None,
-    scale_factor: float | None = None,
+    size: Optional[int] = None,
+    scale_factor: Optional[float] = None,
     # pyrefly: ignore [bad-return]
 ) -> Tensor:
     pass
@@ -5141,8 +5141,8 @@ def upsample_nearest(
 @_overload
 def upsample_nearest(  # noqa: F811
     input: Tensor,
-    size: list[int] | None = None,
-    scale_factor: float | None = None,
+    size: Optional[List[int]] = None,
+    scale_factor: Optional[float] = None,
     # pyrefly: ignore [bad-return]
 ) -> Tensor:
     pass
@@ -5183,8 +5183,8 @@ if upsample_nearest.__doc__:
 @_overload
 def upsample_bilinear(
     input: Tensor,
-    size: int | None = None,
-    scale_factor: float | None = None,
+    size: Optional[int] = None,
+    scale_factor: Optional[float] = None,
     # pyrefly: ignore [bad-return]
 ) -> Tensor:
     pass
@@ -5193,8 +5193,8 @@ def upsample_bilinear(
 @_overload
 def upsample_bilinear(  # noqa: F811
     input: Tensor,
-    size: list[int] | None = None,
-    scale_factor: float | None = None,
+    size: Optional[List[int]] = None,
+    scale_factor: Optional[float] = None,
     # pyrefly: ignore [bad-return]
 ) -> Tensor:
     pass
@@ -5203,8 +5203,8 @@ def upsample_bilinear(  # noqa: F811
 @_overload
 def upsample_bilinear(  # noqa: F811
     input: Tensor,
-    size: int | None = None,
-    scale_factor: list[float] | None = None,
+    size: Optional[int] = None,
+    scale_factor: Optional[List[float]] = None,
     # pyrefly: ignore [bad-return]
 ) -> Tensor:
     pass
@@ -5213,8 +5213,8 @@ def upsample_bilinear(  # noqa: F811
 @_overload
 def upsample_bilinear(  # noqa: F811
     input: Tensor,
-    size: list[int] | None = None,
-    scale_factor: list[float] | None = None,
+    size: Optional[List[int]] = None,
+    scale_factor: Optional[List[float]] = None,
     # pyrefly: ignore [bad-return]
 ) -> Tensor:
     pass
@@ -5271,7 +5271,7 @@ def grid_sample(
     grid: Tensor,
     mode: str = "bilinear",
     padding_mode: str = "zeros",
-    align_corners: bool | None = None,
+    align_corners: Optional[bool] = None,
 ) -> Tensor:
     r"""Compute grid sample.
 
@@ -5428,8 +5428,8 @@ def grid_sample(
 
 def affine_grid(
     theta: Tensor,
-    size: list[int],
-    align_corners: bool | None = None,
+    size: List[int],
+    align_corners: Optional[bool] = None,
 ) -> Tensor:
     r"""Generate 2D or 3D flow field (sampling grid), given a batch of affine matrices :attr:`theta`.
 
@@ -5532,9 +5532,9 @@ def affine_grid(
 
 def pad(
     input: Tensor,
-    pad: list[int],
+    pad: List[int],
     mode: str = "constant",
-    value: float | None = None,
+    value: Optional[float] = None,
 ) -> Tensor:
     r"""
     pad(input, pad, mode="constant", value=None) -> Tensor
@@ -5754,8 +5754,8 @@ def triplet_margin_loss(
     p: float = 2,
     eps: float = 1e-6,
     swap: bool = False,
-    size_average: bool | None = None,
-    reduce: bool | None = None,
+    size_average: Optional[bool] = None,
+    reduce: Optional[bool] = None,
     reduction: str = "mean",
 ) -> Tensor:
     r"""Compute the triplet loss between given input tensors and a margin greater than 0.
@@ -5870,7 +5870,7 @@ def normalize(
     p: float = 2.0,
     dim: int = 1,
     eps: float = 1e-12,
-    out: Tensor | None = None,
+    out: Optional[Tensor] = None,
 ) -> Tensor:
     r"""Perform :math:`L_p` normalization of inputs over specified dimension.
 
@@ -5902,7 +5902,7 @@ def normalize(
         return torch.div(input, denom, out=out)
 
 
-def assert_int_or_pair(arg: list[int], arg_name: str, message: str) -> None:
+def assert_int_or_pair(arg: List[int], arg_name: str, message: str) -> None:
     if not (isinstance(arg, int) or len(arg) == 2):
         raise AssertionError(message.format(arg_name))
 
@@ -5991,8 +5991,8 @@ def _in_projection_packed(
     k: Tensor,
     v: Tensor,
     w: Tensor,
-    b: Tensor | None = None,
-) -> list[Tensor]:
+    b: Optional[Tensor] = None,
+) -> List[Tensor]:
     r"""Perform the in-projection step of the attention operation, using packed weights.
 
     Output is a triple containing projection tensors for query, key and value.
@@ -6071,10 +6071,10 @@ def _in_projection(
     w_q: Tensor,
     w_k: Tensor,
     w_v: Tensor,
-    b_q: Tensor | None = None,
-    b_k: Tensor | None = None,
-    b_v: Tensor | None = None,
-) -> tuple[Tensor, Tensor, Tensor]:
+    b_q: Optional[Tensor] = None,
+    b_k: Optional[Tensor] = None,
+    b_v: Optional[Tensor] = None,
+) -> Tuple[Tensor, Tensor, Tensor]:
     r"""Perform the in-projection step of the attention operation.
 
     This is simply a triple of linear projections,
@@ -6315,8 +6315,8 @@ def _mha_shape_check(
     query: Tensor,
     key: Tensor,
     value: Tensor,
-    key_padding_mask: Tensor | None,
-    attn_mask: Tensor | None,
+    key_padding_mask: Optional[Tensor],
+    attn_mask: Optional[Tensor],
     num_heads: int,
 ):
     # Verifies the expected shape for `query, `key`, `value`, `key_padding_mask` and `attn_mask`
@@ -6381,13 +6381,13 @@ def _mha_shape_check(
 
 
 def _canonical_mask(
-    mask: Tensor | None,
+    mask: Optional[Tensor],
     mask_name: str,
-    other_type: DType | None,
+    other_type: Optional[DType],
     other_name: str,
     target_type: DType,
     check_other: bool = True,
-) -> Tensor | None:
+) -> Optional[Tensor]:
     if mask is not None:
         _mask_dtype = mask.dtype
         _mask_is_float = torch.is_floating_point(mask)
@@ -6409,7 +6409,7 @@ def _canonical_mask(
     return mask
 
 
-def _none_or_dtype(input: Tensor | None) -> DType | None:
+def _none_or_dtype(input: Optional[Tensor]) -> Optional[DType]:
     if input is None:
         return None
     elif isinstance(input, torch.Tensor):
@@ -6438,27 +6438,27 @@ def multi_head_attention_forward(
     value: Tensor,
     embed_dim_to_check: int,
     num_heads: int,
-    in_proj_weight: Tensor | None,
-    in_proj_bias: Tensor | None,
-    bias_k: Tensor | None,
-    bias_v: Tensor | None,
+    in_proj_weight: Optional[Tensor],
+    in_proj_bias: Optional[Tensor],
+    bias_k: Optional[Tensor],
+    bias_v: Optional[Tensor],
     add_zero_attn: bool,
     dropout_p: float,
     out_proj_weight: Tensor,
-    out_proj_bias: Tensor | None,
+    out_proj_bias: Optional[Tensor],
     training: bool = True,
-    key_padding_mask: Tensor | None = None,
+    key_padding_mask: Optional[Tensor] = None,
     need_weights: bool = True,
-    attn_mask: Tensor | None = None,
+    attn_mask: Optional[Tensor] = None,
     use_separate_proj_weight: bool = False,
-    q_proj_weight: Tensor | None = None,
-    k_proj_weight: Tensor | None = None,
-    v_proj_weight: Tensor | None = None,
-    static_k: Tensor | None = None,
-    static_v: Tensor | None = None,
+    q_proj_weight: Optional[Tensor] = None,
+    k_proj_weight: Optional[Tensor] = None,
+    v_proj_weight: Optional[Tensor] = None,
+    static_k: Optional[Tensor] = None,
+    static_v: Optional[Tensor] = None,
     average_attn_weights: bool = True,
     is_causal: bool = False,
-) -> tuple[Tensor, Tensor | None]:
+) -> Tuple[Tensor, Optional[Tensor]]:
     r"""Forward method for MultiHeadAttention.
 
     See :class:`torch.nn.MultiheadAttention` for details.
@@ -6899,9 +6899,9 @@ def grouped_mm(
     mat_a: Tensor,
     mat_b: Tensor,
     *,
-    offs: Tensor | None = None,
-    bias: Tensor | None = None,
-    out_dtype: torch.dtype | None = None,
+    offs: Optional[Tensor] = None,
+    bias: Optional[Tensor] = None,
+    out_dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
     r"""
     grouped_mm(mat_a, mat_b, *, offs=None, bias=None, out_dtype=None)
@@ -6941,42 +6941,18 @@ def grouped_mm(
     return torch._grouped_mm(mat_a, mat_b, offs=offs, bias=bias, out_dtype=out_dtype)
 
 
-def _expand_single_value(v: _Any | list[_Any] | None) -> list[_Any]:
-    if v is None:
-        return []
-    elif not isinstance(v, list):
-        return [v]
-    else:
-        return v
-
-
-def _list_or_empty(l: list[_Any] | None) -> list[_Any]:
-    """Convert None to a list for native_functions list arguments.
-
-    native_functions cannot pass std::optional<ArrayRef<T>>, but can pass an
-    empty vector, so None arguments for lists must be converted explicitly.
-    """
-    return l if l else []
-
-
-def _enum_list_as_int_list(l: _Any | list[_Any]) -> list[_Any]:
-    if not isinstance(l, list):
-        l = [l]
-    return [li.value for li in l]
-
-
 def scaled_mm(
     mat_a: Tensor,
     mat_b: Tensor,
-    scale_a: Tensor | list[Tensor],
-    scale_recipe_a: ScalingType | list[ScalingType],
-    scale_b: Tensor | list[Tensor],
-    scale_recipe_b: ScalingType | list[ScalingType],
-    swizzle_a: SwizzleType | list[SwizzleType] | None = None,
-    swizzle_b: SwizzleType | list[SwizzleType] | None = None,
-    bias: Tensor | None = None,
-    output_dtype: torch.dtype | None = torch.bfloat16,
-    contraction_dim: list[int] | tuple[int, ...] = (),
+    scale_a: Union[Tensor, List[Tensor]],
+    scale_recipe_a: Union[ScalingType, List[ScalingType]],
+    scale_b: Union[Tensor, List[Tensor]],
+    scale_recipe_b: Union[ScalingType, List[ScalingType]],
+    swizzle_a: Union[SwizzleType, List[SwizzleType]] | None = None,
+    swizzle_b: Union[SwizzleType, List[SwizzleType]] | None = None,
+    bias: Optional[Tensor] = None,
+    output_dtype: Optional[torch.dtype] = torch.bfloat16,
+    contraction_dim: Union[List[int], Tuple[int, ...]] = (),
     use_fast_accum: bool = False,
 ) -> Tensor:
     r"""
@@ -6999,22 +6975,47 @@ def scaled_mm(
         use_fast_accum: enable/disable tensor-core fast accumulation (Hopper-GPUs only)
     """
 
-    scale_a = _expand_single_value(scale_a)
-    scale_recipe_a = _expand_single_value(scale_recipe_a)
-    scale_b = _expand_single_value(scale_b)
-    scale_recipe_b = _expand_single_value(scale_recipe_b)
-    swizzle_a = _expand_single_value(swizzle_a)
-    swizzle_b = _expand_single_value(swizzle_b)
+    def expand_single_value(v: Union[_Any, List[_Any]] | None) -> List[_Any]:
+        if v is None:
+            return []
+        elif not isinstance(v, (list)):
+            return [
+                v,
+            ]
+        else:
+            return v
+
+    scale_a = expand_single_value(scale_a)
+    scale_recipe_a = expand_single_value(scale_recipe_a)
+    scale_b = expand_single_value(scale_b)
+    scale_recipe_b = expand_single_value(scale_recipe_b)
+    swizzle_a = expand_single_value(swizzle_a)
+    swizzle_b = expand_single_value(swizzle_b)
+
+    # native_functions has restrictions on what can be defined
+    # & passed through - std::optional<ArrayRef<Tensor>> for instance
+    # *cannot* be passed, but an empty vector (list) can.
+    # So, we need to convert None arguments for lists in python
+    # explicitly into empty lists.
+    def list_or_empty(l: Optional[List[_Any]]) -> List[_Any]:
+        return l if l else []
+
+    def enum_list_as_int_list(l: Union[_Any, List[_Any]]) -> List[_Any]:
+        if not isinstance(l, list):
+            l = [
+                l,
+            ]
+        return [li.value for li in l]
 
     out = torch._scaled_mm_v2(
         mat_a,
         mat_b,
         scale_a,
-        _enum_list_as_int_list(scale_recipe_a),
-        _enum_list_as_int_list(_list_or_empty(swizzle_a)),
+        enum_list_as_int_list(scale_recipe_a),
+        enum_list_as_int_list(list_or_empty(swizzle_a)),
         scale_b,
-        _enum_list_as_int_list(scale_recipe_b),
-        _enum_list_as_int_list(_list_or_empty(swizzle_b)),
+        enum_list_as_int_list(scale_recipe_b),
+        enum_list_as_int_list(list_or_empty(swizzle_b)),
         bias,
         output_dtype,
         contraction_dim,
@@ -7027,16 +7028,16 @@ def scaled_mm(
 def scaled_grouped_mm(
     mat_a: Tensor,
     mat_b: Tensor,
-    scale_a: Tensor | list[Tensor],
-    scale_recipe_a: ScalingType | list[ScalingType],
-    scale_b: Tensor | list[Tensor],
-    scale_recipe_b: ScalingType | list[ScalingType],
-    swizzle_a: SwizzleType | list[SwizzleType] | None = None,
-    swizzle_b: SwizzleType | list[SwizzleType] | None = None,
-    bias: Tensor | None = None,
-    offs: Tensor | None = None,
-    output_dtype: torch.dtype | None = torch.bfloat16,
-    contraction_dim: list[int] | tuple[int, ...] = (),
+    scale_a: Union[Tensor, List[Tensor]],
+    scale_recipe_a: Union[ScalingType, List[ScalingType]],
+    scale_b: Union[Tensor, List[Tensor]],
+    scale_recipe_b: Union[ScalingType, List[ScalingType]],
+    swizzle_a: Union[SwizzleType, List[SwizzleType]] | None = None,
+    swizzle_b: Union[SwizzleType, List[SwizzleType]] | None = None,
+    bias: Optional[Tensor] = None,
+    offs: Optional[Tensor] = None,
+    output_dtype: Optional[torch.dtype] = torch.bfloat16,
+    contraction_dim: Union[List[int], Tuple[int, ...]] = (),
     use_fast_accum: bool = False,
 ) -> Tensor:
     r"""
@@ -7060,22 +7061,47 @@ def scaled_grouped_mm(
         use_fast_accum: enable/disable tensor-core fast accumulation (Hopper-GPUs only)
     """
 
-    scale_a = _expand_single_value(scale_a)
-    scale_recipe_a = _expand_single_value(scale_recipe_a)
-    scale_b = _expand_single_value(scale_b)
-    scale_recipe_b = _expand_single_value(scale_recipe_b)
-    swizzle_a = _expand_single_value(swizzle_a)
-    swizzle_b = _expand_single_value(swizzle_b)
+    def expand_single_value(v: Union[_Any, List[_Any]] | None) -> List[_Any]:
+        if v is None:
+            return []
+        elif not isinstance(v, (list)):
+            return [
+                v,
+            ]
+        else:
+            return v
+
+    scale_a = expand_single_value(scale_a)
+    scale_recipe_a = expand_single_value(scale_recipe_a)
+    scale_b = expand_single_value(scale_b)
+    scale_recipe_b = expand_single_value(scale_recipe_b)
+    swizzle_a = expand_single_value(swizzle_a)
+    swizzle_b = expand_single_value(swizzle_b)
+
+    # native_functions has restrictions on what can be defined
+    # & passed through - std::optional<ArrayRef<Tensor>> for instance
+    # *cannot* be passed, but an empty vector (list) can.
+    # So, we need to convert None arguments for lists in python
+    # explicitly into empty lists.
+    def list_or_empty(l: Optional[List[_Any]]) -> List[_Any]:
+        return l if l else []
+
+    def enum_list_as_int_list(l: Union[_Any, List[_Any]]) -> List[_Any]:
+        if not isinstance(l, list):
+            l = [
+                l,
+            ]
+        return [li.value for li in l]
 
     out = torch._scaled_grouped_mm_v2(
         mat_a,
         mat_b,
         scale_a,
-        _enum_list_as_int_list(scale_recipe_a),
-        _enum_list_as_int_list(_list_or_empty(swizzle_a)),
+        enum_list_as_int_list(scale_recipe_a),
+        enum_list_as_int_list(list_or_empty(swizzle_a)),
         scale_b,
-        _enum_list_as_int_list(scale_recipe_b),
-        _enum_list_as_int_list(_list_or_empty(swizzle_b)),
+        enum_list_as_int_list(scale_recipe_b),
+        enum_list_as_int_list(list_or_empty(swizzle_b)),
         offs,
         bias,
         output_dtype,

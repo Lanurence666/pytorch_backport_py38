@@ -1,17 +1,20 @@
 # this file contains the `_LoadBalancer` class and its family of implementation
 # for different load-balancing strategies in tensor sharding.
+from __future__ import annotations
+
 import functools
 from abc import ABC, abstractmethod
 
 import torch
 from torch import Tensor
 from torch.nn.attention.flex_attention import BlockMask
+from typing import List, Optional, Union
 
 
 # make it private since it's still a prototype
 class _LoadBalancer(ABC):
     @abstractmethod
-    def _generate_indices(self, restore: bool = False) -> Tensor | None:
+    def _generate_indices(self, restore: bool = False) -> Optional[Tensor]:
         """
         Generate indices for load balancing.
         Args:
@@ -76,7 +79,7 @@ class _LoadBalancer(ABC):
 
 
 class _HeadTailLoadBalancer(_LoadBalancer):
-    def __init__(self, seq_length: int, world_size: int, device: str | torch.device):
+    def __init__(self, seq_length: int, world_size: int, device: Union[str, torch.device]):
         self.seq_length = seq_length
         self.world_size = world_size
         self.device = device
@@ -167,9 +170,9 @@ class _HeadTailLoadBalancer(_LoadBalancer):
 class _PerDocumentHeadTailLoadBalancer(_LoadBalancer):
     def __init__(
         self,
-        seq_length_per_doc: list[list[int]],
+        seq_length_per_doc: List[List[int]],
         world_size: int,
-        device: str | torch.device,
+        device: Union[str, torch.device,]
     ):
         """
         `seq_length_per_doc` has size (B, seq_len) if the load-balancing should vary
@@ -321,8 +324,8 @@ class _PTRRLoadBalancer(_LoadBalancer):
             the number of groups
 
         Returns:
-        tasks_in_group (list[list[int]]):
-            A collection of list[int] and each list should have size `n // group_size`
+        tasks_in_group (List[List[int]]):
+            A collection of List[int] and each list should have size `n // group_size`
             (`group_size` lists in total). Each element is an index in the input
             `process_time` (i.e. [0, len(process_time) - 1]).
 
@@ -468,8 +471,8 @@ class _PTRRLoadBalancer(_LoadBalancer):
 
 
 def _create_default_load_balancer(
-    seq_length: int, world_size: int, device: str | torch.device
-) -> _LoadBalancer | None:
+    seq_length: Union[int, world_size: int, device: str, torch.device]
+) -> Optional[_LoadBalancer]:
     from ._attention import _cp_options
 
     if _cp_options.enable_load_balance:

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import logging
 import operator
-from collections.abc import Callable
+
 from functools import partial
-from typing import Any
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, cast
 
 import sympy
 from sympy import Expr
@@ -36,7 +38,7 @@ class BoundVars:
     """
 
     def __init__(self, loop_body: LoopBody) -> None:
-        def upper_bound(v: Expr | int) -> int:
+        def upper_bound(v: Union[Expr, int]) -> int:
             return bound_sympy(v).upper if isinstance(v, Expr) else v
 
         self.loop_body = loop_body
@@ -52,7 +54,7 @@ class BoundVars:
             or "masked_subblock" in node.target
         )
         # To access this variable call `get_bounds()`
-        self._bounds: dict[torch.fx.Node, ValueRanges[Expr]] = {}
+        self._bounds: Dict[torch.fx.Node, ValueRanges[Expr]] = {}
 
     def __repr__(self) -> str:
         return (
@@ -64,7 +66,7 @@ class BoundVars:
         )
 
     @cache_on_self
-    def get_bounds(self) -> dict[torch.fx.Node, ValueRanges[Expr]]:
+    def get_bounds(self) -> Dict[torch.fx.Node, ValueRanges[Expr]]:
         submodules = self.swap_submodules(self.loop_body.submodules)
 
         # Initialize the environment with the unbounded variables
@@ -83,9 +85,9 @@ class BoundVars:
         return self._bounds
 
     def swap_submodules(
-        self, submodules: dict[str, Callable[..., Any]]
-    ) -> dict[str, Callable[..., ValueRanges[Expr]]]:
-        result: dict[str, Callable[..., ValueRanges[Expr]]] = {}
+        self, submodules: Dict[str, Callable[..., Any]]
+    ) -> Dict[str, Callable[..., ValueRanges[Expr]]]:
+        result: Dict[str, Callable[..., ValueRanges[Expr]]] = {}
         for key in submodules:
             if key == "get_index":
                 result[key] = self.get_index
@@ -120,10 +122,10 @@ class BoundVars:
     def masked_subblock(
         self,
         subblock: LoopBodyBlock,
-        env: dict[torch.fx.Node, ValueRanges[Expr]],
+        env: Dict[torch.fx.Node, ValueRanges[Expr]],
         mask: Any,
         value: Any,
-        submodules: dict[str, Callable[..., Any]],
+        submodules: Dict[str, Callable[..., Any]],
     ) -> ValueRanges[Expr]:
         interp = InterpreterShim(subblock.graph, submodules)
         interp.run(V.get_ops_handler(), initial_env=env)
@@ -167,7 +169,7 @@ class ValueRangeAnalysis(SymPyValueRangeAnalysis, DefaultHandler):
         # just assuming bools can have both values
         return ValueRanges(sympy.false, sympy.true)  # type: ignore[arg-type]
 
-    def _default(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def _default(self, name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Any:
         # many ops are unlikely to show up in optimizable indexing compute,
         # so we dont have full coverage
         return ValueRanges.unknown()
@@ -199,7 +201,7 @@ class ValueRangeAnalysis(SymPyValueRangeAnalysis, DefaultHandler):
     def to_dtype(
         x: Any,
         dtype: torch.dtype,
-        src_dtype: torch.dtype | None = None,
+        src_dtype: Optional[torch.dtype]= None,
         use_compute_types: bool = True,
     ) -> ValueRanges[Any]:
         x = ValueRanges.wrap(x)

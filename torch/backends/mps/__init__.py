@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from functools import lru_cache as _lru_cache
 from typing import Optional, TYPE_CHECKING
 
@@ -60,7 +62,7 @@ def get_core_count() -> int:
     return torch._C._mps_get_core_count()
 
 
-_lib: _Library | None = None
+_lib: Optional[_Library]= None
 
 
 def _init() -> None:
@@ -73,6 +75,6 @@ def _init() -> None:
     from torch._decomp.decompositions import native_group_norm_backward
     from torch._refs import native_group_norm
 
-    _lib = _Library("aten", "IMPL")
+    _lib = _Library("aten", "IMPL")  # noqa: TOR901
     _lib.impl("native_group_norm", native_group_norm, "MPS")
     _lib.impl("native_group_norm_backward", native_group_norm_backward, "MPS")

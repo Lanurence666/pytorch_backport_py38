@@ -1,5 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates
 
+from __future__ import annotations
+
 from torch.distributed.checkpoint.metadata import STATE_DICT_TYPE
 
 from . import _version
@@ -20,13 +22,13 @@ Change set_element to recreate the right type for tuple, OrderedDict, and NamedT
 """
 
 
-FLATTEN_MAPPING = dict[str, OBJ_PATH]
+FLATTEN_MAPPING = Dict[str, OBJ_PATH]
 
 
 # TODO: Update Docstring for nested_dict.py
 def flatten_state_dict(
     state_dict: STATE_DICT_TYPE,
-) -> tuple[STATE_DICT_TYPE, FLATTEN_MAPPING]:
+) -> Tuple[STATE_DICT_TYPE, FLATTEN_MAPPING]:
     """
     Flatten ``state_dict`` made of nested dicts and lists into a top level dictionary.
 

@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import sympy
 
@@ -25,27 +27,27 @@ class CppWrapperMps(CppWrapperGpu):
     @staticmethod
     def create(
         is_subgraph: bool,
-        subgraph_name: str | None,
-        parent_wrapper: PythonWrapperCodegen | None,
-        partition_signatures: GraphPartitionSignature | None = None,
+        subgraph_name: Optional[str],
+        parent_wrapper: Optional[PythonWrapperCodegen],
+        partition_signatures: Optional[GraphPartitionSignature] = None,
     ) -> "CppWrapperMps":
         return CppWrapperMps()
 
     def _generate_kernel_call_helper(
         self,
         kernel_name: str,
-        call_args: list[str],
+        call_args: List[str],
         *,
-        device: torch.device | None = None,
+        device: Optional[torch.device] = None,
         triton: bool = True,
-        arg_types: tuple[Any, ...] | None = None,
-        raw_keys: tuple[Any, ...] | None = None,
-        raw_args: tuple[Any, ...] | None = None,
-        triton_meta: dict[str, Any] | None = None,
-        inductor_meta: dict[str, Any] | None = None,
+        arg_types: Optional[Tuple[Any, ...]] = None,
+        raw_keys: Optional[Tuple[Any, ...]] = None,
+        raw_args: Optional[Tuple[Any, ...]] = None,
+        triton_meta: Optional[Dict[str, Any]] = None,
+        inductor_meta: Optional[Dict[str, Any]] = None,
         graph_name: str = "",
-        original_fxnode_name: str | None = None,
-        current_stream_idx: int | None = None,
+        original_fxnode_name: Optional[str] = None,
+        current_stream_idx: Optional[int] = None,
     ) -> None:
         """
         Generates MPS kernel call code. It should look something like:
@@ -188,7 +190,7 @@ class CppWrapperMps(CppWrapperGpu):
         with debug_printer_manager:
             self.write_mps_kernel_call(kernel_name, new_args)
 
-    def write_mps_kernel_call(self, name: str, call_args: list[str]) -> None:
+    def write_mps_kernel_call(self, name: str, call_args: List[str]) -> None:
         # Generate unique variable names to avoid duplicate declarations
         # when the same MPS lib is used multiple times
         unique_suffix = self._lambda_counter
@@ -219,7 +221,8 @@ class CppWrapperMps(CppWrapperGpu):
         )
 
     @staticmethod
-    def get_device_include_path_aot(device: str) -> str:
+    def get_device_include_path(device: str) -> str:
+        assert V.graph.aot_mode
         return (
             "#include <torch/csrc/inductor/aoti_include/mps.h>\n"
             "#include <torch/csrc/inductor/aoti_torch/c/shim_mps.h>"

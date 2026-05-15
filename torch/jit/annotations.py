@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import ast
 import builtins
 import dis
@@ -65,6 +67,9 @@ if torch.distributed.rpc.is_available():
     from torch._jit_internal import is_rref, RRef
 
 from torch._ops import OpOverloadPacket
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing_extensions import NamedTuple
+
 
 
 class Module:
@@ -262,7 +267,7 @@ def get_type_line(source):
 
     if len(type_lines) == 0:
         # Catch common typo patterns like extra spaces, typo in 'ignore', etc.
-        wrong_type_pattern = re.compile("#[\t ]*type[\t ]*(?!: ignore(\\[.*\\])?$):")
+        wrong_type_pattern = re.compile("#[\t ]*Type[\t ]*(?!: ignore(\\[.*\\])?$):")
         wrong_type_lines = list(
             filter(lambda line: wrong_type_pattern.search(line[1]), lines)
         )
@@ -350,7 +355,7 @@ def try_real_annotations(fn, loc):
 
 # Finds common type for enum values belonging to an Enum class. If not all
 # values have the same type, AnyType is returned.
-def get_enum_value_type(e: type[enum.Enum], loc):
+def get_enum_value_type(e: Type[enum.Enum], loc):
     enum_values: List[enum.Enum] = list(e)
     if not enum_values:
         raise ValueError(f"No enum values defined for: '{e.__class__}'")
@@ -407,7 +412,7 @@ def try_ann_to_type(ann, loc, rcb=None):
     if ann is inspect.Signature.empty:
         return TensorType.getInferred()
     if ann is None:
-        return NoneType.get()
+        return type(None).get()
     if inspect.isclass(ann) and is_tensor(ann):
         return TensorType.get()
     if is_tuple(ann):
@@ -483,7 +488,7 @@ def try_ann_to_type(ann, loc, rcb=None):
     if ann is Any:
         return AnyType.get()
     if ann is type(None):
-        return NoneType.get()
+        return type(None).get()
     if inspect.isclass(ann) and hasattr(ann, "__torch_script_interface__"):
         return InterfaceType(ann.__torch_script_interface__)
     if ann is torch.device:

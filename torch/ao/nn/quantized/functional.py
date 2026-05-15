@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 r"""Functional interface (quantized)."""
 
 import warnings
@@ -9,6 +11,7 @@ from torch.jit.annotations import BroadcastingList2
 from torch.nn.modules.utils import _pair, _triple
 
 from .modules.utils import _pair_from_first
+from typing import List, Optional, Tuple
 
 
 # Although some of the functions and docstrings are mirrored from the torch.nn,
@@ -438,9 +441,9 @@ def interpolate(
 def linear(
     input: Tensor,
     weight: Tensor,
-    bias: Tensor | None = None,
-    scale: float | None = None,
-    zero_point: int | None = None,
+    bias: Optional[Tensor]= None,
+    scale: Optional[float]= None,
+    zero_point: Optional[int]= None,
 ) -> Tensor:
     r"""
     Applies a linear transformation to the incoming quantized data:
@@ -493,7 +496,7 @@ def max_pool1d(
     if return_indices:
         raise NotImplementedError("return_indices is not yet implemented!")
     if stride is None:
-        stride = torch.jit.annotate(list[int], [])
+        stride = torch.jit.annotate(List[int], [])
     return torch.nn.functional.max_pool1d(
         input,
         kernel_size,
@@ -524,7 +527,7 @@ def max_pool2d(
     if return_indices:
         raise NotImplementedError("return_indices is not yet implemented!")
     if stride is None:
-        stride = torch.jit.annotate(list[int], [])
+        stride = torch.jit.annotate(List[int], [])
     return torch.nn.functional.max_pool2d(
         input,
         kernel_size,
@@ -557,8 +560,8 @@ def leaky_relu(
     input: Tensor,
     negative_slope: float = 0.01,
     inplace: bool = False,
-    scale: float | None = None,
-    zero_point: int | None = None,
+    scale: Optional[float]= None,
+    zero_point: Optional[int]= None,
 ):
     r"""
     Quantized version of the.

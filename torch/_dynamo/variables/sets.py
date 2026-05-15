@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Set-related variable tracking classes for PyTorch Dynamo.
 
@@ -17,20 +18,22 @@ dictionaries with None values.
 
 import functools
 import operator
-from collections.abc import Iterable, Sequence
-from typing import Any, TYPE_CHECKING
+
+from typing import Any, Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, TYPE_CHECKING, Type, Union
+from typing_extensions import Literal
+
 
 from torch.utils._ordered_set import OrderedSet
 
 from .. import polyfills, variables
 from ..bytecode_transformation import create_call_function, create_instruction
-from ..exc import raise_observed_exception, raise_type_error
+from ..exc import raise_observed_exception
 from ..guards import GuardBuilder, install_guard
 from ..source import AttrSource, is_constant_source, is_from_local_source
 from ..utils import cmp_name_to_op_mapping, istype, raise_args_mismatch, set_methods
 from .base import ValueMutationNew, VariableTracker
 from .constant import ConstantVariable
-from .hashable import HashableTracker, is_hashable
+from .hashable import HashableTracker, is_hashable, raise_unhashable
 
 
 if TYPE_CHECKING:
@@ -47,11 +50,6 @@ def pyanyset_check(obj: VariableTracker) -> bool:
     return issubclass(obj.python_type(), (set, frozenset))
 
 
-def pyset_check(obj: VariableTracker) -> bool:
-    # ref: https://github.com/python/cpython/blob/v3.13.0/Include/setobject.h#L36-L38
-    return issubclass(obj.python_type(), set)
-
-
 class SetVariable(VariableTracker):
     """Represents a Python set during symbolic execution."""
 
@@ -63,7 +61,7 @@ class SetVariable(VariableTracker):
 
     def __init__(
         self,
-        items: Iterable[VariableTracker | HashableTracker],
+        items: Iterable[Union[VariableTracker, HashableTracker]],
         **kwargs: Any,
     ) -> None:
         # .clone() passes these arguments in kwargs but they're recreated below
@@ -100,7 +98,7 @@ class SetVariable(VariableTracker):
         if not self.items:
             return "set()"
         else:
-            items: list[str] = []
+            items: List[str] = []
             for v in self.items:
                 vt = v.vt if isinstance(v, HashableTracker) else v
                 val_str = repr(vt.value) if hasattr(vt, "value") else vt.debug_repr()
@@ -108,7 +106,7 @@ class SetVariable(VariableTracker):
             return "{" + ",".join(items) + "}"
 
     @property
-    def set_items(self) -> set["HashableTracker"]:
+    def set_items(self) -> Set["HashableTracker"]:
         return set(self.items.keys())
 
     @staticmethod
@@ -130,11 +128,7 @@ class SetVariable(VariableTracker):
         codegen.append_output(create_instruction("BUILD_SET", arg=len(self.set_items)))
 
     def __contains__(self, vt: VariableTracker) -> bool:
-        if not isinstance(vt, VariableTracker):
-            raise AssertionError(f"Expected VariableTracker, got {type(vt)}")
-        # Use is_hashable as a side-effect-free pre-check.  We can't catch
-        # ObservedTypeError from HashableTracker because it modifies
-        # tx.exn_vt_stack as a side effect.
+        assert isinstance(vt, VariableTracker)
         if not is_hashable(vt):
             return False
         key = HashableTracker(vt)
@@ -142,19 +136,18 @@ class SetVariable(VariableTracker):
 
     def has_new_items(self) -> bool:
         return self.should_reconstruct_all or any(
-            # pyrefly: ignore [bad-argument-type]
             self.is_new_item(self.original_items.get(key.vt), value)
             for key, value in self.items.items()
         )
 
     def is_new_item(
-        self, value: VariableTracker | None, other: VariableTracker
+        self, value: Optional[VariableTracker], other: VariableTracker
     ) -> bool:
         if value and value.is_realized() and other.is_realized():
             return id(value.realize()) != id(other.realize())
         return id(value) != id(other)
 
-    def unpack_var_sequence(self, tx: "InstructionTranslator") -> list[VariableTracker]:
+    def unpack_var_sequence(self, tx: "InstructionTranslator") -> List[VariableTracker]:
         return [x.vt for x in self.items]
 
     def clone(self, **kwargs: Any) -> VariableTracker:
@@ -166,13 +159,8 @@ class SetVariable(VariableTracker):
             kwargs["source"] = None
         return super().clone(**kwargs)
 
-    def is_hashable(self) -> bool:
+    def is_python_hashable(self) -> bool:
         return False
-
-    def hash_impl(self, tx: "InstructionTranslator") -> tuple[int, bool]:
-        from ..exc import raise_type_error
-
-        raise_type_error(tx, f"unhashable type: '{self.python_type_name()}'")
 
     def var_getattr(self, tx: "InstructionTranslator", name: str):
         if name == "__class__":
@@ -185,7 +173,7 @@ class SetVariable(VariableTracker):
         return VariableTracker.build(tx, hasattr(set, name))
 
     def install_set_contains_guard(
-        self, tx: "InstructionTranslator", args: list[VariableTracker]
+        self, tx: "InstructionTranslator", args: List[VariableTracker]
     ) -> None:
         if not self.source:
             return
@@ -211,8 +199,8 @@ class SetVariable(VariableTracker):
         self,
         tx: "InstructionTranslator",
         fn: Any,
-        args: list[VariableTracker],
-        kwargs: dict[str, VariableTracker],
+        args: List[VariableTracker],
+        kwargs: Dict[str, VariableTracker],
     ) -> VariableTracker:
         try:
             res = fn(
@@ -223,31 +211,12 @@ class SetVariable(VariableTracker):
             raise_observed_exception(type(exc), tx, args=list(exc.args))
         return VariableTracker.build(tx, res)
 
-    def sq_contains(
-        self, tx: "InstructionTranslator", item: VariableTracker
-    ) -> VariableTracker:
-        # ref: https://github.com/python/cpython/blob/v3.13.0/Objects/setobject.c#L2131-L2149
-        if not is_hashable(item):
-            # Mirror CPython's set_contains: if hashing fails with TypeError due to
-            # an unhashable set, coerce the key to frozenset and retry.
-            # ref: https://github.com/python/cpython/blob/v3.13.0/Objects/setobject.c#L2151-L2159
-            if not pyset_check(item):
-                raise_type_error(tx, f"unhashable type: '{item.python_type_name()}'")
-            # CPython NOTE:
-            # Note that 'key' could be a set() or frozenset() object.  Unlike most
-            # container types, set allows membership testing with a set key, even
-            # though it is not hashable.
-            item = FrozensetVariable(item.items)  # type: ignore[missing-attribute]
-        self.install_set_contains_guard(tx, [item])
-        contains = item in self
-        return VariableTracker.build(tx, contains)
-
     def call_method(
         self,
         tx: "InstructionTranslator",
         name: str,
-        args: list[VariableTracker],
-        kwargs: dict[str, VariableTracker],
+        args: List[VariableTracker],
+        kwargs: Dict[str, VariableTracker],
     ) -> VariableTracker:
         from ..utils import check_constant_args
         from .builder import SourcelessBuilder
@@ -287,6 +256,8 @@ class SetVariable(VariableTracker):
                     f"{len(args)} args and {len(kwargs)} kwargs",
                 )
             # Convert add to __setitem__ with None value
+            if not is_hashable(args[0]):
+                raise_unhashable(args[0], tx)
             tx.output.side_effects.mutation(self)
             self.items[HashableTracker(args[0])] = SetVariable._default_value()
             return ConstantVariable.create(None)
@@ -453,8 +424,7 @@ class SetVariable(VariableTracker):
                         f"unsupported operand type(s) for {name}: '{self.python_type_name()}' and '{args[0].python_type_name()}'"
                     ],
                 )
-            if m is None:
-                raise AssertionError(f"Unexpected set method name: {name}")
+            assert m is not None
             return self.call_method(tx, m, args, kwargs)
         elif name in ("__rand__", "__rxor__", "__rsub__"):
             m = {
@@ -478,8 +448,7 @@ class SetVariable(VariableTracker):
                         f"unsupported operand type(s) for {name}: '{args[0].python_type_name()}' and '{self.python_type_name()}'"
                     ],
                 )
-            if m is None:
-                raise AssertionError(f"Unexpected reverse set method name: {name}")
+            assert m is not None
             return args[0].call_method(tx, m, [self], kwargs)
         elif name in ("__iand__", "__ior__", "__ixor__", "__isub__"):
             if not isinstance(
@@ -504,8 +473,7 @@ class SetVariable(VariableTracker):
                 "__ixor__": "symmetric_difference_update",
                 "__isub__": "difference_update",
             }.get(name)
-            if m is None:
-                raise AssertionError(f"Unexpected inplace set method name: {name}")
+            assert m is not None
             self.call_method(tx, m, args, kwargs)
             return self
         elif name == "__eq__":
@@ -539,6 +507,19 @@ class SetVariable(VariableTracker):
                 tx,
                 cmp_name_to_op_mapping[name](self.set_items, args[0].set_items),  # type: ignore[attr-defined]
             )
+        elif name == "__contains__":
+            if not len(args):
+                raise_args_mismatch(
+                    tx,
+                    name,
+                    "more than 1 args and 0 kwargs",
+                    f"{len(args)} args and {len(kwargs)} kwargs",
+                )
+            if not (args and is_hashable(args[0])):
+                raise_unhashable(args[0], tx)
+            self.install_set_contains_guard(tx, args)
+            contains = args[0] in self
+            return VariableTracker.build(tx, contains)
         elif name == "__len__":
             if args or kwargs:
                 raise_args_mismatch(
@@ -630,7 +611,7 @@ class OrderedSetClassVariable(VariableTracker):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-    def as_python_constant(self) -> type[OrderedSet[Any]]:
+    def as_python_constant(self) -> Type[OrderedSet[Any]]:
         return OrderedSet
 
     def var_getattr(self, tx: "InstructionTranslator", name: str) -> VariableTracker:
@@ -651,8 +632,8 @@ class OrderedSetClassVariable(VariableTracker):
         self,
         tx: "InstructionTranslator",
         name: str,
-        args: list[VariableTracker],
-        kwargs: dict[str, VariableTracker],
+        args: List[VariableTracker],
+        kwargs: Dict[str, VariableTracker],
     ) -> VariableTracker:
         if name == "__new__":
             if len(args) != 2 or kwargs:
@@ -675,7 +656,7 @@ class OrderedSetClassVariable(VariableTracker):
         self,
         tx: "InstructionTranslator",
         args: Sequence[VariableTracker],
-        kwargs: dict[str, VariableTracker],
+        kwargs: Dict[str, VariableTracker],
     ) -> "OrderedSetVariable":
         if len(args) > 1 or kwargs:
             raise_args_mismatch(
@@ -698,7 +679,7 @@ class OrderedSetVariable(SetVariable):
         if not self.items:
             return "OrderedSet([])"
         else:
-            items: list[str] = []
+            items: List[str] = []
             for k in self.items:
                 key_str = (
                     repr(k.vt.value) if hasattr(k.vt, "value") else k.vt.debug_repr()
@@ -709,7 +690,7 @@ class OrderedSetVariable(SetVariable):
     def as_python_constant(self) -> OrderedSet[Any]:
         return OrderedSet([k.vt.as_python_constant() for k in self.set_items])
 
-    def python_type(self) -> type[OrderedSet[Any]]:
+    def python_type(self) -> Type[OrderedSet[Any]]:
         return OrderedSet
 
     # pyrefly: ignore[bad-override]
@@ -740,7 +721,7 @@ class FrozensetVariable(SetVariable):
         if not self.items:
             return "frozenset()"
         else:
-            items: list[str] = []
+            items: List[str] = []
             for k in self.items:
                 key_str = (
                     repr(k.vt.value) if hasattr(k.vt, "value") else k.vt.debug_repr()
@@ -749,7 +730,7 @@ class FrozensetVariable(SetVariable):
             return "{" + ",".join(items) + "}"
 
     @property
-    def set_items(self) -> set["HashableTracker"]:
+    def set_items(self) -> Set["HashableTracker"]:
         return set(self.items.keys())
 
     def python_type(self) -> type:
@@ -781,8 +762,8 @@ class FrozensetVariable(SetVariable):
         self,
         tx: "InstructionTranslator",
         name: str,
-        args: list[VariableTracker],
-        kwargs: dict[str, VariableTracker],
+        args: List[VariableTracker],
+        kwargs: Dict[str, VariableTracker],
     ) -> VariableTracker:
         if name in ["add", "pop", "update", "remove", "discard", "clear"]:
             raise RuntimeError(f"Illegal call_method {name} on a frozenset")
@@ -799,24 +780,14 @@ class FrozensetVariable(SetVariable):
             return FrozensetVariable(r.items)  # type: ignore[attr-defined]
         return super().call_method(tx, name, args, kwargs)
 
-    def is_hashable(self) -> bool:
+    def is_python_hashable(self) -> Literal[True]:
+        """
+        Frozensets are immutable and hashable in Python.
+        """
         return True
 
-    def hash_impl(self, tx: "InstructionTranslator") -> tuple[int, bool]:
-        # Overrides SetVariable.hash_impl (which raises TypeError for mutable sets).
-        # CPython frozenset_hash: https://github.com/python/cpython/blob/e76aa128fe/Objects/setobject.c#L769
-        from .hashable import RawHash
-        from .object_protocol import generic_hash_impl
-
-        if self.is_python_constant():
-            return hash(self.as_python_constant()), False
-        is_fake = False
-        raw_hashes = []
-        for item in self.set_items:
-            h, fake = generic_hash_impl(tx, item.vt)
-            is_fake = is_fake or fake
-            raw_hashes.append(RawHash(h))
-        return hash(frozenset(raw_hashes)), is_fake
+    def get_python_hash(self) -> int:
+        return hash(self.as_python_constant())
 
     def is_python_equal(self, other: object) -> bool:
         return (
@@ -830,7 +801,7 @@ class DictKeySetVariable(SetVariable):
         if not self.items:
             return "dict_keys([])"
         else:
-            items: list[str] = []
+            items: List[str] = []
             for k in self.items:
                 key_str = (
                     repr(k.vt.value) if hasattr(k.vt, "value") else k.vt.debug_repr()
@@ -839,7 +810,7 @@ class DictKeySetVariable(SetVariable):
             return "dict_keys([" + ",".join(items) + "])"
 
     def install_set_contains_guard(
-        self, tx: "InstructionTranslator", args: list[VariableTracker]
+        self, tx: "InstructionTranslator", args: List[VariableTracker]
     ) -> None:
         # Already EQUALS_MATCH guarded
         pass
@@ -862,8 +833,8 @@ class DictKeySetVariable(SetVariable):
         self,
         tx: "InstructionTranslator",
         name: str,
-        args: list[VariableTracker],
-        kwargs: dict[str, VariableTracker],
+        args: List[VariableTracker],
+        kwargs: Dict[str, VariableTracker],
     ) -> VariableTracker:
         if name in ["add", "pop", "update", "remove", "discard", "clear"]:
             raise RuntimeError(f"Illegal call_method {name} on a dict_keys")

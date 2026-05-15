@@ -1,9 +1,11 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import json
 import logging
 import struct
 
-from typing import Any
+from typing import Any, Dict, List, Optional, Type, overload
 
 import torch
 import numpy as np
@@ -74,13 +76,13 @@ def int_to_half(i: int) -> float:
     buf = struct.pack("i", i)
     return struct.unpack("f", buf)[0]
 
-def _tensor_to_half_val(t: torch.Tensor) -> list[int]:
+def _tensor_to_half_val(t: torch.Tensor) -> List[int]:
     return [half_to_int(x) for x in t.flatten().tolist()]
 
-def _tensor_to_complex_val(t: torch.Tensor) -> list[float]:
+def _tensor_to_complex_val(t: torch.Tensor) -> List[float]:
     return torch.view_as_real(t).flatten().tolist()
 
-def _tensor_to_list(t: torch.Tensor) -> list[Any]:
+def _tensor_to_list(t: torch.Tensor) -> List[Any]:
     return t.flatten().tolist()
 
 # type maps: torch.Tensor type -> (protobuf type, protobuf val field)
@@ -248,7 +250,7 @@ def hparams(hparam_dict=None, metric_dict=None, hparam_domain_discrete=None):
             ssi.hparams[k].number_value = v
 
             if k in hparam_domain_discrete:
-                domain_discrete: struct_pb2.ListValue | None = struct_pb2.ListValue(
+                domain_discrete: Optional[struct_pb2.ListValue]= struct_pb2.ListValue(
                     values=[
                         struct_pb2.Value(number_value=d)
                         for d in hparam_domain_discrete[k]

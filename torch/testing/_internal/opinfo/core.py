@@ -1,5 +1,7 @@
 # mypy: ignore-errors
 
+from __future__ import annotations
+
 import collections
 import collections.abc
 import contextlib
@@ -8,12 +10,12 @@ import math
 import operator
 import unittest
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from functools import partial
 from itertools import product
-from typing import Any, TypeVar
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Type, TypeVar, Union
 
 import torch
 from torch.testing import make_tensor
@@ -652,7 +654,7 @@ class OpInfo:
 
     # An optional reference function that accepts ndarrays (AKA "NumPy arrays").
     # If given, the op will be compared with its reference on each of its sample inputs.
-    ref: Callable | None = None
+    ref: Optional[Callable]= None
 
     # the following metadata describes the operator, its variants, and its aliases, if any
 
@@ -738,12 +740,12 @@ class OpInfo:
     # the following dtypesIf... options override the dtypes value on their respective device types
     # I.e. instead of writing multiple `dtypesIfCUDA`, `dtypesIfROCM`, etc one can simply define a dict
     # dtypesIf = { 'cuda': (torch.float, torch.double), 'rocm': (torch.half, torch.bfloat16) }
-    dtypesIf: dict[str, _dispatch_dtypes] = field(default_factory=dict)
+    dtypesIf: Dict[str, _dispatch_dtypes] = field(default_factory=dict)
 
     def __getattribute__(self, name: str) -> Any:
         if name.startswith("dtypesIf") and name != "dtypesIf":
             # TODO: Warn if used
-            dev_name = name.removeprefix("dtypesIf").lower()
+            dev_name = name[:len("dtypesIf")] if name.startswith("dtypesIf") else name.lower()
             return self.dtypesIf.get(dev_name)
         return super().__getattribute__(name)
 
@@ -754,7 +756,7 @@ class OpInfo:
                 raise AssertionError(
                     f"Expected _dispatch_dtypes or None, got {type(value)}"
                 )
-            dev_name = name.removeprefix("dtypesIf").lower()
+            dev_name = name[:len("dtypesIf")] if name.startswith("dtypesIf") else name.lower()
             self.dtypesIf[dev_name] = value
             return
         super().__setattr__(name, value)
@@ -837,11 +839,11 @@ class OpInfo:
 
     # If `supports_cow_input_no_materialize_forward == True`, this list contains
     # the arg indices or kwarg names of inputs that are expected to materialize
-    allow_cow_input_materialize_forward: list[int | str] = None
+    allow_cow_input_materialize_forward: Union[List[int, str]]= None
 
     # If `supports_cow_input_no_materialize_backward == True`, this list contains
     # the arg indices or kwarg names of inputs that are expected to materialize
-    allow_cow_input_materialize_backward: list[int | str] = None
+    allow_cow_input_materialize_backward: Union[List[int, str]]= None
 
     # wrapper function for gradcheck
     gradcheck_wrapper: Callable = lambda op, *args, **kwargs: op(*args, **kwargs)
@@ -876,10 +878,10 @@ class OpInfo:
     aten_name: str = None
 
     # if this is a composite implicit autograd op, the decomposed op
-    decomp_aten_name: str | None = None
+    decomp_aten_name: Optional[str]= None
 
     # name of the corresponding aten:: operator for backwards
-    aten_backward_name: str | None = None
+    aten_backward_name: Optional[str]= None
 
     # if a op's aten::node is expected to be symbolically autodiffed
     assert_autodiffed: bool = False
@@ -887,13 +889,13 @@ class OpInfo:
     # a list of strings with node names that are expected to be in a
     # DifferentiableGraph when autodiffed. Ex: ['aten::add', 'aten::mm'],
     # default is populated to be ['aten::(name of Python operator)']
-    autodiff_nonfusible_nodes: list[str] = None
+    autodiff_nonfusible_nodes: List[str] = None
 
     # a list of strings with node names that are expected to be in FusionGroups
     # inside of DifferentiableGraphs when this operation is autodiffed.
     # Ex: ['aten::add', 'aten::mm'], defaults to an empty list
     # Note: currently no ops use fusible nodes
-    autodiff_fusible_nodes: list[str] = None
+    autodiff_fusible_nodes: List[str] = None
 
     # the following metadata relates to sparse support and is used in test_sparse.py
 
@@ -1819,11 +1821,11 @@ class ReductionOpInfo(OpInfo):
         name,
         *,
         # The identity value for the operator if it has one.
-        identity: Any | None = None,
+        identity: Optional[Any]= None,
         # The nan policy for the operator if it implements one.
         # - propagate: NaN values are propagated to the output
         # - omit: NaN values are discarded during the reduction
-        nan_policy: str | None = None,
+        nan_policy: Optional[str]= None,
         # Whether the operator supports reducing multiple dimensions.
         supports_multiple_dims: bool = True,
         # Whether the operator promotes integral to floating point dtypes.
@@ -1833,7 +1835,7 @@ class ReductionOpInfo(OpInfo):
         # If a specific dtype is given, then the operator always returns that
         # dtype irrespective of the input dtype. If None, the operator returns
         # the dtype according to the type promotion rules above.
-        result_dtype: torch.dtype | None = None,
+        result_dtype: Optional[torch.dtype]= None,
         # Casts complex results to real (e.g. linalg.norm or torch.var)
         complex_to_real: bool = False,
         # ReductionOpInfo tests generate their own input, dim and keepdim

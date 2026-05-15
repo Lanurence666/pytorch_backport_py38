@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List
 """Tensor pointwise operator implementation."""
 
 import random
@@ -26,7 +28,7 @@ class PointwiseOperator(Operator):
             return False
         return isinstance(output_spec, TensorSpec)
 
-    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 2) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec, num_inputs: int = 2) -> List[Spec]:
         """Decompose tensor into input tensors for pointwise operation with type promotion."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError(
@@ -63,7 +65,7 @@ class PointwiseOperator(Operator):
         ]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for pointwise operation."""
         if len(input_names) == 2:
@@ -135,7 +137,7 @@ class ClampOperator(Operator):
             return False
         return isinstance(output_spec, TensorSpec)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for clamp operation.
 
         Clamp takes:
@@ -155,7 +157,7 @@ class ClampOperator(Operator):
         ]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for clamp operation."""
         if len(input_names) != 1:
@@ -204,7 +206,7 @@ class CumsumOperator(Operator):
             return False
         return isinstance(output_spec, TensorSpec)
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for cumsum operation.
 
         Cumsum takes an input tensor with same shape and dtype as output.
@@ -221,7 +223,7 @@ class CumsumOperator(Operator):
         ]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for cumsum operation."""
         if len(input_names) != 1:

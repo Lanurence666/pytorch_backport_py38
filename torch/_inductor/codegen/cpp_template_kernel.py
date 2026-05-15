@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import itertools
-from collections.abc import Callable, Iterable
-from typing import Any
+from collections.abc import Iterable
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Type, Union
 from unittest.mock import patch
 
 import sympy
@@ -54,11 +56,11 @@ class CppTemplateKernel(CppKernel):
 
     def def_kernel(
         self,
-        inputs: dict[str, ir.Buffer],
-        outputs: dict[str, ir.Buffer],
-        aliases: dict[str, str] | None = None,
+        inputs: Dict[str, ir.Buffer],
+        outputs: Dict[str, ir.Buffer],
+        aliases: Optional[Dict[str, str]] = None,
         function_name: str = "",
-        extra_sizevars: list[sympy.Expr] | None = None,
+        extra_sizevars: Optional[List[sympy.Expr]] = None,
         placeholder: str = "<DEF_KERNEL>",
     ) -> str:
         if len(function_name) == 0:
@@ -137,7 +139,7 @@ class CppTemplateKernel(CppKernel):
     def stride(self, node: ir.Buffer, dim: int) -> str:
         return cexpr_index(self.rename_indexing(node.get_stride()[dim]))
 
-    def index(self, node: ir.Buffer, indices: list[Any]) -> str:
+    def index(self, node: ir.Buffer, indices: List[Any]) -> str:
         indexer = node.get_layout().as_fixed().make_indexer()
         index = indexer(parse_expr_with_index_symbols(indices))
         index = self.rename_indexing(index)
@@ -149,7 +151,7 @@ class CppTemplateKernel(CppKernel):
         )
         return f"{inner_name}[{cexpr_index(index)}]"
 
-    def slice_nd(self, node, ranges: list[tuple[Any, Any]]) -> ir.ReinterpretView:
+    def slice_nd(self, node, ranges: List[Tuple[Any, Any]]) -> ir.ReinterpretView:
         """
         Slice the given node with a list of ranges (start and end) corresponding to its dims.
         The dim is not sliced if the corresponding range is empty.
@@ -175,7 +177,7 @@ class CppTemplateKernel(CppKernel):
         assert isinstance(sliced.data, ir.ReinterpretView), sliced.data
         return sliced.data
 
-    def view(self, node, sizes: list[Any]) -> ir.IRNode:
+    def view(self, node, sizes: List[Any]) -> ir.IRNode:
         node = wrap_with_tensorbox(node)
         sizes = parse_expr_with_index_symbols(sizes)
         return L.view(node, sizes).data  # type: ignore[arg-type]
@@ -186,12 +188,10 @@ class CppTemplateKernel(CppKernel):
         assert isinstance(permuted, ir.ReinterpretView)
         return permuted
 
-    def maybe_codegen_profile(self, prefix_kernel_name: str | None = None) -> str:
+    def maybe_codegen_profile(self) -> str:
         if config.cpp.enable_kernel_profile:
             graph_id = V.graph.graph_id
             prefix = "graph_" + str(graph_id) + "_" if graph_id is not None else ""
-            if prefix and prefix_kernel_name:
-                prefix += prefix_kernel_name + "_"
             handle_str = (
                 "torch::aot_inductor::RAIIAtenRecordFunctionHandle "
                 f'record_{prefix}{self.kernel_name}_("{prefix}{self.kernel_name}", nullptr);'
@@ -206,7 +206,7 @@ class CppTemplateKernel(CppKernel):
         else:
             return f"#pragma unroll {unroll}"
 
-    def define_buffer(self, name, sizes: list[Any], dtype=torch.float) -> str:
+    def define_buffer(self, name, sizes: List[Any], dtype=torch.float) -> str:
         """Define kernel local buffer"""
         sizes = parse_expr_with_index_symbols(sizes)
         buf = ir.Buffer(
@@ -218,7 +218,7 @@ class CppTemplateKernel(CppKernel):
         return f"auto _{name} = std::make_unique<{ctype}[]>({numel}); auto {name} = _{name}.get();"
 
     def define_stack_allocated_buffer(
-        self, name, sizes: list[Any], dtype=torch.float
+        self, name, sizes: List[Any], dtype=torch.float
     ) -> str:
         """Define stack-allocated buffer"""
         sizes = parse_expr_with_index_symbols(sizes)
@@ -246,9 +246,9 @@ class CppTemplateKernel(CppKernel):
     def store_pointwise_nodes(
         self,
         dst: ir.Buffer,
-        nodes: list[ir.IRNode],
-        offsets: list[sympy.Expr] | None = None,
-        reindexers: list[Callable[[list[Any]], list[Any]] | None] | None = None,
+        nodes: List[ir.IRNode],
+        offsets: Optional[List[sympy.Expr]] = None,
+        reindexers: List[Callable[[List[Any]], List[Any]] | None] | None = None,
     ) -> str:
         var_sizes = (tuple(dst.get_size()), ())
         var_ranges = {
@@ -308,11 +308,11 @@ class CppTemplateKernel(CppKernel):
 
     def store_grouped_gemm_pointwise_nodes(
         self,
-        dst: tuple[ir.Buffer],
-        nodes: list[ir.IRNode],
-        offsets: list[sympy.Expr],
-        reindexers: list[Callable[[list[Any]], list[Any]] | None],
-        output_names: list[str],
+        dst: Tuple[ir.Buffer],
+        nodes: List[ir.IRNode],
+        offsets: List[sympy.Expr],
+        reindexers: List[Callable[[List[Any]], List[Any]] | None],
+        output_names: List[str],
     ) -> str:
         ref_dst = dst[0]
         var_sizes = (tuple(ref_dst.get_size()), ())
@@ -372,10 +372,10 @@ class CppTemplateKernel(CppKernel):
         self,
         dst: ir.Buffer,
         src: ir.Buffer,
-        orig_src: ir.Buffer | None = None,
-        epilogue_nodes: list[ir.IRNode] | None = None,
-        offsets: list[Any] | None = None,
-        reindexers: list[Callable[[list[Any]], list[Any]] | None] | None = None,
+        orig_src: Optional[ir.Buffer] = None,
+        epilogue_nodes: Optional[List[ir.IRNode]] = None,
+        offsets: Optional[List[Any]] = None,
+        reindexers: List[Callable[[List[Any]], List[Any]] | None] | None = None,
     ):
         """
         Store the `src` buffer to the `dst` buffer. The size of `src` and `dst` should match.
@@ -432,13 +432,13 @@ class CppTemplateKernel(CppKernel):
 
     def store_outputs(
         self,
-        dst: tuple[ir.Buffer],
-        src: tuple[ir.IRNode],
-        orig_src: tuple[ir.IRNode] | None = None,
-        epilogue_nodes: list[ir.IRNode] | None = None,
-        offsets: list[Any] | None = None,
-        reindexers: list[Callable[[list[Any]], list[Any]] | None] | None = None,
-        multi_output_buffers: tuple[ir.MultiOutput, ...] | None = None,
+        dst: Tuple[ir.Buffer],
+        src: Tuple[ir.IRNode],
+        orig_src: Optional[Tuple[ir.IRNode]] = None,
+        epilogue_nodes: Optional[List[ir.IRNode]] = None,
+        offsets: Optional[List[Any]] = None,
+        reindexers: List[Callable[[List[Any]], List[Any]] | None] | None = None,
+        multi_output_buffers: Optional[Tuple[ir.MultiOutput, ...]] = None,
     ):
         assert isinstance(dst, Iterable)
         assert all(_dst.get_size() == _src.get_size() for _src, _dst in zip(src, dst))
@@ -563,19 +563,19 @@ class CppTemplateCaller(ir.ChoiceCaller):
         self,
         name: str,
         category: str,
-        input_nodes: list[ir.Buffer],
+        input_nodes: List[ir.Buffer],
         layout: ir.Layout,
         make_kernel_render: Callable[
             [
                 ir.CppTemplateBuffer,
                 bool,
-                list[ir.IRNode] | None,
+                Optional[List[ir.IRNode]],
             ],
             str,
         ],
         bmreq: CppBenchmarkRequest,
         template: "CppTemplate",  # type: ignore[name-defined]  # noqa: F821
-        info_kwargs: dict[str, ir.PrimitiveInfoType | list[ir.PrimitiveInfoType]]
+        info_kwargs: Dict[str, Union[ir.PrimitiveInfoType, List[ir.PrimitiveInfoType]]]
         | None = None,
     ):
         super().__init__(name, input_nodes, layout, description="")
@@ -606,7 +606,7 @@ class CppTemplateCaller(ir.ChoiceCaller):
 
     def info_dict(
         self,
-    ) -> dict[str, ir.PrimitiveInfoType | list[ir.PrimitiveInfoType]]:
+    ) -> Dict[str, Union[ir.PrimitiveInfoType, List[ir.PrimitiveInfoType]]]:
         return {"backend": "CPP", "op_type": "unknown"}
 
     def output_node(self) -> ir.TensorBox:

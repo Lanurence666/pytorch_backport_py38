@@ -1,6 +1,9 @@
 # Cached lazily on first __instancecheck__ miss to avoid an import cycle at
 # module load (FakeScriptObject's module imports torch, which imports us).
-_FakeScriptObject_cls: type | None = None
+from __future__ import annotations
+from typing import Optional
+
+_FakeScriptObject_cls: Optional[type]= None
 
 
 class OpaqueBaseMeta(type):

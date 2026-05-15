@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import dataclasses
 import logging
@@ -13,6 +15,7 @@ from torch.utils._ordered_set import OrderedSet
 
 from .runtime.runtime_utils import triton_cache_dir
 from .utils import _IS_WINDOWS, GPU_KERNEL_BIN_EXTS
+from typing import List, Optional, Set, Tuple, Union
 
 
 log = logging.getLogger(__name__)
@@ -66,7 +69,7 @@ class TritonKernelArtifacts:
 
     kernel_hash: str
     device: int
-    artifacts: list[TritonKernelArtifact]
+    artifacts: List[TritonKernelArtifact]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -75,8 +78,8 @@ class TritonBundlerMetadata:
     Metadata used for instrumentation
     """
 
-    cached_kernel_names: list[str]
-    statically_launched_kernel_names: list[str]
+    cached_kernel_names: List[str]
+    statically_launched_kernel_names: List[str]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -85,8 +88,8 @@ class TritonBundle:
     Serializable bundle to save into FXGraphCache
     """
 
-    kernel_artifacts: list[TritonKernelArtifacts]
-    static_autotuners: list[StaticallyLaunchedAutotuner]
+    kernel_artifacts: List[TritonKernelArtifacts]
+    static_autotuners: List[StaticallyLaunchedAutotuner]
 
 
 class TritonBundler:
@@ -105,9 +108,9 @@ class TritonBundler:
     - TritonBundler.read_and_emit is called when a cache entry is read
     """
 
-    _entries: list[TritonBundleEntry] | None = None
-    _static_autotuners: list[StaticallyLaunchedAutotuner] | None = None
-    _winners: OrderedSet[str] | None = None
+    _entries: Optional[List[TritonBundleEntry]]= None
+    _static_autotuners: Optional[List[StaticallyLaunchedAutotuner]]= None
+    _winners: Optional[OrderedSet[str]]= None
 
     # __grp__kernel_name.json contains metadata with source code paths
     # we use this as sentinel value for search and replace
@@ -204,7 +207,7 @@ class TritonBundler:
     @classmethod
     def collect_static_autotuners(
         cls,
-    ) -> tuple[list[StaticallyLaunchedAutotuner], list[str]]:
+    ) -> Tuple[List[StaticallyLaunchedAutotuner], List[str]]:
         if not cls._static_autotuners:
             return [], []
         else:
@@ -218,8 +221,8 @@ class TritonBundler:
 
     @classmethod
     def load_autotuners(
-        cls, static_autotuners: list[StaticallyLaunchedAutotuner] | None
-    ) -> list[str]:
+        cls, static_autotuners: Optional[List[StaticallyLaunchedAutotuner]]
+    ) -> List[str]:
         """
         Load statically launchable CachingAutotuners into async_compile.CompiledTritonKernels
         cache.
@@ -259,7 +262,7 @@ class TritonBundler:
     @classmethod
     def collect(
         cls,
-    ) -> tuple[TritonBundle, TritonBundlerMetadata | None]:
+    ) -> Union[Tuple[TritonBundle, TritonBundlerMetadata, None]]:
         """
         This is the main function called when a cache write happens. This function
         converts all the previously remembered kernels into bundled format so that
@@ -282,13 +285,13 @@ class TritonBundler:
                 # When _winners is empty (single-config kernels, or no
                 # autotuning ran), bundle everything.
                 winners = cls._winners
-                result: list[TritonKernelArtifacts] = []
-                kernel_names: list[str] = []
+                result: List[TritonKernelArtifacts] = []
+                kernel_names: List[str] = []
                 for entry in entries:
                     if winners and entry.kernel_hash not in winners:
                         log.debug("Skipping non-winning kernel %s", entry.kernel_hash)
                         continue
-                    artifacts: list[TritonKernelArtifact] = []
+                    artifacts: List[TritonKernelArtifact] = []
                     path = os.path.join(entry.directory, entry.kernel_hash)
                     if not os.path.exists(path):
                         continue
@@ -346,7 +349,7 @@ class TritonBundler:
             return TritonBundle([], []), None
 
     @staticmethod
-    def read_and_emit(bundle: TritonBundle) -> TritonBundlerMetadata | None:
+    def read_and_emit(bundle: TritonBundle) -> Optional[TritonBundlerMetadata]:
         """
         This is the main function called when a cache read happens. This function
         converts the bundled format back into individual files and writes them
@@ -367,7 +370,7 @@ class TritonBundler:
         with dynamo_timed(
             key="TritonBundler.read_and_emit", log_pt2_compile_event=True
         ):
-            kernel_names: list[str] = []
+            kernel_names: List[str] = []
 
             for artifacts in bundle.kernel_artifacts:
                 basedir = triton_cache_dir(artifacts.device)

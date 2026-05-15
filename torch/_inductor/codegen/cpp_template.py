@@ -1,10 +1,13 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import ctypes
 import functools
 import itertools
 import logging
 import sys
-from collections.abc import Callable, Iterable
+from typing import Callable, Iterable, List, Optional, Union
+from collections.abc import Iterable
 from unittest.mock import patch
 
 import sympy
@@ -29,12 +32,12 @@ class CppTemplate(KernelTemplate):
         input_nodes,
         layout: ir.Layout,
         num_threads: int,
-        epilogue_creator: Callable[[ir.Buffer], ir.Pointwise] | None = None,
+        epilogue_creator: Optional[Callable[[ir.Buffer], ir.Pointwise]]= None,
     ) -> None:
         super().__init__(name)
         self.input_nodes = input_nodes
         self.index = next(self.index_counter)
-        self.output_node: ir.Buffer | list[ir.Buffer] = ir.Buffer(
+        self.output_node: Union[ir.Buffer, List[ir.Buffer]] = ir.Buffer(
             name=f"buf_out{self.index}", layout=layout
         )
         self.layout = layout
@@ -43,14 +46,7 @@ class CppTemplate(KernelTemplate):
 
     def generate(self, **kwargs):
         kernel_name = f"cpp_{self.name}"
-        with (
-            patch.object(V.graph, "get_dtype", self._fake_get_dtype(self.output_node)),
-            patch.object(ir.FlexibleLayout, "allow_indexing", True),
-            V.graph.set_current_device(self.layout.device),
-            CppTemplateKernel(
-                kernel_name=kernel_name, num_threads=self.num_threads
-            ) as kernel,
-        ):
+        with patch.object(V.graph, "get_dtype", self._fake_get_dtype(self.output_node)), patch.object(ir.FlexibleLayout, "allow_indexing", True), V.graph.set_current_device(self.layout.device), CppTemplateKernel( kernel_name=kernel_name, num_threads=self.num_threads ) as kernel:
             code = kernel.render(self, **kwargs)
             _, call_args, _, _ = kernel.args.python_argdefs()
             log.debug("Generated Code:\n%s", code)
@@ -93,7 +89,7 @@ class CppTemplate(KernelTemplate):
         def make_kernel_render(
             template_node: ir.CppTemplateBuffer,
             flag_template_buffer_has_other_users: bool,
-            epilogue_nodes: list[ir.IRNode] | None = None,
+            epilogue_nodes: Optional[List[ir.IRNode]]= None,
         ):
             kernel = CppTemplateKernel(
                 kernel_name=str(Placeholder.KERNEL_NAME), num_threads=self.num_threads

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 r"""
 PyTorch Profiler is a tool that allows the collection of performance metrics during training and inference.
 Profiler's context manager API can be used to better understand what model operators are the most expensive,
@@ -9,7 +11,7 @@ examine their input shapes and stack traces, study device kernel activity and vi
 """
 
 import os
-from typing import Any
+from typing import Any, Dict, Tuple, Type
 from typing_extensions import TypeVarTuple, Unpack
 
 from torch._C._autograd import _supported_activities, DeviceType, kineto_available
@@ -49,7 +51,7 @@ _Ts = TypeVarTuple("_Ts")
 
 
 def _optimizer_post_hook(
-    optimizer: Optimizer, args: tuple[Unpack[_Ts]], kwargs: dict[str, Any]
+    optimizer: Optimizer, args: Tuple[Unpack[_Ts]], kwargs: Dict[str, Any]
 ) -> None:
     KinetoStepTracker.increment_step("Optimizer")
 

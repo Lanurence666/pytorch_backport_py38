@@ -1,7 +1,9 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
-from collections.abc import Callable, Sequence, Sized
-from typing import cast
+from __future__ import annotations
+
+from collections.abc import Sized
+from typing import Callable, List, Optional, Sequence, Set, Tuple, Type, Union, cast
 
 import torch
 from torch._ops import OpOverload
@@ -104,7 +106,7 @@ register_op_strategy(
 def _partial_needs_reduce_for_dtype_cast(
     reduce_op: str,
     src_dtype: torch.dtype,
-    target_dtype: torch.dtype | None,
+    target_dtype: Optional[torch.dtype],
 ) -> bool:
     """Return True when reduce_op does not commute with the dtype cast."""
     if target_dtype is None or src_dtype == target_dtype:
@@ -124,12 +126,12 @@ def _partial_needs_reduce_for_dtype_cast(
 )
 def _to_copy_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     input_meta = cast(TensorMeta, args_schema[0])
     src_dtype = input_meta.dtype
-    target_dtype = cast(torch.dtype | None, kwargs_schema.get("dtype", None))
+    target_dtype = Union[cast(torch.dtype, None, kwargs_schema.get("dtype", None))]
 
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: List[List[Union[Placement, _ShardingPlaceholder]]] = []
     for dim in range(len(input_meta.shape)):
         strategies.append([_ShardingPlaceholder(dim), _ShardingPlaceholder(dim)])
     for reduce_op in Partial.ALL_REDUCE_OPS:
@@ -310,7 +312,7 @@ def new_factory_strategy(op_schema: OpSchema) -> StrategyType:
 @register_single_dim_strategy(aten.bucketize.Tensor)
 def bucketize_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     """Bucketize returns indices into a sorted boundary tensor.
 
     Three families of strategies:
@@ -326,7 +328,7 @@ def bucketize_single_dim_strategy(
     input_meta, _boundaries_meta = args_schema
     if not isinstance(input_meta, TensorMeta):
         raise AssertionError(f"Expected TensorMeta, got {type(input_meta)}")
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: List[List[Union[Placement, _ShardingPlaceholder]]] = []
     for dim in range(len(input_meta.shape)):
         strategies.append(
             [_ShardingPlaceholder(dim), _ShardingPlaceholder(dim), Replicate()]
@@ -409,7 +411,7 @@ def select_backward_strategy(op_schema: OpSchema) -> OpStrategy:
         raise AssertionError(f"Expected OpStrategy, got {input_strategy}")
     if not isinstance(dim, int):
         raise AssertionError(f"Expected int, got {type(dim)}")
-    output_strategies: list[OpSpec] = []
+    output_strategies: List[OpSpec] = []
     for placement_strategy in input_strategy.strategies:
         input_spec = placement_strategy.output_spec
         # NOTE: shard_dim is guaranteed to exist because
@@ -505,10 +507,10 @@ def slice_backward_rules(op_schema: OpSchema) -> OpStrategy:
     input_strategy, dim = args_schema[0], args_schema[2]
     if not isinstance(input_strategy, OpStrategy):
         raise AssertionError(f"Expected OpStrategy, got {input_strategy}")
-    output_strategies: list[OpSpec] = []
+    output_strategies: List[OpSpec] = []
     for placement_strategy in input_strategy.strategies:
         output_spec = placement_strategy.output_spec
-        new_placements: list[Placement] = []
+        new_placements: List[Placement] = []
         for placement in output_spec.placements:
             # Redistribute to replicate only if the dim is sharded and matches the slice dim
             if _is_shard_like(placement) and placement.dim == dim:
@@ -526,7 +528,7 @@ def slice_backward_rules(op_schema: OpSchema) -> OpStrategy:
 
 def unshard_tensor_dim(
     placements: Sequence[Placement], dim: int
-) -> tuple[Placement, ...]:
+) -> Tuple[Placement, ...]:
     """Disallow the given tensor dimension to be sharded."""
     return tuple(
         p if (not _is_shard_like(p) or p.dim != dim) else Replicate()
@@ -536,7 +538,7 @@ def unshard_tensor_dim(
 
 def replicate_tensor_dim(
     placements: Sequence[Placement], dim: int
-) -> tuple[Placement, ...]:
+) -> Tuple[Placement, ...]:
     """Force the given tensor dimension to be replicated."""
     return tuple(
         Replicate() if p.is_partial() or (_is_shard_like(p) and p.dim == dim) else p
@@ -618,14 +620,14 @@ def select_scatter_single_dim_strategy(
     op: OpOverload,
     args_schema: ArgsType,
     kwargs_schema: KwargsType,
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     input_meta = args_schema[0]
     if not isinstance(input_meta, TensorMeta):
         raise AssertionError(f"Expected TensorMeta, got {type(input_meta)}")
     ndim = len(input_meta.shape)
     dim = normalize_dim(cast(int, args_schema[2]), ndim)
     # [output, self, src] — src has the select dim removed
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: List[List[Union[Placement, _ShardingPlaceholder]]] = []
     for d in range(ndim):
         if d == dim:
             continue
@@ -647,7 +649,7 @@ def diagonal_scatter_single_dim_strategy(
     op: OpOverload,
     args_schema: ArgsType,
     kwargs_schema: KwargsType,
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     input_meta = args_schema[0]
     if not isinstance(input_meta, TensorMeta):
         raise AssertionError(f"Expected TensorMeta, got {type(input_meta)}")
@@ -659,7 +661,7 @@ def diagonal_scatter_single_dim_strategy(
     dim2 = normalize_dim(dim2, ndim)
     min_d, max_d = min(dim1, dim2), max(dim1, dim2)
     # [output, self, src] — src has dim1/dim2 removed and diagonal appended
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: List[List[Union[Placement, _ShardingPlaceholder]]] = []
     for d in range(ndim):
         if d in (dim1, dim2):
             continue
@@ -842,7 +844,7 @@ def _derive_follow_placements_from_tuple_strategy(
             # current replicate, just follow new placement
             return new_placement
 
-    follow_placements: list[Placement] | None = None
+    follow_placements: Optional[List[Placement]] = None
     mesh = tuple_strategy.child_mesh(0)
     for arg_strategy in tuple_strategy.children:
         if not isinstance(arg_strategy, OpStrategy):
@@ -878,7 +880,7 @@ def stack_strategy(op_schema: OpSchema) -> StrategyType:
     input_tuple_strategy = args_schema[0]
     if not isinstance(input_tuple_strategy, TupleStrategy):
         raise AssertionError(f"Expected TupleStrategy, got {input_tuple_strategy}")
-    input_strategies: list[OpStrategy] = []
+    input_strategies: List[OpStrategy] = []
     for child in input_tuple_strategy.children:
         if not isinstance(child, OpStrategy):
             raise AssertionError(f"Expected OpStrategy, got {child}")
@@ -927,7 +929,7 @@ def stack_strategy(op_schema: OpSchema) -> StrategyType:
 # @register_single_dim_strategy(aten.cat.default, RuntimeSchemaInfo(1, needs_pytree=True))
 def cat_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     input_list = args_schema[0]
     # unfortunate naming, but yes it's a TensorList input, and we represent it as a tuple of TensorMeta
     if not isinstance(input_list, (tuple, list)):
@@ -1040,7 +1042,7 @@ def cat_strategy(op_schema: OpSchema) -> StrategyType:
 )
 def index_select_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     values_meta, dim, index_meta = args_schema
     if not isinstance(values_meta, TensorMeta):
         raise AssertionError(f"Expected TensorMeta, got {type(values_meta)}")
@@ -1048,7 +1050,7 @@ def index_select_single_dim_strategy(
         raise AssertionError(f"Expected int, got {type(dim)}")
     dim = normalize_dim(dim, len(values_meta.shape))
 
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: List[List[Union[Placement, _ShardingPlaceholder]]] = []
 
     # Shard values on any non-indexed dim (output has same ndim)
     for d in range(len(values_meta.shape)):
@@ -1073,7 +1075,7 @@ def index_select_single_dim_strategy(
 )
 def index_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     values_meta, multi_indices_meta = args_schema
     if not isinstance(values_meta, TensorMeta):
         raise AssertionError(f"Expected TensorMeta, got {type(values_meta)}")
@@ -1102,12 +1104,12 @@ def index_single_dim_strategy(
             return d
         return d + broadcast_ndim - sum(1 for idx_dim in indexed_dims if d > idx_dim)
 
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: List[List[Union[Placement, _ShardingPlaceholder]]] = []
 
     # Shard values on a non-indexed dim, all indices replicated
     for d in non_indexed_dims:
         out_dim = values_dim_to_output_dim(d)
-        rule: list[Placement | _ShardingPlaceholder] = [_ShardingPlaceholder(out_dim)]
+        rule: List[Union[Placement, _ShardingPlaceholder]] = [_ShardingPlaceholder(out_dim)]
         rule.append(_ShardingPlaceholder(d))
         rule.extend([Replicate()] * num_indices)
         strategies.append(rule)
@@ -1117,7 +1119,7 @@ def index_single_dim_strategy(
     # left-padding.  Tensors with size 1 on that dim are replicated
     # (broadcast semantics).
     for bd in range(broadcast_ndim):
-        per_tensor: list[tuple[int, int]] = []  # (tensor_dim, size)
+        per_tensor: List[Tuple[int, int]] = []  # (tensor_dim, size)
         for m in index_metas:
             offset = broadcast_ndim - len(m.shape)
             if bd < offset:
@@ -1128,7 +1130,7 @@ def index_single_dim_strategy(
         if all(s == 1 for _, s in per_tensor):
             continue  # all broadcast-only, skip
         out_dim = bd + insert_dim
-        rule: list[Placement | _ShardingPlaceholder] = [_ShardingPlaceholder(out_dim)]
+        rule: List[Union[Placement, _ShardingPlaceholder]] = [_ShardingPlaceholder(out_dim)]
         rule.append(Replicate())
         for td, s in per_tensor:
             if s > 1:
@@ -1139,7 +1141,7 @@ def index_single_dim_strategy(
 
     # Partial passthrough from values
     for reduce_op in Partial.LINEAR_REDUCE_OPS:
-        rule: list[Placement | _ShardingPlaceholder] = [
+        rule: List[Union[Placement, _ShardingPlaceholder]] = [
             Partial(reduce_op),
             Partial(reduce_op),
         ]
@@ -1155,7 +1157,7 @@ def index_single_dim_strategy(
 )
 def index_put_single_dim_strategy(
     op: OpOverload, args: ArgsType, kwargs: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     """Single-dim sharding strategy for index_put(self, indices, values).
 
     Strategy format: [output, input, *indices, value]
@@ -1187,7 +1189,7 @@ def index_put_single_dim_strategy(
 
     """
     self_meta = cast(TensorMeta, args[0])
-    indices_meta = cast(tuple[TensorMeta | None, ...], args[1])
+    indices_meta = cast(Tuple[Optional[TensorMeta], ...], args[1])
     values_meta = cast(TensorMeta, args[2])
 
     # Determine indexed vs non-indexed dims of self.
@@ -1214,7 +1216,7 @@ def index_put_single_dim_strategy(
         indexed_dims_sorted[-1] - indexed_dims_sorted[0] + 1 == len(indexed_dims_sorted)
     )
 
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: List[List[Union[Placement, _ShardingPlaceholder]]] = []
     for i, self_dim in enumerate(non_indexed_dims):
         if contiguous_indexed and indexed_dims_sorted:
             # Broadcast replaces the indexed block in-place.
@@ -1234,7 +1236,7 @@ def index_put_single_dim_strategy(
         values_tensor_dim = values_dim - (result_ndim - values_ndim)
 
         if values_tensor_dim < 0:
-            values_placement: Placement | _ShardingPlaceholder = Replicate()
+            values_placement: Union[Placement, _ShardingPlaceholder] = Replicate()
         elif values_meta.shape[values_tensor_dim] == 1:
             values_placement = Replicate()
         else:
@@ -1263,9 +1265,9 @@ def index_put_single_dim_strategy(
 
 def _index_dim_strategy(
     args_schema: ArgsType,
-    shard_row: Callable[[int], list[Placement | _ShardingPlaceholder]],
-    partial_rules: list[list[Placement | _ShardingPlaceholder]] | None = None,
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    shard_row: Callable[[int], List[Union[Placement, _ShardingPlaceholder]]],
+    partial_rules: List[List[Union[Placement, _ShardingPlaceholder]]] | None = None,
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     """Common strategy for index ops that shard on all dims except the indexed dim.
 
     Args:
@@ -1275,7 +1277,7 @@ def _index_dim_strategy(
     self_meta = cast(TensorMeta, args_schema[0])
     ndim = len(self_meta.shape)
     dim = normalize_dim(cast(int, args_schema[1]), ndim)
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: List[List[Union[Placement, _ShardingPlaceholder]]] = []
     for d in range(ndim):
         if d != dim:
             strategies.append(shard_row(d))
@@ -1290,7 +1292,7 @@ def _index_dim_strategy(
 )
 def index_fill_scalar_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     # index_fill(self, dim, index, value) — fills self[..., index, ...] with scalar value.
     # Partial rules: each rank fills with the same scalar v, then reduces.
     # Only idempotent reduces work: avg(v,v,...,v)=v, max(v,v,...,v)=v, min(v,v,...,v)=v.
@@ -1312,7 +1314,7 @@ def index_fill_scalar_single_dim_strategy(
 )
 def index_fill_tensor_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     # index_fill(self, dim, index, value) — fills self[..., index, ...] with 0-d tensor value.
     # Partial rules: each rank fills with its partial value v_i, then reduces.
     # All reduce ops work because reduce(v_0, ..., v_{n-1}) = V (the global value)
@@ -1338,7 +1340,7 @@ def index_fill_tensor_single_dim_strategy(
 )
 def index_reduce_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     # index_reduce(self, dim, index, source, reduce) — reduces source into self at index positions.
     # No partial rules: reduce ops are "mean"/"amax"/"amin"/"prod", which don't match
     # any Partial reduce op names ("avg"/"max"/"min"/"product"/"sum").
@@ -1482,16 +1484,16 @@ def eye_out_strategy(op_schema: OpSchema) -> OpStrategy:
 
 def _pass_through_partials(
     num_inputs: int = 1,
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     """Pass-through strategies for all supported reduce ops."""
     return [[Partial(op)] * (1 + num_inputs) for op in ("sum", "avg", "max", "min")]
 
 
 def _shard_inactive_dims(
-    ndim: int, active_dims: set[int], num_inputs: int = 1
-) -> list[list[Placement | _ShardingPlaceholder]]:
+    ndim: int, active_dims: Set[int], num_inputs: int = 1
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     """Single-dim strategies: shard on dims the op doesn't touch."""
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: List[List[Union[Placement, _ShardingPlaceholder]]] = []
     for d in range(ndim):
         if d not in active_dims:
             strategies.append([_ShardingPlaceholder(d)] * (1 + num_inputs))
@@ -1501,12 +1503,12 @@ def _shard_inactive_dims(
 @register_single_dim_strategy(aten.roll.default, schema_info=RuntimeSchemaInfo(1))
 def roll_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     input_meta = args_schema[0]
     if not isinstance(input_meta, TensorMeta):
         raise AssertionError(f"Expected TensorMeta, got {type(input_meta)}")
     ndim = len(input_meta.shape)
-    raw_dims = cast(list[int], args_schema[2]) if len(args_schema) > 2 else []
+    raw_dims = cast(List[int], args_schema[2]) if len(args_schema) > 2 else []
     # When dims is empty, roll flattens the tensor — all dims are active
     if not raw_dims:
         raw_dims = list(range(ndim))
@@ -1517,12 +1519,12 @@ def roll_single_dim_strategy(
 @register_single_dim_strategy(aten.flip.default, schema_info=RuntimeSchemaInfo(1))
 def flip_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     input_meta = args_schema[0]
     if not isinstance(input_meta, TensorMeta):
         raise AssertionError(f"Expected TensorMeta, got {type(input_meta)}")
     ndim = len(input_meta.shape)
-    raw_dims = cast(list[int], args_schema[1])
+    raw_dims = cast(List[int], args_schema[1])
     active_dims = {normalize_dim(d, ndim) for d in raw_dims}
     return _shard_inactive_dims(ndim, active_dims) + _pass_through_partials()
 
@@ -1533,11 +1535,11 @@ def flip_single_dim_strategy(
 )
 def fft_single_dim_strategy(
     op: OpOverload, args_schema: ArgsType, kwargs_schema: KwargsType
-) -> list[list[Placement | _ShardingPlaceholder]]:
+) -> List[List[Union[Placement, _ShardingPlaceholder]]]:
     input_meta = args_schema[0]
     if not isinstance(input_meta, TensorMeta):
         raise AssertionError(f"Expected TensorMeta, got {type(input_meta)}")
     ndim = len(input_meta.shape)
-    raw_dims = cast(list[int], args_schema[1])
+    raw_dims = cast(List[int], args_schema[1])
     active_dims = {normalize_dim(d, ndim) for d in raw_dims}
     return _shard_inactive_dims(ndim, active_dims) + _pass_through_partials()

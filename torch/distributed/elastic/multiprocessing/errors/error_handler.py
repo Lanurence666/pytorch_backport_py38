@@ -6,6 +6,8 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+from __future__ import annotations
+
 import faulthandler
 import json
 import logging
@@ -13,7 +15,7 @@ import os
 import time
 import traceback
 import warnings
-from typing import Any
+from typing import Any, Dict, Optional
 
 
 __all__ = ["ErrorHandler"]
@@ -33,7 +35,7 @@ class ErrorHandler:
     Subclasses should override ``initialize()`` and ``record_exception()``.
     """
 
-    def _get_error_file_path(self) -> str | None:
+    def _get_error_file_path(self) -> Optional[str]:
         """
         Return the error file path.
 
@@ -90,7 +92,7 @@ class ErrorHandler:
     def override_error_code_in_rootcause_data(
         self,
         rootcause_error_file: str,
-        rootcause_error: dict[str, Any],
+        rootcause_error: Dict[str, Any],
         error_code: int = 0,
     ):
         """Modify the rootcause_error read from the file, to correctly set the exit code."""

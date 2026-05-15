@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
 # pylint: disable=useless-parent-delegation
 from __future__ import annotations
+from typing import Optional, Union
+
 
 import ctypes
 
@@ -41,7 +43,7 @@ class Stream(torch._C._XpuStreamBase):
             with torch.xpu.device(device):
                 return super().__new__(cls, priority=priority, **kwargs)
 
-    def wait_event(self, event: Event | torch.Event) -> None:
+    def wait_event(self, event: Union[Event, torch.Event]) -> None:
         r"""Make all future work submitted to the stream wait for an event.
 
         Args:
@@ -49,7 +51,7 @@ class Stream(torch._C._XpuStreamBase):
         """
         event.wait(self)
 
-    def wait_stream(self, stream: Stream | torch.Stream) -> None:
+    def wait_stream(self, stream: Union[Stream, torch.Stream]) -> None:
         r"""Synchronize with another stream.
 
         All future work submitted to this stream will wait until all kernels
@@ -60,7 +62,7 @@ class Stream(torch._C._XpuStreamBase):
         """
         self.wait_event(stream.record_event())
 
-    def record_event(self, event: Event | torch.Event | None = None):
+    def record_event(self, event: Optional[Union[Event, torch.Event]] = None):
         r"""Record an event.
 
         Args:
@@ -121,7 +123,7 @@ class Event(torch._C._XpuEventBase):
     def __new__(cls, enable_timing=False):
         return super().__new__(cls, enable_timing=enable_timing)
 
-    def record(self, stream: Stream | torch.Stream | None = None) -> None:
+    def record(self, stream: Optional[Union[Stream, torch.Stream]] = None) -> None:
         r"""Record the event in a given stream.
 
         Args:
@@ -132,7 +134,7 @@ class Event(torch._C._XpuEventBase):
             stream = torch.xpu.current_stream()
         super().record(stream)
 
-    def wait(self, stream: Stream | torch.Stream | None = None) -> None:
+    def wait(self, stream: Optional[Union[Stream, torch.Stream]] = None) -> None:
         r"""Make all future work submitted to the given stream wait for this event.
 
         Args:

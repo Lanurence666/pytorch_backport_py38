@@ -1,8 +1,10 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copy
 import logging
 import random
-from typing import Any
+from typing import Any, List, Set, Tuple, Type
 from typing_extensions import override
 
 from torch._inductor.virtualized import V
@@ -492,7 +494,7 @@ class CKGroupedConvFwdTemplate(CKTemplate):
         )
         return chosen_instances
 
-    def emit_ck_instance(self, op: "CKGroupedConvFwdOp") -> tuple[str, str]:  # type: ignore[name-defined]
+    def emit_ck_instance(self, op: "CKGroupedConvFwdOp") -> Tuple[str, str]:  # type: ignore[name-defined]
         # The Jinja template for generating a C++ type alias *definition* for a Universal GEMM instance
         template_definition = r"""
     // Gemm operator {{operation_name}}
@@ -616,11 +618,11 @@ class CKGroupedConvFwdTemplate(CKTemplate):
         )
 
     @override
-    def get_runtime_arg_info(self) -> list[ArgInfo]:
+    def get_runtime_arg_info(self) -> List[ArgInfo]:
         return []
 
     @override
-    def get_runtime_arg_values(self, **kwargs: Any) -> list[Any]:
+    def get_runtime_arg_values(self, **kwargs: Any) -> List[Any]:
         """
         Helper method to retrieve runtime args from generate kwargs
         """

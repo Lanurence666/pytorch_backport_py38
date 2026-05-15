@@ -7,6 +7,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 """
 Module ``torch.distributed.run``.
 
@@ -387,7 +389,18 @@ import sys
 import uuid
 from argparse import ArgumentParser, REMAINDER
 from collections.abc import Callable
-from importlib import metadata
+try:
+    from importlib import metadata
+except ImportError:
+    import importlib_metadata as metadata
+except ImportError:
+    import importlib_metadata as metadata
+except ImportError:
+    import importlib_metadata as metadata
+except ImportError:
+    import importlib_metadata as metadata
+except ImportError:
+    import importlib_metadata as metadata
 
 import torch
 from torch.distributed.argparse_util import check_env, env
@@ -402,6 +415,7 @@ from torch.numa.binding import (
     NumaOptions as _NumaOptions,
 )
 from torch.utils.backend_registration import _get_custom_mod_func
+from typing import Callable, List, Optional, Set, Tuple, Type, Union
 
 
 logger = get_logger(__name__)
@@ -622,8 +636,7 @@ def get_args_parser() -> ArgumentParser:
         type=int,
         action=env,
         default=0,
-        help="Rank of the node for multi-node distributed training. It is only used for static "
-        "rendezvous (i.e., when ``--rdzv-backend=static``).",
+        help="Rank of the node for multi-node distributed training.",
     )
     parser.add_argument(
         "--master-addr",
@@ -807,7 +820,7 @@ def get_use_env(args) -> bool:
     return args.use_env
 
 
-def _get_logs_specs_class(logs_specs_name: str | None) -> type[LogsSpecs]:
+def _get_logs_specs_class(logs_specs_name: Optional[str]) -> Type[LogsSpecs]:
     """
     Attempts to load `torchrun.logs_spec` entrypoint with key of `logs_specs_name` param.
     Provides plugin mechanism to provide custom implementation of LogsSpecs.
@@ -837,7 +850,7 @@ def _get_logs_specs_class(logs_specs_name: str | None) -> type[LogsSpecs]:
     return logs_specs_cls
 
 
-def config_from_args(args) -> tuple[LaunchConfig, Callable | str, list[str]]:
+def config_from_args(args) -> Union[Tuple[LaunchConfig, Callable, str, List[str]]]:
     # If ``args`` not passed, defaults to ``sys.argv[:1]``
     min_nodes, max_nodes = parse_min_max_nnodes(args.nnodes)
     if not (0 < min_nodes <= max_nodes):
@@ -855,17 +868,6 @@ def config_from_args(args) -> tuple[LaunchConfig, Callable | str, list[str]]:
         logger.warning(
             "master_addr is only used for static rdzv_backend and when rdzv_endpoint "
             "is not specified."
-        )
-
-    if (
-        hasattr(args, "node_rank")
-        and args.node_rank != 0
-        and args.rdzv_backend != "static"
-    ):
-        logger.warning(
-            "node_rank is only used for static rdzv_backend. It will be ignored "
-            "for rdzv_backend=%s.",
-            args.rdzv_backend,
         )
 
     nproc_per_node = determine_local_world_size(args.nproc_per_node)
@@ -892,7 +894,7 @@ def config_from_args(args) -> tuple[LaunchConfig, Callable | str, list[str]]:
 
     rdzv_endpoint = get_rdzv_endpoint(args)
 
-    ranks: set[int] | None = None
+    ranks: Optional[Set[int]]= None
     if args.local_ranks_filter:
         try:
             ranks = set(map(int, args.local_ranks_filter.split(",")))
@@ -903,7 +905,7 @@ def config_from_args(args) -> tuple[LaunchConfig, Callable | str, list[str]]:
                 "--local_ranks_filter must be a comma-separated list of integers e.g. --local_ranks_filter=0,1,2"
             ) from e
 
-    logs_specs_cls: type[LogsSpecs] = _get_logs_specs_class(args.logs_specs)
+    logs_specs_cls: Type[LogsSpecs] = _get_logs_specs_class(args.logs_specs)
 
     logs_specs = logs_specs_cls(
         log_dir=args.log_dir,
@@ -942,7 +944,7 @@ def config_from_args(args) -> tuple[LaunchConfig, Callable | str, list[str]]:
     )
 
     with_python = not args.no_python
-    cmd: Callable | str
+    cmd: Union[Callable, str]
     cmd_args = []
     use_env = get_use_env(args)
     if args.run_path:

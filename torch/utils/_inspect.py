@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import inspect
-from typing import Any
+from typing import Any, Dict, Tuple, Type
 
 
 def _signature_metadata(
     sig: inspect.Signature,
-) -> tuple[tuple[inspect.Parameter, ...], bool, int]:
+) -> Tuple[Tuple[inspect.Parameter, ...], bool, int]:
     """
     Returns tuple(sig.parameters.values()), if any has VAR_POSITIONAL or VAR_KEYWORD, and the max_positional
     """
@@ -46,7 +48,7 @@ def _fast_bind(
             f"Too many positional arguments: expected max {max_positional}, got {len_args}"
         )
 
-    arguments: dict[str, Any] = {}
+    arguments: Dict[str, Any] = {}
     arg_i = 0
 
     for p in params:

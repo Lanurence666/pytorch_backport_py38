@@ -5,11 +5,17 @@
 
 # NOTE: this file may be removed once we move to a dynamo frontend
 
+from __future__ import annotations
+
 import contextlib
 import functools
-from collections.abc import Callable, Generator, Sequence
+
 from contextlib import contextmanager
-from typing import Any, TypeAlias
+from typing import Any, Callable, Generator, List, Optional, Sequence, Set, Tuple, Type, Union
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 
 import torch
 import torch.utils._pytree as pytree
@@ -32,7 +38,7 @@ from torch.utils.checkpoint import _CachedTorchDispatchMode, _CachingTorchDispat
 # And trace it with local shapes for AP
 _DEFER_INLINING = False
 
-GraphArg: TypeAlias = tuple[torch.Tensor, int, torch.SymInt, None]
+GraphArg: TypeAlias = Tuple[torch.Tensor, int, torch.SymInt, None]
 
 
 @contextmanager
@@ -49,8 +55,8 @@ def defer_inlining() -> Generator[None, None, None]:
 # Used to unwrap tensors classes like FunctionalTensor and Parameter
 def _new_tensor(
     t: Any,
-    new_shape: Sequence[int] | None = None,
-    new_stride: Sequence[int] | None = None,
+    new_shape: Optional[Sequence[int]]= None,
+    new_stride: Optional[Sequence[int]]= None,
 ) -> Any:
     if isinstance(t, torch.Tensor):
         if type(t) not in (FunctionalTensor, FakeTensor, torch.Tensor):
@@ -68,20 +74,16 @@ def _new_tensor(
 # Autoparallel specific, we want to treat plain tensors as DTensors
 def _redistribute(
     args: Any,
-    all_placements: tuple[Any],
+    all_placements: Tuple[Any],
     mesh: Any,
-    shape_stride_fn: Callable[[torch.Tensor, Any, Any], tuple[list[int], list[int]]],
+    shape_stride_fn: Callable[[torch.Tensor, Any, Any], Tuple[List[int], List[int]]],
 ) -> GraphArg:
     from torch._dispatch.python import suspend_functionalization
     from torch._guards import detect_fake_mode
     from torch._subclasses.functional_tensor import disable_functional_mode
     from torch.fx.experimental.proxy_tensor import disable_proxy_modes_tracing
 
-    with (
-        suspend_functionalization(),
-        disable_functional_mode(),
-        disable_proxy_modes_tracing(),
-    ):
+    with suspend_functionalization(), disable_functional_mode(), disable_proxy_modes_tracing():
         fake_mode = detect_fake_mode(args)
         if fake_mode is None:
             raise AssertionError("defer_inlining() is only supported for FakeTensors")
@@ -113,7 +115,7 @@ def _redistribute(
 
 
 def redistribute_fw_inputs(
-    global_args: Any, all_placements: Any, mesh: Any, _: int | None = None
+    global_args: Optional[Any, all_placements: Any, mesh: Any, _: int]= None
 ) -> GraphArg:
     if len(global_args) != len(all_placements):
         raise AssertionError(
@@ -174,7 +176,7 @@ def redistribute_bw_inputs(
 
 
 def redistribute_bw_outputs(
-    local_outs: Any, all_placements: Any, mesh: Any, _: int | None = None
+    local_outs: Optional[Any, all_placements: Any, mesh: Any, _: int]= None
 ) -> GraphArg:
     if len(local_outs) != len(all_placements):
         raise AssertionError(
@@ -207,7 +209,7 @@ redirect_to_mode(local_map_hop, _CachedTorchDispatchMode)
 def create_hop_fw_bw(
     fw_gm: GraphModule,
     *_args: Any,
-) -> tuple[GraphModule, GraphModule, int, int, set[int]]:
+) -> Tuple[GraphModule, GraphModule, int, int, Set[int]]:
     """
     Traces a joint, applies passes and partitions it
     """
@@ -288,7 +290,7 @@ def create_hop_fw_bw(
             num_fw_outputs = len(example_grads)
 
         def joint_f(
-            *primals_and_tangents: list[torch.Tensor],
+            *primals_and_tangents: List[torch.Tensor],
         ) -> Any:
             primals = primals_and_tangents[:num_fw_inputs]
             tangents = primals_and_tangents[num_fw_inputs:]
@@ -296,7 +298,7 @@ def create_hop_fw_bw(
             def prepare_fw_with_masks(
                 fw_gm: torch.fx.GraphModule,
             ) -> Callable[..., Any]:
-                def fw_with_masks(*args: Any) -> tuple[tuple[Any], list[bool]]:
+                def fw_with_masks(*args: Any) -> Tuple[Tuple[Any], List[bool]]:
                     # The Interpreter here is required to propagate metadata
                     # from the dynamo graph body to the local_map graph body.
                     # This is required for fx_traceback.annotate for work.
@@ -367,10 +369,8 @@ def create_hop_fw_bw(
         # default partitioner's assumptions.
         for node in new_fw_gm.graph.nodes:
             node.meta["partitioner_tag"] = "is_forward"
-            node.meta.pop("autograd_backward", None)
         for node in new_bw_gm.graph.nodes:
             node.meta["partitioner_tag"] = "is_backward"
-            node.meta["autograd_backward"] = True
 
         # Propagate meta onto fw/bw graphs, later will be set on proxied nodes
         new_fw_gm.meta["local_map_kwargs"] = local_map_kwargs
@@ -462,10 +462,10 @@ class LocalMapAutogradOp(torch.autograd.Function):
         bw_gm: GraphModule,
         num_fw_ins: int,
         num_fw_outs: int,
-        filtered_grads_idx: set[int],
+        filtered_grads_idx: Set[int],
         *args: Any,
         **kwargs: Any,
-    ) -> tuple[torch.Tensor | None, ...]:
+    ) -> Union[Tuple[torch.Tensor, None, ...]]:
         from torch._functorch._aot_autograd.schemas import MemoryFormatMeta
 
         ctx.bw_gm = bw_gm
@@ -490,8 +490,8 @@ class LocalMapAutogradOp(torch.autograd.Function):
 
     @staticmethod
     def backward(
-        ctx: Any, *_grads: tuple[torch.Tensor]
-    ) -> tuple[torch.Tensor | None, ...]:
+        ctx: Any, *_grads: Tuple[torch.Tensor]
+    ) -> Union[Tuple[torch.Tensor, None, ...]]:
         from torch._functorch._aot_autograd.runtime_wrappers import (
             coerce_to_expected_memory_format,
         )
@@ -546,7 +546,7 @@ def autograd_key(
 @local_map_hop.py_functionalize_impl
 def functional_mode_key(
     ctx: Any, gm: GraphModule, *args: Any, **kwargs: Any
-) -> tuple[torch.Tensor]:
+) -> Tuple[torch.Tensor]:
     if kwargs:
         raise AssertionError(f"kwargs must be empty, got {kwargs}")
 
@@ -597,7 +597,7 @@ def proxy_mode_key_common(
     gm: GraphModule,
     *args: Any,
     **kwargs: Any,
-) -> tuple[torch.Tensor]:
+) -> Tuple[torch.Tensor]:
     if proxy_mode is None:
         raise AssertionError("Mode should always be enabled for python fallback key")
     if len(kwargs) != 0:
@@ -629,7 +629,7 @@ def proxy_mode_key(
     gm: GraphModule,
     *args: Any,
     **kwargs: Any,
-) -> tuple[torch.Tensor]:
+) -> Tuple[torch.Tensor]:
     # TODO: get rid of this when we can install as a subgraph
     def call_local_map(*_args: Any, **_kwargs: Any) -> Any:
         return functools.partial(local_map_hop, gm)(*_args, **_kwargs)
@@ -643,5 +643,5 @@ def real_impl(
     gm: GraphModule,
     *args: Any,
     **kwargs: Any,
-) -> tuple[torch.Tensor]:
+) -> Tuple[torch.Tensor]:
     return gm(*args, **kwargs)

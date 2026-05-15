@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Context management for PyTorch Inductor runtime caching.
 
 This module provides context classes for collecting configuration and environment
@@ -8,11 +9,12 @@ import json
 from abc import ABC, abstractmethod
 from base64 import b64encode
 from collections.abc import Sequence
-from functools import cache
+from functools import lru_cache
 from hashlib import sha256
 from typing_extensions import override, TypedDict
 
 import torch
+from typing import Dict, Optional, Sequence, Type, Union
 
 
 class _Context(ABC):
@@ -58,7 +60,7 @@ class _RuntimeContext(_Context):
         )
 
     @staticmethod
-    def inductor_configs() -> dict[str, object]:
+    def inductor_configs() -> Dict[str, object]:
         """Get portable Inductor configuration settings.
 
         Returns:
@@ -70,7 +72,7 @@ class _RuntimeContext(_Context):
         return config.save_config_portable(ignore_private_configs=False)
 
     @staticmethod
-    def torch_determinism_configs() -> dict[str, object]:
+    def torch_determinism_configs() -> Dict[str, object]:
         """Get PyTorch deterministic algorithm configuration settings.
 
         Returns:
@@ -90,7 +92,7 @@ class _RuntimeContext(_Context):
         }
 
     @staticmethod
-    def cuda_matmul_precision_configs() -> dict[str, object]:
+    def cuda_matmul_precision_configs() -> Dict[str, object]:
         """Get CUDA matrix multiplication precision configuration settings.
 
         Returns:
@@ -138,7 +140,7 @@ class _CompileContext(_Context):
             "accelerator_properties",
         )
 
-    @cache
+    @lru_cache(maxsize=None)
     @staticmethod
     def torch_version_hash() -> str:
         """Get base64-encoded PyTorch version hash.
@@ -150,9 +152,9 @@ class _CompileContext(_Context):
 
         return b64encode(torch_key()).decode()
 
-    @cache
+    @lru_cache(maxsize=None)
     @staticmethod
-    def triton_version_hash() -> str | None:
+    def triton_version_hash() -> Optional[str]:
         """Get Triton version key if Triton is available.
 
         Returns:
@@ -162,9 +164,9 @@ class _CompileContext(_Context):
 
         return triton_key() if HAS_TRITON else None
 
-    @cache
+    @lru_cache(maxsize=None)
     @staticmethod
-    def runtime() -> str | None:
+    def runtime() -> Optional[str]:
         """Determine the runtime type based on available backends.
 
         Returns:
@@ -172,9 +174,9 @@ class _CompileContext(_Context):
         """
         return "CUDA" if torch.version.cuda else "HIP" if torch.version.hip else None
 
-    @cache
+    @lru_cache(maxsize=None)
     @staticmethod
-    def runtime_version() -> str | None:
+    def runtime_version() -> Optional[str]:
         """Get the version string for the detected runtime.
 
         Returns:
@@ -187,9 +189,9 @@ class _CompileContext(_Context):
             "None": None,
         }.get(_CompileContext.runtime() or "None")
 
-    @cache
+    @lru_cache(maxsize=None)
     @staticmethod
-    def accelerator_properties() -> str | None:
+    def accelerator_properties() -> Optional[str]:
         """Get string representation of CUDA device properties.
 
         Returns:
@@ -227,8 +229,8 @@ class IsolationSchema(TypedDict):
                         or a SelectedCompileContext dict specifying which forms to include.
     """
 
-    runtime_context: SelectedRuntimeContext | bool
-    compile_context: SelectedCompileContext | bool
+    runtime_context: Union[SelectedRuntimeContext, bool]
+    compile_context: Union[SelectedCompileContext, bool]
 
 
 _DEFAULT_ISOLATION_SCHEMA: IsolationSchema = IsolationSchema(
@@ -237,8 +239,8 @@ _DEFAULT_ISOLATION_SCHEMA: IsolationSchema = IsolationSchema(
 
 
 def _collect_runtime_context(
-    selection: SelectedRuntimeContext | bool,
-) -> dict[str, object] | None:
+    selection: Union[SelectedRuntimeContext, bool,]
+) -> Optional[Dict[str, object]]:
     """Collect runtime context based on selection.
 
     Args:
@@ -256,8 +258,8 @@ def _collect_runtime_context(
 
 
 def _collect_compile_context(
-    selection: SelectedCompileContext | bool,
-) -> dict[str, object] | None:
+    selection: Union[SelectedCompileContext, bool,]
+) -> Optional[Dict[str, object]]:
     """Collect compile context based on selection.
 
     Args:
@@ -276,7 +278,7 @@ def _collect_compile_context(
 
 def _isolation_context(
     ischema: IsolationSchema = _DEFAULT_ISOLATION_SCHEMA,
-) -> dict[str, object]:
+) -> Dict[str, object]:
     """Generate context data based on the isolation schema.
 
     Args:

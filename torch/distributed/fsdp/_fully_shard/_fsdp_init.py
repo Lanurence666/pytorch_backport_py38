@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import itertools
 import logging
-from typing import TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -21,7 +23,7 @@ from ._fsdp_state import _get_module_fsdp_state
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    
     from typing import Any
 
     from ._fsdp_api import DataParallelMeshDims, MixedPrecisionPolicy, OffloadPolicy
@@ -49,7 +51,7 @@ def _validate_module(module: nn.Module, func_name: str) -> None:
 
 def _validate_mesh(
     mesh: "DeviceMesh",
-    dp_mesh_dims: "DataParallelMeshDims | None" = None,
+    dp_mesh_dims: "Optional[DataParallelMeshDims]" = None,
 ) -> None:
     """
     Validate that the mesh can be used with fully_shard.
@@ -67,7 +69,7 @@ def _validate_mesh(
             raise ValueError(
                 "mesh must have mesh_dim_names when dp_mesh_dims is provided"
             )
-        names_to_check: list[str] = list(dp_mesh_dims.shard_names)
+        names_to_check: List[str] = list(dp_mesh_dims.shard_names)
         names_to_check.extend(dp_mesh_dims.replicate_names)
         for name in names_to_check:
             if name not in mesh.mesh_dim_names:
@@ -86,7 +88,7 @@ def _validate_mesh(
 
 def _get_mesh_info(
     mesh: "DeviceMesh",
-    dp_mesh_dims: "DataParallelMeshDims | None" = None,
+    dp_mesh_dims: "Optional[DataParallelMeshDims]" = None,
 ) -> "DataParallelMeshInfo":
     """
     Get the appropriate mesh info for the given mesh.
@@ -112,7 +114,7 @@ def _get_mesh_info_from_named_dims(
     shard_names = dp_mesh_dims.shard_names
     replicate_names = dp_mesh_dims.replicate_names
 
-    def _get_submesh(names: tuple[str, ...]) -> "DeviceMesh":
+    def _get_submesh(names: Tuple[str, ...]) -> "DeviceMesh":
         if len(names) == 1:
             return mesh[names[0]]
         # Flatten multi-dim submesh into a single dim so FSDP's internal
@@ -150,8 +152,8 @@ def _get_mesh_info_from_named_dims(
 
 
 def _get_post_forward_mesh_info(
-    reshard_after_forward: bool | int, mesh_info: FSDPMeshInfo
-) -> FSDPMeshInfo | None:
+    reshard_after_forward: Union[bool, int], mesh_info: FSDPMeshInfo
+) -> Optional[FSDPMeshInfo]:
     shard_mesh_size = mesh_info.shard_mesh_size
     if not isinstance(reshard_after_forward, (bool, int)):
         raise ValueError(
@@ -196,7 +198,7 @@ def _get_post_forward_mesh_info(
 
 
 def _init_default_mesh(
-    mesh_dim_names: tuple[str, ...] | None = None,
+    mesh_dim_names: Optional[Tuple[str, ...]] = None,
 ) -> DeviceMesh:
     """Default to global CUDA mesh if possible else global CPU mesh."""
     if not dist.distributed_c10d.is_initialized():
@@ -225,8 +227,8 @@ def _get_device_from_mesh(mesh: DeviceMesh) -> torch.device:
 
 def _ignore_module(
     module: nn.Module,
-    ignored_params: set[nn.Parameter],
-    ignore_decision: dict[nn.Module, bool],
+    ignored_params: Set[nn.Parameter],
+    ignore_decision: Dict[nn.Module, bool],
 ) -> bool:
     """
     Decide if it is safe to ignore a module for applying fully_shard.
@@ -259,12 +261,12 @@ def _ignore_module(
 
 
 def _adjust_managed_modules(
-    modules: list[nn.Module], ignored_params: set[nn.Parameter]
-) -> list[nn.Module]:
+    modules: List[nn.Module], ignored_params: Set[nn.Parameter]
+) -> List[nn.Module]:
     """
     Adjust the given list of managed modules by removing those with all parameters ignored.
     """
-    ignore_decision: dict[nn.Module, bool] = {}
+    ignore_decision: Dict[nn.Module, bool] = {}
     new_modules = []
     for module in modules:
         ignored = _ignore_module(module, ignored_params, ignore_decision)
@@ -274,11 +276,11 @@ def _adjust_managed_modules(
 
 
 def _get_managed_modules(
-    root_modules: tuple[nn.Module, ...],
-    ignored_params: set[nn.Parameter] | None = None,
+    root_modules: Tuple[nn.Module, ...],
+    ignored_params: Optional[Set[nn.Parameter]] = None,
     is_composable_fn: "Callable[[nn.Module], bool] | None" = None,
     get_state_fn: "Callable[[nn.Module], Any] | None" = None,
-) -> list[nn.Module]:
+) -> List[nn.Module]:
     """
     Get the list of managed modules for FSDP/replicate.
 
@@ -295,10 +297,10 @@ def _get_managed_modules(
     if get_state_fn is None:
         get_state_fn = _get_module_fsdp_state
 
-    modules: list[nn.Module] = []
+    modules: List[nn.Module] = []
     root_modules_set = set(root_modules)
     # Track visited modules to avoid visiting shared modules multiple times
-    visited_modules: set[nn.Module] = set()
+    visited_modules: Set[nn.Module] = set()
 
     def dfs(module: nn.Module) -> None:
         """
@@ -339,14 +341,14 @@ def _verify_managed_param(name: str, param: nn.Parameter) -> None:
 
 
 def _get_managed_states(
-    modules: list[nn.Module], ignored_params: set[nn.Parameter] | None = None
-) -> tuple[list[nn.Parameter], list[torch.Tensor]]:
-    params: list[nn.Parameter] = []
-    buffers: list[torch.Tensor] = []
+    modules: List[nn.Module], ignored_params: Optional[Set[nn.Parameter]] = None
+) -> Tuple[List[nn.Parameter], List[torch.Tensor]]:
+    params: List[nn.Parameter] = []
+    buffers: List[torch.Tensor] = []
     # Track visited parameters/buffers to avoid visiting shared parameters and
     # buffers multiple times
-    visited_params: set[nn.Parameter] = set()
-    visited_buffers: set[torch.Tensor] = set()
+    visited_params: Set[nn.Parameter] = set()
+    visited_buffers: Set[torch.Tensor] = set()
     if ignored_params is None:
         ignored_params = set()
 
@@ -367,8 +369,8 @@ def _get_managed_states(
 
 
 def _move_states_to_device(
-    params: list[nn.Parameter],
-    buffers: list[torch.Tensor],
+    params: List[nn.Parameter],
+    buffers: List[torch.Tensor],
     device: torch.device,
 ) -> None:
     """
@@ -402,8 +404,8 @@ def _move_states_to_device(
 
 
 def _apply_to_module(
-    modules: tuple[nn.Module, ...],
-    cls_to_wrapper_cls: dict[type, type],
+    modules: Tuple[nn.Module, ...],
+    cls_to_wrapper_cls: Dict[type, type],
     wrapper_module_cls: type,
     wrapper_cls_prefix: str,
     unimplemented_deepcopy: "Callable",
@@ -432,15 +434,15 @@ def _apply_to_module(
 
 def _init_param_group(
     state: "FSDPState",
-    params: list[nn.Parameter],
-    modules: tuple[nn.Module, ...],
+    params: List[nn.Parameter],
+    modules: Tuple[nn.Module, ...],
     mesh_info: DataParallelMeshInfo,
-    post_forward_mesh_info: FSDPMeshInfo | None,
+    post_forward_mesh_info: Optional[FSDPMeshInfo],
     device: torch.device,
     shard_placement_fn: "Callable[[nn.Parameter], ShardPlacementFnResult] | None",
     mp_policy: "MixedPrecisionPolicy",
     offload_policy: "OffloadPolicy",
-    reshard_after_forward: bool | int = True,
+    reshard_after_forward: Union[bool, int] = True,
 ) -> None:
     """
     Initialize FSDP param groups for the given state.
@@ -485,9 +487,9 @@ def _init_param_group(
             "Per-param mesh via shard_placement_fn is not supported with "
             f"{type(mesh_info).__name__}; it requires FSDPMeshInfo (or subclass)"
         )
-    pg_to_group: dict[
-        tuple[dist.ProcessGroup, dist.ProcessGroup | None],
-        tuple[FSDPMeshInfo, list[nn.Parameter]],
+    pg_to_group: Dict[
+        Tuple[dist.ProcessGroup, Optional[dist.ProcessGroup]],
+        Tuple[FSDPMeshInfo, List[nn.Parameter]],
     ] = {}
     for param in params:
         param_mesh_info = resolve_shard_placement(
@@ -495,7 +497,7 @@ def _init_param_group(
             mesh_info,
         ).mesh_info
         shard_pg = param_mesh_info.shard_process_group
-        replicate_pg: dist.ProcessGroup | None = None
+        replicate_pg: Optional[dist.ProcessGroup] = None
         if isinstance(param_mesh_info, HSDPMeshInfo):
             replicate_pg = param_mesh_info.replicate_process_group
         key = (shard_pg, replicate_pg)
@@ -536,15 +538,15 @@ def _init_param_group(
 def _get_modules_and_states(
     module: nn.Module,
     device: torch.device,
-    ignored_params: set[nn.Parameter] | None,
+    ignored_params: Optional[Set[nn.Parameter]],
     is_composable_fn: "Callable[[nn.Module], bool] | None" = None,
     get_state_fn: "Callable[[nn.Module], Any] | None" = None,
-) -> tuple[
+) -> Tuple[
     nn.Module,
-    tuple[nn.Module, ...],
-    list[nn.Module],
-    list[nn.Parameter],
-    list[torch.Tensor],
+    Tuple[nn.Module, ...],
+    List[nn.Module],
+    List[nn.Parameter],
+    List[torch.Tensor],
 ]:
     """
     Get modules tuple, managed modules, params, and buffers for FSDP/replicate initialization.

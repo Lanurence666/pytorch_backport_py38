@@ -1,6 +1,7 @@
 # Owner(s): ["NNC"]
 # ruff: noqa: F841
 
+from __future__ import annotations
 import contextlib
 import math
 import operator

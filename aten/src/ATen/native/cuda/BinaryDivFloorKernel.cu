@@ -13,6 +13,7 @@
 #include <ATen/native/cuda/Loops.cuh>
 
 #include <type_traits>
+#include <ATen/OpMathType.h>
 
 namespace at::native {
 namespace binary_internal {
@@ -47,20 +48,21 @@ void div_floor_kernel_cuda(TensorIteratorBase& iter) {
           auto inv_b = accscalar_t(1.0) / b;
           iter.remove_operand(2);
           gpu_kernel(iter, [b, inv_b] GPU_LAMBDA(scalar_t a) -> scalar_t {
-            auto mod = std::fmod(a, b);
-            auto div = (a - mod) * inv_b;
+            using opmath_t = at::opmath_type<scalar_t>;
+            auto mod = std::fmod(static_cast<opmath_t>(a), static_cast<opmath_t>(b));
+            auto div = (static_cast<opmath_t>(a) - mod) * inv_b;
             if ((mod != 0) && (b < 0) != (mod < 0)) {
-              div -= scalar_t(1);
+              div -= opmath_t(1);
             }
 
             scalar_t floordiv;
-            if (div != 0) {
-              floordiv = std::floor(div);
-              if (div - floordiv > scalar_t(0.5)) {
-                floordiv += scalar_t(1.0);
+            if (static_cast<opmath_t>(div) != 0) {
+              floordiv = static_cast<scalar_t>(std::floor(div));
+              if (div - static_cast<opmath_t>(floordiv) > opmath_t(0.5)) {
+                floordiv = static_cast<scalar_t>(static_cast<opmath_t>(floordiv) + opmath_t(1.0));
               }
             } else {
-              floordiv = c10::cuda::compat::copysign(scalar_t(0), a * inv_b);
+              floordiv = c10::cuda::compat::copysign(scalar_t(0), a * static_cast<scalar_t>(inv_b));
             }
             return floordiv;
           });

@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Test op correctness by comparing with PyTorch results.
 
@@ -33,7 +34,6 @@ wrangler function. See `_mean_input_wrangler` for an example.
     to one overload.
 """
 
-from __future__ import annotations
 
 import copy
 import dataclasses

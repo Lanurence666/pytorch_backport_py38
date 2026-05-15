@@ -2,6 +2,8 @@
 
 # Copyright (c) Meta Platforms, Inc. and affiliates
 
+from __future__ import annotations
+
 import io
 import logging
 import os
@@ -9,7 +11,7 @@ import shutil
 import tempfile
 from collections.abc import Callable
 from functools import wraps
-from typing import Any, cast, IO
+from typing import Any, Callable, Dict, IO, Optional, Set, Tuple, cast
 
 # introduced as collections.abc.Buffer in Python 3.12
 from typing_extensions import Buffer
@@ -64,7 +66,7 @@ class Rot13Example(StreamTransformExtension):
             def writeable(self) -> bool:
                 return True
 
-            def write(self, b: Buffer) -> int | None:
+            def write(self, b: Buffer) -> Optional[int]:
                 # Don't mutate the input
                 chunk = bytearray(b)
                 Rot13Example._rot13bytes(chunk, len(chunk))
@@ -83,7 +85,7 @@ class Rot13Example(StreamTransformExtension):
             def readable(self) -> bool:
                 return True
 
-            def readinto(self, b: Buffer) -> int | None:
+            def readinto(self, b: Buffer) -> Optional[int]:
                 if hasattr(self.input, "readinto"):
                     count = self.input.readinto(b)
                 else:
@@ -122,8 +124,8 @@ def get_test_extension_registry() -> ExtensionRegistry:
 
 
 def with_temp_dir(
-    func: Callable | None = None,
-) -> Callable | None:
+    func: Optional[Callable]= None,
+) -> Optional[Callable]:
     """
     Wrapper to initialize temp directory for distributed checkpoint.
     """
@@ -131,7 +133,7 @@ def with_temp_dir(
         raise AssertionError("Expected func to not be None")
 
     @wraps(func)
-    def wrapper(self, *args: tuple[object], **kwargs: dict[str, Any]) -> None:
+    def wrapper(self, *args: Tuple[object], **kwargs: Dict[str, Any]) -> None:
         if dist.is_initialized():
             # Only create temp_dir when rank is 0
             if dist.get_rank() == 0:
@@ -163,10 +165,10 @@ def with_temp_dir(
 
 
 def with_checkpoint_logging(
-    func: Callable | None = None,
+    func: Optional[Callable]= None,
     logger_name: str = "torch.distributed.checkpoint",
     level: int = logging.INFO,
-) -> Callable | None:
+) -> Optional[Callable]:
     """
     Wrapper to configure checkpoint logging for distributed tests.
 
@@ -179,7 +181,7 @@ def with_checkpoint_logging(
         raise AssertionError("Expected func to not be None")
 
     @wraps(func)
-    def wrapper(self, *args: tuple[object], **kwargs: dict[str, Any]) -> None:
+    def wrapper(self, *args: Tuple[object], **kwargs: Dict[str, Any]) -> None:
         # Get the logger and store original level
         target_logger = logging.getLogger(logger_name)
         original_level = target_logger.level

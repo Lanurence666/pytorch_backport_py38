@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Union
 import tempfile
 import unittest
 
@@ -25,7 +26,7 @@ class TestGenBackendStubs(expecttest.TestCase):
             run(fp.name, "", True)
 
     def get_errors_from_gen_backend_stubs(
-        self, yaml_str: str, *, kernels_str: str | None = None
+        self, yaml_str: str, *, kernels_str: Union[str, None] = None
     ) -> str:
         with tempfile.NamedTemporaryFile(mode="w") as fp:
             fp.write(yaml_str)

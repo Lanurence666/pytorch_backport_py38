@@ -10,6 +10,7 @@
 #include <c10/core/DeviceType.h>
 #include <c10/core/impl/DeviceGuardImplInterface.h>
 #include <string>
+#include <torch/csrc/utils/pythoncapi_compat.h>
 
 PyTypeObject* THPEventClass = nullptr;
 

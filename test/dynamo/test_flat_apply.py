@@ -1,4 +1,5 @@
 # Owner(s): ["module: dynamo", "module: higher order operators"]
+from __future__ import annotations
 import re
 from dataclasses import dataclass
 

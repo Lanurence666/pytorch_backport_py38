@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+from typing import Dict, List, Union
 """
 Multi-process fuzzer library that uses worker processes to execute fuzzer.py with different seeds.
 """
@@ -45,7 +47,7 @@ def persist_print(msg):
 
 
 # List of regex patterns for ignore bucket
-IGNORE_PATTERNS: list[re.Pattern] = [
+IGNORE_PATTERNS: List[re.Pattern] = [
     re.compile(
         r"torch\._inductor\.exc\.InductorError: AssertionError: -1"
     ),  # https://github.com/pytorch/pytorch/issues/167937
@@ -61,7 +63,7 @@ class FuzzerResult:
     output: str
     duration: float
     ignored_pattern_idx: int
-    operation_stats: dict[str, int]  # New field for operation statistics
+    operation_stats: Dict[str, int]  # New field for operation statistics
 
 
 def is_ignored_output(output: str) -> int:
@@ -83,7 +85,7 @@ def is_ignored_output(output: str) -> int:
 def run_fuzzer_with_seed(
     seed: int,
     template: str = "default",
-    supported_ops: str | None = None,
+    supported_ops: Union[str, None] = None,
 ) -> FuzzerResult:
     """
     Run fuzzer.py with a specific seed.
@@ -207,12 +209,12 @@ def handle_result_output(
 
 
 def run_multi_process_fuzzer(
-    num_processes: int | None = None,
+    num_processes: Union[int, None] = None,
     seed_start: int = 0,
     seed_count: int = 100,
     verbose: bool = False,
     template: str = "default",
-    supported_ops: str | None = None,
+    supported_ops: Union[str, None] = None,
 ) -> None:
     """
     Run the multi-process fuzzer.
@@ -237,12 +239,12 @@ def run_multi_process_fuzzer(
     persist_print("=" * 60)
 
     start_time = time.time()
-    results: list[FuzzerResult] = []
+    results: List[FuzzerResult] = []
     successful_count = 0
     failed_count = 0
     ignored_count = 0
     ignored_seeds = []
-    ignored_pattern_counts: dict[int, int] = dict.fromkeys(
+    ignored_pattern_counts: Dict[int, int] = dict.fromkeys(
         range(len(IGNORE_PATTERNS)), 0
     )
 
@@ -470,7 +472,7 @@ def run_multi_process_fuzzer(
     _print_operation_distribution(results)
 
 
-def _print_operation_distribution(results: list[FuzzerResult]) -> None:
+def _print_operation_distribution(results: List[FuzzerResult]) -> None:
     """Helper function to print operation distribution statistics."""
     total_operation_stats = defaultdict(int)
     total_operations = 0
@@ -503,10 +505,10 @@ def _print_operation_distribution(results: list[FuzzerResult]) -> None:
 
 
 def run_until_failure(
-    num_processes: int | None = None,
+    num_processes: Union[int, None] = None,
     verbose: bool = False,
     template: str = "default",
-    supported_ops: str | None = None,
+    supported_ops: Union[str, None] = None,
 ) -> None:
     """
     Run the multi-process fuzzer with a random starting seed, iterating until a failure is found.

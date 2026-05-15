@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import abc
 from dataclasses import dataclass
 
 import torch.nn as nn
 from torch.distributed._shard.sharder import Sharder
 from torch.distributed._shard.sharding_spec import ShardingSpec
+from typing import Dict, List, Optional, Union
 
 
 @dataclass
@@ -61,9 +64,9 @@ class ShardingPlan:
         >>> )
     """
 
-    plan: dict[str, ShardingSpec | Sharder]
-    output_plan: dict[str, ShardingSpec] | None = None
-    return_local_tensor: list[str] | None = None
+    plan: Union[Dict[str, ShardingSpec, Sharder]]
+    output_plan: Optional[Dict[str, ShardingSpec]]= None
+    return_local_tensor: Optional[List[str]]= None
 
 
 class ShardingPlanner(abc.ABC):

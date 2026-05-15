@@ -1,5 +1,6 @@
 # Owner(s): ["module: sdpa"]
 
+from __future__ import annotations
 import torch.nn.attention as attention
 from torch.nn.attention import _registry
 from torch.testing._internal.common_utils import run_tests, TestCase

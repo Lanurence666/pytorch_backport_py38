@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 import torch
 from torch.distributed._shard.metadata import ShardMetadata
 from torch.distributed.remote_device import _remote_device
+from typing import List
 
 
 @dataclass
@@ -42,7 +45,7 @@ class Shard:
 
     @classmethod
     def from_tensor_and_offsets(
-        cls, tensor: torch.Tensor, shard_offsets: list[int], rank: int
+        cls, tensor: torch.Tensor, shard_offsets: List[int], rank: int
     ) -> "Shard":
         """
         Creates a Shard of a ShardedTensor from a local torch.Tensor, shard_offsets and rank.

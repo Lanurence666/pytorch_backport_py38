@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import copyreg
 import functools
 import importlib
@@ -11,9 +13,9 @@ import sys
 import traceback
 import warnings
 from collections import defaultdict
-from collections.abc import Callable
+
 from types import ModuleType
-from typing import Any, cast, Generic, TYPE_CHECKING, TypedDict
+from typing import Any, Callable, Dict, Generic, Iterable, List, Optional, Sequence, TYPE_CHECKING, Type, TypedDict, Union, cast
 from typing_extensions import deprecated, NotRequired, ParamSpec
 
 import torch
@@ -198,7 +200,7 @@ def _rebuild_tensor(storage, storage_offset, size, stride):
 
 def get_tensor_metadata(tensor):
     # Tensor's Metadata for serializing.
-    # Currently, this only returns a dict[string, bool] specifying whether
+    # Currently, this only returns a Dict[string, bool] specifying whether
     # `conj` or `neg` bit is set.
     if not isinstance(tensor, torch.Tensor):
         raise AssertionError(f"expected torch.Tensor, got {type(tensor).__name__}")
@@ -271,7 +273,7 @@ def _rebuild_tensor_v3(
     return t
 
 
-_sparse_tensors_to_validate: list["torch.Tensor"] = []
+_sparse_tensors_to_validate: List["torch.Tensor"] = []
 
 
 # In _legacy_load() in serialization.py we unpickle storages after the sparse
@@ -708,7 +710,7 @@ def render_call(fn, args, kwargs):
     if str_fn is None:
         str_fn = str(fn)
 
-    str_args: list[str] = []
+    str_args: List[str] = []
     with torch._tensor_str.printoptions(threshold=0, edgeitems=0):
         str_args.extend(repr(a) for a in args)
         str_args.extend(f"{k}={repr(v)}" for k, v in kwargs.items())
@@ -774,7 +776,7 @@ class ExceptionWrapper:
         raise exception
 
 
-def cpu_count() -> int | None:
+def cpu_count() -> Optional[int]:
     """Return the number of CPUs available to the current process.
 
     Prefers ``os.sched_getaffinity`` (respects cgroups / taskset) and
@@ -868,7 +870,7 @@ def _get_device_index(
     """
     if isinstance(device, str):
         device = torch.device(device)
-    device_idx: int | None = None
+    device_idx: Optional[int]= None
     if isinstance(device, torch.device):
         if not allow_cpu and device.type == "cpu":
             raise ValueError(f"Expected a non cpu device, but got: {device}")
@@ -1051,7 +1053,7 @@ P = ParamSpec("P")
 class CallbackRegistry(Generic[P]):
     def __init__(self, name: str):
         self.name = name
-        self.callback_list: list[Callable[P, None]] = []
+        self.callback_list: List[Callable[P, None]] = []
 
     def add_callback(self, cb: Callable[P, None]) -> None:
         self.callback_list.append(cb)
@@ -1066,7 +1068,7 @@ class CallbackRegistry(Generic[P]):
                 )
 
 
-def try_import(module_name: str) -> ModuleType | None:
+def try_import(module_name: str) -> Optional[ModuleType]:
     # Implementation based on
     # https://docs.python.org/3/library/importlib.html#checking-if-a-module-can-be-imported
     if (module := sys.modules.get(module_name, None)) is not None:
@@ -1244,7 +1246,7 @@ class _Block(TypedDict):
     requested_size: int
     address: int
     state: str
-    frames: list[_Frame]
+    frames: List[_Frame]
 
 
 class _Segment(TypedDict):
@@ -1256,7 +1258,7 @@ class _Segment(TypedDict):
     segment_type: str
     allocated_size: int
     active_size: int
-    blocks: list[_Block]
+    blocks: List[_Block]
 
 
 class _TraceEntry(TypedDict):
@@ -1264,7 +1266,7 @@ class _TraceEntry(TypedDict):
 
     action: str
     addr: NotRequired[int]
-    frames: list[_Frame]
+    frames: List[_Frame]
     size: int
     stream: int
     device_free: NotRequired[int]
@@ -1273,18 +1275,18 @@ class _TraceEntry(TypedDict):
 class _Snapshot(TypedDict):
     """Memory snapshot structure."""
 
-    segments: list[_Segment]
-    device_traces: NotRequired[list[list[_TraceEntry]]]
+    segments: List[_Segment]
+    device_traces: NotRequired[List[List[_TraceEntry]]]
 
 
-def _augment_frames(frames: list[_Frame]) -> int:
+def _augment_frames(frames: List[_Frame]) -> int:
     """
     Augment a list of frames with FX debug information. For each frame corresponding
     to an FX-generated Python file, this function attaches additional FX node
     metadata (op, name, target, and original trace).
 
     Args:
-        frames (list[_Frame]): List of frame dictionaries to augment
+        frames (List[_Frame]): List of frame dictionaries to augment
 
     Returns:
         int: The count of frames that were augmented.
@@ -1342,7 +1344,7 @@ def _augment_frames(frames: list[_Frame]) -> int:
 
 
 def _augment_memory_snapshot_stack_traces(
-    snapshot: str | _Snapshot,
+    snapshot: Union[str, _Snapshot,]
 ) -> _Snapshot:
     """
     Augment a memory snapshot with original source stack traces from FX metadata.

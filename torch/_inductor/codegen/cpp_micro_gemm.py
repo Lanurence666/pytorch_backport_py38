@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import dataclasses
 import operator
 import sys
@@ -125,7 +127,7 @@ inline void {{kernel_name}}(
     def get_kernel_extra_args_declare(self) -> str:
         return ""
 
-    def get_kernel_extra_args(self, **kwargs) -> list[str]:
+    def get_kernel_extra_args(self, **kwargs) -> List[str]:
         return []
 
     def codegen_define(self, kernel: CppTemplateKernel) -> str:
@@ -230,12 +232,12 @@ class CppMicroGemmConfig:
     input2_dtype: torch.dtype
     output_dtype: torch.dtype
     compute_dtype: torch.dtype
-    vec_isa_cls: type[VecISA]
+    vec_isa_cls: Type[VecISA]
     register_blocking: GemmBlocking
-    extra_check: Callable[..., bool] | None = None
+    extra_check: Optional[Callable[..., bool]]= None
 
 
-micro_gemm_configs: dict[type[CppMicroGemm], list[CppMicroGemmConfig]] = {}
+micro_gemm_configs: Dict[Type[CppMicroGemm], List[CppMicroGemmConfig]] = {}
 
 
 def register_micro_gemm(*configs):
@@ -1498,7 +1500,7 @@ inline void {{kernel_name}}_amx_kernel_{{num_rows}}_{{num_columns}}(
     def get_kernel_extra_args_declare(self) -> str:
         return "AMXState& amx_state,"
 
-    def get_kernel_extra_args(self, **kwargs) -> list[str]:
+    def get_kernel_extra_args(self, **kwargs) -> List[str]:
         return ["amx_state,"]
 
     def get_b_layout(self):
@@ -1830,7 +1832,7 @@ inline void {{kernel_name}}_kernel(
             "    int64_t k_start,"
         )
 
-    def get_kernel_extra_args(self, **kwargs) -> list[str]:
+    def get_kernel_extra_args(self, **kwargs) -> List[str]:
         assert "kernel" in kwargs
         assert "qscale_and_zeros" in kwargs
         kernel = kwargs["kernel"]
@@ -2075,7 +2077,7 @@ inline bool {{kernel_name}}_is_block_start(int index, int k_start, int group_siz
             "    int64_t k_start,"
         )
 
-    def get_kernel_extra_args(self, **kwargs) -> list[str]:
+    def get_kernel_extra_args(self, **kwargs) -> List[str]:
         assert "kernel" in kwargs
         assert "qscale_and_zeros" in kwargs
         kernel = kwargs["kernel"]
@@ -2105,7 +2107,7 @@ def create_micro_gemm(
     num_threads=-1,
     use_ref=True,
     q_group_size=None,
-) -> CppMicroGemm | None:
+) -> Optional[CppMicroGemm]:
     """
     Based on the provided info, try to find the config of the micro-kernel that would
     deliver the best performance in terms of lower latency for this case.

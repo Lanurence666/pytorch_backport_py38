@@ -1,7 +1,7 @@
+from __future__ import annotations
 # Owner(s): ["module: onnx"]
 """Unit tests for the _capture_strategies module."""
 
-from __future__ import annotations
 
 import torch
 from torch.onnx._internal.exporter import _capture_strategies

@@ -1,11 +1,13 @@
 # mypy: allow-untyped-defs
-from types import NoneType
+from __future__ import annotations
+
+# NoneType not available in Python 3.8
 import logging
 import torch
 from torch.utils._pytree import tree_map, tree_flatten, tree_unflatten
 from .module_tracker import ModuleTracker
-from typing import Any, TypeVar
-from collections.abc import Callable
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, TypeVar, Union
+
 from collections.abc import Iterator
 from typing_extensions import ParamSpec
 from collections import defaultdict
@@ -27,7 +29,7 @@ try:
 except ImportError:
     if any(getattr(torch.version, attr, None) is not None for attr in ["cuda", "hip", "xpu"]):
         log.warning("triton not found; flop counting will not work for triton kernels")
-    _JITFunction = NoneType
+    _JITFunction = type(None)
 
 
 aten = torch.ops.aten
@@ -37,7 +39,7 @@ def get_shape(i):
         return i.shape
     return i
 
-flop_registry: dict[Any, Any] = {}
+flop_registry: Dict[Any, Any] = {}
 
 def shape_wrapper(f):
     @wraps(f)
@@ -53,13 +55,10 @@ def register_flop_formula(targets, get_raw=False) -> Callable[[Callable[_P, _T]]
             flop_formula = shape_wrapper(flop_formula)
 
         def register(target) -> None:
-            from torch._ops import HigherOrderOperator
-
-            if not (isinstance(target, (torch._ops.OpOverloadPacket, _JITFunction, HigherOrderOperator))):
+            if not (isinstance(target, (torch._ops.OpOverloadPacket, _JITFunction))):
                 raise ValueError(
                     f"register_flop_formula(targets): expected each target to be "
-                    f"OpOverloadPacket (i.e. torch.ops.mylib.foo), JitFunction, "
-                    f"or HigherOrderOperator"
+                    f"OpOverloadPacket (i.e. torch.ops.mylib.foo), or JitFunction"
                     f", got {target} which is of type {type(target)}")
             if target in flop_registry:
                 raise RuntimeError(f"duplicate registrations for {target}")
@@ -129,9 +128,9 @@ def _scaled_mm_flop(
 
 
 def conv_flop_count(
-    x_shape: list[int],
-    w_shape: list[int],
-    out_shape: list[int],
+    x_shape: List[int],
+    w_shape: List[int],
+    out_shape: List[int],
     transposed: bool = False,
 ) -> int:
     """Count flops for convolution.
@@ -340,7 +339,7 @@ def _unpack_flash_attention_nested_shapes(
     cum_seq_k,
     max_q,
     max_k,
-) -> Iterator[tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...], tuple[int, ...] | None]]:
+) -> Union[Iterator[Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...], Tuple[int, ...], None]]]:
     """
     Given inputs to a flash_attention_(forward|backward) kernel, this will handle behavior for
     NestedTensor inputs by effectively unbinding the NestedTensor and yielding the shapes for
@@ -371,7 +370,7 @@ def _unpack_flash_attention_nested_shapes(
             raise AssertionError("sdpa_flop_count: cum_seq_q and cum_seq_k must have the same shape")
         seq_q_lengths = _offsets_to_lengths(cum_seq_q, max_q)
         seq_k_lengths = _offsets_to_lengths(cum_seq_k, max_k)
-        for (seq_q_len, seq_k_len) in zip(seq_q_lengths, seq_k_lengths, strict=True):
+        for (seq_q_len, seq_k_len) in _zip_strict(seq_q_lengths, seq_k_lengths):
             new_query_shape = (1, h_q, seq_q_len, d_q)
             new_key_shape = (1, h_k, seq_k_len, d_k)
             new_value_shape = (1, h_v, seq_k_len, d_v)
@@ -392,7 +391,7 @@ def _unpack_efficient_attention_nested_shapes(
     cu_seqlens_k,
     max_seqlen_q,
     max_seqlen_k,
-) -> Iterator[tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...], tuple[int, ...] | None]]:
+) -> Union[Iterator[Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...], Tuple[int, ...], None]]]:
     """
     Given inputs to a efficient_attention_(forward|backward) kernel, this will handle behavior for
     NestedTensor inputs by effectively unbinding the NestedTensor and yielding the shapes for
@@ -426,7 +425,7 @@ def _unpack_efficient_attention_nested_shapes(
                                  "cu_seqlens_q and cu_seqlens_k must have the same shape")
         seqlens_q = _offsets_to_lengths(cu_seqlens_q, max_seqlen_q)
         seqlens_k = _offsets_to_lengths(cu_seqlens_k, max_seqlen_k)
-        for len_q, len_k in zip(seqlens_q, seqlens_k, strict=True):
+        for len_q, len_k in _zip_strict(seqlens_q, seqlens_k):
             new_query_shape = (1, h_q, len_q, d_q)
             new_key_shape = (1, h_k, len_k, d_k)
             new_value_shape = (1, h_v, len_k, d_v)
@@ -611,28 +610,6 @@ def _efficient_attention_backward_flop(
     )
 
 
-def _register_flex_attention_flops() -> None:
-    from torch._higher_order_ops.flex_attention import (
-        flex_attention,
-        flex_attention_backward,
-    )
-
-    @register_flop_formula(flex_attention, get_raw=True)
-    def flex_attention_forward_flop(
-        query, key, value, *args, out_val=None, **kwargs
-    ) -> int:
-        return sdpa_flop_count(query.shape, key.shape, value.shape)
-
-    @register_flop_formula(flex_attention_backward, get_raw=True)
-    def flex_attention_backward_flop(
-        query, key, value, out, logsumexp, grad_out, *args, out_val=None, **kwargs
-    ) -> int:
-        grad_out_shape = grad_out.shape if grad_out is not None else out.shape
-        return sdpa_backward_flop_count(
-            grad_out_shape, query.shape, key.shape, value.shape
-        )
-
-
 def _varlen_attn_forward_flop(
     query,
     key,
@@ -736,9 +713,6 @@ flop_registry = {
     aten._efficient_attention_backward: _efficient_attention_backward_flop,
 }
 
-_register_flex_attention_flops()
-
-
 def normalize_tuple(x):
     if not isinstance(x, tuple):
         return (x,)
@@ -799,15 +773,15 @@ class FlopCounterMode:
 
     def __init__(
             self,
-            mods: torch.nn.Module | list[torch.nn.Module] | None = None,
+            mods: Optional[Union[torch.nn.Module, List[torch.nn.Module]]]= None,
             depth: int = 2,
             display: bool = True,
-            custom_mapping: dict[Any, Any] | None = None) -> None:
+            custom_mapping: Optional[Dict[Any, Any]] = None) -> None:
         super().__init__()
-        self.flop_counts: dict[str, dict[Any, int]] = defaultdict(lambda: defaultdict(int))
+        self.flop_counts: Dict[str, Dict[Any, int]] = defaultdict(lambda: defaultdict(int))
         self.depth = depth
         self.display = display
-        self.mode: _FlopCounterMode | None = None
+        self.mode: Optional[_FlopCounterMode] = None
         if custom_mapping is None:
             custom_mapping = {}
         if mods is not None:
@@ -821,7 +795,7 @@ class FlopCounterMode:
     def get_total_flops(self) -> int:
         return sum(self.flop_counts['Global'].values())
 
-    def get_flop_counts(self) -> dict[str, dict[Any, int]]:
+    def get_flop_counts(self) -> Dict[str, Dict[Any, int]]:
         """Return the flop counts as a dictionary of dictionaries.
 
         The outer

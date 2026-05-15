@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 """Provides optimal triton kernel parameters.
 
 Aim
@@ -104,7 +106,7 @@ import inspect
 import itertools
 import re
 import warnings
-from typing import Any
+from typing import Any, Dict
 
 import torch
 from torch.hub import tqdm
@@ -169,7 +171,7 @@ def get_meta(op, key, device_name=None, version=(0, torch.float16, 0.5), exact=F
         for op_key in op_data:
             if [
                 None
-                for k1, k2 in zip(op_key, key, strict=True)
+                for k1, k2 in _zip_strict(op_key, key)
                 if k2 != "*" and k1 != k2
             ]:
                 continue
@@ -189,7 +191,7 @@ def get_meta(op, key, device_name=None, version=(0, torch.float16, 0.5), exact=F
                 "num_stages",
                 "num_warps",
             )
-            meta = dict(zip(names, values, strict=True))
+            meta = dict(_zip_strict(names, values))
         elif op in {"bsr_dense_addmm", "_int_bsr_dense_addmm"}:
             meta = dict(
                 zip(
@@ -363,7 +365,7 @@ def minimize(
         for i, (_, d_tuple) in enumerate(all_directions):
             pbar.update(1)
             next_parameters = parameters.copy()
-            for name, direction in zip(names, d_tuple, strict=True):
+            for name, direction in _zip_strict(names, d_tuple):
                 value = next_parameters[name]
                 if direction == 0:
                     continue
@@ -964,7 +966,7 @@ def main(op="scatter_mm", force=False, dtype=torch.float16, verbose=True):
                     dump()
 
 
-_operation_device_version_data: dict[Any, dict] = {
+_operation_device_version_data: Dict[Any, dict] = {
     # Warning: the data in between the BEGIN/END DATA comment lines
     # below is generated. It can be updated either manually or via
     # calling dump function defined above.

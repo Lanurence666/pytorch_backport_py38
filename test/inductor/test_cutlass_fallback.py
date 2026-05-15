@@ -329,22 +329,7 @@ class TestCutlassSubprocessRouting(TestCase):
             captured_choices.extend(choices)
             return dict.fromkeys(choices, 1.0)
 
-        with (
-            mock.patch(
-                "torch._inductor.autotune_process.benchmark_in_sub_process",
-                side_effect=capture_benchmark,
-            ),
-            mock.patch.object(
-                AlgorithmSelectorCache,
-                "benchmark_in_current_process",
-                return_value={},
-            ),
-            mock.patch.object(
-                AlgorithmSelectorCache,
-                "_is_extern",
-                side_effect=lambda c: False,
-            ),
-        ):
+        with mock.patch( "torch._inductor.autotune_process.benchmark_in_sub_process", side_effect=capture_benchmark, ), mock.patch.object( AlgorithmSelectorCache, "benchmark_in_current_process", return_value={}, ), mock.patch.object( AlgorithmSelectorCache, "_is_extern", side_effect=lambda c: False, ):
             AlgorithmSelectorCache.benchmark_in_sub_process(
                 choices=[mock_cutlass, mock_triton],
                 input_nodes=[],

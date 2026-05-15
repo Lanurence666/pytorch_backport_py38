@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Run benchmarks while handling parallelism, isolation, and fault tolerance."""
 
 # mypy: ignore-errors

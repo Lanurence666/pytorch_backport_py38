@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import List, Union
 import glob
 import os
 import sys
@@ -18,11 +19,11 @@ def parse_test_module(test: str) -> str:
 
 def discover_tests(
     base_dir: Path = REPO_ROOT / "test",
-    cpp_tests_dir: str | Path | None = None,
-    blocklisted_patterns: list[str] | None = None,
-    blocklisted_tests: list[str] | None = None,
-    extra_tests: list[str] | None = None,
-) -> list[str]:
+    cpp_tests_dir: Union[str, Path, None] = None,
+    blocklisted_patterns: Union[List[str], None] = None,
+    blocklisted_tests: Union[List[str], None] = None,
+    extra_tests: Union[List[str], None] = None,
+) -> List[str]:
     """
     Searches for all python files starting with test_ excluding one specified by patterns.
     If cpp_tests_dir is provided, also scan for all C++ tests under that directory. They

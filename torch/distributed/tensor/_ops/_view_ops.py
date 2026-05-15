@@ -1,9 +1,13 @@
 # mypy: allow-untyped-defs
 # Copyright (c) Meta Platforms, Inc. and affiliates
+from __future__ import annotations
+
 import math
-from collections.abc import Callable, Iterable, Sequence
+
 from dataclasses import dataclass
-from typing import cast, NamedTuple
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, Type, Union, cast
+from typing_extensions import NamedTuple
+
 
 import torch
 from torch import Tensor
@@ -38,7 +42,7 @@ from torch.distributed.tensor.placement_types import (
 
 aten = torch.ops.aten
 
-Shape = tuple[int, ...]
+Shape = Tuple[int, ...]
 
 
 class ClaimedDim(NamedTuple):
@@ -57,7 +61,7 @@ class DimSpec:
 
 
 # Rules that map each dimension of the output to dimensions of the input tensor
-DimMap = tuple[DimSpec, ...]
+DimMap = Tuple[DimSpec, ...]
 
 
 @dataclass
@@ -172,7 +176,7 @@ class Split(DimSpec):
     split_id: int
 
     @classmethod
-    def new(cls, dim: DimSpec, group_shape: tuple[int, ...], idx: int) -> DimSpec:
+    def new(cls, dim: DimSpec, group_shape: Tuple[int, ...], idx: int) -> DimSpec:
         from torch.fx.experimental.symbolic_shapes import guard_or_false, guard_or_true
 
         if not len(group_shape) > 0:
@@ -262,7 +266,7 @@ def expand(input_shape: Shape, shape: Shape) -> DimMap:
     return tuple(mapping)
 
 
-def normalize_sizes(sizes: Shape | tuple[Shape]) -> Shape:
+def normalize_sizes(sizes: Union[Shape, Tuple[Shape]]) -> Shape:
     if isinstance(sizes[0], (int, torch.SymInt)):
         return cast(Shape, sizes)
     elif len(sizes) == 1:
@@ -281,7 +285,7 @@ def dim_flatten(ndim: int, start_dim=0, end_dim=-1) -> DimMap:
         # other dims are passed through
         if end_dim < 0:
             end_dim += ndim
-        results: list[DimSpec] = [InputDim(i) for i in range(start_dim)]
+        results: List[DimSpec] = [InputDim(i) for i in range(start_dim)]
         results.append(
             Flatten.new(tuple(InputDim(i) for i in range(start_dim, end_dim + 1)))
         )
@@ -408,7 +412,7 @@ def view_groups(from_size: Shape, to_size: Shape) -> DimMap:
     from_len = len(from_size)
     to_len = len(to_size)
 
-    result_pp: list[DimSpec] = []
+    result_pp: List[DimSpec] = []
 
     while from_idx < from_len or to_idx < to_len:
         from_group_dim, to_group_shape = [], []
@@ -468,7 +472,7 @@ def view_groups(from_size: Shape, to_size: Shape) -> DimMap:
     return tuple(result_pp)
 
 
-def dim_tile(ndim: int, dims: tuple[int, ...]) -> DimMap:
+def dim_tile(ndim: int, dims: Tuple[int, ...]) -> DimMap:
     if len(dims) < ndim:
         dims = (1,) * (ndim - len(dims)) + dims
     return dim_repeat(ndim, dims)
@@ -488,7 +492,7 @@ def dim_transpose(ndim: int, dim1: int, dim2: int) -> DimMap:
     return tuple(dimmap)
 
 
-def dim_squeeze(shape: Shape, dim: DimsType | None = None) -> DimMap:
+def dim_squeeze(shape: Shape, dim: Optional[DimsType] = None) -> DimMap:
     # Operates on local shape; sharding_prop rewrites squeeze ops to squeeze.dims
     # with only globally-singleton dims before this is called.
     from torch.fx.experimental.symbolic_shapes import guard_or_true
@@ -516,7 +520,7 @@ def dim_unsqueeze(ndim: int, dim: int) -> DimMap:
 
 def dim_view_as_real(shape: Shape) -> DimMap:
     ndim = len(shape)
-    results: list[DimSpec] = [InputDim(i) for i in range(ndim - 1)]
+    results: List[DimSpec] = [InputDim(i) for i in range(ndim - 1)]
     # each complex number is split into two real numbers,
     # resulting in one more dimension of size 2
     results.append(Split(InputDim(ndim - 1), (shape[-1], 2), 0))
@@ -524,7 +528,7 @@ def dim_view_as_real(shape: Shape) -> DimMap:
     return tuple(results)
 
 
-def dim_reduction(ndim: int, dim_or_dims: DimsType | None, keepdim: bool) -> DimMap:
+def dim_reduction(ndim: int, dim_or_dims: Optional[DimsType], keepdim: bool) -> DimMap:
     """
     General fallback for reduction ops where Partial() does not apply.
 
@@ -542,7 +546,7 @@ def dim_reduction(ndim: int, dim_or_dims: DimsType | None, keepdim: bool) -> Dim
     )
 
 
-dim_maps: dict[Callable[..., torch.Tensor], Callable[..., DimMap]] = {
+dim_maps: Dict[Callable[..., torch.Tensor], Callable[..., DimMap]] = {
     torch.atleast_1d: lambda x: dim_pad_left(x.ndim, 1),
     torch.atleast_2d: lambda x: dim_pad_left(x.ndim, 2),
     torch.atleast_3d: lambda x: dim_atleast_3d(x.ndim),
@@ -574,7 +578,7 @@ def propagate_shape_and_sharding(
     rule: DimMap,
     mesh_sizes: Shape,
     strict_view: bool = False,
-) -> tuple[Sequence[Placement], Sequence[Placement]]:
+) -> Tuple[Sequence[Placement], Sequence[Placement]]:
     """
     Determine input target sharding and output sharding based on
     given global tensor shape and input source sharding.
@@ -634,10 +638,10 @@ class _ViewShardingPropagator:
 
         # shard_allowed[input_dim][mesh_dim]: whether input_dim can stay
         # sharded on mesh_dim.  Populated by _analyze_dim and its helpers.
-        self.shard_allowed: dict[int, list[bool]] = {}
+        self.shard_allowed: Dict[int, List[bool]] = {}
         # Mesh dims whose _StridedShard has already been matched to an output dim.
         # Populated by _analyze_split.
-        self.matched_strided_mesh_dims: set[int] = set()
+        self.matched_strided_mesh_dims: Set[int] = set()
 
     # ------------------------------------------------------------------
     # Public API: analyze → rewrite_output_placements
@@ -645,7 +649,7 @@ class _ViewShardingPropagator:
 
     def analyze(
         self,
-    ) -> tuple[Sequence[Placement], dict[int, list[int]]]:
+    ) -> Tuple[Sequence[Placement], Dict[int, List[int]]]:
         """Phase 1: walk the DimMap rule, return (input_tgt_placements, input_to_output_tensor_dims)."""
         input_dims_in_rule = self._input_dims_in_rule(self.rule)
 
@@ -669,7 +673,7 @@ class _ViewShardingPropagator:
         #   output_dim=1 (split_id=1): hits the isinstance(cmd, Split) branch
         #     because _analyze_split returns [] for split_id>0.  Chases root
         #     InputDim(0) and appends output dim 1.  Result: {0: [0, 1]}
-        input_to_output_tensor_dims: dict[int, list[int]] = {}
+        input_to_output_tensor_dims: Dict[int, List[int]] = {}
         for output_dim, cmd in enumerate(self.rule):
             in_dims = self._analyze_dim(cmd)
             if isinstance(cmd, Flatten):
@@ -714,10 +718,10 @@ class _ViewShardingPropagator:
                 if root is not None and root.input_dim in input_to_output_tensor_dims:
                     input_to_output_tensor_dims[root.input_dim].append(output_dim)
 
-        input_tgt_placements: list[Placement] = []
+        input_tgt_placements: List[Placement] = []
         for mesh_dim, p in enumerate(self.input_src_placements):
             if (
-                isinstance(p, Shard | _StridedShard)
+                isinstance(p, (Shard , _StridedShard))
                 and not self.shard_allowed[p.dim][mesh_dim]
             ):
                 if self.strict_view:
@@ -734,16 +738,16 @@ class _ViewShardingPropagator:
     def rewrite_output_placements(
         self,
         input_tgt_placements: Sequence[Placement],
-        input_to_output_tensor_dims: dict[int, list[int]],
-    ) -> list[Placement]:
+        input_to_output_tensor_dims: Dict[int, List[int]],
+    ) -> List[Placement]:
         """Phase 2: consume analyze() outputs, return final output placements."""
         # (input_dim, output_dim) pairs claimed by earlier mesh dims
         # (via _rewrite_strided_shard), to avoid double-assignment.
-        strided_shard_claimed_dims: set[ClaimedDim] = set()
+        strided_shard_claimed_dims: Set[ClaimedDim] = set()
         # Starts as global_input_shape; each mesh dim divides its sharded dim.
-        local_tensor_shapes: list[int] = list(self.global_input_shape)
+        local_tensor_shapes: List[int] = list(self.global_input_shape)
 
-        output_placements: list[Placement] = []
+        output_placements: List[Placement] = []
         # Process mesh dims in order; _rewrite_*_shard relies on this for
         # truncating division safety in local_tensor_shapes.
         for mesh_dim, p in enumerate(input_tgt_placements):
@@ -776,9 +780,9 @@ class _ViewShardingPropagator:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _input_dims_in_rule(rule: DimMap) -> set[int]:
+    def _input_dims_in_rule(rule: DimMap) -> Set[int]:
         """Walk the DimMap rule tree and return all input dim indices that appear in it."""
-        seen: set[int] = set()
+        seen: Set[int] = set()
 
         def _walk(cmd: DimSpec) -> None:
             if isinstance(cmd, InputDim):
@@ -792,7 +796,7 @@ class _ViewShardingPropagator:
 
     def _find_plain_shard(
         self, input_dim: InputDim
-    ) -> tuple[int | None, Shard | _StridedShard | None]:
+    ) -> Union[Tuple[int, None, Shard, _StridedShard, None]]:
         """Find the mesh dim with a plain Shard on ``input_dim``.
 
         Only matches Shard, not _StridedShard.  Used by both _analyze_flatten
@@ -809,7 +813,7 @@ class _ViewShardingPropagator:
         current_dim: int,
         cmd: Split,
         placements: Sequence[Placement],
-    ) -> tuple[int | None, Shard | _StridedShard | None]:
+    ) -> Union[Tuple[int, None, Shard, _StridedShard, None]]:
         """Find the mesh dim and placement for an input dim in Split ops.
 
         Matches both Shard and _StridedShard:
@@ -820,7 +824,7 @@ class _ViewShardingPropagator:
           the split_factor matches the expected value for this split_id.
         """
         for mesh_dim, placement in enumerate(placements):
-            if not isinstance(placement, Shard | _StridedShard):
+            if not isinstance(placement, (Shard , _StridedShard)):
                 continue
             if placement.dim != current_dim:
                 continue
@@ -837,11 +841,11 @@ class _ViewShardingPropagator:
                 return mesh_dim, placement
         return None, None
 
-    def _analyze_flatten(self, cmd: Flatten) -> list[InputDim]:
+    def _analyze_flatten(self, cmd: Flatten) -> List[InputDim]:
         """Fill self.shard_allowed for Flatten; return sharded input dims."""
         from torch.fx.experimental.symbolic_shapes import guard_or_true
 
-        sharded_dims: list[InputDim] = []
+        sharded_dims: List[InputDim] = []
         num_input_dims = len(cmd.input_dims)
         for i, dim in enumerate(cmd.input_dims):
             if not isinstance(dim, InputDim):
@@ -887,7 +891,7 @@ class _ViewShardingPropagator:
             raise AssertionError(f"Expected InputDim, got {type(cmd.input_dims[0])}")
         return [cmd.input_dims[0]]
 
-    def _analyze_split(self, cmd: Split) -> list[InputDim]:
+    def _analyze_split(self, cmd: Split) -> List[InputDim]:
         """Fill self.shard_allowed for Split; return shardable input dims."""
         from torch.fx.experimental.symbolic_shapes import guard_or_false, guard_or_true
 
@@ -956,7 +960,7 @@ class _ViewShardingPropagator:
         # output dims are linked via the root-input-dim chase in analyze().
         return [in_dim] if cmd.split_id == 0 else []
 
-    def _analyze_dim(self, cmd: DimSpec) -> list[InputDim]:
+    def _analyze_dim(self, cmd: DimSpec) -> List[InputDim]:
         """Dispatch one DimSpec: update self.shard_allowed, return input dim(s) to shard on."""
         if isinstance(cmd, InputDim):
             return [cmd]
@@ -1010,7 +1014,7 @@ class _ViewShardingPropagator:
         sharded_dim: int,
         mesh_dim: int,
         placements: Sequence[Placement],
-    ) -> int | None:
+    ) -> Optional[int]:
         """Compute the residual split factor for ``cmd`` after earlier mesh dims.
 
         Starts from ``math.prod(cmd.group_shape[:cmd.split_id])`` and divides
@@ -1031,10 +1035,10 @@ class _ViewShardingPropagator:
 
     def _find_keep_ss_dim(
         self,
-        tgt_shard_dims: list[int],
+        tgt_shard_dims: List[int],
         p: _StridedShard,
         mesh_dim: int,
-    ) -> int | None:
+    ) -> Optional[int]:
         """Find an output dim where SS stays as SS.
 
         Returns the first output dim whose Split can accommodate the combined
@@ -1075,10 +1079,10 @@ class _ViewShardingPropagator:
         p: Shard,
         mesh_dim: int,
         placements: Sequence[Placement],
-        strided_shard_claimed_dims: set[ClaimedDim],
-        local_tensor_shapes: list[int],
-        input_to_output_tensor_dims: dict[int, list[int]],
-    ) -> tuple[Placement, list[int]]:
+        strided_shard_claimed_dims: Set[ClaimedDim],
+        local_tensor_shapes: List[int],
+        input_to_output_tensor_dims: Dict[int, List[int]],
+    ) -> Tuple[Placement, List[int]]:
         """Given a plain Shard(dim=X) input placement on a specific mesh dim,
         determine what output placement it maps to after the view op.
 
@@ -1178,10 +1182,10 @@ class _ViewShardingPropagator:
         p: _StridedShard,
         mesh_dim: int,
         placements: Sequence[Placement],
-        strided_shard_claimed_dims: set[ClaimedDim],
-        local_tensor_shapes: list[int],
-        input_to_output_tensor_dims: dict[int, list[int]],
-    ) -> tuple[Placement, list[int]]:
+        strided_shard_claimed_dims: Set[ClaimedDim],
+        local_tensor_shapes: List[int],
+        input_to_output_tensor_dims: Dict[int, List[int]],
+    ) -> Tuple[Placement, List[int]]:
         """Rewrite _StridedShard placement to target the correct output dim.
 
         _StridedShard inputs arise from a prior flatten on a non-first dim
@@ -1253,7 +1257,7 @@ class _ViewShardingPropagator:
 def register_op_strategy_map(
     aten_op_overload: torch._ops.OpOverload,
     local_op_name: Callable[..., torch.Tensor],
-    schema_info: RuntimeSchemaInfo | None = None,
+    schema_info: Optional[RuntimeSchemaInfo]= None,
     strict_view: bool = False,
 ) -> None:
     """
@@ -1299,7 +1303,7 @@ def register_op_strategy_map(
                 tensor_meta=input_src_spec.tensor_meta,
                 use_strided_shard_as_shard_order=False,
             )
-            redistribute_costs: list[list[float]] = [
+            redistribute_costs: List[List[float]] = [
                 generate_redistribute_costs(input_strategy, input_tgt_spec)
             ]
 
@@ -1394,7 +1398,7 @@ def view_as_complex_single_dim_strategy(op, args_schema, kwargs_schema):
     if not isinstance(input_meta, TensorMeta):
         raise AssertionError(f"Expected TensorMeta, got {type(input_meta)}")
     ndim = len(input_meta.shape)
-    strategies: list[list[Placement | _ShardingPlaceholder]] = []
+    strategies: Union[List[List[Placement, _ShardingPlaceholder]]]= []
     for d in range(ndim - 1):
         strategies.append([_ShardingPlaceholder(d), _ShardingPlaceholder(d)])
     strategies.append([Partial("sum"), Partial("sum")])

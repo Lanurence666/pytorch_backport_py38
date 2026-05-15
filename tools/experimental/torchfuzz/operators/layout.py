@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List, Tuple, Union
 """Tensor layout operator implementations."""
 
 import random
@@ -22,7 +24,7 @@ class ViewOperator(LayoutOperatorBase):
         super().__init__("view")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.Tensor.view"
 
@@ -33,7 +35,7 @@ class ViewOperator(LayoutOperatorBase):
         # Don't produce scalars since we can't guarantee input has exactly 1 element
         return len(output_spec.size) > 0
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input spec for view operation."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("ViewOperator can only produce TensorSpec outputs")
@@ -84,7 +86,7 @@ class ViewOperator(LayoutOperatorBase):
         ]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for view operation."""
         if not isinstance(output_spec, TensorSpec):
@@ -103,7 +105,7 @@ class ReshapeOperator(LayoutOperatorBase):
         super().__init__("reshape")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.reshape"
 
@@ -114,7 +116,7 @@ class ReshapeOperator(LayoutOperatorBase):
         # Don't produce scalars since we can't guarantee input has exactly 1 element
         return len(output_spec.size) > 0
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input spec for reshape operation."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("ReshapeOperator can only produce TensorSpec outputs")
@@ -160,7 +162,7 @@ class ReshapeOperator(LayoutOperatorBase):
         ]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for reshape operation."""
         if not isinstance(output_spec, TensorSpec):
@@ -178,7 +180,7 @@ class FlattenOperator(LayoutOperatorBase):
         super().__init__("flatten")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.flatten"
 
@@ -189,7 +191,7 @@ class FlattenOperator(LayoutOperatorBase):
         # Since we always use torch.flatten() without start_dim, we can only produce 1D tensors
         return len(output_spec.size) == 1
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input spec for flatten operation."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("FlattenOperator can only produce TensorSpec outputs")
@@ -251,7 +253,7 @@ class FlattenOperator(LayoutOperatorBase):
         ]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for flatten operation."""
         if not isinstance(output_spec, TensorSpec):
@@ -270,7 +272,7 @@ class SqueezeOperator(LayoutOperatorBase):
         super().__init__("squeeze")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.squeeze"
 
@@ -281,7 +283,7 @@ class SqueezeOperator(LayoutOperatorBase):
         # Don't produce outputs with singleton dimensions since squeeze() removes ALL of them
         return 1 not in output_spec.size
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input spec for squeeze operation."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("SqueezeOperator can only produce TensorSpec outputs")
@@ -304,7 +306,7 @@ class SqueezeOperator(LayoutOperatorBase):
         ]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for squeeze operation."""
         # Always use squeeze() without dim specification to be safe
@@ -322,7 +324,7 @@ class UnsqueezeOperator(LayoutOperatorBase):
         super().__init__("unsqueeze")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.unsqueeze"
 
@@ -333,7 +335,7 @@ class UnsqueezeOperator(LayoutOperatorBase):
         # Check if there's at least one singleton dimension
         return 1 in output_spec.size
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input spec for unsqueeze operation."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("UnsqueezeOperator can only produce TensorSpec outputs")
@@ -378,7 +380,7 @@ class UnsqueezeOperator(LayoutOperatorBase):
         ]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for unsqueeze operation."""
         if not isinstance(output_spec, TensorSpec):
@@ -409,7 +411,7 @@ class SplitOperator(LayoutOperatorBase):
         super().__init__("split")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.split"
 
@@ -420,7 +422,7 @@ class SplitOperator(LayoutOperatorBase):
         # Split can produce any tensor with at least one dimension
         return len(output_spec.size) > 0
 
-    def _get_split_params(self, output_spec: TensorSpec) -> tuple[int, int]:
+    def _get_split_params(self, output_spec: TensorSpec) -> Tuple[int, int]:
         """Get consistent split parameters based on output spec.
 
         This method uses the output_spec to deterministically choose split parameters,
@@ -436,7 +438,7 @@ class SplitOperator(LayoutOperatorBase):
 
         return split_dim, num_chunks
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input spec for split operation."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("SplitOperator can only produce TensorSpec outputs")
@@ -466,7 +468,7 @@ class SplitOperator(LayoutOperatorBase):
         ]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for split operation."""
         if not isinstance(output_spec, TensorSpec):
@@ -489,7 +491,7 @@ class ExpandOperator(LayoutOperatorBase):
         super().__init__("expand")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.expand"
 
@@ -500,7 +502,7 @@ class ExpandOperator(LayoutOperatorBase):
         # Expand can produce any tensor with at least one dimension
         return len(output_spec.size) > 0
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input spec for expand operation."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("ExpandOperator can only produce TensorSpec outputs")
@@ -540,7 +542,7 @@ class ExpandOperator(LayoutOperatorBase):
         ]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for expand operation."""
         if not isinstance(output_spec, TensorSpec):
@@ -558,7 +560,7 @@ class CatOperator(LayoutOperatorBase):
         super().__init__("cat")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.cat"
 
@@ -569,7 +571,7 @@ class CatOperator(LayoutOperatorBase):
         # Cat can produce any tensor with at least one dimension
         return len(output_spec.size) > 0
 
-    def _get_cat_params(self, output_spec: TensorSpec) -> tuple[int, int]:
+    def _get_cat_params(self, output_spec: TensorSpec) -> Tuple[int, int]:
         """Get consistent cat parameters based on output spec.
 
         This method uses the output_spec to deterministically choose cat parameters,
@@ -585,7 +587,7 @@ class CatOperator(LayoutOperatorBase):
 
         return cat_dim, num_tensors
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for cat operation."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("CatOperator can only produce TensorSpec outputs")
@@ -642,7 +644,7 @@ class CatOperator(LayoutOperatorBase):
         return input_specs
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for cat operation."""
         if not isinstance(output_spec, TensorSpec):
@@ -664,7 +666,7 @@ class StackOperator(LayoutOperatorBase):
         super().__init__("stack")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.stack"
 
@@ -696,7 +698,7 @@ class StackOperator(LayoutOperatorBase):
 
         return stack_dim
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input specs for stack operation."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("StackOperator can only produce TensorSpec outputs")
@@ -733,7 +735,7 @@ class StackOperator(LayoutOperatorBase):
         return input_specs
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for stack operation."""
         if not isinstance(output_spec, TensorSpec):
@@ -755,7 +757,7 @@ class ChunkOperator(LayoutOperatorBase):
         super().__init__("chunk")
 
     @property
-    def torch_op_name(self) -> str | None:
+    def torch_op_name(self) -> Union[str, None]:
         """Return the torch operation name."""
         return "torch.chunk"
 
@@ -766,7 +768,7 @@ class ChunkOperator(LayoutOperatorBase):
         # Chunk can produce any tensor with at least one dimension
         return len(output_spec.size) > 0
 
-    def _get_chunk_params(self, output_spec: TensorSpec) -> tuple[int, int]:
+    def _get_chunk_params(self, output_spec: TensorSpec) -> Tuple[int, int]:
         """Get consistent chunk parameters based on output spec.
 
         This method uses the output_spec to deterministically choose chunk parameters,
@@ -782,7 +784,7 @@ class ChunkOperator(LayoutOperatorBase):
 
         return chunk_dim, num_chunks
 
-    def fuzz_inputs_specs(self, output_spec: Spec) -> list[Spec]:
+    def fuzz_inputs_specs(self, output_spec: Spec) -> List[Spec]:
         """Generate input spec for chunk operation."""
         if not isinstance(output_spec, TensorSpec):
             raise ValueError("ChunkOperator can only produce TensorSpec outputs")
@@ -811,7 +813,7 @@ class ChunkOperator(LayoutOperatorBase):
         ]
 
     def codegen(
-        self, output_name: str, input_names: list[str], output_spec: Spec
+        self, output_name: str, input_names: List[str], output_spec: Spec
     ) -> str:
         """Generate code for chunk operation."""
         if not isinstance(output_spec, TensorSpec):

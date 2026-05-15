@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Callable, Dict, Iterable, List, TYPE_CHECKING, Tuple, Type
 
 from .core import reify, unify  # type: ignore[attr-defined]
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    
 
     from .variable import Var
 
@@ -18,10 +18,10 @@ from .variable import isvar
 class Dispatcher:
     def __init__(self, name: str) -> None:
         self.name = name
-        self.funcs: dict[object, Callable[..., object]] = {}
-        self.ordering: list[object] = []
+        self.funcs: Dict[object, Callable[..., object]] = {}
+        self.ordering: List[object] = []
 
-    def add(self, signature: tuple[object, ...], func: Callable[..., object]) -> None:
+    def add(self, signature: Tuple[object, ...], func: Callable[..., object]) -> None:
         self.funcs[freeze(signature)] = func
         self.ordering = ordering(self.funcs)
 
@@ -30,8 +30,8 @@ class Dispatcher:
         return func(*args, **kwargs)
 
     def resolve(
-        self, args: tuple[object, ...]
-    ) -> tuple[Callable[..., object], dict[Var, object]]:
+        self, args: Tuple[object, ...]
+    ) -> Tuple[Callable[..., object], Dict[Var, object]]:
         n = len(args)
         for signature in self.ordering:
             if len(signature) != n:  # pyrefly: ignore[bad-argument-type]
@@ -78,14 +78,14 @@ class VarDispatcher(Dispatcher):
         return func(**d)
 
 
-global_namespace: dict[str, Dispatcher] = {}
+global_namespace: Dict[str, Dispatcher] = {}
 
 
 def match(*signature: object, **kwargs: object) -> Callable[..., object]:
-    namespace: dict[str, Dispatcher] = kwargs.get(  # type: ignore[assignment]
+    namespace: Dict[str, Dispatcher] = kwargs.get(  # type: ignore[assignment]
         "namespace", global_namespace
     )
-    dispatcher_cls: type[Dispatcher] = kwargs.get(  # type: ignore[assignment]
+    dispatcher_cls: Type[Dispatcher] = kwargs.get(  # type: ignore[assignment]
         "Dispatcher", Dispatcher
     )
 
@@ -136,7 +136,7 @@ def edge(a: object, b: object, tie_breaker: Callable[[object], int] = hash) -> b
 
 
 # Taken from multipledispatch
-def ordering(signatures: Iterable[object]) -> list[object]:
+def ordering(signatures: Iterable[object]) -> List[object]:
     """A sane ordering of signatures to check, first to last
     Topological sort of edges as given by ``edge`` and ``supercedes``
     """

@@ -1,4 +1,6 @@
 # mypy: allow-untyped-defs
+from __future__ import annotations
+
 import functools
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -6,9 +8,10 @@ from contextlib import contextmanager
 import torch
 from torch._decomp import decomposition_table
 from torch.utils._pytree import tree_map_only
+from typing import Callable, Dict
 
 
-HANDLED_FUNCTIONS: dict[Callable, torch.autograd.Function] = {}
+HANDLED_FUNCTIONS: Dict[Callable, torch.autograd.Function] = {}
 
 aten = torch._ops.ops.aten
 # __torch_function__ runs before the pydispatcher so we need to manually use the same
@@ -72,11 +75,7 @@ def allow_smaller_batches(args, kwargs):
 
 @contextmanager
 def setup_rnn(use_input_variant, args, kwargs):
-    with (
-        batch_second(args, kwargs)
-        if use_input_variant
-        else allow_smaller_batches(args, kwargs)
-    ):
+    with batch_second(args, kwargs) if use_input_variant else allow_smaller_batches(args, kwargs):
         yield
 
 

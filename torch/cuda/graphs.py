@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import gc
 import typing
-from collections.abc import Callable
-from typing import overload, TYPE_CHECKING, TypeAlias, Union
+from typing import Callable, List, Optional, TYPE_CHECKING, Tuple, Type, Union, overload
+try:
+    from typing import TypeAlias
+except ImportError:
+    TypeAlias = None
 from typing_extensions import ParamSpec, Self, TypeVar
 
 import torch
@@ -94,7 +97,7 @@ class CUDAGraph(_CUDAGraph):
         return super().__new__(cls, keep_graph)
 
     def capture_begin(
-        self, pool: _POOL_HANDLE | None = None, capture_error_mode: str = "global"
+        self, pool: Optional[_POOL_HANDLE] = None, capture_error_mode: str = "global"
     ) -> None:
         r"""Begin capturing CUDA work on the current stream.
 
@@ -215,13 +218,13 @@ class graph:
         https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__STREAM.html#group__CUDART__STREAM_1g9d0535d93a214cbf126835257b16ba85
     """
 
-    default_capture_stream: torch.cuda.Stream | None = None
+    default_capture_stream: Optional[torch.cuda.Stream] = None
 
     def __init__(
         self,
         cuda_graph: CUDAGraph,
-        pool: _POOL_HANDLE | None = None,
-        stream: torch.cuda.Stream | None = None,
+        pool: Optional[_POOL_HANDLE] = None,
+        stream: Optional[torch.cuda.Stream] = None,
         capture_error_mode: str = "global",
         enable_annotations: bool = False,
     ):
@@ -231,7 +234,7 @@ class graph:
         if stream is None and self.__class__.default_capture_stream is None:
             self.__class__.default_capture_stream = torch.cuda.Stream()
 
-        self.pool: tuple[()] | tuple[_POOL_HANDLE] = () if pool is None else (pool,)
+        self.pool: Union[Tuple[()], Tuple[_POOL_HANDLE]] = () if pool is None else (pool,)
         self.capture_stream = (
             stream if stream is not None else self.__class__.default_capture_stream
         )
@@ -296,30 +299,30 @@ _ModuleOrCallable: TypeAlias = Union["torch.nn.Module", Callable[..., object]]
 @overload
 def make_graphed_callables(
     callables: _ModuleOrCallable,
-    sample_args: tuple[Tensor, ...],
+    sample_args: Tuple[Tensor, ...],
     num_warmup_iters: int = 3,
     allow_unused_input: bool = False,
-    pool: _POOL_HANDLE | None = None,
+    pool: Optional[_POOL_HANDLE] = None,
 ) -> _ModuleOrCallable: ...
 
 
 @overload
 def make_graphed_callables(
-    callables: tuple[_ModuleOrCallable, ...],
-    sample_args: tuple[tuple[Tensor, ...], ...],
+    callables: Tuple[_ModuleOrCallable, ...],
+    sample_args: Tuple[Tuple[Tensor, ...], ...],
     num_warmup_iters: int = 3,
     allow_unused_input: bool = False,
-    pool: _POOL_HANDLE | None = None,
-) -> tuple[_ModuleOrCallable, ...]: ...
+    pool: Optional[_POOL_HANDLE] = None,
+) -> Tuple[_ModuleOrCallable, ...]: ...
 
 
 def make_graphed_callables(
-    callables: _ModuleOrCallable | tuple[_ModuleOrCallable, ...],
-    sample_args: tuple[Tensor, ...] | tuple[tuple[Tensor, ...], ...],
+    callables: Union[_ModuleOrCallable, Tuple[_ModuleOrCallable, ...]],
+    sample_args: Union[Tuple[Tensor, ...], Tuple[Tuple[Tensor, ...]], ...],
     num_warmup_iters: int = 3,
     allow_unused_input: bool = False,
-    pool: _POOL_HANDLE | None = None,
-) -> _ModuleOrCallable | tuple[_ModuleOrCallable, ...]:
+    pool: Optional[_POOL_HANDLE] = None,
+) -> Union[_ModuleOrCallable, Tuple[_ModuleOrCallable, ...]]:
     r"""Accept callables (functions or :class:`nn.Module<torch.nn.Module>`\ s) and returns graphed versions.
 
     Each graphed callable's forward pass runs its source callable's
@@ -393,13 +396,13 @@ def make_graphed_callables(
 
     just_one_callable = False
 
-    _sample_args: tuple[tuple[Tensor, ...], ...]
+    _sample_args: Tuple[Tuple[Tensor, ...], ...]
     if not isinstance(callables, tuple):
         just_one_callable = True
         callables = (callables,)
-        _sample_args = (typing.cast(tuple[Tensor, ...], sample_args),)
+        _sample_args = (typing.cast(Tuple[Tensor, ...], sample_args),)
     else:
-        _sample_args = typing.cast(tuple[tuple[Tensor, ...], ...], sample_args)
+        _sample_args = typing.cast(Tuple[Tuple[Tensor, ...], ...], sample_args)
 
     flatten_sample_args = []
 
@@ -539,18 +542,18 @@ def make_graphed_callables(
     def make_graphed_autograd_function(
         fwd_graph: CUDAGraph,
         bwd_graph: CUDAGraph,
-        module_params: tuple[torch.nn.Parameter, ...],
+        module_params: Tuple[torch.nn.Parameter, ...],
         len_user_args: int,
         output_unflatten_spec: torch.utils._pytree.TreeSpec,
-        static_input_surface: tuple[Tensor, ...],
-        static_outputs: tuple[Tensor, ...],
-        static_grad_outputs: tuple[Tensor | None, ...],
-        static_grad_inputs: tuple[Tensor, ...],
+        static_input_surface: Tuple[Tensor, ...],
+        static_outputs: Tuple[Tensor, ...],
+        static_grad_outputs: Tuple[Optional[Tensor], ...],
+        static_grad_inputs: Tuple[Tensor, ...],
     ) -> Callable[..., object]:
         class Graphed(torch.autograd.Function):
             @staticmethod
             # pyrefly: ignore [bad-override]
-            def forward(ctx: object, *inputs: Tensor) -> tuple[Tensor, ...]:
+            def forward(ctx: object, *inputs: Tensor) -> Tuple[Tensor, ...]:
                 # At this stage, only the user args may (potentially) be new tensors.
                 for i in range(len_user_args):
                     if static_input_surface[i].data_ptr() != inputs[i].data_ptr():
@@ -565,7 +568,7 @@ def make_graphed_callables(
             @staticmethod
             @torch.autograd.function.once_differentiable
             # pyrefly: ignore [bad-override]
-            def backward(ctx: object, *grads: Tensor) -> tuple[Tensor, ...]:
+            def backward(ctx: object, *grads: Tensor) -> Tuple[Tensor, ...]:
                 if len(grads) != len(static_grad_outputs):
                     raise AssertionError(
                         f"len(grads)={len(grads)} != len(static_grad_outputs)={len(static_grad_outputs)}"
@@ -600,7 +603,7 @@ def make_graphed_callables(
         return functionalized
 
     # Put together the final graphed callables
-    ret: list[_ModuleOrCallable] = []
+    ret: List[_ModuleOrCallable] = []
     for i, func in enumerate(callables):
         graphed = make_graphed_autograd_function(
             fwd_graphs[i],
