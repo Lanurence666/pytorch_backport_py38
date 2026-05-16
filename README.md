@@ -99,9 +99,9 @@ The test covers:
 - **CUDA Toolkit 12.4** (for GPU support)
 - **CMake** >= 3.25
 - **Ninja** build system
-- **NumPy** (Python 3.8 compatible version)
+- **NumPy** (Python 3.8 compatible version, e.g. `numpy==1.24.4`)
 
-### Build Steps
+### Build Steps (Editable / Development Mode)
 
 ```bash
 # 1. Clone this repository
@@ -113,7 +113,7 @@ conda create -n py38 python=3.8
 conda activate py38
 
 # 3. Install build dependencies
-pip install numpy cmake ninja pybind11 typing_extensions
+pip install numpy==1.24.4 cmake ninja pybind11 typing_extensions
 
 # 4. Set environment variables
 set MAX_JOBS=2
@@ -122,16 +122,33 @@ set TORCH_CUDA_ARCH_LIST=8.0;8.6;8.9;9.0
 
 # 5. Build and install (editable mode for development)
 pip install -e . --no-build-isolation
-
-# 6. Or build a wheel package
-pip wheel --no-build-isolation -w dist .
 ```
+
+### Build Steps (Wheel Package)
+
+To build a redistributable `.whl` package:
+
+```bash
+# 1. Clone and set up environment (same as above steps 1-4)
+
+# 2. Build the wheel
+pip wheel --no-build-isolation -w dist .
+
+# 3. The wheel will be in the dist/ directory:
+#    dist/torch-2.13.0a0+git03855a7-cp38-cp38-win_amd64.whl
+```
+
+> **Tip:** If you encounter linker memory errors (LNK1102) during the `torch_cpu.dll` phase, reduce `MAX_JOBS` to 1:
+> ```bash
+> set MAX_JOBS=1
+> ```
 
 ### Important Build Notes
 
-- Set `MAX_JOBS=2` to avoid linker memory errors (LNK1102) during the `torch_cpu.dll` linking phase
+- Set `MAX_JOBS=2` (or `1` for low-memory systems) to avoid linker memory errors (LNK1102) during the `torch_cpu.dll` linking phase
 - The full build takes approximately 2-4 hours on a modern machine
 - The resulting wheel is approximately 160MB
+- If building without CUDA, set `set USE_CUDA=0` instead
 
 ## Installation
 

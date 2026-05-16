@@ -98,9 +98,9 @@ python test_pytorch_functions.py
 - **CUDA Toolkit 12.4**（用于 GPU 支持）
 - **CMake** >= 3.25
 - **Ninja** 构建系统
-- **NumPy**（兼容 Python 3.8 的版本）
+- **NumPy**（兼容 Python 3.8 的版本，如 `numpy==1.24.4`）
 
-### 编译步骤
+### 编译步骤（开发模式）
 
 ```bash
 # 1. 克隆此仓库
@@ -112,7 +112,7 @@ conda create -n py38 python=3.8
 conda activate py38
 
 # 3. 安装编译依赖
-pip install numpy cmake ninja pybind11 typing_extensions
+pip install numpy==1.24.4 cmake ninja pybind11 typing_extensions
 
 # 4. 设置环境变量
 set MAX_JOBS=2
@@ -121,16 +121,33 @@ set TORCH_CUDA_ARCH_LIST=8.0;8.6;8.9;9.0
 
 # 5. 编译并安装（开发模式）
 pip install -e . --no-build-isolation
-
-# 6. 或构建 wheel 包
-pip wheel --no-build-isolation -w dist .
 ```
+
+### 编译步骤（Wheel 包）
+
+构建可分发的 `.whl` 包：
+
+```bash
+# 1. 克隆并设置环境（同上步骤 1-4）
+
+# 2. 构建 wheel
+pip wheel --no-build-isolation -w dist .
+
+# 3. wheel 将在 dist/ 目录中：
+#    dist/torch-2.13.0a0+git03855a7-cp38-cp38-win_amd64.whl
+```
+
+> **提示：** 如果在 `torch_cpu.dll` 阶段遇到链接器内存错误（LNK1102），将 `MAX_JOBS` 减少到 1：
+> ```bash
+> set MAX_JOBS=1
+> ```
 
 ### 重要编译说明
 
-- 设置 `MAX_JOBS=2` 以避免 `torch_cpu.dll` 链接阶段的链接器内存错误（LNK1102）
+- 设置 `MAX_JOBS=2`（低内存系统设为 `1`）以避免 `torch_cpu.dll` 链接阶段的链接器内存错误（LNK1102）
 - 完整编译在现代机器上大约需要 2-4 小时
 - 生成的 wheel 包大约 160MB
+- 如果不使用 CUDA 编译，设置 `set USE_CUDA=0`
 
 ## 安装
 
