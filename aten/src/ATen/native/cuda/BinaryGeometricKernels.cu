@@ -11,9 +11,21 @@
 namespace at::native {
 
 void atan2_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "atan2_cuda",
+        [&]() {
+          gpu_kernel_with_scalars(iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
+            return ::atan2(a, b);
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half, at::ScalarType::BFloat16,
-      iter.common_dtype(), "atan2_cuda",
+      iter.input_dtype(), "atan2_cuda",
       [&]() {
         gpu_kernel_with_scalars(iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
           return ::atan2(a, b);
@@ -22,9 +34,22 @@ void atan2_kernel_cuda(TensorIteratorBase& iter) {
 }
 
 void hypot_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "hypot_cuda",
+        [&]() {
+          opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
+              iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
+            return ::hypot(a, b);
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half, at::ScalarType::BFloat16,
-      iter.common_dtype(), "hypot_cuda",
+      iter.input_dtype(), "hypot_cuda",
       [&]() {
         opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
             iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {

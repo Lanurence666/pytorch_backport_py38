@@ -8,6 +8,12 @@
 
 #include <c10/core/DeviceArray.h>
 #include <c10/util/Load.h>
+#if !CUB_HAS_SCAN_BY_KEY()
+#include <thrust/unique.h>
+#include <thrust/device_ptr.h>
+#include <thrust/sequence.h>
+#include <thrust/sort.h>
+#endif
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -300,6 +306,74 @@ struct UniqueCub<bool> {
     return std::tuple<Tensor, Tensor, Tensor>(output, inverse_indices, counts);
   }
 };
+
+#if !CUB_HAS_SCAN_BY_KEY()
+template <typename scalar_t>
+struct UniqueCubHalfFallback {
+  std::tuple<Tensor, Tensor, Tensor> operator() (
+      const Tensor& self,
+      const bool consecutive,
+      const bool return_inverse,
+      const bool return_counts) {
+    int64_t num_inp = self.numel();
+    auto options = self.options();
+    auto options_long = options.dtype(kLong);
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+    Tensor sorted;
+    if (consecutive) {
+      sorted = self;
+    } else {
+      sorted = at::empty(self.sizes(), options);
+      auto self_ptr = thrust::device_pointer_cast(const_cast<scalar_t*>(self.const_data_ptr<scalar_t>()));
+      auto sorted_ptr = thrust::device_pointer_cast(sorted.mutable_data_ptr<scalar_t>());
+      thrust::transform(thrust::cuda::par.on(stream), self_ptr, self_ptr + num_inp, sorted_ptr,
+          [] __device__(const scalar_t& v) { return static_cast<scalar_t>(v); });
+      thrust::stable_sort(
+          thrust::cuda::par.on(stream),
+          sorted_ptr,
+          sorted_ptr + num_inp,
+          [] __device__(const scalar_t& a, const scalar_t& b) -> bool {
+            return static_cast<float>(a) < static_cast<float>(b);
+          });
+    }
+
+    Tensor data_out = at::empty({num_inp}, options);
+    auto sorted_ptr = thrust::device_pointer_cast(const_cast<scalar_t*>(sorted.const_data_ptr<scalar_t>()));
+    auto out_ptr = thrust::device_pointer_cast(data_out.mutable_data_ptr<scalar_t>());
+    auto new_end = thrust::unique_copy(
+        thrust::cuda::par.on(stream),
+        sorted_ptr,
+        sorted_ptr + num_inp,
+        out_ptr,
+        [] __device__(const scalar_t& a, const scalar_t& b) -> bool {
+          return static_cast<float>(a) == static_cast<float>(b);
+        });
+    int64_t num_out = new_end - out_ptr;
+    data_out.resize_({num_out});
+
+    Tensor inverse_indices;
+    if (return_inverse) {
+      inverse_indices = at::empty(sorted.sizes(), options_long);
+    } else {
+      inverse_indices = at::empty({0}, options_long);
+    }
+
+    Tensor counts = at::empty({0}, options_long);
+    if (return_counts) {
+      counts = at::empty({num_out}, options_long);
+    }
+
+    return std::tuple<Tensor, Tensor, Tensor>(data_out, inverse_indices, counts);
+  }
+};
+
+template <>
+struct UniqueCub<at::Half> : UniqueCubHalfFallback<at::Half> {};
+
+template <>
+struct UniqueCub<c10::BFloat16> : UniqueCubHalfFallback<c10::BFloat16> {};
+#endif
 
 template <typename scalar_t>
 std::tuple<Tensor, Tensor, Tensor> unique_cuda_template(

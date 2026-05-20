@@ -19,7 +19,14 @@ struct AbsFunctor {
 constexpr char abs_name[] = "abs_kernel";
 void abs_kernel_cuda(TensorIteratorBase& iter) {
   auto dtype = iter.dtype();
-  if (at::isComplexType(dtype)) {
+  if (isFloat8Type(dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        dtype, "abs_cuda", [&]() {
+          gpu_kernel(iter, AbsFunctor<scalar_t>());
+        });
+  } else if (at::isComplexType(dtype)) {
 #if AT_USE_JITERATOR()
     static const auto abs_string = jiterator_stringify(
         template <typename T> T abs_kernel(T x) { return std::abs(x); });

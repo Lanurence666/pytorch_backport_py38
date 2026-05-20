@@ -12,20 +12,36 @@
 namespace at::native {
 
 void maximum_kernel_cuda(TensorIteratorBase& iter) {
-  if (iter.common_dtype() == ScalarType::Bool) {
+  if (iter.input_dtype() == ScalarType::Bool) {
     opmath_symmetric_gpu_kernel_with_scalars<bool>(
         iter, []GPU_LAMBDA(bool a, bool b) -> bool {
       return a || b;
     });
-  } else if (isIntegralType(iter.common_dtype(), /*includeBool=*/ false)) {
-    AT_DISPATCH_INTEGRAL_TYPES(iter.common_dtype(), "max_elementwise_cuda", [&]() {
+  } else if (isIntegralType(iter.input_dtype(), /*includeBool=*/ false)) {
+    AT_DISPATCH_INTEGRAL_TYPES(iter.input_dtype(), "max_elementwise_cuda", [&]() {
       opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
           iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
         return ::max(a, b);
       });
     });
+  } else if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "max_elementwise_cuda", [&]() {
+      opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
+          iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
+        if (a != a) {
+          return a;
+        } else if (b != b) {
+          return b;
+        } else {
+          return ::max(a, b);
+        }
+      });
+    });
   } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.common_dtype(), "max_elementwise_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.input_dtype(), "max_elementwise_cuda", [&]() {
       opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
           iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
         if (a != a) {
@@ -41,18 +57,33 @@ void maximum_kernel_cuda(TensorIteratorBase& iter) {
 }
 
 void minimum_kernel_cuda(TensorIteratorBase& iter) {
-  if (iter.common_dtype() == ScalarType::Bool) {
+  if (iter.input_dtype() == ScalarType::Bool) {
     opmath_symmetric_gpu_kernel_with_scalars<bool>(iter, []GPU_LAMBDA(bool a, bool b) -> bool {
       return a && b;
     });
-  } else if (isIntegralType(iter.common_dtype(), /*includeBool=*/ false)) {
-    AT_DISPATCH_INTEGRAL_TYPES(iter.common_dtype(), "minimum_cuda", [&]() {
+  } else if (isIntegralType(iter.input_dtype(), /*includeBool=*/ false)) {
+    AT_DISPATCH_INTEGRAL_TYPES(iter.input_dtype(), "minimum_cuda", [&]() {
       opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
         return ::min(a, b);
       });
     });
+  } else if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "min_elementwise_cuda", [&]() {
+      opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
+        if (a != a) {
+          return a;
+        } else if (b != b) {
+          return b;
+        } else {
+          return ::min(a, b);
+        }
+      });
+    });
   } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.common_dtype(), "min_elementwise_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.input_dtype(), "min_elementwise_cuda", [&]() {
       opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
         if (a != a) {
           return a;
@@ -67,8 +98,17 @@ void minimum_kernel_cuda(TensorIteratorBase& iter) {
 }
 
 void fmax_kernel_cuda(TensorIteratorBase& iter) {
-  if (isFloatingType(iter.common_dtype())) {
-    AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.common_dtype(), "fmax_cuda", [&]() {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "fmax_cuda", [&]() {
+      opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
+        return ::fmax(a, b);
+      });
+    });
+  } else if (isFloatingType(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.input_dtype(), "fmax_cuda", [&]() {
       opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
         return ::fmax(a, b);
       });
@@ -79,8 +119,17 @@ void fmax_kernel_cuda(TensorIteratorBase& iter) {
 }
 
 void fmin_kernel_cuda(TensorIteratorBase& iter) {
-  if (isFloatingType(iter.common_dtype())) {
-    AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.common_dtype(), "fmin_cuda", [&]() {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "fmin_cuda", [&]() {
+      opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
+        return ::fmin(a, b);
+      });
+    });
+  } else if (isFloatingType(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.input_dtype(), "fmin_cuda", [&]() {
       opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
         return ::fmin(a, b);
       });

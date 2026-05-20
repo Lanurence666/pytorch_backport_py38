@@ -22,7 +22,7 @@ void radix_sort_keys(
 
   if (descending) {
     CUB_WRAPPER(
-        NO_ROCM(at_cuda_detail)::cub::DeviceRadixSort::SortKeysDescending,
+        ATEN_CUB_NS::cub::DeviceRadixSort::SortKeysDescending,
         keys_in_,
         keys_out_,
         n,
@@ -31,7 +31,7 @@ void radix_sort_keys(
         c10::cuda::getCurrentCUDAStream());
   } else {
     CUB_WRAPPER(
-        NO_ROCM(at_cuda_detail)::cub::DeviceRadixSort::SortKeys,
+        ATEN_CUB_NS::cub::DeviceRadixSort::SortKeys,
         keys_in_,
         keys_out_,
         n,
@@ -50,7 +50,11 @@ void radix_sort_keys(
       int64_t begin_bit,                                  \
       int64_t end_bit);
 
+#if CUB_HAS_SCAN_BY_KEY()
 AT_FORALL_SCALAR_TYPES_AND3(Bool, BFloat16, Half, AT_INSTATIATE_CUB_TEMPLATES)
+#else
+AT_FORALL_SCALAR_TYPES_AND2(Bool, Half, AT_INSTATIATE_CUB_TEMPLATES)
+#endif
 AT_INSTATIATE_CUB_TEMPLATES(uint16_t, UInt16)
 AT_INSTATIATE_CUB_TEMPLATES(uint32_t, UInt32)
 AT_INSTATIATE_CUB_TEMPLATES(uint64_t, UInt64)

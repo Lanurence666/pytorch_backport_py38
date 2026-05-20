@@ -82,8 +82,8 @@ void cumsum_cpu_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
 
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(kBFloat16, kHalf, self.scalar_type(), "cumsum_out_cpu", [&] {
     cpu_cum_base_kernel<scalar_t>(result, self, wrap_dim, [&] (
-      scalar_t* result_data, auto result_dim_stride,
-      const scalar_t* self_data, auto self_dim_stride, scalar_t init_val) {
+      scalar_t* result_data, int64_t result_dim_stride,
+      const scalar_t* self_data, int64_t self_dim_stride, scalar_t init_val) {
         // NOLINTNEXTLINE(bugprone-signed-char-misuse)
         auto cum_number = (at::acc_type<scalar_t, false>)init_val;
         for (const auto i : c10::irange(self_dim_size)) {
@@ -101,8 +101,8 @@ void cumprod_cpu_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
 
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(kBFloat16, kHalf, self.scalar_type(), "cumprod_out_cpu", [&] {
     cpu_cum_base_kernel<scalar_t>(result, self, wrap_dim, [&] (
-      scalar_t* result_data, auto result_dim_stride,
-      const scalar_t* self_data, auto self_dim_stride, scalar_t init_val) {
+      scalar_t* result_data, int64_t result_dim_stride,
+      const scalar_t* self_data, int64_t self_dim_stride, scalar_t init_val) {
         // NOLINTNEXTLINE(bugprone-signed-char-misuse)
         auto cum_number = (at::acc_type<scalar_t, false>)init_val;
         for (const auto i : c10::irange(self_dim_size)) {
@@ -120,8 +120,8 @@ void logcumsumexp_cpu_kernel(Tensor& result, const Tensor& self, int64_t dim) {
 
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(kBFloat16, kHalf, self.scalar_type(), "logcumsumexp_out_cpu", [&] {
     cpu_cum_base_kernel<scalar_t>(result, self, wrap_dim, [&] (
-      scalar_t* result_data, auto result_dim_stride,
-      const scalar_t* self_data, auto self_dim_stride, scalar_t init_val) {
+      scalar_t* result_data, int64_t result_dim_stride,
+      const scalar_t* self_data, int64_t self_dim_stride, scalar_t init_val) {
         using accscalar_t = at::acc_type<scalar_t, false>;
         auto cum_number = (accscalar_t)init_val;
         for (const auto i : c10::irange(self_dim_size)) {

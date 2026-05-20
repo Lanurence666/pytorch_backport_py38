@@ -5,10 +5,11 @@
 
 namespace at::cuda::sparse {
 
+#if AT_USE_CUSPARSE_CONST_DESCRIPTORS()
 cusparseStatus_t destroyConstDnMat(const cusparseDnMatDescr* dnMatDescr) {
-  // NOLINTNEXTLINE(*const-cast)
   return cusparseDestroyDnMat(const_cast<cusparseDnMatDescr*>(dnMatDescr));
 }
+#endif
 
 namespace {
 
@@ -108,9 +109,11 @@ CuSparseDnMatDescriptor::CuSparseDnMatDescriptor(const Tensor& input, int64_t ba
   descriptor_.reset(createRawDnMatDescriptor(input, batch_offset));
 }
 
+#if AT_USE_CUSPARSE_CONST_DESCRIPTORS()
 CuSparseConstDnMatDescriptor::CuSparseConstDnMatDescriptor(const Tensor& input, int64_t batch_offset) {
   descriptor_.reset(createRawDnMatDescriptor(input, batch_offset, /*is_const*/true));
 }
+#endif
 
 CuSparseDnVecDescriptor::CuSparseDnVecDescriptor(const Tensor& input) {
   // cuSPARSE doesn't support batched vectors

@@ -25,6 +25,18 @@ void where_kernel_impl(TensorIterator &iter) {
 }
 
 void isposinf_kernel_impl(TensorIteratorBase &iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "isposinf_cuda", [&]() {
+      gpu_kernel(
+        iter,
+        [] GPU_LAMBDA (scalar_t a) -> bool { return static_cast<float>(a) == std::numeric_limits<float>::infinity(); }
+      );
+    });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.input_dtype(), "isposinf_cuda", [&]() {
     gpu_kernel(
       iter,
@@ -34,6 +46,18 @@ void isposinf_kernel_impl(TensorIteratorBase &iter) {
 }
 
 void isneginf_kernel_impl(TensorIteratorBase &iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "isneginf_cuda", [&]() {
+      gpu_kernel(
+        iter,
+        [] GPU_LAMBDA (scalar_t a) -> bool { return static_cast<float>(a) == -std::numeric_limits<float>::infinity(); }
+      );
+    });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.input_dtype(), "isneginf_cuda", [&]() {
     gpu_kernel(
       iter,
@@ -43,7 +67,23 @@ void isneginf_kernel_impl(TensorIteratorBase &iter) {
 }
 
 void clamp_kernel_impl(TensorIteratorBase& iter) {
-  AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, iter.common_dtype(), "clamp_cuda", [&] {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "clamp_cuda", [&] {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t v, scalar_t lower, scalar_t upper) -> scalar_t {
+            using opmath_t = at::opmath_type<scalar_t>;
+            opmath_t result = ::min(::max(static_cast<opmath_t>(v), static_cast<opmath_t>(lower)), static_cast<opmath_t>(upper));
+            result = at::_isnan(upper) ? static_cast<opmath_t>(upper) : result;
+            result = at::_isnan(lower) ? static_cast<opmath_t>(lower) : result;
+            result = at::_isnan(v) ? static_cast<opmath_t>(v) : result;
+            return static_cast<scalar_t>(result);
+          });
+        });
+    return;
+  }
+  AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, iter.input_dtype(), "clamp_cuda", [&] {
     gpu_kernel(iter, []GPU_LAMBDA(scalar_t v, scalar_t lower, scalar_t upper) -> scalar_t {
       using opmath_t = at::opmath_type<scalar_t>;
       opmath_t result = ::min(::max(static_cast<opmath_t>(v), static_cast<opmath_t>(lower)), static_cast<opmath_t>(upper));
@@ -58,7 +98,29 @@ void clamp_kernel_impl(TensorIteratorBase& iter) {
 }
 
 void inline launch_clamp_scalar(TensorIteratorBase& iter, Scalar lim0, Scalar lim1, at::native::detail::ClampLimits minmax){
-  AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, iter.common_dtype(), "clamp_scalar_cuda", [&] {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "clamp_scalar_cuda", [&] {
+          using opmath_t = at::opmath_type<scalar_t>;
+          auto lim0_val = lim0.to<opmath_t>();
+          auto lim1_val = lim1.to<opmath_t>();
+          gpu_kernel(iter, [=]GPU_LAMBDA(scalar_t v) -> scalar_t {
+            if (_isnan(static_cast<opmath_t>(v))) {
+              return v;
+            } else if (minmax==at::native::detail::ClampLimits::Min){
+              return static_cast<scalar_t>(::max(static_cast<opmath_t>(v), lim0_val));
+            } else if (minmax==at::native::detail::ClampLimits::Max){
+              return static_cast<scalar_t>(::min(static_cast<opmath_t>(v), lim0_val));
+            } else {
+              return static_cast<scalar_t>(::min(::max(static_cast<opmath_t>(v), lim0_val), lim1_val));
+            }
+          });
+        });
+    return;
+  }
+  AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, iter.input_dtype(), "clamp_scalar_cuda", [&] {
     using opmath_t = at::opmath_type<scalar_t>;
     auto lim0_val = lim0.to<opmath_t>();
     auto lim1_val = lim1.to<opmath_t>();

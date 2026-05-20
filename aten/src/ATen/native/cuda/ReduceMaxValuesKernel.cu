@@ -37,6 +37,15 @@ void max_values_kernel_cuda_impl(TensorIterator& iter) {
 }
 
 void max_values_kernel_cuda(TensorIterator& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "max_values_cuda", [&]() {
+          max_values_kernel_cuda_impl<scalar_t>(iter);
+        });
+    return;
+  }
   AT_DISPATCH_ALL_TYPES_AND3(
       kBFloat16, kHalf, kBool, iter.dtype(), "max_values_cuda", [&]() {
         max_values_kernel_cuda_impl<scalar_t>(iter);
@@ -44,6 +53,19 @@ void max_values_kernel_cuda(TensorIterator& iter) {
 }
 
 void max_launch_kernel(TensorIterator& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "max_cuda", [&]() {
+          gpu_reduce_kernel<scalar_t, scalar_t>(
+              iter,
+              MaxOps<scalar_t>{},
+              thrust::pair<scalar_t, int64_t>(
+                  at::numeric_limits<scalar_t>::lower_bound(), 0));
+        });
+    return;
+  }
   AT_DISPATCH_ALL_TYPES_AND3(
       kBFloat16, kHalf, kBool, iter.input_dtype(), "max_cuda", [&]() {
         gpu_reduce_kernel<scalar_t, scalar_t>(

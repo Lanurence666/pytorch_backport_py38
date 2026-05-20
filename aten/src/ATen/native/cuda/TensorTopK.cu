@@ -55,7 +55,7 @@ __global__ void gatherTopK(at::cuda::detail::TensorInfo<const T, IndexType> inpu
                            T* kthValues) {
   // smem is used for:
   // 1. radixSelect: radix bin counts (RADIX_SIZE=4 elements)
-  // 2. exclusiveBinaryPrefixScan: warp prefix sums (â‰¤32 elements)
+  // 2. exclusiveBinaryPrefixScan: warp prefix sums (â‰?2 elements)
   // 3. findPattern: flag and value (2 elements, cast to scalar_t*)
   //
   // Type must be IndexType to safely handle sliceSize > INT_MAX.
@@ -485,7 +485,7 @@ __global__ void warpMergeSortTopK(
   StridedRandomAccessor<scalar_t, IndexType> topK_iter(topK_slice, topKWithinSliceStride);
   StridedRandomAccessor<int64_t, IndexType> indices_iter(indices_slice, indicesWithinSliceStride);
 
-  namespace cub = ROCM_HIPCUB(at_cuda_detail::cub);
+  namespace cub = ATEN_CUB_NS::ROCM_HIPCUB(cub);
 
   CUDA_KERNEL_ASSERT(blockDim.x == WARP_SIZE);
   CUDA_KERNEL_ASSERT(blockDim.y <= max_block_dim_y);
@@ -949,7 +949,7 @@ __global__ void computeBlockwiseWithinKCounts(
   uint32_t k_to_find = ks_to_find_in[slice_idx];
 
   // Use hipCUB BlockScan for efficient inclusive scan
-  typedef ROCM_HIPCUB(at_cuda_detail::cub)::BlockScan<uint32_t, RADIX_DIGITS> BlockScan;
+  typedef ROCM_HIPCUB(ATEN_CUB_NS::cub)::BlockScan<uint32_t, RADIX_DIGITS> BlockScan;
   __shared__ typename BlockScan::TempStorage scan_storage;
 
   // Build per-slice digit totals in shared memory and compute inclusive cumsum
@@ -1283,9 +1283,9 @@ int get_items_per_thread(uint64_t num_slices, uint64_t slice_size) {
   // Goal: Keep blocks_per_slice under 100 for optimal performance
   if (num_slices <= 4 && slice_size >= 800000) {
     // Very large arrays (800k+): Aggressively increase items_per_thread
-    // For 1M elements: items_per_thread=32 â†’ blocks_per_slice=123
-    // For 1M elements: items_per_thread=48 â†’ blocks_per_slice=82
-    // For 1M elements: items_per_thread=64 â†’ blocks_per_slice=62
+    // For 1M elements: items_per_thread=32 â†?blocks_per_slice=123
+    // For 1M elements: items_per_thread=48 â†?blocks_per_slice=82
+    // For 1M elements: items_per_thread=64 â†?blocks_per_slice=62
     items_per_thread = std::max(items_per_thread, (int64_t)48);
   } else if (num_slices <= 4 && slice_size >= 500000) {
     // Large arrays (500k-800k): Moderately increase items_per_thread

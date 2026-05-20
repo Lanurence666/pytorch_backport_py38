@@ -14,11 +14,11 @@ namespace at::native {
 
             void shifted_chebyshev_polynomial_w_kernel_cuda(TensorIteratorBase& iterator) {
 #if AT_USE_JITERATOR()
-                AT_DISPATCH_FLOATING_TYPES(iterator.common_dtype(), "shifted_chebyshev_polynomial_w_cuda", [&]() {
+                AT_DISPATCH_FLOATING_TYPES(iterator.input_dtype(), "shifted_chebyshev_polynomial_w_cuda", [&]() {
                     opmath_jitted_gpu_kernel_with_scalars<shifted_chebyshev_polynomial_w_name, scalar_t, scalar_t>(iterator, shifted_chebyshev_polynomial_w_string);
                 });
 #else
-                AT_DISPATCH_FLOATING_TYPES(iterator.common_dtype(), "shifted_chebyshev_polynomial_w_cuda", [&]() {
+                AT_DISPATCH_FLOATING_TYPES(iterator.input_dtype(), "shifted_chebyshev_polynomial_w_cuda", [&]() {
                     gpu_kernel_with_scalars(iterator, []GPU_LAMBDA(scalar_t x, scalar_t n) -> scalar_t {
                         return shifted_chebyshev_polynomial_w_forward<scalar_t, true>(x, n);
                     });

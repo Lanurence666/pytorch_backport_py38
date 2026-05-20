@@ -24,11 +24,11 @@ namespace at::native {
 
             void scaled_modified_bessel_k1_kernel_cuda(TensorIteratorBase& iterator) {
 #if AT_USE_JITERATOR()
-                AT_DISPATCH_FLOATING_TYPES(iterator.common_dtype(), "scaled_modified_bessel_k1_cuda", [&]() {
+                AT_DISPATCH_FLOATING_TYPES(iterator.input_dtype(), "scaled_modified_bessel_k1_cuda", [&]() {
                     jitted_gpu_kernel<scaled_modified_bessel_k1_name, scalar_t, scalar_t, 1>(iterator, scaled_modified_bessel_k1_string);
                 });
 #else
-                AT_DISPATCH_FLOATING_TYPES(iterator.common_dtype(), "scaled_modified_bessel_k1_cuda", [&]() {
+                AT_DISPATCH_FLOATING_TYPES(iterator.input_dtype(), "scaled_modified_bessel_k1_cuda", [&]() {
                     gpu_kernel(iterator, []GPU_LAMBDA(scalar_t a) -> scalar_t {
                         return scaled_modified_bessel_k1_forward(a);
                     });

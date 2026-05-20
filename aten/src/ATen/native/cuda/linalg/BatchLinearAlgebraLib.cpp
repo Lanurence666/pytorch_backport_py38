@@ -142,13 +142,13 @@ void apply_ldl_solve_cusolver(
   auto a_data = A.const_data_ptr<scalar_t>();
   auto b_data = B.data_ptr<scalar_t>();
 
-  auto pivots_ = pivots.to(kLong);
-  auto pivots_data = pivots_.const_data_ptr<int64_t>();
+  auto pivots_int = pivots.to(kInt);
+  auto pivots_data_int = pivots_int.const_data_ptr<int>();
 
-  // needed to run ldl_solve tests in parallel
-  // see https://github.com/pytorch/pytorch/issues/82894 for examples of failures
   c10::cuda::device_synchronize();
   auto handle = at::cuda::getCurrentCUDASolverDnHandle();
+
+#if CUSOLVER_VERSION >= 11400
   auto datatype = at::cuda::solver::get_cusolver_datatype<scalar_t>();
   size_t worksize_device = 0;
   size_t worksize_host = 0;
@@ -168,7 +168,6 @@ void apply_ldl_solve_cusolver(
       &worksize_device,
       &worksize_host));
 
-  // allocate workspace storage
   auto& device_allocator = *at::cuda::getCUDADeviceAllocator();
   auto workdata_device = device_allocator.allocate(worksize_device);
   void* workdata_device_ptr = workdata_device.get();
@@ -200,6 +199,83 @@ void apply_ldl_solve_cusolver(
         worksize_host,
         info.data_ptr<int>()));
   }
+#else
+  int n_int = cuda_int_cast(n, "n");
+  int nrhs_int = cuda_int_cast(nrhs, "nrhs");
+  int lda_int = cuda_int_cast(lda, "lda");
+  int ldb_int = cuda_int_cast(ldb, "ldb");
+
+  int lwork = 0;
+  if constexpr (std::is_same_v<scalar_t, float>) {
+    TORCH_CUSOLVER_CHECK(cusolverDnSsytrs_bufferSize(
+        handle, uplo, n_int, nrhs_int,
+        const_cast<float*>(a_data), lda_int,
+        pivots_data_int,
+        b_data, ldb_int, &lwork));
+  } else if constexpr (std::is_same_v<scalar_t, double>) {
+    TORCH_CUSOLVER_CHECK(cusolverDnDsytrs_bufferSize(
+        handle, uplo, n_int, nrhs_int,
+        const_cast<double*>(a_data), lda_int,
+        pivots_data_int,
+        b_data, ldb_int, &lwork));
+  } else if constexpr (std::is_same_v<scalar_t, c10::complex<float>>) {
+    TORCH_CUSOLVER_CHECK(cusolverDnCsytrs_bufferSize(
+        handle, uplo, n_int, nrhs_int,
+        reinterpret_cast<cuComplex*>(const_cast<c10::complex<float>*>(a_data)), lda_int,
+        pivots_data_int,
+        reinterpret_cast<cuComplex*>(b_data), ldb_int, &lwork));
+  } else if constexpr (std::is_same_v<scalar_t, c10::complex<double>>) {
+    TORCH_CUSOLVER_CHECK(cusolverDnZsytrs_bufferSize(
+        handle, uplo, n_int, nrhs_int,
+        reinterpret_cast<cuDoubleComplex*>(const_cast<c10::complex<double>*>(a_data)), lda_int,
+        pivots_data_int,
+        reinterpret_cast<cuDoubleComplex*>(b_data), ldb_int, &lwork));
+  }
+
+  auto& device_allocator = *at::cuda::getCUDADeviceAllocator();
+  auto workdata_device = device_allocator.allocate(lwork * sizeof(scalar_t));
+  auto workdata_device_ptr = reinterpret_cast<scalar_t*>(workdata_device.get());
+
+  Tensor info = at::zeros({}, A.options().dtype(at::kInt));
+  for (const auto i : c10::irange(batch_size)) {
+    auto* a_working_ptr = const_cast<scalar_t*>(&a_data[i * a_stride]);
+    auto* b_working_ptr = &b_data[i * b_stride];
+    const auto* pivots_working_ptr = &pivots_data_int[i * pivots_stride];
+    if constexpr (std::is_same_v<scalar_t, float>) {
+      TORCH_CUSOLVER_CHECK(cusolverDnSsytrs(
+          handle, uplo, n_int, nrhs_int,
+          a_working_ptr, lda_int,
+          pivots_working_ptr,
+          b_working_ptr, ldb_int,
+          workdata_device_ptr, lwork,
+          info.data_ptr<int>()));
+    } else if constexpr (std::is_same_v<scalar_t, double>) {
+      TORCH_CUSOLVER_CHECK(cusolverDnDsytrs(
+          handle, uplo, n_int, nrhs_int,
+          a_working_ptr, lda_int,
+          pivots_working_ptr,
+          b_working_ptr, ldb_int,
+          workdata_device_ptr, lwork,
+          info.data_ptr<int>()));
+    } else if constexpr (std::is_same_v<scalar_t, c10::complex<float>>) {
+      TORCH_CUSOLVER_CHECK(cusolverDnCsytrs(
+          handle, uplo, n_int, nrhs_int,
+          reinterpret_cast<cuComplex*>(a_working_ptr), lda_int,
+          pivots_working_ptr,
+          reinterpret_cast<cuComplex*>(b_working_ptr), ldb_int,
+          reinterpret_cast<cuComplex*>(workdata_device_ptr), lwork,
+          info.data_ptr<int>()));
+    } else if constexpr (std::is_same_v<scalar_t, c10::complex<double>>) {
+      TORCH_CUSOLVER_CHECK(cusolverDnZsytrs(
+          handle, uplo, n_int, nrhs_int,
+          reinterpret_cast<cuDoubleComplex*>(a_working_ptr), lda_int,
+          pivots_working_ptr,
+          reinterpret_cast<cuDoubleComplex*>(b_working_ptr), ldb_int,
+          reinterpret_cast<cuDoubleComplex*>(workdata_device_ptr), lwork,
+          info.data_ptr<int>()));
+    }
+  }
+#endif
 
   // info from sytrs only reports if the i-th parameter is wrong
   // so we don't need to check it all the time

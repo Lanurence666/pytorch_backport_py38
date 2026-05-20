@@ -1272,92 +1272,73 @@ static void registerCudaPluggableAllocator(PyObject* module) {
           "set_init_fn",
           [](torch::cuda::CUDAPluggableAllocator::CUDAPluggableAllocator& self,
              uint64_t func_ptr) {
-            using FuncType = void(int);
-            std::function<FuncType> func =
-                // NOLINTNEXTLINE(performance-no-int-to-ptr)
-                reinterpret_cast<FuncType*>(func_ptr);
+            auto func_ptr_typed = reinterpret_cast<void(*)(int)>(func_ptr);
+            std::function<void(int)> func = func_ptr_typed;
             self.set_init_fn(func);
           })
       .def(
           "set_reset_fn",
           [](torch::cuda::CUDAPluggableAllocator::CUDAPluggableAllocator& self,
              uint64_t func_ptr) {
-            using FuncType = void();
-            std::function<FuncType> func =
-                // NOLINTNEXTLINE(performance-no-int-to-ptr)
-                reinterpret_cast<FuncType*>(func_ptr);
+            auto func_ptr_typed = reinterpret_cast<void(*)()>(func_ptr);
+            std::function<void()> func = func_ptr_typed;
             self.set_reset_fn(func);
           })
       .def(
           "set_memory_fraction_fn",
           [](torch::cuda::CUDAPluggableAllocator::CUDAPluggableAllocator& self,
              uint64_t func_ptr) {
-            using FuncType = void(double, int);
-            std::function<FuncType> func =
-                // NOLINTNEXTLINE(performance-no-int-to-ptr)
-                reinterpret_cast<FuncType*>(func_ptr);
+            auto func_ptr_typed = reinterpret_cast<void(*)(double, int)>(func_ptr);
+            std::function<void(double, int)> func = func_ptr_typed;
             self.set_memory_fraction_fn(func);
           })
       .def(
           "set_base_alloc_fn",
           [](torch::cuda::CUDAPluggableAllocator::CUDAPluggableAllocator& self,
              uint64_t func_ptr) {
-            using FuncType = void*(void*, size_t*);
-            std::function<FuncType> func =
-                // NOLINTNEXTLINE(performance-no-int-to-ptr)
-                reinterpret_cast<FuncType*>(func_ptr);
+            auto func_ptr_typed = reinterpret_cast<void*(*)(void*, size_t*)>(func_ptr);
+            std::function<void*(void*, size_t*)> func = func_ptr_typed;
             self.set_base_alloc_fn(func);
           })
       .def(
           "set_record_stream_fn",
           [](torch::cuda::CUDAPluggableAllocator::CUDAPluggableAllocator& self,
              uint64_t func_ptr) {
-            using FuncType = void(void*, cudaStream_t);
-            std::function<FuncType> func =
-                // NOLINTNEXTLINE(performance-no-int-to-ptr)
-                reinterpret_cast<FuncType*>(func_ptr);
+            auto func_ptr_typed = reinterpret_cast<void(*)(void*, cudaStream_t)>(func_ptr);
+            std::function<void(void*, cudaStream_t)> func = func_ptr_typed;
             self.set_record_stream_fn(func);
           })
       .def(
           "set_begin_allocate_to_pool",
           [](torch::cuda::CUDAPluggableAllocator::CUDAPluggableAllocator& self,
              uint64_t func_ptr) {
-            using FuncType = void(
-                int, c10::cuda::MempoolId_t, std::function<bool(cudaStream_t)>);
-            std::function<FuncType> func =
-                // NOLINTNEXTLINE(performance-no-int-to-ptr)
-                reinterpret_cast<FuncType*>(func_ptr);
+            auto func_ptr_typed = reinterpret_cast<void(*)(int, c10::cuda::MempoolId_t, std::function<bool(cudaStream_t)>)>(func_ptr);
+            std::function<void(int, c10::cuda::MempoolId_t, std::function<bool(cudaStream_t)>)> func = func_ptr_typed;
             self.set_begin_allocate_to_pool(func);
           })
       .def(
           "set_end_allocate_to_pool_fn",
           [](torch::cuda::CUDAPluggableAllocator::CUDAPluggableAllocator& self,
              uint64_t func_ptr) {
-            using FuncType = void(int, c10::cuda::MempoolId_t);
-            std::function<FuncType> func =
-                // NOLINTNEXTLINE(performance-no-int-to-ptr)
-                reinterpret_cast<FuncType*>(func_ptr);
+            auto func_ptr_typed = reinterpret_cast<void(*)(int, c10::cuda::MempoolId_t)>(func_ptr);
+            std::function<void(int, c10::cuda::MempoolId_t)> func = func_ptr_typed;
             self.set_end_allocate_to_pool_fn(func);
           })
       .def(
           "set_release_pool",
           [](torch::cuda::CUDAPluggableAllocator::CUDAPluggableAllocator& self,
              uint64_t func_ptr) {
-            using FuncType = void(int, c10::cuda::MempoolId_t);
-            std::function<FuncType> func =
-                // NOLINTNEXTLINE(performance-no-int-to-ptr)
-                reinterpret_cast<FuncType*>(func_ptr);
+            auto func_ptr_typed = reinterpret_cast<void(*)(int, c10::cuda::MempoolId_t)>(func_ptr);
+            std::function<void(int, c10::cuda::MempoolId_t)> func = func_ptr_typed;
             self.set_release_pool(func);
           });
   m.def("_cuda_customAllocator", [](uint64_t malloc_ptr, uint64_t free_ptr) {
-    using MallocFuncType = void*(size_t, int, cudaStream_t);
-    using FreeFuncType = void(void*, size_t, int, cudaStream_t);
-    std::function<MallocFuncType> malloc_fn =
-        // NOLINTNEXTLINE(performance-no-int-to-ptr)
-        reinterpret_cast<MallocFuncType*>(malloc_ptr);
-    std::function<FreeFuncType> free_fn =
-        // NOLINTNEXTLINE(performance-no-int-to-ptr)
-        reinterpret_cast<FreeFuncType*>(free_ptr);
+    using MallocFuncPtr = void*(*)(size_t, int, cudaStream_t);
+    using FreeFuncPtr = void(*)(void*, size_t, int, cudaStream_t);
+    auto malloc_fn_ptr = reinterpret_cast<MallocFuncPtr>(malloc_ptr);
+    auto free_fn_ptr = reinterpret_cast<FreeFuncPtr>(free_ptr);
+    std::function<void*(size_t, int, cudaStream_t)> malloc_fn = malloc_fn_ptr;
+    std::function<void(void*, size_t, int, cudaStream_t)> free_fn = free_fn_ptr;
     return torch::cuda::CUDAPluggableAllocator::createCustomAllocator(
         malloc_fn, free_fn);
   });

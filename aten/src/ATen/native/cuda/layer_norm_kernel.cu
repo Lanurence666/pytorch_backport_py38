@@ -17,6 +17,7 @@
 #include <ATen/NativeFunctions.h>
 #else
 #include <ATen/ops/empty.h>
+#include <ATen/ops/empty_like.h>
 #include <ATen/ops/empty_like_native.h>
 #include <ATen/ops/native_layer_norm_native.h>
 #include <ATen/ops/native_layer_norm_backward_native.h>
@@ -1147,6 +1148,20 @@ void LayerNormKernelImpl(
     Tensor* Y,
     Tensor* mean,
     Tensor* rstd) {
+  if (isFloat8Type(X.scalar_type())) {
+    auto X_f32 = X.to(ScalarType::Float);
+    Tensor gamma_f32 = gamma.defined() ? gamma.to(ScalarType::Float) : Tensor();
+    Tensor beta_f32 = beta.defined() ? beta.to(ScalarType::Float) : Tensor();
+    Tensor Y_f32 = at::empty_like(X_f32);
+    Tensor mean_f32 = at::empty({M}, X_f32.options().dtype(ScalarType::Float));
+    Tensor rstd_f32 = at::empty({M}, X_f32.options().dtype(ScalarType::Float));
+    LayerNormKernelImplInternal<float, float>(
+        X_f32, gamma_f32, beta_f32, M, N, static_cast<float>(eps), &Y_f32, &mean_f32, &rstd_f32);
+    Y->copy_(Y_f32);
+    if (mean->defined()) mean->copy_(mean_f32);
+    if (rstd->defined()) rstd->copy_(rstd_f32);
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -1167,6 +1182,17 @@ void RmsNormKernelImpl(
   double eps,
   Tensor* Y,
   Tensor* rstd) {
+  if (isFloat8Type(X.scalar_type())) {
+    auto X_f32 = X.to(ScalarType::Float);
+    Tensor gamma_f32 = gamma.defined() ? gamma.to(ScalarType::Float) : Tensor();
+    Tensor Y_f32 = at::empty_like(X_f32);
+    Tensor rstd_f32 = at::empty({M}, X_f32.options().dtype(ScalarType::Float));
+    LayerNormKernelImplInternal<float, float, true>(
+        X_f32, gamma_f32, at::Tensor(), M, N, static_cast<float>(eps), &Y_f32, nullptr, &rstd_f32);
+    Y->copy_(Y_f32);
+    if (rstd->defined()) rstd->copy_(rstd_f32);
+    return;
+  }
 AT_DISPATCH_FLOATING_TYPES_AND2(
     at::ScalarType::Half,
     at::ScalarType::BFloat16,
@@ -1656,6 +1682,22 @@ void LayerNormBackwardKernelImpl(
     Tensor* dX,
     Tensor* dgamma,
     Tensor* dbeta) {
+  if (isFloat8Type(X.scalar_type())) {
+    auto dY_f32 = dY.to(ScalarType::Float);
+    auto X_f32 = X.to(ScalarType::Float);
+    auto mean_f32 = mean.to(ScalarType::Float);
+    auto rstd_f32 = rstd.to(ScalarType::Float);
+    Tensor gamma_f32 = gamma.defined() ? gamma.to(ScalarType::Float) : Tensor();
+    Tensor dX_f32 = at::empty_like(X_f32);
+    Tensor dgamma_f32 = gamma.defined() ? at::empty_like(gamma_f32) : Tensor();
+    Tensor dbeta_f32 = gamma.defined() ? at::empty_like(gamma_f32) : Tensor();
+    LayerNormBackwardKernelImplInternal<float>(
+        dY_f32.contiguous(), X_f32, mean_f32, rstd_f32, gamma_f32, M, N, &dX_f32, &dgamma_f32, &dbeta_f32);
+    dX->copy_(dX_f32);
+    if (dgamma->defined()) dgamma->copy_(dgamma_f32);
+    if (dbeta->defined()) dbeta->copy_(dbeta_f32);
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,

@@ -23,6 +23,17 @@
 #include <ATen/native/cuda/ScaledGroupMM.h>
 #include <ATen/native/cuda/GroupMM.h>
 #include <ATen/ceil_div.h>
+#include <ATen/ops/empty_like.h>
+
+namespace at::native {
+void fp8_baddbmm_dispatch(
+    const Tensor& result,
+    const Tensor& self,
+    const Tensor& batch1,
+    const Tensor& batch2,
+    const Scalar& beta,
+    const Scalar& alpha);
+} // namespace at::native
 
 #ifdef USE_MSLK
 #include <mslk/gemm/gemm_torch.h>
@@ -338,10 +349,21 @@ bool launchGemmCublas(
 }
 
 Tensor& addmm_out_cuda_impl(Tensor& result, const Tensor& self, const Tensor& mat1, const Tensor& mat2, const Scalar& beta, const Scalar& alpha, Activation activation=Activation::None, bool disable_addmm_cuda_lt_override=false) {
-  // Shape checks {
-  // Make sure to keep addmm_cuda below in sync with this code; it
-  // preflights a check to try to avoid actually needing to call
-  // expand().
+  if (isFloat8Type(mat1.scalar_type()) || isFloat8Type(mat2.scalar_type())) {
+    ScalarType hp_dtype = at::ScalarType::Float;
+    Tensor mat1_hp = mat1.to(hp_dtype);
+    Tensor mat2_hp = mat2.to(hp_dtype);
+    Tensor self_hp = self.to(hp_dtype);
+
+    at::native::resize_output(result, {mat1.size(0), mat2.size(1)});
+    Tensor result_hp = at::empty({mat1.size(0), mat2.size(1)}, result.options().dtype(hp_dtype));
+
+    addmm_out_cuda_impl(result_hp, self_hp, mat1_hp, mat2_hp, beta, alpha, activation, disable_addmm_cuda_lt_override);
+
+    result.copy_(result_hp.to(result.scalar_type()));
+    return result;
+  }
+
   TORCH_CHECK(mat1.dim() == 2 && mat2.dim() == 2, "tensors must be 2-D");
   TORCH_CHECK(
     mat1.dtype() == mat2.dtype(),
@@ -521,6 +543,12 @@ const Tensor& baddbmm_out_cuda_impl(const Tensor& result, const Tensor& self, co
     } else {
       return result.mul_(beta);
     }
+  }
+
+  // FP8 path: use custom CUDA kernel with FP8->FP32 conversion inside kernel
+  if (isFloat8Type(batch1.scalar_type())) {
+    fp8_baddbmm_dispatch(result, self, batch1, batch2, beta, alpha);
+    return result;
   }
 
   bool transpose_result = false;

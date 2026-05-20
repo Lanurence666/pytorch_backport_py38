@@ -16,8 +16,15 @@ namespace at::native {
 constexpr char acos_name[] = "acos_impl";
 #endif
 void acos_kernel_cuda(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (at::isComplexType(common_dtype)) {
+  auto common_dtype = iter.input_dtype();
+  if (isFloat8Type(common_dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        common_dtype, "acos_cuda", [&]() {
+          gpu_kernel(iter, [] GPU_LAMBDA(scalar_t a) -> scalar_t { return ::acos(a); });
+        });
+  } else if (at::isComplexType(common_dtype)) {
     // Disabled due to accuracy issues
 #if 0 && AT_USE_JITERATOR()
     static const auto acos_string = jiterator_stringify(

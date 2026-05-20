@@ -465,12 +465,14 @@ static inline bool bgemm_internal_cublaslt(CUDABLAS_BGEMM_ARGTYPES_AND_C_DTYPE(D
   computeDesc.setAttribute(CUBLASLT_MATMUL_DESC_TRANSB, opb);
   auto stream = at::cuda::getCurrentCUDAStream();
 #ifndef USE_ROCM
+#if CUDA_VERSION >= 11080
   if (at::globalContext()._SMCarveout_EXPERIMENTAL().has_value()) {
     computeDesc.setAttribute<int32_t>(
         CUBLASLT_MATMUL_DESC_SM_COUNT_TARGET,
         at::cuda::getCurrentDeviceProperties()->multiProcessorCount -
             at::globalContext()._SMCarveout_EXPERIMENTAL().value());
   }
+#endif
 #else
   if (at::globalContext()._SMCarveout_EXPERIMENTAL().has_value()) {
     stream = _getCarveoutStream(
@@ -1669,12 +1671,14 @@ bool gemm_and_bias(
   computeDesc.setAttribute(CUBLASLT_MATMUL_DESC_TRANSB, transb);
   auto stream = at::cuda::getCurrentCUDAStream();
 #ifndef USE_ROCM
+#if CUDA_VERSION >= 11080
   if (at::globalContext()._SMCarveout_EXPERIMENTAL().has_value()) {
     computeDesc.setAttribute<int32_t>(
         CUBLASLT_MATMUL_DESC_SM_COUNT_TARGET,
         at::cuda::getCurrentDeviceProperties()->multiProcessorCount -
             at::globalContext()._SMCarveout_EXPERIMENTAL().value());
   }
+#endif
 #else
   if (at::globalContext()._SMCarveout_EXPERIMENTAL().has_value()) {
     stream = _getCarveoutStream(
@@ -1683,14 +1687,13 @@ bool gemm_and_bias(
   }
 #endif
   const auto epilogue = [&]() -> cublasLtEpilogue_t {
-    // The cuBLAS documentation indicates that
-    // *_<ACTIVATION>_BIAS = *_<ACTIVATION>,
-    // but we keep it verbose here for clarity.
     switch (activation) {
       case GEMMAndBiasActivationEpilogue::RELU:
         return bias ? CUBLASLT_EPILOGUE_RELU_BIAS : CUBLASLT_EPILOGUE_RELU;
+#if CUDA_VERSION >= 11080
       case GEMMAndBiasActivationEpilogue::GELU:
         return bias ? CUBLASLT_EPILOGUE_GELU_BIAS : CUBLASLT_EPILOGUE_GELU;
+#endif
       default:
         return bias ? CUBLASLT_EPILOGUE_BIAS : CUBLASLT_EPILOGUE_DEFAULT;
     }
@@ -1959,6 +1962,7 @@ case ScalingType::TensorWise:
   }
 }
 
+#if CUDA_VERSION >= 11080
 void scaled_gemm(
     char transa,
     char transb,
@@ -2222,6 +2226,16 @@ void scaled_gemm(
       scaleType);
   return;
 }
+#else
+void scaled_gemm(
+    char, char, int64_t, int64_t, int64_t,
+    const void*, const void*, int64_t, ScalarType, ScalarType, at::blas::ScalingType,
+    const void*, const void*, int64_t, ScalarType, ScalarType, at::blas::ScalingType,
+    const void*, ScalarType,
+    void*, const void*, int64_t, ScalarType, bool, const std::optional<Tensor>&) {
+  TORCH_CHECK(false, "scaled_gemm requires CUDA 11.8+");
+}
+#endif
 
 void int8_gemm(
     bool transpose_mat1,
@@ -2249,12 +2263,14 @@ void int8_gemm(
   computeDesc.setAttribute(CUBLASLT_MATMUL_DESC_TRANSB, transb);
   auto stream = at::cuda::getCurrentCUDAStream();
 #ifndef USE_ROCM
+#if CUDA_VERSION >= 11080
   if (at::globalContext()._SMCarveout_EXPERIMENTAL().has_value()) {
     computeDesc.setAttribute<int32_t>(
         CUBLASLT_MATMUL_DESC_SM_COUNT_TARGET,
         at::cuda::getCurrentDeviceProperties()->multiProcessorCount -
             at::globalContext()._SMCarveout_EXPERIMENTAL().value());
   }
+#endif
 #else
   if (at::globalContext()._SMCarveout_EXPERIMENTAL().has_value()) {
     stream = _getCarveoutStream(

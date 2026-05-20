@@ -45,6 +45,18 @@ void sigmoid_backward_kernel_cuda(TensorIteratorBase& iter) {
       });
     });
 #endif
+  } else if (isFloat8Type(dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        dtype, "sigmoid_backward_cuda", [&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
+            opmath_t aop = static_cast<opmath_t>(a);
+            opmath_t bop = static_cast<opmath_t>(b);
+            return static_cast<scalar_t>(aop * (opmath_t(1) - bop) * bop);
+          });
+        });
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, dtype, "sigmoid_backward_cuda", [&]() {
       gpu_kernel(iter, []GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
@@ -116,6 +128,18 @@ void tanh_backward_kernel_cuda(TensorIteratorBase& iter) {
       });
     });
 #endif
+  } else if (isFloat8Type(dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        dtype, "tanh_backward_cuda", [&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          gpu_kernel(iter, [] GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
+            opmath_t aop = static_cast<opmath_t>(a);
+            opmath_t bop = static_cast<opmath_t>(b);
+            return static_cast<scalar_t>(aop * (opmath_t{1} - bop * bop));
+          });
+        });
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, dtype, "tanh_backward_cuda", [&]() {
       gpu_kernel(iter, [] GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {

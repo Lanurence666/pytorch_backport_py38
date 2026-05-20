@@ -17,14 +17,25 @@
 #include <c10/cuda/CUDAMathCompat.h>
 #include <c10/util/complex.h>
 #include <ATen/OpMathType.h>
+#undef TORCH_ASSERT_NO_OPERATORS
+#include <ATen/core/Tensor.h>
+#define TORCH_ASSERT_NO_OPERATORS
 
 namespace at::native {
 
 constexpr char exp2_name[] = "exp2_kernel";
 void exp2_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    exp2_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   #if AT_USE_JITERATOR()
     AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
-        ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "exp2_cuda", [&]() {
+        ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "exp2_cuda", [&]() {
       jitted_gpu_kernel</*name=*/exp2_name,
                         /*return_dtype=*/ scalar_t,
                         /*common_dtype=*/ scalar_t,
@@ -33,7 +44,7 @@ void exp2_kernel_cuda(TensorIteratorBase& iter) {
   #else
     AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
         ScalarType::Half, ScalarType::BFloat16,
-        iter.common_dtype(), "exp2_cuda",
+        iter.input_dtype(), "exp2_cuda",
         [&]() {
           gpu_kernel(iter, [] GPU_LAMBDA(scalar_t a) -> scalar_t {
             return exp2_impl(a);
@@ -44,37 +55,50 @@ void exp2_kernel_cuda(TensorIteratorBase& iter) {
 
 constexpr char i0_name[] = "i0";
 void i0_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    i0_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   #if AT_USE_JITERATOR()
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "i0_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "i0_cuda", [&]() {
       jitted_gpu_kernel</*name=*/i0_name,
                         /*return_dtype=*/ scalar_t,
                         /*common_dtype=*/ scalar_t,
                         /*arity=*/ 1>(iter, i0_string);
       });
   #else
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "i0_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "i0_cuda", [&]() {
       gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
         using opmath_t = at::opmath_type<scalar_t>;
-        // implicit conversion of a to opmath_t will happen here,
-        //   but as far as TI is concerned, it's still a no-dynamic-cast kernel because lambda input is scalar_t
         return calc_i0<opmath_t>(a);
       });
     });
   #endif
 }
 
-// See note [Jiterator]
 constexpr char i0e_name[] = "calc_i0e";
 void i0e_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    i0e_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   #if AT_USE_JITERATOR()
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "i0e_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "i0e_cuda", [&]() {
       jitted_gpu_kernel</*name=*/i0e_name,
                         /*return_dtype=*/ scalar_t,
                         /*common_dtype=*/ scalar_t,
                         /*arity=*/ 1>(iter, i0e_string);
     });
   #else
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "i0e_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "i0e_cuda", [&]() {
       gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
         using opmath_t = at::opmath_type<scalar_t>;
         return calc_i0e<opmath_t>(a);
@@ -83,37 +107,51 @@ void i0e_kernel_cuda(TensorIteratorBase& iter) {
   #endif
 }
 
-// See note [Jiterator]
-
 constexpr char i1_name[] = "i1";
 void i1_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    i1_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   #if AT_USE_JITERATOR()
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "i1_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "i1_cuda", [&]() {
       jitted_gpu_kernel</*name=*/i1_name,
                         /*return_dtype=*/ scalar_t,
                         /*common_dtype=*/ scalar_t,
                         /*arity=*/ 1>(iter, i1_string);
     });
   #else
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "i1_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "i1_cuda", [&]() {
       gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
         return calc_i1(a);
       });
     });
-  #endif // AT_USE_JITERATOR()
+  #endif
 }
 
 constexpr char i1e_name[] = "i1e";
 void i1e_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    i1e_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   #if AT_USE_JITERATOR()
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "i1e_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "i1e_cuda", [&]() {
       jitted_gpu_kernel</*name=*/i1e_name,
                         /*return_dtype=*/ scalar_t,
                         /*common_dtype=*/ scalar_t,
                         /*arity=*/ 1>(iter, i1e_string);
     });
   #else
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "i1e_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "i1e_cuda", [&]() {
       gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
         return calc_i1e(a);
       });
@@ -123,16 +161,21 @@ void i1e_kernel_cuda(TensorIteratorBase& iter) {
 
 constexpr char sigmoid_name[] = "sigmoid";
 void sigmoid_kernel_cuda(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (at::isComplexType(common_dtype)) {
-    // only jiterate for complex-dtype
+  auto common_dtype = iter.input_dtype();
+  if (isFloat8Type(common_dtype)) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    sigmoid_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+  } else if (at::isComplexType(common_dtype)) {
     #if AT_USE_JITERATOR()
       static const auto sigmoid_string = jiterator_stringify(
         template <typename T>
         T sigmoid(T x) {
           return T{1} / (T{1} + std::exp(-x));
         }
-      ); // sigmoid_string
+      );
       AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, common_dtype, "sigmoid_cuda", [&]() {
         jitted_gpu_kernel<
             /*name=*/sigmoid_name,
@@ -162,10 +205,18 @@ void sigmoid_kernel_cuda(TensorIteratorBase& iter) {
 
 constexpr char sinc_name[] = "sinc";
 void sinc_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    sinc_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   #if AT_USE_JITERATOR()
     AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
       ScalarType::Half, ScalarType::BFloat16,
-      iter.common_dtype(), "sinc_cuda",
+      iter.input_dtype(), "sinc_cuda",
       [&]() {
         jitted_gpu_kernel</*name=*/sinc_name,
                           /*return_dtype=*/ scalar_t,
@@ -175,7 +226,7 @@ void sinc_kernel_cuda(TensorIteratorBase& iter) {
   #else
     AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
         ScalarType::Half, ScalarType::BFloat16,
-        iter.common_dtype(), "sinc_cuda",
+        iter.input_dtype(), "sinc_cuda",
         [&]() {
           gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
             using opmath_t = at::opmath_type<scalar_t>;
@@ -191,10 +242,18 @@ void sinc_kernel_cuda(TensorIteratorBase& iter) {
 }
 
 void logit_kernel_cuda(TensorIteratorBase& iter, const Scalar& eps_scalar) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    logit_kernel_cuda(hp_iter, eps_scalar);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
-      iter.common_dtype(),
+      iter.input_dtype(),
       "logit_cuda",
       [&]() {
         using T_ACC = acc_type<scalar_t, true>;
@@ -219,15 +278,23 @@ void logit_kernel_cuda(TensorIteratorBase& iter, const Scalar& eps_scalar) {
 
 constexpr char ndtri_name[] = "ndtri";
 void ndtri_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    ndtri_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   #if AT_USE_JITERATOR()
-    AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "ndtri_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES(iter.input_dtype(), "ndtri_cuda", [&]() {
       jitted_gpu_kernel</*name=*/ndtri_name,
                         /*return_dtype=*/ scalar_t,
                         /*common_dtype=*/ scalar_t,
                         /*arity=*/ 1>(iter, ndtri_string);
     });
   #else
-    AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "ndtri_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES(iter.input_dtype(), "ndtri_cuda", [&]() {
       gpu_kernel(
           iter, [] GPU_LAMBDA(scalar_t a) -> scalar_t { return calc_ndtri(a); });
       });
@@ -236,15 +303,23 @@ void ndtri_kernel_cuda(TensorIteratorBase& iter) {
 
 constexpr char log_ndtr_name[] = "log_ndtr";
 void log_ndtr_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    log_ndtr_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   #if AT_USE_JITERATOR()
-    AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "log_ndtr_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES(iter.input_dtype(), "log_ndtr_cuda", [&]() {
       jitted_gpu_kernel</*name=*/log_ndtr_name,
                         /*return_dtype=*/ scalar_t,
                         /*common_dtype=*/ scalar_t,
                         /*arity=*/ 1>(iter, log_ndtr_string);
     });
   #else
-    AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "log_ndtr_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES(iter.input_dtype(), "log_ndtr_cuda", [&]() {
       gpu_kernel(
           iter, [] GPU_LAMBDA(scalar_t a) -> scalar_t { return calc_log_ndtr(a); });
       });
@@ -252,7 +327,15 @@ void log_ndtr_kernel_cuda(TensorIteratorBase& iter) {
 }
 
 void erf_kernel_cuda(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.common_dtype(), "erf_cuda", [&]() {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    erf_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
+  AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.input_dtype(), "erf_cuda", [&]() {
     gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
       return ::erf(a);
     });
@@ -261,8 +344,16 @@ void erf_kernel_cuda(TensorIteratorBase& iter) {
 
 constexpr char erfc_name[] = "erfc_kernel";
 void erfc_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    erfc_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   #if AT_USE_JITERATOR()
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "erfc_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "erfc_cuda", [&]() {
       jitted_gpu_kernel</*name=*/erfc_name,
                         /*return_dtype=*/ scalar_t,
                         /*common_dtype=*/ scalar_t,
@@ -270,7 +361,7 @@ void erfc_kernel_cuda(TensorIteratorBase& iter) {
       });
   #else
     AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16,
-        iter.common_dtype(), "erfc_cuda", [&]() {
+        iter.input_dtype(), "erfc_cuda", [&]() {
           gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
             return ::erfc(a);
           });
@@ -280,8 +371,16 @@ void erfc_kernel_cuda(TensorIteratorBase& iter) {
 
 constexpr char erfinv_name[] = "erfinv_kernel";
 void erfinv_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    erfinv_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   #if AT_USE_JITERATOR()
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "erfinv_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "erfinv_cuda", [&]() {
       jitted_gpu_kernel</*name=*/erfinv_name,
                         /*return_dtype=*/ scalar_t,
                         /*common_dtype=*/ scalar_t,
@@ -289,7 +388,7 @@ void erfinv_kernel_cuda(TensorIteratorBase& iter) {
       });
   #else
     AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16,
-        iter.common_dtype(), "erfinv_cuda", [&]() {
+        iter.input_dtype(), "erfinv_cuda", [&]() {
           gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
             return ::erfinv(a);
           });
@@ -299,15 +398,23 @@ void erfinv_kernel_cuda(TensorIteratorBase& iter) {
 
 constexpr char erfcx_name[] = "erfcx";
 void erfcx_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    erfcx_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   #if AT_USE_JITERATOR()
-    AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "erfcx_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES(iter.input_dtype(), "erfcx_cuda", [&]() {
       jitted_gpu_kernel</*name=*/erfcx_name,
                         /*return_dtype=*/ scalar_t,
                         /*common_dtype=*/ scalar_t,
                         /*arity=*/ 1>(iter, erfcx_string);
     });
   #else
-    AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "erfcx_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES(iter.input_dtype(), "erfcx_cuda", [&]() {
       gpu_kernel(
           iter, [] GPU_LAMBDA(scalar_t a) -> scalar_t { return calc_erfcx(a); });
     });
@@ -350,8 +457,16 @@ void kaiser_window_kernel_cuda(TensorIteratorBase& iter, int64_t window_length, 
 
 constexpr char entr_name[] = "entr";
 void entr_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    Tensor out = iter.tensor(0);
+    Tensor self_fp32 = iter.input(0).to(at::ScalarType::Float);
+    auto hp_iter = TensorIterator::unary_op(self_fp32, self_fp32);
+    entr_kernel_cuda(hp_iter);
+    out.copy_(self_fp32.to(out.scalar_type()));
+    return;
+  }
   #if AT_USE_JITERATOR()
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "entr_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "entr_cuda", [&]() {
       jitted_gpu_kernel</*name=*/entr_name,
                         /*return_dtype=*/ scalar_t,
                         /*common_dtype=*/ scalar_t,
@@ -361,7 +476,7 @@ void entr_kernel_cuda(TensorIteratorBase& iter) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         ScalarType::Half,
         ScalarType::BFloat16,
-        iter.common_dtype(),
+        iter.input_dtype(),
         "entr_cuda",
         [&]() {
           gpu_kernel(iter, [=] GPU_LAMBDA(scalar_t x) -> scalar_t {

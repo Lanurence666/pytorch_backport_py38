@@ -35,6 +35,8 @@ class CuSparseDescriptor {
   std::unique_ptr<T, CuSparseDescriptorDeleter<T, destructor>> descriptor_;
 };
 
+#if AT_USE_CUSPARSE_CONST_DESCRIPTORS()
+
 template <typename T, cusparseStatus_t (*destructor)(const T*)>
 struct ConstCuSparseDescriptorDeleter {
   void operator()(T* x) {
@@ -58,6 +60,8 @@ class ConstCuSparseDescriptor {
   std::unique_ptr<T, ConstCuSparseDescriptorDeleter<T, destructor>> descriptor_;
 };
 
+#endif // AT_USE_CUSPARSE_CONST_DESCRIPTORS()
+
 #if defined(USE_ROCM)
 using cusparseMatDescr = std::remove_pointer_t<hipsparseMatDescr_t>;
 using cusparseDnMatDescr = std::remove_pointer_t<hipsparseDnMatDescr_t>;
@@ -71,9 +75,9 @@ using bsrsv2Info = std::remove_pointer_t<bsrsv2Info_t>;
 using bsrsm2Info = std::remove_pointer_t<bsrsm2Info_t>;
 #endif
 
-// NOTE: This is only needed for CUDA 11 and earlier, since CUDA 12 introduced
-// API for const descriptors
+#if AT_USE_CUSPARSE_CONST_DESCRIPTORS()
 cusparseStatus_t destroyConstDnMat(const cusparseDnMatDescr* dnMatDescr);
+#endif
 
 class TORCH_CUDA_CPP_API CuSparseMatDescriptor
     : public CuSparseDescriptor<cusparseMatDescr, &cusparseDestroyMatDescr> {
@@ -121,6 +125,8 @@ class TORCH_CUDA_CPP_API CuSparseBsrsm2Info
 
 cusparseIndexType_t getCuSparseIndexType(const c10::ScalarType& scalar_type);
 
+#if AT_USE_CUSPARSE_CONST_DESCRIPTORS()
+
   class TORCH_CUDA_CPP_API CuSparseDnMatDescriptor
       : public ConstCuSparseDescriptor<
             cusparseDnMatDescr,
@@ -159,6 +165,39 @@ cusparseIndexType_t getCuSparseIndexType(const c10::ScalarType& scalar_type);
       : public ConstCuSparseDescriptor<
             cusparseSpMatDescr,
             &cusparseDestroySpMat> {};
+
+#else
+
+  class TORCH_CUDA_CPP_API CuSparseDnMatDescriptor
+      : public CuSparseDescriptor<
+            cusparseDnMatDescr,
+            &cusparseDestroyDnMat> {
+   public:
+    explicit CuSparseDnMatDescriptor(
+        const Tensor& input,
+        int64_t batch_offset = -1);
+    cusparseDnMatDescr* unsafe_mutable_descriptor() const {
+      return descriptor();
+    }
+    cusparseDnMatDescr* unsafe_mutable_descriptor() {
+      return descriptor();
+    }
+  };
+
+  class TORCH_CUDA_CPP_API CuSparseDnVecDescriptor
+      : public CuSparseDescriptor<
+            cusparseDnVecDescr,
+            &cusparseDestroyDnVec> {
+   public:
+    explicit CuSparseDnVecDescriptor(const Tensor& input);
+  };
+
+  class TORCH_CUDA_CPP_API CuSparseSpMatDescriptor
+      : public CuSparseDescriptor<
+            cusparseSpMatDescr,
+            &cusparseDestroySpMat> {};
+
+#endif // AT_USE_CUSPARSE_CONST_DESCRIPTORS()
 
 class TORCH_CUDA_CPP_API CuSparseSpMatCsrDescriptor
     : public CuSparseSpMatDescriptor {

@@ -38,6 +38,7 @@
 #include <ATen/ops/_scaled_mm_v2_native.h>
 #include <ATen/ops/_unsafe_view_native.h>
 #include <ATen/ops/abs.h>
+#include <ATen/ops/add.h>
 #include <ATen/ops/addmm_native.h>
 #include <ATen/ops/addmv_native.h>
 #include <ATen/ops/baddbmm_native.h>
@@ -470,9 +471,50 @@ _scaled_mm_out_cuda(const Tensor& mat1, const Tensor& mat2,
           std::optional<c10::ScalarType> out_dtype,
           bool use_fast_accum,
           Tensor& out) {
-  // Check sizes
   bool allowed_device = _scaled_mm_allowed_device();
-  TORCH_CHECK(allowed_device, "torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+");
+
+  if (!allowed_device) {
+    auto out_dtype_ = out_dtype.value_or(mat1.scalar_type());
+    at::native::resize_output(out, {mat1.size(0), mat2.size(1)});
+
+    Tensor mat1_hp = mat1.to(at::ScalarType::Float);
+    Tensor mat2_hp = mat2.to(at::ScalarType::Float);
+
+    if (scale_a.numel() == 1) {
+      mat1_hp = at::mul(mat1_hp, scale_a.item<float>());
+    } else if (scale_a.dim() == 1 && scale_a.size(0) == mat1.size(0)) {
+      mat1_hp = at::mul(mat1_hp, scale_a.to(at::ScalarType::Float).unsqueeze(1));
+    } else {
+      mat1_hp = at::mul(mat1_hp, scale_a.to(at::ScalarType::Float));
+    }
+
+    if (scale_b.numel() == 1) {
+      mat2_hp = at::mul(mat2_hp, scale_b.item<float>());
+    } else if (scale_b.dim() == 1 && scale_b.size(0) == mat2.size(1)) {
+      mat2_hp = at::mul(mat2_hp, scale_b.to(at::ScalarType::Float).unsqueeze(0));
+    } else {
+      mat2_hp = at::mul(mat2_hp, scale_b.to(at::ScalarType::Float));
+    }
+
+    Tensor result = at::mm(mat1_hp, mat2_hp);
+
+    if (bias) {
+      result = at::add(result, bias->to(at::ScalarType::Float));
+    }
+
+    if (scale_result.has_value()) {
+      result = at::mul(result, scale_result->item<float>());
+    }
+
+    if (isFloat8Type(out_dtype_)) {
+      out.copy_(result.to(out_dtype_));
+    } else {
+      out.copy_(result.to(out_dtype_));
+    }
+
+    return out;
+  }
+
   TORCH_CHECK(mat1.dim() == 2, "mat1 must be a matrix");
   TORCH_CHECK(mat2.dim() == 2, "mat2 must be a matrix");
   TORCH_CHECK(
@@ -1325,10 +1367,32 @@ _scaled_mm_cuda_v2_out(
           IntArrayRef contraction_dim,
           bool use_fast_accum,
           Tensor& out) {
-  // Check sizes
   bool allowed_device = _scaled_mm_allowed_device();
-  TORCH_CHECK_NOT_IMPLEMENTED(allowed_device,
-      "torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+");
+
+  if (!allowed_device) {
+    auto out_dtype_ = out_dtype.value_or(mat_a.scalar_type());
+    at::native::resize_output(out, {mat_a.size(0), mat_b.size(1)});
+
+    Tensor mat1_hp = mat_a.to(at::ScalarType::Float);
+    Tensor mat2_hp = mat_b.to(at::ScalarType::Float);
+
+    for (size_t i = 0; i < scale_a.size(); i++) {
+      mat1_hp = at::mul(mat1_hp, scale_a[i].to(at::ScalarType::Float));
+    }
+    for (size_t i = 0; i < scale_b.size(); i++) {
+      mat2_hp = at::mul(mat2_hp, scale_b[i].to(at::ScalarType::Float));
+    }
+
+    Tensor result = at::mm(mat1_hp, mat2_hp);
+
+    if (bias) {
+      result = at::add(result, bias->to(at::ScalarType::Float));
+    }
+
+    out.copy_(result.to(out_dtype_));
+    return out;
+  }
+
   TORCH_CHECK_VALUE(mat_a.dim() == 2, "mat_a must be a matrix");
   TORCH_CHECK_VALUE(mat_b.dim() == 2, "mat_b must be a matrix");
 

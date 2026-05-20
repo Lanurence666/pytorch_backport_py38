@@ -38,7 +38,7 @@ void binary_cross_entropy_backward_out_kernel(Tensor& grad_input, const Tensor& 
       .add_input(input)
       .add_input(target)
       .build();
-  AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.common_dtype(), "binary_cross_entropy_backward_out_cuda", [&]() {
+  AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.input_dtype(), "binary_cross_entropy_backward_out_cuda", [&]() {
     at::native::gpu_kernel(iter, [] GPU_LAMBDA (
         scalar_t grad_val,
         scalar_t input_val,
@@ -80,7 +80,7 @@ Tensor& binary_cross_entropy_out_cuda(const Tensor& input, const Tensor& target,
       .add_owned_input(at::squeeze(input))
       .add_owned_input(at::squeeze(target))
       .build();
-  AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.common_dtype(), "binary_cross_entropy_out_cuda", [&]() {
+  AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.input_dtype(), "binary_cross_entropy_out_cuda", [&]() {
     gpu_kernel(iter,
       [] GPU_LAMBDA (scalar_t input_val, scalar_t target_val) -> scalar_t {
         const scalar_t zero = 0;

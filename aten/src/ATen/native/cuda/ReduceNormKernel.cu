@@ -34,14 +34,20 @@ void norm_launch_kernel(TensorIterator& iter, double ord) {
   if (iter.dtype(0) == kHalf) {
     return norm_kernel_cuda_impl<at::Half, float>(iter, ord);
   } else if (iter.input_dtype() == kHalf && iter.dtype(0) == kFloat) {
-    // type promotion that does cast and reduction in a single kernel
     return norm_kernel_cuda_impl<at::Half, float, float>(iter, ord);
   }
   else if(iter.dtype(0) == kBFloat16) {
     return norm_kernel_cuda_impl<at::BFloat16, float>(iter, ord);
   } else if (iter.input_dtype() == kBFloat16 && iter.dtype(0) == kFloat) {
-    // type promotion that does cast and reduction in a single kernel
     return norm_kernel_cuda_impl<at::BFloat16, float, float>(iter, ord);
+  } else if (iter.dtype(0) == kFloat8_e4m3fn) {
+    return norm_kernel_cuda_impl<at::Float8_e4m3fn, float>(iter, ord);
+  } else if (iter.dtype(0) == kFloat8_e5m2) {
+    return norm_kernel_cuda_impl<at::Float8_e5m2, float>(iter, ord);
+  } else if (iter.dtype(0) == kFloat8_e4m3fnuz) {
+    return norm_kernel_cuda_impl<at::Float8_e4m3fnuz, float>(iter, ord);
+  } else if (iter.dtype(0) == kFloat8_e5m2fnuz) {
+    return norm_kernel_cuda_impl<at::Float8_e5m2fnuz, float>(iter, ord);
   }
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(iter.input_dtype(), "norm_cuda", [&] {
     norm_kernel_cuda_impl<scalar_t>(iter, ord);
@@ -68,6 +74,14 @@ void powsum_launch_kernel(TensorIterator& iter, double ord) {
     return powsum_kernel_cuda_impl<at::BFloat16, float>(iter, ord);
   } else if (iter.input_dtype() == kBFloat16 && iter.dtype(0) == kFloat) {
     return powsum_kernel_cuda_impl<at::BFloat16, float, float>(iter, ord);
+  } else if (iter.dtype(0) == kFloat8_e4m3fn) {
+    return powsum_kernel_cuda_impl<at::Float8_e4m3fn, float>(iter, ord);
+  } else if (iter.dtype(0) == kFloat8_e5m2) {
+    return powsum_kernel_cuda_impl<at::Float8_e5m2, float>(iter, ord);
+  } else if (iter.dtype(0) == kFloat8_e4m3fnuz) {
+    return powsum_kernel_cuda_impl<at::Float8_e4m3fnuz, float>(iter, ord);
+  } else if (iter.dtype(0) == kFloat8_e5m2fnuz) {
+    return powsum_kernel_cuda_impl<at::Float8_e5m2fnuz, float>(iter, ord);
   }
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(iter.input_dtype(), "powsum_cuda", [&] {
     powsum_kernel_cuda_impl<scalar_t>(iter, ord);

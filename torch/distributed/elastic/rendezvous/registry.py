@@ -59,12 +59,21 @@ def _register_default_handlers() -> None:
 
 
 def _register_out_of_tree_handlers() -> None:
-    discovered_handler_generators = entry_points(group="torchrun.handlers")
+    try:
+        discovered_handler_generators = entry_points(group="torchrun.handlers")
+    except TypeError:
+        eps_all = entry_points()
+        if isinstance(eps_all, dict):
+            discovered_handler_generators = eps_all.get("torchrun.handlers", [])
+        else:
+            discovered_handler_generators = [ep for ep in eps_all if ep.group == "torchrun.handlers"]
 
     for handler_generator in discovered_handler_generators:
         try:
-            # pyrefly: ignore [bad-index]
-            get_handler = discovered_handler_generators[handler_generator.name].load()
+            if hasattr(discovered_handler_generators, '__getitem__') and hasattr(discovered_handler_generators, 'names'):
+                get_handler = discovered_handler_generators[handler_generator.name].load()
+            else:
+                get_handler = handler_generator.load()
             handler_registry.register(handler_generator.name, get_handler())
         except Exception:
             log.warning(

@@ -28,7 +28,16 @@ void logical_not_kernel_cuda(TensorIteratorBase& iter) {
 constexpr char neg_name[] = "neg_kernel";
 void neg_kernel_cuda(TensorIteratorBase& iter) {
   auto dtype = iter.dtype();
-  if (at::isComplexType(dtype)) {
+  if (isFloat8Type(dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        dtype, "neg_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return -a;
+          });
+        });
+  } else if (at::isComplexType(dtype)) {
 #if AT_USE_JITERATOR()
   static const auto neg_string = jiterator_stringify(
       template <typename T>
@@ -64,6 +73,15 @@ void sign_kernel_cuda(TensorIteratorBase& iter){
     gpu_kernel(iter, []GPU_LAMBDA(bool a){
       return a;
     });
+  } else if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "sign_cuda", [&]() {
+            gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+                return c10::signum(a);
+            });
+        });
   } else {
     AT_DISPATCH_ALL_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "sign_cuda", [&]() {
         gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
@@ -74,11 +92,18 @@ void sign_kernel_cuda(TensorIteratorBase& iter){
 }
 
 void signbit_kernel_cuda(TensorIteratorBase& iter){
-  // NOTE: signbit does not always support integral arguments.
   if (at::isIntegralType(iter.input_dtype(), /*includeBool=*/false)) {
     AT_DISPATCH_INTEGRAL_TYPES(iter.input_dtype(), "signbit_cuda", [&]() {
       gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> bool { return is_negative(a); });
     });
+  } else if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "signbit_cuda", [&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> bool { return signbit(opmath_t{a}); });
+        });
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(kBFloat16, ScalarType::Half, iter.input_dtype(), "signbit_cuda", [&]() {
       using opmath_t = at::opmath_type<scalar_t>;

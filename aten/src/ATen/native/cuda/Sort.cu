@@ -11,6 +11,11 @@
 #include <ATen/native/cuda/SortingCommon.cuh>
 
 #include <limits>
+#if !CUB_HAS_SCAN_BY_KEY()
+#include <thrust/sequence.h>
+#include <thrust/sort.h>
+#include <thrust/device_ptr.h>
+#endif
 
 namespace at::native {
 
@@ -314,6 +319,7 @@ void sortCommon(Sorter sorter, const TensorBase &key, const TensorBase &value,
   // we are sorting on a per-block basis
   // The constructed key/value tensor info is used to select the slice
   // we are sorting on a per-block basis
+#if CUB_HAS_SCAN_BY_KEY()
   AT_DISPATCH_ALL_TYPES_AND3(at::ScalarType::Half, at::ScalarType::BFloat16, at::ScalarType::Bool, key.scalar_type(), "sortKeyValueInplace", [&]  {
     if (at::cuda::detail::canUse32BitIndexMath(key)) {
       at::cuda::detail::TensorInfo<scalar_t, unsigned int> keyInfo =
@@ -362,6 +368,80 @@ void sortCommon(Sorter sorter, const TensorBase &key, const TensorBase &value,
       HANDLE_SORT_CASE(uint64_t, -1);
     }
   });
+#else
+  AT_DISPATCH_ALL_TYPES_AND2(at::ScalarType::Half, at::ScalarType::Bool, key.scalar_type(), "sortKeyValueInplace", [&]  {
+    if (at::cuda::detail::canUse32BitIndexMath(key)) {
+      at::cuda::detail::TensorInfo<scalar_t, unsigned int> keyInfo =
+        at::cuda::detail::getTensorInfo<scalar_t, unsigned int>(key);
+      at::cuda::detail::TensorInfo<int64_t, unsigned int> valueInfo =
+        at::cuda::detail::getTensorInfo<int64_t, unsigned int>(value);
+
+      auto strideKey = keyInfo.strides[dim];
+      keyInfo.sizes[dim] = 1;
+      int collapseKeyDim = keyInfo.collapseDims(dim);
+      keyInfo.strides[collapseKeyDim] = strideKey;
+      auto strideValue = valueInfo.strides[dim];
+      valueInfo.sizes[dim]=1;
+      int collapseValueDim = valueInfo.collapseDims(dim);
+      valueInfo.strides[collapseValueDim] = strideValue;
+
+      if (keyInfo.isContiguous()) {
+        HANDLE_SORT_CASE(unsigned int, -2);
+      } else {
+        switch (keyInfo.dims) {
+          case 2:
+            HANDLE_SORT_CASE(unsigned int, 2);
+            break;
+          default:
+            HANDLE_SORT_CASE(unsigned int, -1);
+            break;
+        }
+      }
+
+    } else {
+      at::cuda::detail::TensorInfo<scalar_t, uint64_t> keyInfo =
+        at::cuda::detail::getTensorInfo<scalar_t, uint64_t>(key);
+      at::cuda::detail::TensorInfo<int64_t, uint64_t> valueInfo =
+        at::cuda::detail::getTensorInfo<int64_t, uint64_t>(value);
+
+      auto strideKey = keyInfo.strides[dim];
+      keyInfo.sizes[dim] = 1;
+      int collapseKeyDim = keyInfo.collapseDims(dim);
+      keyInfo.strides[collapseKeyDim] = strideKey;
+      auto strideValue = valueInfo.strides[dim];
+      valueInfo.sizes[dim]=1;
+      int collapseValueDim = valueInfo.collapseDims(dim);
+      valueInfo.strides[collapseValueDim] = strideValue;
+
+      HANDLE_SORT_CASE(uint64_t, -1);
+    }
+  });
+  if (key.scalar_type() == at::ScalarType::BFloat16) {
+    auto stream = at::cuda::getCurrentCUDAStream();
+    int64_t keySliceSize = key.size(dim);
+    ptrdiff_t keySlices = inElements / keySliceSize;
+    using scalar_t = c10::BFloat16;
+    const scalar_t* key_data = key.const_data_ptr<scalar_t>();
+    int64_t* value_data = value.mutable_data_ptr<int64_t>();
+    auto key_strides = key.strides();
+    auto value_strides = value.strides();
+    for (ptrdiff_t i = 0; i < keySlices; i++) {
+      const scalar_t* slice_keys = key_data + i * key_strides[dim];
+      int64_t* slice_vals = value_data + i * value_strides[dim];
+      thrust::sequence(
+          thrust::cuda::par.on(stream),
+          slice_vals, slice_vals + keySliceSize, int64_t(0));
+      thrust::sort_by_key(
+          thrust::cuda::par.on(stream),
+          thrust::device_pointer_cast(const_cast<scalar_t*>(slice_keys)),
+          thrust::device_pointer_cast(const_cast<scalar_t*>(slice_keys)) + keySliceSize,
+          thrust::device_pointer_cast(slice_vals),
+          [descending] __device__(const scalar_t& a, const scalar_t& b) {
+            return descending ? (a > b) : (a < b);
+          });
+    }
+  }
+#endif
 #undef HANDLE_SORT_CASE
 }
 

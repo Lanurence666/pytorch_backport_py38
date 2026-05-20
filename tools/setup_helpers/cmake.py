@@ -230,39 +230,144 @@ class CMake:
 
         args = []
         if USE_NINJA:
-            # Avoid conflicts in '-G' and the `CMAKE_GENERATOR`
             os.environ["CMAKE_GENERATOR"] = "Ninja"
             args.append("-GNinja")
+            if IS_WINDOWS:
+                msvc_v142_root = os.path.join(
+                    "C:", os.sep, "Program Files (x86)",
+                    "Microsoft Visual Studio", "2022", "BuildTools",
+                    "VC", "Tools", "MSVC", "14.29.30133"
+                )
+                cl_path = os.path.join(msvc_v142_root, "bin", "Hostx64", "x64", "cl.exe")
+                if os.path.exists(cl_path):
+                    msvc_bin = os.path.dirname(cl_path)
+                    existing_path = os.environ.get("PATH", "")
+                    path_parts = existing_path.split(";")
+                    filtered_parts = [
+                        p for p in path_parts
+                        if not (os.path.exists(os.path.join(p, "cl.exe")) and p.lower() != msvc_bin.lower())
+                    ]
+                    os.environ["PATH"] = msvc_bin + ";" + ";".join(filtered_parts)
+                    if "CC" not in os.environ:
+                        CMake.defines(args, CMAKE_C_COMPILER=cl_path)
+                    if "CXX" not in os.environ:
+                        CMake.defines(args, CMAKE_CXX_COMPILER=cl_path)
+                    CMake.defines(args, CMAKE_CUDA_HOST_COMPILER=cl_path)
+                cuda_path = os.environ.get("CUDA_PATH", "")
+                if not cuda_path or "v12" in cuda_path:
+                    cuda_113_path = os.path.join(
+                        "C:", os.sep, "Program Files",
+                        "NVIDIA GPU Computing Toolkit", "CUDA", "v11.3"
+                    )
+                    if os.path.exists(cuda_113_path):
+                        os.environ["CUDA_PATH"] = cuda_113_path
+                        os.environ["CUDA_HOME"] = cuda_113_path
+                cuda_113_nvcc = os.path.join(
+                    "C:", os.sep, "Program Files",
+                    "NVIDIA GPU Computing Toolkit", "CUDA", "v11.3", "bin", "nvcc.exe"
+                )
+                if os.path.exists(cuda_113_nvcc):
+                    CMake.defines(args, CMAKE_CUDA_COMPILER=cuda_113_nvcc)
+                sdk_version = "10.0.26100.0"
+                sdk_include = os.path.join(
+                    "C:", os.sep, "Program Files (x86)", "Windows Kits", "10", "Include"
+                )
+                sdk_lib = os.path.join(
+                    "C:", os.sep, "Program Files (x86)", "Windows Kits", "10", "Lib"
+                )
+                if os.path.exists(msvc_v142_root):
+                    os.environ["INCLUDE"] = ";".join([
+                        os.path.join(msvc_v142_root, "include"),
+                        os.path.join(sdk_include, sdk_version, "ucrt"),
+                        os.path.join(sdk_include, sdk_version, "um"),
+                        os.path.join(sdk_include, sdk_version, "shared"),
+                    ])
+                    os.environ["LIB"] = ";".join([
+                        os.path.join(msvc_v142_root, "lib", "x64"),
+                        os.path.join(sdk_lib, sdk_version, "ucrt", "x64"),
+                        os.path.join(sdk_lib, sdk_version, "um", "x64"),
+                    ])
         elif IS_WINDOWS:
             generator = os.getenv("CMAKE_GENERATOR", "Visual Studio 16 2019")
-            supported = ["Visual Studio 16 2019", "Visual Studio 17 2022"]
-            if generator not in supported:
+            supported_vs = ["Visual Studio 16 2019", "Visual Studio 17 2022"]
+            supported_mingw = ["MinGW Makefiles", "MSYS Makefiles"]
+            if generator in supported_mingw:
+                args.append("-G" + generator)
+                mingw_root = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+                        os.path.abspath(__file__))))), "mingw64", "mingw64"
+                )
+                gcc_path = os.path.join(mingw_root, "bin", "gcc.exe")
+                gxx_path = os.path.join(mingw_root, "bin", "g++.exe")
+                if os.path.exists(gcc_path):
+                    if "CMAKE_C_COMPILER" not in build_options and "CC" not in os.environ:
+                        CMake.defines(args, CMAKE_C_COMPILER=gcc_path)
+                    if "CMAKE_CXX_COMPILER" not in build_options and "CXX" not in os.environ:
+                        CMake.defines(args, CMAKE_CXX_COMPILER=gxx_path)
+                msvc_v142_root = os.path.join(
+                    "C:", os.sep, "Program Files (x86)",
+                    "Microsoft Visual Studio", "2022", "BuildTools",
+                    "VC", "Tools", "MSVC", "14.29.30133"
+                )
+                cl_path = os.path.join(msvc_v142_root, "bin", "Hostx64", "x64", "cl.exe")
+                if os.path.exists(cl_path):
+                    CMake.defines(args, CMAKE_CUDA_HOST_COMPILER=cl_path)
+                cuda_path = os.environ.get("CUDA_PATH", "")
+                if not cuda_path or "v12" in cuda_path:
+                    cuda_113_path = os.path.join(
+                        "C:", os.sep, "Program Files",
+                        "NVIDIA GPU Computing Toolkit", "CUDA", "v11.3"
+                    )
+                    if os.path.exists(cuda_113_path):
+                        os.environ["CUDA_PATH"] = cuda_113_path
+                        os.environ["CUDA_HOME"] = cuda_113_path
+                sdk_version = "10.0.26100.0"
+                sdk_include = os.path.join(
+                    "C:", os.sep, "Program Files (x86)", "Windows Kits", "10", "Include"
+                )
+                sdk_lib = os.path.join(
+                    "C:", os.sep, "Program Files (x86)", "Windows Kits", "10", "Lib"
+                )
+                if os.path.exists(msvc_v142_root):
+                    os.environ["INCLUDE"] = ";".join([
+                        os.path.join(msvc_v142_root, "include"),
+                        os.path.join(sdk_include, sdk_version, "ucrt"),
+                        os.path.join(sdk_include, sdk_version, "um"),
+                        os.path.join(sdk_include, sdk_version, "shared"),
+                    ])
+                    os.environ["LIB"] = ";".join([
+                        os.path.join(msvc_v142_root, "lib", "x64"),
+                        os.path.join(sdk_lib, sdk_version, "ucrt", "x64"),
+                        os.path.join(sdk_lib, sdk_version, "um", "x64"),
+                    ])
+            elif generator in supported_vs:
+                args.append("-G" + generator)
+                toolset_dict = {}
+                toolset_version = os.getenv("CMAKE_GENERATOR_TOOLSET_VERSION")
+                if toolset_version is not None:
+                    toolset_dict["version"] = toolset_version
+                    curr_toolset = os.getenv("VCToolsVersion")
+                    if curr_toolset is None:
+                        eprint(
+                            "When you specify `CMAKE_GENERATOR_TOOLSET_VERSION`, you must also "
+                            "activate the vs environment of this version. Please read the notes "
+                            "in the build steps carefully."
+                        )
+                        sys.exit(1)
+                if IS_64BIT:
+                    if platform.machine() == "ARM64":
+                        args.append("-A ARM64")
+                    else:
+                        args.append("-Ax64")
+                        toolset_dict["host"] = "x64"
+                if toolset_dict:
+                    toolset_expr = ",".join([f"{k}={v}" for k, v in toolset_dict.items()])
+                    args.append("-T" + toolset_expr)
+            else:
                 eprint("Unsupported `CMAKE_GENERATOR`: " + generator)
                 eprint("Please set it to one of the following values: ")
-                eprint("\n".join(supported))
+                eprint("\n".join(supported_vs + supported_mingw))
                 sys.exit(1)
-            args.append("-G" + generator)
-            toolset_dict = {}
-            toolset_version = os.getenv("CMAKE_GENERATOR_TOOLSET_VERSION")
-            if toolset_version is not None:
-                toolset_dict["version"] = toolset_version
-                curr_toolset = os.getenv("VCToolsVersion")
-                if curr_toolset is None:
-                    eprint(
-                        "When you specify `CMAKE_GENERATOR_TOOLSET_VERSION`, you must also "
-                        "activate the vs environment of this version. Please read the notes "
-                        "in the build steps carefully."
-                    )
-                    sys.exit(1)
-            if IS_64BIT:
-                if platform.machine() == "ARM64":
-                    args.append("-A ARM64")
-                else:
-                    args.append("-Ax64")
-                    toolset_dict["host"] = "x64"
-            if toolset_dict:
-                toolset_expr = ",".join([f"{k}={v}" for k, v in toolset_dict.items()])
-                args.append("-T" + toolset_expr)
 
         # base_dir is used as cmake's source-dir arg and install prefix;
         # make it relative to build_dir so these are worktree-independent

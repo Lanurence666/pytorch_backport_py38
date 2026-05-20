@@ -53,26 +53,45 @@ void _amp_non_finite_check_and_unscale_cuda_(Tensor& scaled_grad,
   // Acts on scaled_grad in place.
   auto iter = TensorIterator::unary_op(scaled_grad, scaled_grad);
 
-  AT_DISPATCH_FLOATING_TYPES_AND_HALF(
-    iter.dtype(),
-    "_amp_non_finite_check_and_unscale_cuda",
-    [&iter, &found_inf, &inv_scale] {
-      auto* found_inf_ptr = found_inf.mutable_data_ptr<float>();
-      auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
-
-      using opmath_t = at::opmath_type<scalar_t>;
-
-      gpu_kernel(iter,
-                 [found_inf_ptr, inv_scale_ptr] GPU_LAMBDA (scalar_t val_in) -> scalar_t {
-                   auto val = static_cast<opmath_t>(val_in);
-                   if (!isfinite_ensure_cuda_math(val)) {
-                     *found_inf_ptr = 1.f;
-                   }
-                   // Every thread accesses inv_scale, but it will hit in cache.
-                   const auto inv_scale_val = *inv_scale_ptr;
-                   return static_cast<scalar_t>(inv_scale_val == 1.f ? val : val * inv_scale_val);
-                 });
-    });
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+      at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+      at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+      iter.dtype(),
+      "_amp_non_finite_check_and_unscale_cuda",
+      [&iter, &found_inf, &inv_scale] {
+        auto* found_inf_ptr = found_inf.mutable_data_ptr<float>();
+        auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
+        using opmath_t = at::opmath_type<scalar_t>;
+        gpu_kernel(iter,
+                   [found_inf_ptr, inv_scale_ptr] GPU_LAMBDA (scalar_t val_in) -> scalar_t {
+                     auto val = static_cast<opmath_t>(val_in);
+                     if (!isfinite_ensure_cuda_math(val)) {
+                       *found_inf_ptr = 1.f;
+                     }
+                     const auto inv_scale_val = *inv_scale_ptr;
+                     return static_cast<scalar_t>(inv_scale_val == 1.f ? val : val * inv_scale_val);
+                   });
+      });
+  } else {
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(
+      iter.dtype(),
+      "_amp_non_finite_check_and_unscale_cuda",
+      [&iter, &found_inf, &inv_scale] {
+        auto* found_inf_ptr = found_inf.mutable_data_ptr<float>();
+        auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
+        using opmath_t = at::opmath_type<scalar_t>;
+        gpu_kernel(iter,
+                   [found_inf_ptr, inv_scale_ptr] GPU_LAMBDA (scalar_t val_in) -> scalar_t {
+                     auto val = static_cast<opmath_t>(val_in);
+                     if (!isfinite_ensure_cuda_math(val)) {
+                       *found_inf_ptr = 1.f;
+                     }
+                     const auto inv_scale_val = *inv_scale_ptr;
+                     return static_cast<scalar_t>(inv_scale_val == 1.f ? val : val * inv_scale_val);
+                   });
+      });
+  }
 }
 } // anonymous namespace
 
@@ -148,32 +167,51 @@ void _amp_foreach_non_finite_check_and_unscale_cuda_(TensorList scaled_grads,
     }
   }
 
-  AT_DISPATCH_FLOATING_TYPES_AND_HALF(
-    tensor_lists[0][0].scalar_type(),
-    "_amp_foreach_non_finite_check_and_unscale_cuda",
-    [&tensor_lists, &found_inf, &inv_scale] {
-      auto* found_inf_ptr = found_inf.mutable_data_ptr<float>();
-      auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
-
-      using opmath_t = at::opmath_type<scalar_t>;
-
-      // multi_tensor_apply guards onto tensor_lists[0][0], no need to guard explicitly.
-      multi_tensor_apply<1>(tensor_lists,
-                            UnaryOpFunctor<scalar_t,
-                                           /* depth */ 1,
-                                           /* r_args_depth */ 1,
-                                           /* res_arg_index */ 0>(),
-                            [found_inf_ptr, inv_scale_ptr] GPU_LAMBDA (opmath_t val) -> opmath_t {
-                              // There is a slight asymmetry here with the TensorIterator kernel above.
-                              // MTA Functors ensure val comes in as opmath_t rather than scalar_t.
-                              if (!isfinite_ensure_cuda_math(val)) {
-                                *found_inf_ptr = 1.f;
-                              }
-                              // Every thread accesses inv_scale, but it will hit in cache.
-                              const auto inv_scale_val = *inv_scale_ptr;
-                              return static_cast<opmath_t>(inv_scale_val == 1.f ? val : val * inv_scale_val);
-                            });
-    });
+  if (isFloat8Type(tensor_lists[0][0].scalar_type())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+      at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+      at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+      tensor_lists[0][0].scalar_type(),
+      "_amp_foreach_non_finite_check_and_unscale_cuda",
+      [&tensor_lists, &found_inf, &inv_scale] {
+        auto* found_inf_ptr = found_inf.mutable_data_ptr<float>();
+        auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
+        using opmath_t = at::opmath_type<scalar_t>;
+        multi_tensor_apply<1>(tensor_lists,
+                              UnaryOpFunctor<scalar_t,
+                                             /* depth */ 1,
+                                             /* r_args_depth */ 1,
+                                             /* res_arg_index */ 0>(),
+                              [found_inf_ptr, inv_scale_ptr] GPU_LAMBDA (opmath_t val) -> opmath_t {
+                                if (!isfinite_ensure_cuda_math(val)) {
+                                  *found_inf_ptr = 1.f;
+                                }
+                                const auto inv_scale_val = *inv_scale_ptr;
+                                return static_cast<opmath_t>(inv_scale_val == 1.f ? val : val * inv_scale_val);
+                              });
+      });
+  } else {
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(
+      tensor_lists[0][0].scalar_type(),
+      "_amp_foreach_non_finite_check_and_unscale_cuda",
+      [&tensor_lists, &found_inf, &inv_scale] {
+        auto* found_inf_ptr = found_inf.mutable_data_ptr<float>();
+        auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
+        using opmath_t = at::opmath_type<scalar_t>;
+        multi_tensor_apply<1>(tensor_lists,
+                              UnaryOpFunctor<scalar_t,
+                                             /* depth */ 1,
+                                             /* r_args_depth */ 1,
+                                             /* res_arg_index */ 0>(),
+                              [found_inf_ptr, inv_scale_ptr] GPU_LAMBDA (opmath_t val) -> opmath_t {
+                                if (!isfinite_ensure_cuda_math(val)) {
+                                  *found_inf_ptr = 1.f;
+                                }
+                                const auto inv_scale_val = *inv_scale_ptr;
+                                return static_cast<opmath_t>(inv_scale_val == 1.f ? val : val * inv_scale_val);
+                              });
+      });
+  }
 }
 
 

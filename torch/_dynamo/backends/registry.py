@@ -177,16 +177,24 @@ def _lazy_import() -> None:
 
 @functools.lru_cache(maxsize=None)
 def _discover_entrypoint_backends() -> None:
-    # importing here so it will pick up the mocked version in test_backends.py
     try:
         from importlib.metadata import entry_points
     except ImportError:
         from importlib_metadata import entry_points
 
     group_name = "torch_dynamo_backends"
-    eps = entry_points(group=group_name)
-    # pyrefly: ignore [bad-index]
-    eps_dict = {name: eps[name] for name in eps.names}
+    try:
+        eps = entry_points(group=group_name)
+    except TypeError:
+        eps_all = entry_points()
+        if isinstance(eps_all, dict):
+            eps = eps_all.get(group_name, [])
+        else:
+            eps = [ep for ep in eps_all if ep.group == group_name]
+    if hasattr(eps, 'names'):
+        eps_dict = {name: eps[name] for name in eps.names}
+    else:
+        eps_dict = {ep.name: ep for ep in eps}
     for backend_name in eps_dict:
         _BACKENDS[backend_name] = eps_dict[backend_name]
 

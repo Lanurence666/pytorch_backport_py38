@@ -20,7 +20,7 @@ if(NOT TORCH_INSTALL_LIB_DIR)
   set(TORCH_INSTALL_LIB_DIR lib)
 endif()
 
-if(MSVC)
+if(WIN32)
     set(LIBSHM_SUBDIR libshm_windows)
 else()
     set(LIBSHM_SUBDIR libshm)

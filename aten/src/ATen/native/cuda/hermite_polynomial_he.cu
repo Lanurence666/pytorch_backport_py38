@@ -14,11 +14,11 @@ namespace at::native {
 
             void hermite_polynomial_he_kernel_cuda(TensorIteratorBase& iterator) {
 #if AT_USE_JITERATOR()
-                AT_DISPATCH_FLOATING_TYPES(iterator.common_dtype(), "hermite_polynomial_he_cuda", [&]() {
+                AT_DISPATCH_FLOATING_TYPES(iterator.input_dtype(), "hermite_polynomial_he_cuda", [&]() {
                     opmath_jitted_gpu_kernel_with_scalars<hermite_polynomial_he_name, scalar_t, scalar_t>(iterator, hermite_polynomial_he_string);
                 });
 #else
-                AT_DISPATCH_FLOATING_TYPES(iterator.common_dtype(), "hermite_polynomial_he_cuda", [&]() {
+                AT_DISPATCH_FLOATING_TYPES(iterator.input_dtype(), "hermite_polynomial_he_cuda", [&]() {
                     gpu_kernel_with_scalars(iterator, []GPU_LAMBDA(scalar_t x, scalar_t n) -> scalar_t {
                         return hermite_polynomial_he_forward<scalar_t, true>(x, n);
                     });

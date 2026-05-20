@@ -18,8 +18,17 @@ constexpr char log_name[] = "log_kernel";
 #endif
 
 void log_kernel_cuda(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (at::isComplexType(common_dtype)) {
+  auto common_dtype = iter.input_dtype();
+  if (isFloat8Type(common_dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        common_dtype, "log_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return ::log(a);
+          });
+        });
+  } else if (at::isComplexType(common_dtype)) {
 #if AT_USE_JITERATOR()
     static const auto log_string = jiterator_stringify(
         template <typename T> T log_kernel(T x) { return std::log(x); });
@@ -31,7 +40,7 @@ void log_kernel_cuda(TensorIteratorBase& iter) {
           /*arity=*/1>(iter, log_string);
     });
 #else
-    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, iter.common_dtype(), "log_cuda", [&]() {
+    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, iter.input_dtype(), "log_cuda", [&]() {
       gpu_kernel(
           iter, [] GPU_LAMBDA(scalar_t a) -> scalar_t {
             using opmath_t = at::opmath_type<scalar_t>;
@@ -40,7 +49,7 @@ void log_kernel_cuda(TensorIteratorBase& iter) {
     });
 #endif
   } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "log_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "log_cuda", [&]() {
       gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
         return ::log(a);
       });
@@ -50,8 +59,17 @@ void log_kernel_cuda(TensorIteratorBase& iter) {
 
 constexpr char log10_name[] = "log10_kernel";
 void log10_kernel_cuda(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (at::isComplexType(common_dtype)) {
+  auto common_dtype = iter.input_dtype();
+  if (isFloat8Type(common_dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        common_dtype, "log10_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return ::log10(a);
+          });
+        });
+  } else if (at::isComplexType(common_dtype)) {
 #if AT_USE_JITERATOR()
     static const auto log10_string = jiterator_stringify(
         template <typename T> T log10_kernel(T x) { return std::log10(x); });
@@ -63,13 +81,13 @@ void log10_kernel_cuda(TensorIteratorBase& iter) {
           /*arity=*/1>(iter, log10_string);
     });
 #else
-    AT_DISPATCH_COMPLEX_TYPES(iter.common_dtype(), "log10_cuda", [&]() {
+    AT_DISPATCH_COMPLEX_TYPES(iter.input_dtype(), "log10_cuda", [&]() {
       gpu_kernel(
           iter, [] GPU_LAMBDA(scalar_t a) -> scalar_t { return ::log10(a); });
     });
 #endif
   } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "log10_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "log10_cuda", [&]() {
       gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
         return ::log10(a);
       });
@@ -78,7 +96,18 @@ void log10_kernel_cuda(TensorIteratorBase& iter) {
 }
 
 void log1p_kernel_cuda(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "log1p_cuda", [&]() {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "log1p_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return ::log1p(a);
+          });
+        });
+    return;
+  }
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "log1p_cuda", [&]() {
     gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
       return ::log1p(a);
     });
@@ -87,8 +116,17 @@ void log1p_kernel_cuda(TensorIteratorBase& iter) {
 
 constexpr char log2_name[] = "log2_kernel";
 void log2_kernel_cuda(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (at::isComplexType(common_dtype)) {
+  auto common_dtype = iter.input_dtype();
+  if (isFloat8Type(common_dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        common_dtype, "log2_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return ::log2(a);
+          });
+        });
+  } else if (at::isComplexType(common_dtype)) {
 #if AT_USE_JITERATOR()
     static const auto log2_string = jiterator_stringify(
         template <typename T> T log2_kernel(T x) { return std::log2(x); });
@@ -100,13 +138,13 @@ void log2_kernel_cuda(TensorIteratorBase& iter) {
           /*arity=*/1>(iter, log2_string);
     });
 #else
-    AT_DISPATCH_COMPLEX_TYPES(iter.common_dtype(), "log2_cuda", [&]() {
+    AT_DISPATCH_COMPLEX_TYPES(iter.input_dtype(), "log2_cuda", [&]() {
       gpu_kernel(
           iter, [] GPU_LAMBDA(scalar_t a) -> scalar_t { return ::log2(a); });
     });
 #endif
   } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.common_dtype(), "log2_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, iter.input_dtype(), "log2_cuda", [&]() {
       gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
         return ::log2(a);
       });

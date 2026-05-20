@@ -36,7 +36,7 @@ void addcmul_cuda_kernel(TensorIteratorBase& iter, const Scalar& value) {
     "please swap your tensor1 and tensor2 terms."
   );
 
-  auto dtype = iter.common_dtype();
+  auto dtype = iter.input_dtype();
   if (at::isComplexType(dtype)) {
     #if AT_USE_JITERATOR()
       AT_DISPATCH_COMPLEX_TYPES(dtype, "addcmul_cuda", [&]() {
@@ -73,6 +73,22 @@ void addcmul_cuda_kernel(TensorIteratorBase& iter, const Scalar& value) {
         });
       });
     #endif
+  } else if (isFloat8Type(dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        dtype, "addcmul_cuda", [&]() {
+          if (iter.is_cpu_scalar(3)) {
+              auto tensor2_val = iter.scalar_value<scalar_t>(3);
+              iter.remove_operand(3);
+              return addcmul_cuda_scalar_tensor2_kernel(iter, tensor2_val, value);
+          }
+          using accscalar_t = at::acc_type<scalar_t, true>;
+          auto alpha = value.to<accscalar_t>();
+          gpu_kernel(iter, [alpha]GPU_LAMBDA(scalar_t a, scalar_t b, scalar_t c) -> scalar_t {
+            return pointwise_op_impl<accscalar_t>(a, b, c, alpha, std::multiplies<accscalar_t>());
+          });
+        });
   } else {
     AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, dtype, "addcmul_cuda", [&]() {
       if (iter.is_cpu_scalar(3)) {
@@ -95,7 +111,7 @@ void addcmul_cuda_kernel(TensorIteratorBase& iter, const Scalar& value) {
 constexpr char addcmul_scalar_tensor2_name[] = "addcmul_scalar_tensor2";
 #endif
 void addcmul_cuda_scalar_tensor2_kernel(TensorIteratorBase& iter, const Scalar& scalar_tensor2, const Scalar& value) {
-  auto dtype = iter.common_dtype();
+  auto dtype = iter.input_dtype();
 
   if (at::isComplexType(dtype)) {
     #if AT_USE_JITERATOR()
@@ -126,6 +142,18 @@ void addcmul_cuda_scalar_tensor2_kernel(TensorIteratorBase& iter, const Scalar& 
         });
       });
     #endif
+  } else if (isFloat8Type(dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        dtype, "addcmul_cuda", [&]() {
+          using accscalar_t = at::acc_type<scalar_t, true>;
+          auto c = scalar_tensor2.to<accscalar_t>();
+          auto alpha = value.to<accscalar_t>();
+          gpu_kernel(iter, [alpha, c]GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
+            return pointwise_op_impl<accscalar_t>(a, b, c, alpha, std::multiplies<accscalar_t>());
+          });
+        });
   } else {
     AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, dtype, "addcmul_cuda", [&]() {
       // note(mkozuki): If scalar_t is fp16 or bfloat16, cast scalar to float
@@ -145,7 +173,7 @@ void addcmul_cuda_scalar_tensor2_kernel(TensorIteratorBase& iter, const Scalar& 
 constexpr char addcdiv_name[] = "addcdiv";
 #endif
 void addcdiv_cuda_kernel(TensorIteratorBase& iter, const Scalar& value) {
-  auto dtype = iter.common_dtype();
+  auto dtype = iter.input_dtype();
   if (at::isComplexType(dtype)) {
     #if AT_USE_JITERATOR()
       AT_DISPATCH_COMPLEX_TYPES(dtype, "addcdiv_cuda", [&]() {
@@ -172,6 +200,17 @@ void addcdiv_cuda_kernel(TensorIteratorBase& iter, const Scalar& value) {
         });
       });
     #endif
+  } else if (isFloat8Type(dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        dtype, "addcdiv_cuda", [&]() {
+          using accscalar_t = at::acc_type<scalar_t, true>;
+          auto alpha = value.to<accscalar_t>();
+          gpu_kernel(iter, [alpha]GPU_LAMBDA(scalar_t a, scalar_t b, scalar_t c) -> scalar_t {
+            return pointwise_op_impl<accscalar_t>(a, b, c, alpha, std::divides<accscalar_t>());
+          });
+        });
   } else {
     AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, dtype, "addcdiv_cuda", [&]() {
       // note(mkozuki): If scalar_t is fp16 or bfloat16, cast scalar to float
@@ -187,6 +226,26 @@ void addcdiv_cuda_kernel(TensorIteratorBase& iter, const Scalar& value) {
 }
 
 void smooth_l1_backward_cuda_kernel(TensorIterator& iter, const Scalar& norm, double beta) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "smooth_l1_backward_cuda", [&iter, &norm, beta] {
+          using opmath_t = at::opmath_type<scalar_t>;
+          auto norm_val = norm.to<opmath_t>();
+          opmath_t beta_val(beta);
+          gpu_kernel(iter, [norm_val, beta_val]GPU_LAMBDA(scalar_t input, scalar_t target, scalar_t grad_output) -> scalar_t {
+            const auto x = static_cast<opmath_t>(input) - static_cast<opmath_t>(target);
+            if (x < -beta_val)
+              return static_cast<scalar_t>(-norm_val * static_cast<opmath_t>(grad_output));
+            else if (x > beta_val)
+              return static_cast<scalar_t>(norm_val * static_cast<opmath_t>(grad_output));
+            else
+              return static_cast<scalar_t>(norm_val * (static_cast<opmath_t>(input) - static_cast<opmath_t>(target)) * static_cast<opmath_t>(grad_output) / beta_val);
+          });
+        });
+    return;
+  }
   AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, iter.dtype(), "smooth_l1_backward_cuda", [&iter, &norm, beta] {
       auto norm_val = norm.to<scalar_t>();
       scalar_t beta_val(beta);
@@ -204,6 +263,27 @@ void smooth_l1_backward_cuda_kernel(TensorIterator& iter, const Scalar& norm, do
 }
 
 void huber_backward_cuda_kernel(TensorIterator& iter, const Scalar& norm, double delta) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "huber_backward_cuda", [&iter, &norm, delta] {
+          using opmath_t = at::opmath_type<scalar_t>;
+          auto norm_val = norm.to<opmath_t>();
+          opmath_t delta_val(delta);
+          gpu_kernel(iter, [norm_val, delta_val]GPU_LAMBDA(scalar_t input, scalar_t target, scalar_t grad_output) -> scalar_t {
+            const auto x = static_cast<opmath_t>(input) - static_cast<opmath_t>(target);
+            if (x < -delta_val) {
+              return static_cast<scalar_t>(-norm_val * static_cast<opmath_t>(grad_output) * delta_val);
+            } else if (x > delta_val) {
+              return static_cast<scalar_t>(norm_val * static_cast<opmath_t>(grad_output) * delta_val);
+            } else {
+              return static_cast<scalar_t>(norm_val * (static_cast<opmath_t>(input) - static_cast<opmath_t>(target)) * static_cast<opmath_t>(grad_output));
+            }
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(kBFloat16, kHalf, iter.dtype(), "huber_backward_cuda", [&iter, &norm, delta] {
     auto norm_val = norm.to<scalar_t>();
     scalar_t delta_val(delta);
@@ -222,6 +302,19 @@ void huber_backward_cuda_kernel(TensorIterator& iter, const Scalar& norm, double
 }
 
 void mse_backward_cuda_kernel(TensorIterator& iter, const Scalar& value) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "mse_backward_cuda", [&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          auto alpha = value.to<opmath_t>();
+          gpu_kernel(iter, [alpha]GPU_LAMBDA(scalar_t a, scalar_t b, scalar_t c) -> scalar_t {
+            return static_cast<scalar_t>(alpha * (static_cast<opmath_t>(a) - static_cast<opmath_t>(b)) * static_cast<opmath_t>(c));
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.dtype(), "mse_backward_cuda", [&]() {
     auto alpha = value.to<scalar_t>();
     gpu_kernel(iter, [alpha]GPU_LAMBDA(scalar_t a, scalar_t b, scalar_t c) -> scalar_t {

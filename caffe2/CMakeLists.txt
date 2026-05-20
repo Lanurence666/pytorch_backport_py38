@@ -814,6 +814,13 @@ if(HAVE_SOVERSION)
 endif()
 torch_compile_options(torch_cpu)  # see cmake/public/utils.cmake
 
+if(MSVC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.30)
+  set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/../aten/src/ATen/native/cpu/LinearAlgebraKernel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../aten/src/ATen/native/cpu/IndexKernel.cpp
+    PROPERTIES COMPILE_FLAGS "/Od")
+endif()
+
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" AND NOT USE_IOS AND NOT USE_COREML_DELEGATE)
   target_compile_options_if_supported(torch_cpu "-Wmissing-prototypes")
   target_compile_options_if_supported(torch_cpu "-Werror=missing-prototypes")
@@ -1083,11 +1090,14 @@ elseif(USE_CUDA)
         UNFUSE_FMA                      # Addressing issue #121558
       )
     target_sources(torch_cuda PRIVATE $<TARGET_OBJECTS:flash_attention>)
-    target_include_directories(torch_cuda SYSTEM PUBLIC
+    target_include_directories(torch_cuda PUBLIC
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party/flash-attention/csrc/cutlass/include>
       $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party/flash-attention/csrc>
       $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party/flash-attention/include>
-      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party/cutlass/include>
       $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party/flash-attention/csrc/flash_attn/src>
+    )
+    target_include_directories(torch_cuda SYSTEM PUBLIC
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party/cutlass/include>
       $<INSTALL_INTERFACE:include>
     )
   endif()
@@ -1287,8 +1297,6 @@ if(NOT NO_API)
 endif()
 
 if(USE_CUDA AND MSVC)
-  # -INCLUDE is used to ensure torch_cuda is linked against in a project that relies on them.
-  # Related issue: https://github.com/pytorch/pytorch/issues/31611
   target_link_libraries(torch_cuda INTERFACE "-INCLUDE:?warp_size@cuda@at@@YAHXZ")
 endif()
 
@@ -1661,8 +1669,6 @@ if("${EXPERIMENTAL_SINGLE_THREAD_POOL}")
 endif()
 
 if(MSVC AND BUILD_SHARED_LIBS)
-  # ONNX is linked statically and needs to be exported from this library
-  # to be used externally. Make sure that references match the export.
   target_compile_options(torch_cpu PRIVATE "-DONNX_BUILD_MAIN_LIB")
 endif()
 
@@ -2096,14 +2102,8 @@ if(BUILD_TEST)
   endif()
 endif()
 
-if(MSVC)
-  # This is used to enable the conforming lambda processor in MSVC
-  # Which allows us to capture constexpr in lambdas
-  # Note that this will be turned on by default for std=c++20 and above
-  # This should be applied globally when https://github.com/pytorch/pytorch/issues/92600 is fixed
+if(MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
   foreach(tmp ${MEM_EFF_ATTENTION_CUDA_SOURCES})
-    # MEM_EFF_ATTENTION_CUDA is populated in pytorch/aten/src/ATen/CMakeLists.txt
-    # We iterate over these files, updating paths and adding the compile flag
     FILE(RELATIVE_PATH tmp_path "${PROJECT_SOURCE_DIR}" "${tmp}")
     SET(tmp_path "../${tmp_path}")
     set_source_files_properties(${tmp_path} PROPERTIES COMPILE_FLAGS "-Xcompiler /Zc:lambda")

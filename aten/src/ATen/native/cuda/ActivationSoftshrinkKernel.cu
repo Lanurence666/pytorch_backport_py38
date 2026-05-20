@@ -21,6 +21,20 @@ namespace at::native {
 namespace {
 
 void softshrink_kernel(TensorIteratorBase& iter, const Scalar& value) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "softshrink_cuda", [&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          auto lambd = value.to<opmath_t>();
+          gpu_kernel(iter, [lambd] GPU_LAMBDA(scalar_t a) -> scalar_t {
+            opmath_t aop = static_cast<opmath_t>(a);
+            return at::_isnan(a) ? a : (aop > lambd ? aop - lambd : (aop < -lambd ? aop + lambd : opmath_t(0)));
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -37,6 +51,24 @@ void softshrink_kernel(TensorIteratorBase& iter, const Scalar& value) {
 }
 
 void shrink_backward_kernel(TensorIteratorBase& iter, const Scalar& value) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "shrink_backward_cuda", [&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          auto lambd = value.to<opmath_t>();
+          gpu_kernel(
+              iter,
+              [lambd] GPU_LAMBDA(
+                  scalar_t grad_val, scalar_t self_val) -> scalar_t {
+                opmath_t sv = static_cast<opmath_t>(self_val);
+                return (sv >= -lambd && sv <= lambd) ? opmath_t(0)
+                                                     : static_cast<opmath_t>(grad_val);
+              });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,

@@ -21,11 +21,15 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../Modules_CUDA_fix)
 # More details can be found in the following links.
 # https://github.com/pytorch/pytorch/issues/20635
 # https://github.com/pytorch/pytorch/issues/17108
-if(NOT MSVC)
+if(NOT WIN32)
   set(CUDA_USE_STATIC_CUDA_RUNTIME OFF CACHE INTERNAL "")
 endif()
 
 # Find CUDA.
+if(WIN32 AND EXISTS "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.3")
+  set(CUDA_TOOLKIT_ROOT_DIR "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.3")
+  set(CMAKE_CUDA_COMPILER "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.3/bin/nvcc.exe")
+endif()
 find_package(CUDA)
 if(NOT CUDA_FOUND)
   # If user explicitly set USE_CUDA=1, error out instead of falling back
@@ -47,15 +51,36 @@ endif()
 
 # Enable CUDA language support
 set(CUDAToolkit_ROOT "${CUDA_TOOLKIT_ROOT_DIR}")
+if(WIN32 AND EXISTS "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.3")
+  set(CUDAToolkit_ROOT "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.3")
+  set(CUDA_TOOLKIT_ROOT_DIR "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.3")
+endif()
 # Pass clang as host compiler, which according to the docs
 # Must be done before CUDA language is enabled, see
 # https://cmake.org/cmake/help/v3.15/variable/CMAKE_CUDA_HOST_COMPILER.html
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
   set(CMAKE_CUDA_HOST_COMPILER "${CMAKE_CXX_COMPILER}")
 endif()
+if(MSVC AND WIN32)
+  if(NOT CMAKE_CUDA_HOST_COMPILER)
+    if(EXISTS "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/cl.exe")
+      set(CMAKE_CUDA_HOST_COMPILER "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/cl.exe")
+    endif()
+  endif()
+endif()
+if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND WIN32)
+  if(NOT CMAKE_CUDA_HOST_COMPILER)
+    if(EXISTS "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/cl.exe")
+      set(CMAKE_CUDA_HOST_COMPILER "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/cl.exe")
+    endif()
+  endif()
+endif()
 enable_language(CUDA)
 if("X${CMAKE_CUDA_STANDARD}" STREQUAL "X" )
   set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
+endif()
+if(CMAKE_CUDA_STANDARD GREATER 17)
+  set(CMAKE_CUDA_STANDARD 17)
 endif()
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
@@ -78,8 +103,8 @@ endif()
 message(STATUS "PyTorch: CUDA detected: " ${CUDA_VERSION})
 message(STATUS "PyTorch: CUDA nvcc is: " ${CUDA_NVCC_EXECUTABLE})
 message(STATUS "PyTorch: CUDA toolkit directory: " ${CUDA_TOOLKIT_ROOT_DIR})
-if(CUDA_VERSION VERSION_LESS 12.1)
-  message(FATAL_ERROR "PyTorch requires CUDA 12.1 or above.")
+if(CUDA_VERSION VERSION_LESS 11.3)
+  message(FATAL_ERROR "PyTorch requires CUDA 11.3 or above.")
 endif()
 
 if(CUDA_FOUND)
@@ -329,7 +354,7 @@ endif()
 
 # Don't activate VC env again for Ninja generators with MSVC on Windows if CUDAHOSTCXX is not defined
 # by adding --use-local-env.
-if(MSVC AND CMAKE_GENERATOR STREQUAL "Ninja" AND NOT DEFINED ENV{CUDAHOSTCXX})
+if(WIN32 AND CMAKE_GENERATOR MATCHES "Ninja|MinGW|MSYS" AND NOT DEFINED ENV{CUDAHOSTCXX})
   list(APPEND CUDA_NVCC_FLAGS "--use-local-env")
 endif()
 
@@ -365,7 +390,7 @@ if(MSVC)
 endif()
 
 # Debug and Release symbol support
-if(MSVC)
+if(MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
   if(${CAFFE2_USE_MSVC_STATIC_RUNTIME})
     string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -Xcompiler /MTd")
     string(APPEND CMAKE_CUDA_FLAGS_MINSIZEREL " -Xcompiler /MT")

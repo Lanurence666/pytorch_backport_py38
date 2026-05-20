@@ -378,7 +378,6 @@ if(USE_NNPACK OR USE_PYTORCH_QNNPACK OR USE_XNNPACK)
     caffe2_update_option(USE_PYTORCH_QNNPACK OFF)
     caffe2_update_option(USE_XNNPACK OFF)
   else()
-    # Disable unsupported NNPack combinations with MSVC
     if(MSVC)
       caffe2_update_option(USE_NNPACK OFF)
       caffe2_update_option(USE_PYTORCH_QNNPACK OFF)
@@ -1408,20 +1407,21 @@ if(NOT INTERN_BUILD_MOBILE)
   # this, but since FindCUDA upstream is subsumed by first-class support
   # for CUDA language, it seemed not worth fixing.
 
-  if(MSVC)
-    # we want to respect the standard, and we are bored of those **** .
+  if(MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
     add_definitions(-D_CRT_SECURE_NO_DEPRECATE=1)
     string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler=/wd4819,/wd4503,/wd4190,/wd4244,/wd4251,/wd4275,/wd4522")
   else()
     if(WERROR)
-      if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER_EQUAL 13)
-        string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -Wno-dangling-reference ")
-      endif()
-      if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -Wno-extra-semi ")
-      endif()
-      if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER_EQUAL 13))
+      if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        if(${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER_EQUAL 13)
+          string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -Wno-dangling-reference ")
+        endif()
         string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -Werror -Xcompiler -Wno-error=sign-compare ")
+      elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        if(${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER_EQUAL 13)
+          string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -Wno-extra-semi ")
+          string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -Werror -Xcompiler -Wno-error=sign-compare ")
+        endif()
       endif()
     endif()
   endif()
@@ -1430,7 +1430,9 @@ if(NOT INTERN_BUILD_MOBILE)
 
   # use cub in a safe manner, see:
   # https://github.com/pytorch/pytorch/pull/55292
-  string(APPEND CMAKE_CUDA_FLAGS " -DCUB_WRAPPED_NAMESPACE=at_cuda_detail")
+  if(CUDA_VERSION VERSION_GREATER_EQUAL "11.4")
+    string(APPEND CMAKE_CUDA_FLAGS " -DCUB_WRAPPED_NAMESPACE=at_cuda_detail")
+  endif()
 
   # Suppress cusparse warnings
   string(APPEND CMAKE_CUDA_FLAGS " -DDISABLE_CUSPARSE_DEPRECATED")

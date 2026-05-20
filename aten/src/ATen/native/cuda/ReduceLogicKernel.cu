@@ -10,7 +10,7 @@ namespace at::native {
 
 void and_kernel_cuda(TensorIterator& iter) {
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
-      kHalf, kBFloat16, kBool, iter.common_dtype(), "and_cuda", [&]() {
+      kHalf, kBFloat16, kBool, iter.input_dtype(), "and_cuda", [&]() {
         gpu_reduce_kernel<scalar_t, bool>(
             iter,
             func_wrapper<bool>([] GPU_LAMBDA(bool acc, scalar_t val) -> bool {
@@ -22,7 +22,7 @@ void and_kernel_cuda(TensorIterator& iter) {
 
 void or_kernel_cuda(TensorIterator& iter) {
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
-      kHalf, kBFloat16, kBool, iter.common_dtype(), "or_cuda", [&]() {
+      kHalf, kBFloat16, kBool, iter.input_dtype(), "or_cuda", [&]() {
         gpu_reduce_kernel<scalar_t, bool>(
             iter,
             func_wrapper<bool>([] GPU_LAMBDA(bool acc, scalar_t val) -> bool {

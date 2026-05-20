@@ -288,6 +288,12 @@ at::Tensor& uniform_impl_(at::Tensor& self, double from, double to, std::optiona
     CHECK_EMPTY_AND_RETURN(self);
     auto float_tensor = at::view_as_real(self);
     uniform_impl_<uniform_kernel, RNG>(float_tensor, from, to, generator);
+  } else if (isFloat8Type(self.scalar_type())) {
+    TORCH_CHECK(from <= to, "uniform_ expects to return a [from, to) range, but found from=", from, " > to=", to);
+    CHECK_EMPTY_AND_RETURN(self);
+    Tensor self_hp = self.to(at::ScalarType::Float);
+    uniform_impl_<uniform_kernel, RNG>(self_hp, from, to, generator);
+    self.copy_(self_hp.to(self.scalar_type()));
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, self.scalar_type(), "check_uniform_bounds", [&] {
       [[maybe_unused]] const auto dtype = self.dtype();

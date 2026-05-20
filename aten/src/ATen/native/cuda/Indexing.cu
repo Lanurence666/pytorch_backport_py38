@@ -1793,8 +1793,24 @@ Tensor index_select_quantized_cuda(const Tensor& self, int64_t dim, const Tensor
 namespace {
 
 void masked_fill_kernel(TensorIterator& iter, const Scalar& value) {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "masked_fill_", [&]() {
+          const auto value_ = value.to<scalar_t>();
+          gpu_kernel(
+              iter, [value_] GPU_LAMBDA(scalar_t self, bool mask) -> scalar_t {
+                if (mask) {
+                  return value_;
+                }
+                return self;
+              });
+        });
+    return;
+  }
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-      kBool, kHalf, kBFloat16, kComplexHalf, iter.common_dtype(), "masked_fill_", [&]() {
+      kBool, kHalf, kBFloat16, kComplexHalf, iter.input_dtype(), "masked_fill_", [&]() {
         const auto value_ = value.to<scalar_t>();
         gpu_kernel(
             iter, [value_] GPU_LAMBDA(scalar_t self, bool mask) -> scalar_t {
@@ -1821,7 +1837,7 @@ void masked_fill_kernel_quantized(TensorIterator& iter, const Scalar& value, dou
   TORCH_CHECK(iter.input_dtype(1) == at::ScalarType::Bool, "masked_fill only supports boolean masks, ",
     "but got dtype ", iter.input_dtype(1));
   AT_DISPATCH_QINT_TYPES(
-      iter.common_dtype(), "masked_fill_", [&]() {
+      iter.input_dtype(), "masked_fill_", [&]() {
         float float_val = value.to<float>();
         const auto quantized_val = quantize_val<scalar_t>(scale, zero_point, float_val);
 

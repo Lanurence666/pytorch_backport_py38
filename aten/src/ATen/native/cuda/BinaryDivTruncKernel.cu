@@ -16,7 +16,19 @@ namespace at::native {
 namespace binary_internal {
 
 void div_trunc_kernel_cuda(TensorIteratorBase& iter) {
-  auto dtype = iter.common_dtype();
+  auto dtype = iter.input_dtype();
+  if (isFloat8Type(dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        dtype, "div_trunc_cuda", [&]() {
+          gpu_kernel_with_scalars(
+              iter, [] GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
+                return std::trunc(a / b);
+              });
+        });
+    return;
+  }
   if (isIntegralType(dtype, /*includeBool*/ false)) {
     AT_DISPATCH_INTEGRAL_TYPES(dtype, "div_trunc_cuda", [&]() {
       gpu_kernel_with_scalars(

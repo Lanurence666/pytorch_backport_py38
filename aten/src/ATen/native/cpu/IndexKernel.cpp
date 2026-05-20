@@ -1,7 +1,11 @@
 #define TORCH_ASSERT_NO_OPERATORS
+#ifdef _MSC_VER
+#pragma optimize("", off)
+#endif
 #include <ATen/native/IndexKernel.h>
 
 #include <cmath>
+#include <cstring>
 #include <iostream>
 
 #include <ATen/Context.h>
@@ -481,6 +485,7 @@ void masked_select_kernel(TensorIterator& iter, int64_t result_stride) {
     kBFloat16);
 }
 
+#if !(defined(_MSC_VER) && _MSC_VER < 1930)
 template <typename scalar_t>
 void cpu_hflip_vec(at::TensorIterator& iter) {
 
@@ -715,8 +720,22 @@ void cpu_hflip_channels_last_vec(at::TensorIterator& iter) {
   iter.for_each(loop2d, grain_size);
   iter.cast_outputs();
 }
+#endif
 
 void flip_kernel(TensorIterator& iter, const bool quantized) {
+#if defined(_MSC_VER) && _MSC_VER < 1930
+  int64_t itemsize = iter.element_size(0);
+  iter.for_each([itemsize](char** base, const int64_t* strides, int64_t size) {
+    char* out_ptr = base[0];
+    char* in_ptr = base[1];
+    for (int64_t i = 0; i < size; i++) {
+      std::memcpy(out_ptr, in_ptr, static_cast<size_t>(itemsize));
+      out_ptr += strides[0];
+      in_ptr += strides[1];
+    }
+  });
+  iter.cast_outputs();
+#else
   if (quantized) {
     AT_DISPATCH_QINT_AND_SUB_BYTE_TYPES(iter.dtype(), "flip_quantized_cpu",
         [&iter] { cpu_kernel(iter,
@@ -728,21 +747,8 @@ void flip_kernel(TensorIterator& iter, const bool quantized) {
     auto output_strides = iter.strides(0);
     auto input_strides = iter.strides(1);
     if (iter.ndim() > 0 && output_strides[0] == -iter.element_size(0) && input_strides[0] == iter.element_size(1)) {
-      // Special case: horizontal flip with vectorization and input is contiguous
-      // Context: horizontal flip leads to strides[0] < 0 and
-      // thus is_contiguous condition is not satisfied and non-vectorized code path is taken.
       auto iter_dtype = iter.dtype();
-      // Ignoring half and bfloat16 as cpu_hflip_vec is slower than cpu_kernel_vec
       if (isIntegralType(iter_dtype, true) || iter_dtype == kDouble || iter_dtype == kFloat) {
-        // Replace AT_DISPATCH_ALL_TYPES_AND by manual if/else due to internal test failures:
-        // - "dtype 'Float' not selected for kernel tag hflip_cpu"
-        // - "dtype 'Long' not selected for kernel tag hflip_cpu"
-        //
-        // AT_DISPATCH_ALL_TYPES_AND(kBool,
-        //     iter_dtype, "hflip_cpu", [&iter] {
-        //       cpu_hflip_vec<scalar_t>(iter);
-        // });
-
         if (iter_dtype == kByte) {
           cpu_hflip_vec<uint8_t>(iter);
           return;
@@ -769,22 +775,17 @@ void flip_kernel(TensorIterator& iter, const bool quantized) {
           return;
         }
       }
-      // other dtypes (float16, bfloat16, complex) are handled by cpu_kernel_vec (see below)
     } else if (iter.has_contiguous_first_dim()) {
-      // Special cases:
-      // a) channels last hflip on (N, C, H, W) and outer_stride(=dtype_size * C) in [2, 16]
-      // b) flip dim=-2 on (N, ..., M, C) and outer_stride(=dtype_size * C) in [2, 16]
       auto output_strides_2 = iter.strides(0);
       auto input_strides_2 = iter.strides(1);
       auto c = -output_strides_2[1];
       if (c >= 2 && c <= 16 &&
           c == input_strides_2[1] &&
-          c == iter.element_size(0) * iter.shape()[0]  // checks if dim=1 is contiguous as well
+          c == iter.element_size(0) * iter.shape()[0]
       ) {
         cpu_hflip_channels_last_vec(iter);
         return;
       }
-      // Special case: vertical flip using memcpy (faster than generic cpu_kernel_vec)
       cpu_vflip_memcpy(iter);
       return;
     }
@@ -799,6 +800,7 @@ void flip_kernel(TensorIterator& iter, const bool quantized) {
         });
     });
   }
+#endif
 }
 
 } // anonymous namespace

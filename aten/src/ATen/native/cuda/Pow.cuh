@@ -1,6 +1,10 @@
 #pragma once
 #include <ATen/native/Pow.h>
 #include <c10/core/Scalar.h>
+#include <c10/util/Float8_e4m3fn.h>
+#include <c10/util/Float8_e5m2.h>
+#include <c10/util/Float8_e4m3fnuz.h>
+#include <c10/util/Float8_e5m2fnuz.h>
 
 namespace at::native {
 
@@ -23,6 +27,19 @@ static inline __host__ __device__ at::Half pow_(at::Half base, at::Half exp) {
 // pow for at::BFloat16
 static inline __host__ __device__ at::BFloat16 pow_(at::BFloat16 base, at::BFloat16 exp) {
   return static_cast<at::BFloat16>(std::pow(static_cast<float>(base), static_cast<float>(exp)));
+}
+// pow for Float8 types
+static inline __host__ __device__ c10::Float8_e4m3fn pow_(c10::Float8_e4m3fn base, c10::Float8_e4m3fn exp) {
+  return static_cast<c10::Float8_e4m3fn>(std::pow(static_cast<float>(base), static_cast<float>(exp)));
+}
+static inline __host__ __device__ c10::Float8_e5m2 pow_(c10::Float8_e5m2 base, c10::Float8_e5m2 exp) {
+  return static_cast<c10::Float8_e5m2>(std::pow(static_cast<float>(base), static_cast<float>(exp)));
+}
+static inline __host__ __device__ c10::Float8_e4m3fnuz pow_(c10::Float8_e4m3fnuz base, c10::Float8_e4m3fnuz exp) {
+  return static_cast<c10::Float8_e4m3fnuz>(std::pow(static_cast<float>(base), static_cast<float>(exp)));
+}
+static inline __host__ __device__ c10::Float8_e5m2fnuz pow_(c10::Float8_e5m2fnuz base, c10::Float8_e5m2fnuz exp) {
+  return static_cast<c10::Float8_e5m2fnuz>(std::pow(static_cast<float>(base), static_cast<float>(exp)));
 }
 // pow (floating, floating/int)
 template <typename Base_type, typename Exp_type>

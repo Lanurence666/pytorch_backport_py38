@@ -213,13 +213,19 @@ static void reduce_dispatch(TensorIterator& iter, GeneralDispatcher op) {
   if (iter.dtype() == kHalf) {
     return OpFunctor<at::Half, float>{}(iter);
   } else if (iter.dtype(1) == kHalf && iter.dtype() == kFloat) {
-    // type promotion that does cast and reduction in a single kernel
     return OpFunctor<at::Half, float, float>{}(iter);
   } else if (iter.dtype() == kBFloat16) {
     return OpFunctor<at::BFloat16, float>{}(iter);
   } else if (iter.dtype(1) == kBFloat16 && iter.dtype() == kFloat) {
-    // type promotion that does cast and reduction in a single kernel
     return OpFunctor<at::BFloat16, float, float>{}(iter);
+  } else if (iter.dtype() == kFloat8_e4m3fn) {
+    return OpFunctor<at::Float8_e4m3fn, float>{}(iter);
+  } else if (iter.dtype() == kFloat8_e5m2) {
+    return OpFunctor<at::Float8_e5m2, float>{}(iter);
+  } else if (iter.dtype() == kFloat8_e4m3fnuz) {
+    return OpFunctor<at::Float8_e4m3fnuz, float>{}(iter);
+  } else if (iter.dtype() == kFloat8_e5m2fnuz) {
+    return OpFunctor<at::Float8_e5m2fnuz, float>{}(iter);
   }
   op(iter);
 }
@@ -242,6 +248,13 @@ static void nansum_kernel_cuda(TensorIterator& iter) {
         AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "nansum_cuda", [&]() {
           nansum_functor_complex<scalar_t>{}(iter);
         });
+    } else if (isFloat8Type(dtype)) {
+        AT_DISPATCH_FLOATING_TYPES_AND4(
+            at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+            at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+            dtype, "nansum_cuda", [&]() {
+              nansum_functor<scalar_t>{}(iter);
+            });
     } else {
         AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "nansum_cuda", [&]() {
           nansum_functor<scalar_t>{}(iter);

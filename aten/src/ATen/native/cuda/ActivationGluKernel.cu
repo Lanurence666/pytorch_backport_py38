@@ -23,6 +23,22 @@ namespace at::native {
 // glu forward
 // -----------------------------------
 void glu_kernel(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "glu_cuda", [&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          gpu_kernel(iter, [] GPU_LAMBDA(scalar_t a_, scalar_t b_) -> scalar_t {
+            const opmath_t a = a_;
+            const opmath_t b = b_;
+            const opmath_t one = opmath_t(1);
+            const opmath_t sigmoid = one / (one + std::exp(-b));
+            return static_cast<scalar_t>(a * sigmoid);
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf, kBFloat16, iter.dtype(), "glu_cuda", [&]() {
         using opmath_t = at::opmath_type<scalar_t>;
@@ -40,6 +56,28 @@ void glu_kernel(TensorIteratorBase& iter) {
 // glu forward ad
 // -----------------------------------
 void glu_jvp_kernel(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "glu_cuda", [&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          gpu_kernel(
+              iter,
+              [] GPU_LAMBDA(
+                  scalar_t res_, scalar_t b_, scalar_t da_, scalar_t db_)
+                  -> scalar_t {
+                const opmath_t res = res_;
+                const opmath_t b = b_;
+                const opmath_t da = da_;
+                const opmath_t db = db_;
+                const opmath_t one = opmath_t(1);
+                const opmath_t sig_b = one / (one + std::exp(-b));
+                return static_cast<scalar_t>(da * sig_b + res * (db - sig_b * db));
+              });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf, kBFloat16, iter.dtype(), "glu_cuda", [&]() {
         using opmath_t = at::opmath_type<scalar_t>;
@@ -119,21 +157,41 @@ void launch_glu_backward_kernel(
   const int64_t grid = (N + block_size - 1) / block_size;
   const auto stream = at::cuda::getCurrentCUDAStream();
 
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      kHalf, kBFloat16, iter.common_dtype(), "glu_backward_cuda", [&] {
-        auto gI = static_cast<scalar_t*>(iter.data_ptr(0));
-        auto I = static_cast<const scalar_t*>(iter.data_ptr(1));
-        auto gO = static_cast<const scalar_t*>(iter.data_ptr(2));
-        glu_backward_kernel<<<grid, block_size, 0, stream>>>(
-            N,
-            gI,
-            I,
-            gO,
-            offset_calculator,
-            gI_stride * sizeof(scalar_t),
-            I_stride * sizeof(scalar_t));
-        C10_CUDA_KERNEL_LAUNCH_CHECK();
-      });
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "glu_backward_cuda", [&] {
+          auto gI = static_cast<scalar_t*>(iter.data_ptr(0));
+          auto I = static_cast<const scalar_t*>(iter.data_ptr(1));
+          auto gO = static_cast<const scalar_t*>(iter.data_ptr(2));
+          glu_backward_kernel<<<grid, block_size, 0, stream>>>(
+              N,
+              gI,
+              I,
+              gO,
+              offset_calculator,
+              gI_stride * sizeof(scalar_t),
+              I_stride * sizeof(scalar_t));
+          C10_CUDA_KERNEL_LAUNCH_CHECK();
+        });
+  } else {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf, kBFloat16, iter.input_dtype(), "glu_backward_cuda", [&] {
+          auto gI = static_cast<scalar_t*>(iter.data_ptr(0));
+          auto I = static_cast<const scalar_t*>(iter.data_ptr(1));
+          auto gO = static_cast<const scalar_t*>(iter.data_ptr(2));
+          glu_backward_kernel<<<grid, block_size, 0, stream>>>(
+              N,
+              gI,
+              I,
+              gO,
+              offset_calculator,
+              gI_stride * sizeof(scalar_t),
+              I_stride * sizeof(scalar_t));
+          C10_CUDA_KERNEL_LAUNCH_CHECK();
+        });
+  }
 }
 
 REGISTER_DISPATCH(glu_stub, &glu_kernel)

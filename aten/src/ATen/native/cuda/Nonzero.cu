@@ -73,7 +73,7 @@ __global__ void write_fill_value(int64_t * inp, int64_t * total, int64_t fill_va
 template <int BLOCK_THREADS>
 __global__ void compute_agg(int32_t * agg, int64_t * agg_cum, uint32_t n_blocks) {
 
-  using BlockScanT = ROCM_HIPCUB(at_cuda_detail::cub)::BlockScan<int64_t, BLOCK_THREADS, ROCM_HIPCUB(at_cuda_detail::cub)::BLOCK_SCAN_WARP_SCANS>;
+  using BlockScanT = ROCM_HIPCUB(ATEN_CUB_NS::cub)::BlockScan<int64_t, BLOCK_THREADS, ROCM_HIPCUB(ATEN_CUB_NS::cub)::BLOCK_SCAN_WARP_SCANS>;
   __shared__ typename BlockScanT::TempStorage temp_storage;
   int agg_data;
   int64_t agg_cum_data;
@@ -90,12 +90,12 @@ __global__ void flag_kernel(const T* d_in, int64_t * d_out, const int64_t * agg,
   if (start_idx >= input_nelem) return;
   d_in += start_idx;
 
-  using BlockLoadT = ROCM_HIPCUB(at_cuda_detail::cub)::BlockLoad<int, BLOCK_THREADS, ITEMS_PER_THREAD, ROCM_HIPCUB(at_cuda_detail::cub)::BLOCK_LOAD_WARP_TRANSPOSE>;
+  using BlockLoadT = ROCM_HIPCUB(ATEN_CUB_NS::cub)::BlockLoad<int, BLOCK_THREADS, ITEMS_PER_THREAD, ROCM_HIPCUB(ATEN_CUB_NS::cub)::BLOCK_LOAD_WARP_TRANSPOSE>;
 
   // Specialize BlockScan type for our thread block
-  using BlockScanT = ROCM_HIPCUB(at_cuda_detail::cub)::BlockScan<int, BLOCK_THREADS, ROCM_HIPCUB(at_cuda_detail::cub)::BLOCK_SCAN_WARP_SCANS>;
+  using BlockScanT = ROCM_HIPCUB(ATEN_CUB_NS::cub)::BlockScan<int, BLOCK_THREADS, ROCM_HIPCUB(ATEN_CUB_NS::cub)::BLOCK_SCAN_WARP_SCANS>;
   using TransformInputIteratorT = ATEN_CUB_TRANSFORM_ITERATOR(int, NonZeroOp<T>, const T*);
-  using BlockExchangeT =  ROCM_HIPCUB(at_cuda_detail::cub)::BlockExchange<int, BLOCK_THREADS, ITEMS_PER_THREAD>;
+  using BlockExchangeT =  ROCM_HIPCUB(ATEN_CUB_NS::cub)::BlockExchange<int, BLOCK_THREADS, ITEMS_PER_THREAD>;
 
   // Shared memory
   __shared__ union TempStorage

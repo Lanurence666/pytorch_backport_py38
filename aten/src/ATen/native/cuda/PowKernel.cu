@@ -98,8 +98,27 @@ void pow_chalf_tensor_scalar_impl(TensorIteratorBase& iter, const Scalar& exp_sc
 }  // anonymous namespace
 
 void pow_tensor_tensor_kernel(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (common_dtype == kComplexHalf) {
+  auto common_dtype = iter.input_dtype();
+  if (isFloat8Type(common_dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        common_dtype, "pow_cuda", [&] {
+      if (iter.is_cpu_scalar(1)) {
+        const auto base = iter.scalar_value<scalar_t>(1);
+        iter.remove_operand(1);
+        pow_scalar_tensor_impl(iter, base);
+      } else if (iter.is_cpu_scalar(2)) {
+        const auto exp = iter.scalar_value<scalar_t>(2);
+        iter.remove_operand(2);
+        pow_tensor_scalar_kernel(iter, exp);
+      } else {
+        gpu_kernel(iter, [=]GPU_LAMBDA(scalar_t base, scalar_t exp) -> scalar_t {
+          return pow_(base, exp);
+        });
+      }
+    });
+  } else if (common_dtype == kComplexHalf) {
     using scalar_t = c10::complex<at::Half>;
     if (iter.is_cpu_scalar(1)) {
       const auto base = iter.scalar_value<scalar_t>(1);
@@ -124,7 +143,7 @@ void pow_tensor_tensor_kernel(TensorIteratorBase& iter) {
     }
   } else {
     AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
-        kHalf, kBFloat16, iter.common_dtype(), "pow_cuda", [&] {
+        kHalf, kBFloat16, iter.input_dtype(), "pow_cuda", [&] {
       if (iter.is_cpu_scalar(1)) {
         const auto base = iter.scalar_value<scalar_t>(1);
         iter.remove_operand(1);
@@ -179,13 +198,13 @@ void pow_tensor_scalar_kernel(TensorIteratorBase& iter, const Scalar& exp_scalar
       return reciprocal_kernel_cuda(iter);
     }
   }
-  if (isComplexType(iter.common_dtype()) || exp_scalar.isComplex()) {
-    if (iter.common_dtype() == kComplexHalf) {
+  if (isComplexType(iter.input_dtype()) || exp_scalar.isComplex()) {
+    if (iter.input_dtype() == kComplexHalf) {
       using scalar_t = c10::complex<at::Half>;
       pow_chalf_tensor_scalar_impl(iter, exp_scalar);
       return;
     }
-    AT_DISPATCH_COMPLEX_TYPES(iter.common_dtype(), "pow_cuda", [&]() {
+    AT_DISPATCH_COMPLEX_TYPES(iter.input_dtype(), "pow_cuda", [&]() {
       if (exp_scalar.equal(2.0)) {
         gpu_kernel(iter, [=]GPU_LAMBDA(scalar_t base) -> scalar_t {
           return base * base;
@@ -197,13 +216,21 @@ void pow_tensor_scalar_kernel(TensorIteratorBase& iter, const Scalar& exp_scalar
         return pow_(base, exp);
       });
     });
-  } else if (isFloatingType(iter.common_dtype()) || exp_scalar.isIntegral(false)) {
-    AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, iter.common_dtype(), "pow_cuda", [&]() {
+  } else if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "pow_cuda", [&]() {
+          const auto exp = exp_scalar.to<scalar_t>();
+          pow_tensor_scalar_kernel_impl<scalar_t>(iter, exp);
+        });
+  } else if (isFloatingType(iter.input_dtype()) || exp_scalar.isIntegral(false)) {
+    AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, iter.input_dtype(), "pow_cuda", [&]() {
       const auto exp = exp_scalar.to<scalar_t>();
       pow_tensor_scalar_kernel_impl<scalar_t>(iter, exp);
     });
   } else {
-    TORCH_INTERNAL_ASSERT(false, "invalid combination of type in Pow function, common dtype:", iter.common_dtype(),
+    TORCH_INTERNAL_ASSERT(false, "invalid combination of type in Pow function, common dtype:", iter.input_dtype(),
                                  "exp is integral?", exp_scalar.isIntegral(false));
   }
 }

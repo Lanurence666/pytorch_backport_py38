@@ -90,12 +90,28 @@ void aminmax_kernel_impl(
 }
 
 void min_all_kernel_impl(Tensor& result, const Tensor& input) {
+  if (isFloat8Type(input.scalar_type())) {
+    auto input_fp32 = input.to(at::ScalarType::Float);
+    result = at::empty({}, input_fp32.options());
+    auto iter = make_reduction("min_all", result, input_fp32, IntArrayRef{}, false, at::ScalarType::Float);
+    min_all_launch_kernel(iter);
+    result = result.to(input.scalar_type());
+    return;
+  }
   auto dtype = input.scalar_type();
   auto iter = make_reduction("min_all", result, input, IntArrayRef{}, false, dtype);
   min_all_launch_kernel(iter);
 }
 
 void max_all_kernel_impl(Tensor& result, const Tensor& input) {
+  if (isFloat8Type(input.scalar_type())) {
+    auto input_fp32 = input.to(at::ScalarType::Float);
+    result = at::empty({}, input_fp32.options());
+    auto iter = make_reduction("max_all", result, input_fp32, IntArrayRef{}, false, at::ScalarType::Float);
+    max_all_launch_kernel(iter);
+    result = result.to(input.scalar_type());
+    return;
+  }
   auto dtype = input.scalar_type();
   auto iter = make_reduction("max_all", result, input, IntArrayRef{}, false, dtype);
   max_all_launch_kernel(iter);

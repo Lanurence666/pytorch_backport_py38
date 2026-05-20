@@ -36,8 +36,17 @@ void bitwise_not_kernel_cuda(TensorIteratorBase& iter) {
 
 constexpr char exp_name[] = "exp_kernel";
 void exp_kernel_cuda(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (at::isComplexType(common_dtype)) {
+  auto common_dtype = iter.input_dtype();
+  if (isFloat8Type(common_dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        common_dtype, "exp_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return std::exp(a);
+          });
+        });
+  } else if (at::isComplexType(common_dtype)) {
     #if AT_USE_JITERATOR()
       static const auto exp_string = jiterator_stringify(
           template <typename T>
@@ -69,9 +78,20 @@ void exp_kernel_cuda(TensorIteratorBase& iter) {
 }
 
 void expm1_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "expm1_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return ::expm1(a);
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
       ScalarType::BFloat16, ScalarType::Half,
-      iter.common_dtype(), "expm1_cuda",
+      iter.input_dtype(), "expm1_cuda",
       [&]() {
         gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
           return ::expm1(a);
@@ -94,8 +114,17 @@ C10_HOST_DEVICE static inline c10::complex<T> rsqrt_wrapper(c10::complex<T> v) {
 
 constexpr char rsqrt_name[] = "rsqrt_kernel";
 void rsqrt_kernel_cuda(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (at::isComplexType(common_dtype)) {
+  auto common_dtype = iter.input_dtype();
+  if (isFloat8Type(common_dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        common_dtype, "rsqrt_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return rsqrt_wrapper(a);
+          });
+        });
+  } else if (at::isComplexType(common_dtype)) {
     #if AT_USE_JITERATOR()
       static const auto rsqrt_string = jiterator_stringify(
           template <typename T>
@@ -121,7 +150,7 @@ void rsqrt_kernel_cuda(TensorIteratorBase& iter) {
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
       ScalarType::BFloat16, ScalarType::Half,
-      iter.common_dtype(), "rsqrt_cuda",
+      iter.input_dtype(), "rsqrt_cuda",
       [&]() {
         gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
           // In CUDA, ::rsqrt is overloaded for float and at::Half here is implicitly cast to float.
@@ -133,8 +162,17 @@ void rsqrt_kernel_cuda(TensorIteratorBase& iter) {
 
 constexpr char sqrt_name[] = "sqrt_kernel";
 void sqrt_kernel_cuda(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (at::isComplexType(common_dtype)) {
+  auto common_dtype = iter.input_dtype();
+  if (isFloat8Type(common_dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        common_dtype, "sqrt_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return std::sqrt(a);
+          });
+        });
+  } else if (at::isComplexType(common_dtype)) {
     #if AT_USE_JITERATOR()
       static const auto sqrt_string = jiterator_stringify(
           template <typename T>
@@ -166,6 +204,23 @@ void sqrt_kernel_cuda(TensorIteratorBase& iter) {
 }
 
 void clamp_kernel_cuda(TensorIteratorBase& iter, const Scalar& min_value, const Scalar& max_value) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "clamp_cuda", [&]() {
+          auto lower = min_value.to<scalar_t>();
+          auto upper = max_value.to<scalar_t>();
+          gpu_kernel(iter, [=]GPU_LAMBDA(scalar_t v) -> scalar_t {
+            if (_isnan(v)) {
+              return v;
+            } else {
+              return ::min(::max(v, lower), upper);
+            }
+          });
+        });
+    return;
+  }
   AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, iter.dtype(), "clamp_cuda", [&]() {
     auto lower = min_value.to<scalar_t>();
     auto upper = max_value.to<scalar_t>();
@@ -181,6 +236,22 @@ void clamp_kernel_cuda(TensorIteratorBase& iter, const Scalar& min_value, const 
 }
 
 void clamp_min_kernel_cuda(TensorIteratorBase& iter, const Scalar& min_value) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "clamp_min_cuda", [&]() {
+          auto lower = min_value.to<scalar_t>();
+          gpu_kernel(iter, [=]GPU_LAMBDA(scalar_t v) -> scalar_t {
+            if (_isnan(v)) {
+              return v;
+            } else {
+              return ::max(v, lower);
+            }
+          });
+        });
+    return;
+  }
   AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, iter.dtype(), "clamp_min_cuda", [&]() {
     auto lower = min_value.to<scalar_t>();
     gpu_kernel(iter, [=]GPU_LAMBDA(scalar_t v) -> scalar_t {
@@ -195,6 +266,22 @@ void clamp_min_kernel_cuda(TensorIteratorBase& iter, const Scalar& min_value) {
 }
 
 void clamp_max_kernel_cuda(TensorIteratorBase& iter, const Scalar& max_value) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "clamp_max_cuda", [&]() {
+          auto upper = max_value.to<scalar_t>();
+          gpu_kernel(iter, [=]GPU_LAMBDA(scalar_t v) -> scalar_t {
+            if (_isnan(v)) {
+              return v;
+            } else {
+              return ::min(v, upper);
+            }
+          });
+        });
+    return;
+  }
   AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, iter.dtype(), "clamp_max_cuda", [&]() {
     auto upper = max_value.to<scalar_t>();
     gpu_kernel(iter, [=]GPU_LAMBDA(scalar_t v) -> scalar_t {

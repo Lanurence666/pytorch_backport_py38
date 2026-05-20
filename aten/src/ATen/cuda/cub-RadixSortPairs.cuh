@@ -34,7 +34,7 @@ void radix_sort_pairs_impl(
 
   if (descending) {
     CUB_WRAPPER(
-        NO_ROCM(at_cuda_detail)::cub::DeviceRadixSort::SortPairsDescending,
+        ATEN_CUB_NS::cub::DeviceRadixSort::SortPairsDescending,
         keys_in_,
         keys_out_,
         values_in,
@@ -45,7 +45,7 @@ void radix_sort_pairs_impl(
         c10::cuda::getCurrentCUDAStream());
   } else {
     CUB_WRAPPER(
-        NO_ROCM(at_cuda_detail)::cub::DeviceRadixSort::SortPairs,
+        ATEN_CUB_NS::cub::DeviceRadixSort::SortPairs,
         keys_in_,
         keys_out_,
         values_in,

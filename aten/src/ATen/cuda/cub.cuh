@@ -11,9 +11,18 @@
 #endif
 
 #include <ATen/cuda/cub_definitions.cuh>
+
+#if !CUB_HAS_SCAN_BY_KEY()
+#include <thrust/scan.h>
+#endif
+
 #include <ATen/cuda/CUDAContextLight.h>
 
 #if USE_GLOBAL_CUB_WRAPPED_NAMESPACE()
+
+#include <cub/cub.cuh>
+
+#elif !CUB_HAS_FUTURE_VALUE()
 
 #include <cub/cub.cuh>
 
@@ -50,9 +59,15 @@
 #ifdef USE_ROCM
 #define NO_ROCM(x)
 #define ROCM_HIPCUB(x) ::hipcub
+#define ATEN_CUB_NS
 #else
 #define NO_ROCM(x) x
 #define ROCM_HIPCUB(x) x
+#if USE_GLOBAL_CUB_WRAPPED_NAMESPACE() || CUB_HAS_FUTURE_VALUE()
+#define ATEN_CUB_NS at_cuda_detail
+#else
+#define ATEN_CUB_NS
+#endif
 #endif
 
 #if CUB_V3_PLUS()
@@ -64,10 +79,10 @@
 #define ATEN_CUB_CONSTANT_ITERATOR(...) ::thrust::constant_iterator<__VA_ARGS__>
 #define ATEN_CUB_MAXIMUM() ::cuda::maximum<>()
 #else
-#define ATEN_CUB_TRANSFORM_ITERATOR(...) NO_ROCM(at_cuda_detail)ROCM_HIPCUB(::cub)::TransformInputIterator<__VA_ARGS__>
-#define ATEN_CUB_COUNTING_ITERATOR(...) NO_ROCM(at_cuda_detail)ROCM_HIPCUB(::cub)::CountingInputIterator<__VA_ARGS__>
-#define ATEN_CUB_CONSTANT_ITERATOR(...) NO_ROCM(at_cuda_detail)ROCM_HIPCUB(::cub)::ConstantInputIterator<__VA_ARGS__>
-#define ATEN_CUB_MAXIMUM() NO_ROCM(at_cuda_detail)ROCM_HIPCUB(::cub)::Max()
+#define ATEN_CUB_TRANSFORM_ITERATOR(...) ATEN_CUB_NS::ROCM_HIPCUB(cub)::TransformInputIterator<__VA_ARGS__>
+#define ATEN_CUB_COUNTING_ITERATOR(...) ATEN_CUB_NS::ROCM_HIPCUB(cub)::CountingInputIterator<__VA_ARGS__>
+#define ATEN_CUB_CONSTANT_ITERATOR(...) ATEN_CUB_NS::ROCM_HIPCUB(cub)::ConstantInputIterator<__VA_ARGS__>
+#define ATEN_CUB_MAXIMUM() ATEN_CUB_NS::ROCM_HIPCUB(cub)::Max()
 #endif
 
 #if defined(USE_ROCM)
@@ -96,7 +111,11 @@ struct ROCM_HIPCUB(cub)::NumericTraits<c10::BFloat16>:
 
 #if !defined(USE_ROCM)
 namespace at::native {
+#if USE_GLOBAL_CUB_WRAPPED_NAMESPACE() || CUB_HAS_FUTURE_VALUE()
 namespace cub = ::at_cuda_detail::cub;
+#else
+namespace cub = ::cub;
+#endif
 } // namespace at::native
 #endif
 
@@ -157,12 +176,12 @@ inline void segmented_sort_pairs(
   key_t_ *keys_out_ = reinterpret_cast<key_t_*>(keys_out);
 
   if (descending) {
-    CUB_WRAPPER(NO_ROCM(at_cuda_detail)::cub::DeviceSegmentedRadixSort::SortPairsDescending,
+    CUB_WRAPPER(ATEN_CUB_NS::cub::DeviceSegmentedRadixSort::SortPairsDescending,
       keys_in_, keys_out_, values_in, values_out,
       num_elements, num_segments, begin_offsets, end_offsets,
       begin_bit, end_bit, c10::cuda::getCurrentCUDAStream());
   } else {
-    CUB_WRAPPER(NO_ROCM(at_cuda_detail)::cub::DeviceSegmentedRadixSort::SortPairs,
+    CUB_WRAPPER(ATEN_CUB_NS::cub::DeviceSegmentedRadixSort::SortPairs,
       keys_in_, keys_out_, values_in, values_out,
       num_elements, num_segments, begin_offsets, end_offsets,
       begin_bit, end_bit, c10::cuda::getCurrentCUDAStream());
@@ -175,14 +194,17 @@ inline void unique_by_key(
   ValuesOutputIteratorT values_out,
   NumSelectedIteratorT num_selected, int64_t num_input_items)
 {
-  // TODO: use thrust::discard_iterator to handle null keys_out when https://github.com/NVIDIA/cub/issues/406 is fixed.
+#if CUB_HAS_SCAN_BY_KEY()
   using KeyT = typename std::iterator_traits<KeysInputIteratorT>::value_type;
   auto allocator = c10::cuda::CUDACachingAllocator::get();
   c10::DataPtr keys_out_owner;
   keys_out_owner = allocator->allocate(num_input_items * sizeof(KeyT));
   auto keys_out_ = static_cast<KeyT *>(keys_out_owner.get());
-  CUB_WRAPPER(NO_ROCM(at_cuda_detail)::cub::DeviceSelect::UniqueByKey,
+  CUB_WRAPPER(ATEN_CUB_NS::cub::DeviceSelect::UniqueByKey,
     keys_in, values_in, keys_out_, values_out, num_selected, num_input_items, c10::cuda::getCurrentCUDAStream());
+#else
+  TORCH_CHECK(false, "unique_by_key requires CUB >= 1.15 (CUDA >= 11.5)");
+#endif
 }
 
 namespace impl {
@@ -219,7 +241,7 @@ inline void inclusive_scan(InputIteratorT input, OutputIteratorT output, ScanOpT
   // even though cub is supposed to support tensors with int_max elements, in reality it doesn't,
   // so split at int_max/2
   int size_cub = std::min<int64_t>(num_items, max_cub_size);
-  CUB_WRAPPER(NO_ROCM(at_cuda_detail)::cub::DeviceScan::InclusiveScan,
+  CUB_WRAPPER(ATEN_CUB_NS::cub::DeviceScan::InclusiveScan,
       input,
       output,
       scan_op,
@@ -227,6 +249,7 @@ inline void inclusive_scan(InputIteratorT input, OutputIteratorT output, ScanOpT
       at::cuda::getCurrentCUDAStream());
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   using input_t = typename std::iterator_traits<InputIteratorT>::value_type;
+#if CUB_HAS_FUTURE_VALUE()
   for (int64_t i = max_cub_size; i < num_items; i += max_cub_size) {
     auto allocator = c10::cuda::CUDACachingAllocator::get();
     c10::DataPtr first_elem = allocator->allocate(sizeof(input_t));
@@ -239,14 +262,26 @@ inline void inclusive_scan(InputIteratorT input, OutputIteratorT output, ScanOpT
         first_elem_ptr,
         scan_op);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
-    CUB_WRAPPER(NO_ROCM(at_cuda_detail)::cub::DeviceScan::ExclusiveScan,
+    CUB_WRAPPER(ATEN_CUB_NS::cub::DeviceScan::ExclusiveScan,
         input + i + 1,
         output + i,
         scan_op,
-        ::at_cuda_detail::cub::FutureValue<input_t>(first_elem_ptr),
+        ::ATEN_CUB_NS::cub::FutureValue<input_t>(first_elem_ptr),
         size_cub,
         at::cuda::getCurrentCUDAStream());
   }
+#else
+  for (int64_t i = max_cub_size; i < num_items; i += max_cub_size) {
+    size_cub = std::min<int64_t>(num_items - i, max_cub_size);
+    CUB_WRAPPER(ATEN_CUB_NS::cub::DeviceScan::InclusiveScan,
+        input + i,
+        output + i,
+        scan_op,
+        size_cub,
+        at::cuda::getCurrentCUDAStream());
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+  }
+#endif
 #endif
 }
 
@@ -279,15 +314,15 @@ __global__ void final_scan_kernel(const T* d_in, T* d_out, T* agg, int64_t nelem
   d_in += offset;
   d_out += offset;
 
-  using BlockLoadT = ROCM_HIPCUB(at_cuda_detail::cub)::BlockLoad<T, BLOCK_THREADS, ITEMS_PER_THREAD, ROCM_HIPCUB(at_cuda_detail::cub)::BLOCK_LOAD_WARP_TRANSPOSE>;
+  using BlockLoadT = ROCM_HIPCUB(ATEN_CUB_NS::cub)::BlockLoad<T, BLOCK_THREADS, ITEMS_PER_THREAD, ROCM_HIPCUB(ATEN_CUB_NS::cub)::BLOCK_LOAD_WARP_TRANSPOSE>;
 
   // Specialize BlockStore type for our thread block (uses warp-striped loads for coalescing, then transposes in shared
   // memory to a blocked arrangement)
-  using BlockStoreT = ROCM_HIPCUB(at_cuda_detail::cub)::BlockStore<T, BLOCK_THREADS, ITEMS_PER_THREAD, ROCM_HIPCUB(at_cuda_detail::cub)::BLOCK_STORE_WARP_TRANSPOSE>;
+  using BlockStoreT = ROCM_HIPCUB(ATEN_CUB_NS::cub)::BlockStore<T, BLOCK_THREADS, ITEMS_PER_THREAD, ROCM_HIPCUB(ATEN_CUB_NS::cub)::BLOCK_STORE_WARP_TRANSPOSE>;
 
   // Specialize BlockScan type for our thread block
-  using BlockScanT = ROCM_HIPCUB(at_cuda_detail::cub)::BlockScan<T, BLOCK_THREADS, ROCM_HIPCUB(at_cuda_detail::cub)::BLOCK_SCAN_WARP_SCANS>;
-  using BlockReduceT = ROCM_HIPCUB(at_cuda_detail::cub)::BlockReduce<T, BLOCK_THREADS>;
+  using BlockScanT = ROCM_HIPCUB(ATEN_CUB_NS::cub)::BlockScan<T, BLOCK_THREADS, ROCM_HIPCUB(ATEN_CUB_NS::cub)::BLOCK_SCAN_WARP_SCANS>;
+  using BlockReduceT = ROCM_HIPCUB(ATEN_CUB_NS::cub)::BlockReduce<T, BLOCK_THREADS>;
 
 
   // Shared memory
@@ -371,8 +406,14 @@ __global__ void calc_block_sums(const T * d_in, aggT * agg, int64_t nelem, int i
     }
     d_in += offset;
 
-    using BlockLoadT = ROCM_HIPCUB(at_cuda_detail::cub)::BlockLoad<aggT, BLOCK_THREADS, ITEMS_PER_THREAD, ROCM_HIPCUB(at_cuda_detail::cub)::BLOCK_LOAD_STRIPED>;
-    using BlockReduceT = ROCM_HIPCUB(at_cuda_detail::cub)::BlockReduce<aggT, BLOCK_THREADS>;
+    using BlockLoadT = ROCM_HIPCUB(ATEN_CUB_NS::cub)::BlockLoad<aggT, BLOCK_THREADS, ITEMS_PER_THREAD,
+#if CUB_HAS_BLOCK_LOAD_STRIPED()
+        ROCM_HIPCUB(ATEN_CUB_NS::cub)::BLOCK_LOAD_STRIPED
+#else
+        ROCM_HIPCUB(ATEN_CUB_NS::cub)::BLOCK_LOAD_WARP_TRANSPOSE
+#endif
+        >;
+    using BlockReduceT = ROCM_HIPCUB(ATEN_CUB_NS::cub)::BlockReduce<aggT, BLOCK_THREADS>;
     // Shared memory
     __shared__ union TempStorage
     {
@@ -472,7 +513,7 @@ inline void exclusive_scan(InputIteratorT input, OutputIteratorT output, ScanOpT
   // even though cub is supposed to support tensors with int_max elements, in reality it doesn't,
   // so split at int_max/2
   int size_cub = std::min<int64_t>(num_items, max_cub_size);
-  CUB_WRAPPER(NO_ROCM(at_cuda_detail)::cub::DeviceScan::ExclusiveScan,
+  CUB_WRAPPER(ATEN_CUB_NS::cub::DeviceScan::ExclusiveScan,
       input,
       output,
       scan_op,
@@ -480,6 +521,7 @@ inline void exclusive_scan(InputIteratorT input, OutputIteratorT output, ScanOpT
       size_cub,
       at::cuda::getCurrentCUDAStream());
   C10_CUDA_KERNEL_LAUNCH_CHECK();
+#if CUB_HAS_FUTURE_VALUE()
   for (int64_t i = max_cub_size; i < num_items; i += max_cub_size) {
     auto allocator = c10::cuda::CUDACachingAllocator::get();
     c10::DataPtr first_elem = allocator->allocate(sizeof(InitValueT));
@@ -492,14 +534,27 @@ inline void exclusive_scan(InputIteratorT input, OutputIteratorT output, ScanOpT
         first_elem_ptr,
         scan_op);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
-    CUB_WRAPPER(NO_ROCM(at_cuda_detail)::cub::DeviceScan::ExclusiveScan,
+    CUB_WRAPPER(ATEN_CUB_NS::cub::DeviceScan::ExclusiveScan,
         input + i,
         output + i,
         scan_op,
-        ::at_cuda_detail::cub::FutureValue<InitValueT>(first_elem_ptr),
+        ::ATEN_CUB_NS::cub::FutureValue<InitValueT>(first_elem_ptr),
         size_cub,
         at::cuda::getCurrentCUDAStream());
   }
+#else
+  for (int64_t i = max_cub_size; i < num_items; i += max_cub_size) {
+    size_cub = std::min<int64_t>(num_items - i, max_cub_size);
+    CUB_WRAPPER(ATEN_CUB_NS::cub::DeviceScan::ExclusiveScan,
+        input + i,
+        output + i,
+        scan_op,
+        init_value,
+        size_cub,
+        at::cuda::getCurrentCUDAStream());
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+  }
+#endif
 #endif
 }
 
@@ -508,6 +563,7 @@ template <typename KeysInputIteratorT, typename ValuesInputIteratorT, typename V
 inline void inclusive_sum_by_key(KeysInputIteratorT keys, ValuesInputIteratorT input, ValuesOutputIteratorT output, int64_t num_items) {
   TORCH_CHECK(num_items <= std::numeric_limits<int>::max(),
     "cub InclusiveSumByKey does not support more than INT_MAX elements");
+#if CUB_HAS_SCAN_BY_KEY()
 #if !defined(USE_ROCM)
   CUB_WRAPPER(at_cuda_detail::cub::DeviceScan::InclusiveSumByKey,
       keys, input, output, num_items, NO_ROCM(::cuda)::std::equal_to<>(), at::cuda::getCurrentCUDAStream());
@@ -515,18 +571,29 @@ inline void inclusive_sum_by_key(KeysInputIteratorT keys, ValuesInputIteratorT i
   CUB_WRAPPER(cub::DeviceScan::InclusiveSumByKey,
       keys, input, output, num_items, hipcub::Equality(), at::cuda::getCurrentCUDAStream());
 #endif
+#else
+  thrust::inclusive_scan_by_key(
+      thrust::cuda::par.on(at::cuda::getCurrentCUDAStream()),
+      keys, keys + num_items, input, output);
+#endif
 }
 
 template <typename KeysInputIteratorT, typename ValuesInputIteratorT, typename ValuesOutputIteratorT, typename ScanOpT>
 inline void inclusive_scan_by_key(KeysInputIteratorT keys, ValuesInputIteratorT input, ValuesOutputIteratorT output, ScanOpT scan_op, int64_t num_items) {
   TORCH_CHECK(num_items <= std::numeric_limits<int>::max(),
-    "cub InclusiveSumByKey does not support more than INT_MAX elements");
+    "cub InclusiveScanByKey does not support more than INT_MAX elements");
+#if CUB_HAS_SCAN_BY_KEY()
 #if !defined(USE_ROCM)
   CUB_WRAPPER(at_cuda_detail::cub::DeviceScan::InclusiveScanByKey,
       keys, input, output, scan_op, num_items, NO_ROCM(::cuda)::std::equal_to<>(), at::cuda::getCurrentCUDAStream());
 #else
   CUB_WRAPPER(cub::DeviceScan::InclusiveScanByKey,
       keys, input, output, scan_op, num_items, hipcub::Equality(), at::cuda::getCurrentCUDAStream());
+#endif
+#else
+  thrust::inclusive_scan_by_key(
+      thrust::cuda::par.on(at::cuda::getCurrentCUDAStream()),
+      keys, keys + num_items, input, output, thrust::equal_to<>(), scan_op);
 #endif
 }
 
@@ -536,7 +603,7 @@ void unique(InputIteratorT input, OutputIteratorT output,
             NumSelectedIteratorT num_selected_out, int64_t num_items) {
   TORCH_CHECK(num_items <= std::numeric_limits<int>::max(),
               "cub unique does not support more than INT_MAX elements");
-  CUB_WRAPPER(NO_ROCM(at_cuda_detail)::cub::DeviceSelect::Unique,
+  CUB_WRAPPER(ATEN_CUB_NS::cub::DeviceSelect::Unique,
               input, output, num_selected_out, num_items, at::cuda::getCurrentCUDAStream());
 }
 
@@ -547,7 +614,7 @@ void run_length_encode(InputIteratorT input, OutputIteratorT output, CountsOutpu
   TORCH_CHECK(num_items <= std::numeric_limits<int>::max(),
               "cub run_length_encode does not support more than INT_MAX elements");
   CUB_WRAPPER(
-      NO_ROCM(at_cuda_detail)::cub::DeviceRunLengthEncode::Encode,
+      ATEN_CUB_NS::cub::DeviceRunLengthEncode::Encode,
       input, output, counts_out, length_out, num_items,
       at::cuda::getCurrentCUDAStream());
 }
@@ -557,7 +624,7 @@ void reduce(InputIteratorT input, OutputIteratorT output, int64_t num_items, Red
   TORCH_CHECK(num_items <= std::numeric_limits<int>::max(),
               "cub reduce does not support more than INT_MAX elements");
   CUB_WRAPPER(
-      NO_ROCM(at_cuda_detail)::cub::DeviceReduce::Reduce,
+      ATEN_CUB_NS::cub::DeviceReduce::Reduce,
       input, output, num_items, op, init,
       at::cuda::getCurrentCUDAStream());
 

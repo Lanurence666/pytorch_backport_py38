@@ -8,10 +8,11 @@
 
 namespace c10::guts {
 
-#if defined(__HIP__)
+#if defined(__HIP__) || (defined(__CUDACC__) && __CUDACC_VER_MAJOR__ < 12)
 
 // std::apply is not available in HIP device code because it lacks
 // __host__ __device__ annotations in the standard library.
+// Similarly, nvcc before CUDA 12 does not support std::apply in device code.
 namespace detail {
 template <class F, class Tuple, std::size_t... INDEX>
 C10_HOST_DEVICE constexpr auto apply_impl(

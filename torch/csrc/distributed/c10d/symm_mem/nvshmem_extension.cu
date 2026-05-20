@@ -177,8 +177,8 @@ __device__ int64_t prefixSum(int64_t *odata, int64_t *idata, int n) {
   // Specialize BlockScan for a 1D block of threads, of type int64_t.
   // - `BLOCK_SCAN_WARP_SCANS` is a low-latency scan algorithm (instead of high
   // throughput which we don't need here).
-  // - `at_cuda_detail::cub` is torch's cub wrapper, see #55292.
-  using BlockScanT = at_cuda_detail::cub::BlockScan<int64_t, THREADS_PER_BLOCK, at_cuda_detail::cub::BLOCK_SCAN_WARP_SCANS>;
+  // - `ATEN_CUB_NS::cub` is torch's cub wrapper, see #55292.
+  using BlockScanT = ATEN_CUB_NS::cub::BlockScan<int64_t, THREADS_PER_BLOCK, ATEN_CUB_NS::cub::BLOCK_SCAN_WARP_SCANS>;
   // Allocate shared memory for BlockScan
   __shared__ typename BlockScanT::TempStorage temp_storage;
 
@@ -456,7 +456,7 @@ __device__ int64_t prefixSum_warp(int64_t *odata, int64_t *idata, int n) {
   CUDA_KERNEL_ASSERT(n <= WARP_SIZE);
 
   // Specialize WarpScan for type int
-  using WarpScan = at_cuda_detail::cub::WarpScan<int64_t>;
+  using WarpScan = ATEN_CUB_NS::cub::WarpScan<int64_t>;
   // Allocate WarpScan shared memory for N warps
   __shared__ typename WarpScan::TempStorage temp_storage[NUM_WARPS];
 

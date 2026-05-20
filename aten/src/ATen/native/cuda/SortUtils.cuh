@@ -208,7 +208,7 @@ warpMergeSortKVInPlace(
   StridedRandomAccessor<K, IndexType> keys_iter(keys_slice, keySliceStride);
   StridedRandomAccessor<V, IndexType> values_iter(values_slice, valueSliceStride);
 
-  namespace cub = ROCM_HIPCUB(at_cuda_detail::cub);
+  namespace cub = ATEN_CUB_NS::ROCM_HIPCUB(cub);
 
   CUDA_KERNEL_ASSERT(blockDim.x == WARP_SIZE);
   CUDA_KERNEL_ASSERT(blockDim.y <= max_block_dim_y);
@@ -292,7 +292,7 @@ radixSortKVInPlace(at::cuda::detail::TensorInfo<K, IndexType> keys,
   StridedRandomAccessor<K, IndexType> keys_iter(keys_slice, keySliceStride);
   StridedRandomAccessor<V, IndexType> values_iter(values_slice, valueSliceStride);
 
-  namespace cub = ROCM_HIPCUB(at_cuda_detail::cub);
+  namespace cub = ATEN_CUB_NS::ROCM_HIPCUB(cub);
 
   using key_t = typename at::cuda::cub::detail::cuda_type<K>::type;
   using LoadKeys = cub::BlockLoad<K, block_size, items_per_thread,

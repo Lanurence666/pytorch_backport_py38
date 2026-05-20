@@ -78,7 +78,16 @@ void compare_kernel_impl(TensorIteratorBase &iter, OpType op) {
 }
 
 C10_NOINLINE void compare_kernel_with_scalars(TensorIteratorBase &iter, OpType op) {
-  AT_DISPATCH_ALL_TYPES_AND3(kHalf, kBFloat16, kBool, iter.common_dtype(), "compare_cuda", [&]() {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "compare_cuda", [&]() {
+          compare_kernel_impl<scalar_t>(iter, op);
+        });
+    return;
+  }
+  AT_DISPATCH_ALL_TYPES_AND3(kHalf, kBFloat16, kBool, iter.input_dtype(), "compare_cuda", [&]() {
     compare_kernel_impl<scalar_t>(iter, op);
   });
 }

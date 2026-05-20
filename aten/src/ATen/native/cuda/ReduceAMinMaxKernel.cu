@@ -37,6 +37,20 @@ void aminmax_allreduce_launch_kernel(TensorIterator& iter) {
 }
 
 void aminmax_launch_kernel(TensorIterator& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "aminmax_cuda", [&]() {
+          gpu_reduce_kernel<scalar_t, scalar_t>(
+              iter,
+              MinMaxOps<scalar_t, scalar_t, int32_t>{},
+              thrust::pair<scalar_t, scalar_t>(
+                  at::numeric_limits<scalar_t>::upper_bound(),
+                  at::numeric_limits<scalar_t>::lower_bound()));
+        });
+    return;
+  }
   AT_DISPATCH_ALL_TYPES_AND3(
       kBFloat16, kHalf, kBool, iter.input_dtype(), "aminmax_cuda", [&]() {
         gpu_reduce_kernel<scalar_t, scalar_t>(

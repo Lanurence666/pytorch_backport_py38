@@ -21,6 +21,21 @@ namespace at::native {
 namespace {
 
 void mish_kernel(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "mish_cuda", [&]() {
+          gpu_kernel(iter, [] GPU_LAMBDA(scalar_t x) -> scalar_t {
+            using opmath_t = at::opmath_type<scalar_t>;
+            const opmath_t x_acc = static_cast<opmath_t>(x);
+            return x_acc *
+                c10::cuda::compat::tanh(
+                       c10::cuda::compat::log1p(c10::cuda::compat::exp(x_acc)));
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -38,6 +53,25 @@ void mish_kernel(TensorIteratorBase& iter) {
 }
 
 void mish_backward_kernel(TensorIterator& iter) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "mish_backward_cuda", [&]() {
+          gpu_kernel(iter, [] GPU_LAMBDA(scalar_t dy, scalar_t x) -> scalar_t {
+            using opmath_t = at::opmath_type<scalar_t>;
+            const opmath_t dy_acc = static_cast<opmath_t>(dy);
+            const opmath_t x_acc = static_cast<opmath_t>(x);
+            const opmath_t s_acc =
+                opmath_t(1) / (opmath_t(1) + c10::cuda::compat::exp(-x_acc));
+            const opmath_t t_acc = c10::cuda::compat::tanh(
+                c10::cuda::compat::log1p(c10::cuda::compat::exp(x_acc)));
+            return dy_acc *
+                (t_acc + x_acc * s_acc * (opmath_t(1) - t_acc * t_acc));
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,

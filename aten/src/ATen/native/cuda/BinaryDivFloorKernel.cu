@@ -19,8 +19,19 @@ namespace at::native {
 namespace binary_internal {
 
 void div_floor_kernel_cuda(TensorIteratorBase& iter) {
-  // See NOTE: [Floor Division in Python]
-  const auto dtype = iter.common_dtype();
+  const auto dtype = iter.input_dtype();
+  if (isFloat8Type(dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        dtype, "div_floor_cuda", [&]() {
+          gpu_kernel_with_scalars(
+              iter, [] GPU_LAMBDA(scalar_t a, scalar_t b) -> scalar_t {
+                return c10::div_floor_floating(a, b);
+              });
+        });
+    return;
+  }
   if (dtype == kByte) {
     // In the special case of unsigned integer division, floor division is
     // equivalent to truncation division (since the signs of the divisor and

@@ -66,12 +66,21 @@ ScalarType promoteTypes(ScalarType a, ScalarType b) {
   }
 
   if (isFloat8Type(a) || isFloat8Type(b)) {
-    TORCH_CHECK(
-        false,
-        "Promotion for Float8 Types is not supported, attempted to promote ",
-        toString(a),
-        " and ",
-        toString(b));
+    if (a == b) {
+      return a;
+    }
+    if (isFloat8Type(a) && isFloat8Type(b)) {
+      return ScalarType::Float;
+    }
+    auto fp8 = isFloat8Type(a) ? a : b;
+    auto other = isFloat8Type(a) ? b : a;
+    if (isFloatingType(other)) {
+      return other;
+    }
+    if (isComplexType(other)) {
+      return other;
+    }
+    return ScalarType::Float;
   }
 
   if (isBarebonesUnsignedType(a) || isBarebonesUnsignedType(b)) {

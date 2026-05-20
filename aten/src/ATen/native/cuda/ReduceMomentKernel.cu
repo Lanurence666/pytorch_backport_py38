@@ -55,13 +55,19 @@ static void mean_kernel_cuda(TensorIterator& iter) {
   if (iter.dtype() == kHalf) {
     mean_kernel_impl<at::Half, float>(iter);
   } else if (iter.dtype(1) == kHalf && iter.dtype() == kFloat) {
-    // type promotion that does cast and reduction in a single kernel
     mean_kernel_impl<at::Half, float, float>(iter);
   } else if(iter.dtype() == kBFloat16) {
     mean_kernel_impl<at::BFloat16, float>(iter);
   } else if (iter.dtype(1) == kBFloat16 && iter.dtype() == kFloat) {
-    // type promotion that does cast and reduction in a single kernel
     mean_kernel_impl<at::BFloat16, float, float>(iter);
+  } else if (iter.dtype() == kFloat8_e4m3fn) {
+    mean_kernel_impl<at::Float8_e4m3fn, float>(iter);
+  } else if (iter.dtype() == kFloat8_e5m2) {
+    mean_kernel_impl<at::Float8_e5m2, float>(iter);
+  } else if (iter.dtype() == kFloat8_e4m3fnuz) {
+    mean_kernel_impl<at::Float8_e4m3fnuz, float>(iter);
+  } else if (iter.dtype() == kFloat8_e5m2fnuz) {
+    mean_kernel_impl<at::Float8_e5m2fnuz, float>(iter);
   } else {
     AT_DISPATCH_ALL_TYPES_AND_COMPLEX(iter.dtype(), "mean_cuda", [&]() {
       mean_kernel_impl<scalar_t>(iter);

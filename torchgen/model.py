@@ -447,6 +447,24 @@ DTYPE_CLASSES["AllAndComplex"] = DTYPE_CLASSES['All'] | DTYPE_CLASSES['Complex']
 DTYPE_CLASSES["FloatingAndComplex"] = (
     DTYPE_CLASSES['Floating'] | DTYPE_CLASSES['Complex']
 )
+DTYPE_CLASSES["Float8"] = OrderedSet(
+    [
+        ScalarType.Float8_e4m3fn,
+        ScalarType.Float8_e5m2,
+        ScalarType.Float8_e4m3fnuz,
+        ScalarType.Float8_e5m2fnuz,
+    ]
+)
+DTYPE_CLASSES["LowPrecision"] = OrderedSet(
+    [
+        ScalarType.Half,
+        ScalarType.BFloat16,
+        ScalarType.Float8_e4m3fn,
+        ScalarType.Float8_e5m2,
+        ScalarType.Float8_e4m3fnuz,
+        ScalarType.Float8_e5m2fnuz,
+    ]
+)
 
 
 # Represents the valid entries for ufunc_inner_loop in native_functions.yaml.

@@ -57,6 +57,8 @@ static inline void* PyType_GetSlot(PyTypeObject *type, int slot)
         case Py_nb_inplace_floor_divide: return (void*)(nb ? nb->nb_inplace_floor_divide : nullptr);
         case Py_nb_inplace_true_divide: return (void*)(nb ? nb->nb_inplace_true_divide : nullptr);
         case Py_nb_index: return (void*)(nb ? nb->nb_index : nullptr);
+        case Py_nb_matrix_multiply: return (void*)(nb ? nb->nb_matrix_multiply : nullptr);
+        case Py_nb_inplace_matrix_multiply: return (void*)(nb ? nb->nb_inplace_matrix_multiply : nullptr);
         case Py_sq_length: return (void*)(sq ? sq->sq_length : nullptr);
         case Py_sq_concat: return (void*)(sq ? sq->sq_concat : nullptr);
         case Py_sq_repeat: return (void*)(sq ? sq->sq_repeat : nullptr);
@@ -68,6 +70,16 @@ static inline void* PyType_GetSlot(PyTypeObject *type, int slot)
         case Py_mp_length: return (void*)(mp ? mp->mp_length : nullptr);
         case Py_mp_subscript: return (void*)(mp ? mp->mp_subscript : nullptr);
         case Py_mp_ass_subscript: return (void*)(mp ? mp->mp_ass_subscript : nullptr);
+        case Py_tp_hash: return (void*)(type->tp_hash);
+        case Py_tp_iter: return (void*)(type->tp_iter);
+        case Py_tp_iternext: return (void*)(type->tp_iternext);
+        case Py_tp_call: return (void*)(type->tp_call);
+        case Py_tp_repr: return (void*)(type->tp_repr);
+        case Py_tp_richcompare: return (void*)(type->tp_richcompare);
+        case Py_tp_getattro: return (void*)(type->tp_getattro);
+        case Py_tp_setattro: return (void*)(type->tp_setattro);
+        case Py_tp_descr_get: return (void*)(type->tp_descr_get);
+        case Py_tp_descr_set: return (void*)(type->tp_descr_set);
         default: return nullptr;
     }
 }

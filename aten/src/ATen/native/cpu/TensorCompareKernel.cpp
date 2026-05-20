@@ -110,7 +110,7 @@ void min_kernel_impl(
   AT_DISPATCH_ALL_TYPES_AND3(ScalarType::Half, ScalarType::BFloat16, ScalarType::Bool, self.scalar_type(), "min_cpu", [&] {
     compare_base_kernel<scalar_t>(result, indice, self, dim, keepdim, [&] (
       scalar_t* result_data, int64_t* indice_data,
-      const scalar_t* self_data, auto self_dim_stride) {
+      const scalar_t* self_data, int64_t self_dim_stride) {
         using value_t = typename c10::scalar_value_type<scalar_t>::type;
         value_t (*zabs_)(scalar_t) = zabs<scalar_t, value_t>;
         scalar_t min_number = c10::load(self_data);
@@ -143,7 +143,7 @@ void max_kernel_impl(
   AT_DISPATCH_ALL_TYPES_AND3(ScalarType::Half, ScalarType::BFloat16, ScalarType::Bool, self.scalar_type(), "max_cpu", [&] {
     compare_base_kernel<scalar_t>(result, indice, self, dim, keepdim, [&] (
       scalar_t* result_data, int64_t* indice_data,
-      const scalar_t* self_data, auto self_dim_stride) {
+      const scalar_t* self_data, int64_t self_dim_stride) {
         using value_t = typename c10::scalar_value_type<scalar_t>::type;
         value_t (*zabs_)(scalar_t) = zabs<scalar_t, value_t>;
         scalar_t max_number = c10::load(self_data);
@@ -190,7 +190,7 @@ void aminmax_kernel(
   AT_DISPATCH_ALL_TYPES_AND3(ScalarType::Bool, ScalarType::BFloat16, ScalarType::Half, self.scalar_type(), "aminmax_cpu", [&] {
     compare_base_kernel<scalar_t, scalar_t>(min_result, max_result, self, wrap_dim, keepdim, [&] (
       scalar_t* min_result_data, scalar_t* max_result_data,
-      const scalar_t* self_data, auto self_dim_stride) {
+      const scalar_t* self_data, int64_t self_dim_stride) {
         scalar_t min_number = c10::load(self_data);
         scalar_t max_number = min_number;
         for (const auto i : c10::irange(self_dim_size)) {

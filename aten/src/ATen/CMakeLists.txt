@@ -324,11 +324,14 @@ file(GLOB mem_eff_attention_cuda_cpp CONFIGURE_DEPENDS "native/transformers/cuda
 if(USE_CUDA AND (USE_FLASH_ATTENTION OR USE_MEM_EFF_ATTENTION))
   add_library(flash_attention OBJECT EXCLUDE_FROM_ALL ${flash_attention_cuda_kernels_cu} ${flash_attention_cuda_cpp})
 
-  target_include_directories(flash_attention SYSTEM PUBLIC
+  target_include_directories(flash_attention PUBLIC
+    ${PROJECT_SOURCE_DIR}/third_party/flash-attention/csrc/cutlass/include
     ${PROJECT_SOURCE_DIR}/third_party/flash-attention/csrc
     ${PROJECT_SOURCE_DIR}/third_party/flash-attention/include
-    ${PROJECT_SOURCE_DIR}/third_party/cutlass/include
     ${PROJECT_SOURCE_DIR}/third_party/flash-attention/csrc/flash_attn/src
+  )
+  target_include_directories(flash_attention SYSTEM PUBLIC
+    ${PROJECT_SOURCE_DIR}/third_party/cutlass/include
   )
 
   target_compile_definitions(flash_attention PRIVATE
@@ -726,7 +729,7 @@ endif(UNIX)
 
 ADD_DEFINITIONS(-DUSE_EXTERNAL_MZCRC)
 
-if(NOT MSVC)
+if(NOT WIN32)
   list(APPEND ATen_CPU_DEPENDENCY_LIBS m)
 endif()
 

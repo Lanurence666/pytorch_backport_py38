@@ -13,6 +13,12 @@
 
 #include <c10/core/DeviceArray.h>
 #include <limits>
+#if !CUB_HAS_SCAN_BY_KEY()
+#include <thrust/sequence.h>
+#include <thrust/sort.h>
+#include <thrust/gather.h>
+#include <thrust/device_ptr.h>
+#endif
 
 namespace at::native {
 
@@ -239,45 +245,29 @@ void launch_stable_sort_kernel(
   TORCH_CHECK(nbatch > 0, "Cannot sort dimension of length ", nsort);
   int64_t* indices_ptr = indices.mutable_data_ptr<int64_t>();
 
+#if CUB_HAS_SCAN_BY_KEY()
   AT_DISPATCH_ALL_TYPES_AND3(
       kBool, kHalf, kBFloat16, self.scalar_type(), "sort", [&] {
         const scalar_t* self_ptr = self.const_data_ptr<scalar_t>();
         scalar_t* values_ptr = values.mutable_data_ptr<scalar_t>();
         int64_t remaining = numel;
         while (remaining > 0) {
-          // On ROCm, std::min -> ::min did not work as expected on when input values >= 2147483648
           int64_t n = remaining < nbatch ? remaining : nbatch;
           int64_t nsegments = n / nsort;
 
           if (nsegments == 1 ||
-              nsort >= 1000000) { // rough heuristics where even a single
-                                  // sort occupies GPU
+              nsort >= 1000000) {
             segmented_sort_large_segments(
-                nsegments,
-                nsort,
-                n,
-                descending,
-                self_ptr,
-                values_ptr,
-                indices_ptr);
+                nsegments, nsort, n, descending,
+                self_ptr, values_ptr, indices_ptr);
           } else if (nsegments < 128) {
             segmented_sort_pairs_by_full_sort(
-                nsegments,
-                nsort,
-                n,
-                descending,
-                self_ptr,
-                values_ptr,
-                indices_ptr);
+                nsegments, nsort, n, descending,
+                self_ptr, values_ptr, indices_ptr);
           } else {
             segmented_sort_pairs(
-                nsegments,
-                nsort,
-                n,
-                descending,
-                self_ptr,
-                values_ptr,
-                indices_ptr);
+                nsegments, nsort, n, descending,
+                self_ptr, values_ptr, indices_ptr);
           }
 
           remaining -= n;
@@ -286,6 +276,74 @@ void launch_stable_sort_kernel(
           indices_ptr += n;
         }
       });
+#else
+  AT_DISPATCH_ALL_TYPES_AND2(
+      kBool, kHalf, self.scalar_type(), "sort", [&] {
+        const scalar_t* self_ptr = self.const_data_ptr<scalar_t>();
+        scalar_t* values_ptr = values.mutable_data_ptr<scalar_t>();
+        int64_t remaining = numel;
+        while (remaining > 0) {
+          int64_t n = remaining < nbatch ? remaining : nbatch;
+          int64_t nsegments = n / nsort;
+
+          if (nsegments == 1 || nsort >= 1000000) {
+            segmented_sort_large_segments(
+                nsegments, nsort, n, descending,
+                self_ptr, values_ptr, indices_ptr);
+          } else if (nsegments < 128) {
+            segmented_sort_pairs_by_full_sort(
+                nsegments, nsort, n, descending,
+                self_ptr, values_ptr, indices_ptr);
+          } else {
+            segmented_sort_pairs(
+                nsegments, nsort, n, descending,
+                self_ptr, values_ptr, indices_ptr);
+          }
+
+          remaining -= n;
+          self_ptr += n;
+          values_ptr += n;
+          indices_ptr += n;
+        }
+      });
+  if (self.scalar_type() == at::ScalarType::BFloat16) {
+    using scalar_t = c10::BFloat16;
+    auto stream = at::cuda::getCurrentCUDAStream();
+    const scalar_t* self_ptr = self.const_data_ptr<scalar_t>();
+    scalar_t* values_ptr = values.mutable_data_ptr<scalar_t>();
+    int64_t remaining = numel;
+    while (remaining > 0) {
+      int64_t n = remaining < nbatch ? remaining : nbatch;
+      int64_t nsegments = n / nsort;
+      for (int64_t seg = 0; seg < nsegments; seg++) {
+        const scalar_t* seg_in = self_ptr + seg * nsort;
+        scalar_t* seg_out = values_ptr + seg * nsort;
+        int64_t* seg_idx = indices_ptr + seg * nsort;
+        thrust::sequence(
+            thrust::cuda::par.on(stream),
+            seg_idx, seg_idx + nsort, int64_t(0));
+        thrust::stable_sort_by_key(
+            thrust::cuda::par.on(stream),
+            thrust::device_pointer_cast(const_cast<scalar_t*>(seg_in)),
+            thrust::device_pointer_cast(const_cast<scalar_t*>(seg_in)) + nsort,
+            thrust::device_pointer_cast(seg_idx),
+            [descending] __device__(const scalar_t& a, const scalar_t& b) {
+              return descending ? (a > b) : (a < b);
+            });
+        thrust::gather(
+            thrust::cuda::par.on(stream),
+            thrust::device_pointer_cast(seg_idx),
+            thrust::device_pointer_cast(seg_idx) + nsort,
+            thrust::device_pointer_cast(const_cast<scalar_t*>(seg_in)),
+            thrust::device_pointer_cast(seg_out));
+      }
+      remaining -= n;
+      self_ptr += n;
+      values_ptr += n;
+      indices_ptr += n;
+    }
+  }
+#endif
 }
 
 } // namespace at::native

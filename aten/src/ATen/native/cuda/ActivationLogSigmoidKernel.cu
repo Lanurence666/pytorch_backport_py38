@@ -24,8 +24,23 @@ namespace at::native {
 // -----------------------------------
 
 void launch_log_sigmoid_forward_kernel(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "log_sigmoid_forward_cuda", [&] {
+          using opmath_t = at::opmath_type<scalar_t>;
+          gpu_kernel(iter, [] GPU_LAMBDA(scalar_t in_) -> scalar_t {
+            const opmath_t in = in_;
+            const auto min = std::min(opmath_t(0), in);
+            const auto z = std::exp(-std::abs(in));
+            return min - std::log1p(z);
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
-      kHalf, kBFloat16, iter.common_dtype(), "log_sigmoid_forward_cuda", [&] {
+      kHalf, kBFloat16, iter.input_dtype(), "log_sigmoid_forward_cuda", [&] {
         using opmath_t = at::opmath_type<scalar_t>;
 
         gpu_kernel(iter, [] GPU_LAMBDA(scalar_t in_) -> scalar_t {
@@ -42,8 +57,27 @@ namespace {
 // log_sigmoid backward
 // -----------------------------------
 void log_sigmoid_backward_kernel(TensorIterator& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "log_sigmoid_backward_cuda", [&] {
+          using opmath_t = at::opmath_type<scalar_t>;
+          gpu_kernel(
+              iter, [] GPU_LAMBDA(scalar_t in_, scalar_t grad_out_) -> scalar_t {
+                const opmath_t in = in_;
+                const opmath_t grad_out = grad_out_;
+                auto in_negative = in < opmath_t(0);
+                auto max_deriv = in_negative ? opmath_t(1) : opmath_t(0);
+                auto sign = in_negative ? opmath_t(1) : -opmath_t(1);
+                const auto z = std::exp(-std::abs(in));
+                return grad_out * (max_deriv - sign * (z / (opmath_t(1) + z)));
+              });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
-      kHalf, kBFloat16, iter.common_dtype(), "log_sigmoid_backward_cuda", [&] {
+      kHalf, kBFloat16, iter.input_dtype(), "log_sigmoid_backward_cuda", [&] {
         using opmath_t = at::opmath_type<scalar_t>;
         gpu_kernel(
             iter, [] GPU_LAMBDA(scalar_t in_, scalar_t grad_out_) -> scalar_t {

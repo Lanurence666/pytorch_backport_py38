@@ -3,10 +3,13 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/div_rtn.h>
+#include <c10/core/ScalarType.h>
 #include <ATen/cuda/CUDABlas.h>
 #include <ATen/native/ConvUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/cuda/im2col.cuh>
+#include <c10/util/Float8_e4m3fn.h>
+#include <c10/util/Float8_e5m2.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -19,7 +22,145 @@
 #endif
 
 namespace at::native {
+
 namespace {
+
+template <typename fp8_t>
+C10_LAUNCH_BOUNDS_1(1024)
+__global__ void fp8_im2col_kernel(
+    const int64_t n,
+    const fp8_t* data_im,
+    const int64_t height,
+    const int64_t width,
+    const int64_t kernel_height,
+    const int64_t kernel_width,
+    const int64_t pad_height,
+    const int64_t pad_width,
+    const int64_t stride_height,
+    const int64_t stride_width,
+    const int64_t dilation_height,
+    const int64_t dilation_width,
+    const int64_t height_col,
+    const int64_t width_col,
+    float* data_col) {
+  CUDA_KERNEL_LOOP_TYPE(index, n, int64_t) {
+    int64_t w_out = index % width_col;
+    int64_t idx = index / width_col;
+    int64_t h_out = idx % height_col;
+    int64_t channel_in = idx / height_col;
+    int64_t channel_out = channel_in * kernel_height * kernel_width;
+    int64_t h_in = h_out * stride_height - pad_height;
+    int64_t w_in = w_out * stride_width - pad_width;
+
+    float* col = data_col + (channel_out * height_col + h_out) * width_col + w_out;
+    const fp8_t* im = data_im + (channel_in * height + h_in) * width + w_in;
+
+    for (int64_t i = 0; i < kernel_height; ++i) {
+      for (int64_t j = 0; j < kernel_width; ++j) {
+        int64_t h = h_in + i * dilation_height;
+        int64_t w = w_in + j * dilation_width;
+        float val = 0.0f;
+        if (h >= 0 && w >= 0 && h < height && w < width) {
+          val = static_cast<float>(im[i * dilation_height * width + j * dilation_width]);
+        }
+        *col = val;
+        col += height_col * width_col;
+      }
+    }
+  }
+}
+
+C10_LAUNCH_BOUNDS_1(1024)
+__global__ void fp8_e4m3fn_im2col_kernel(
+    const int64_t n,
+    const c10::Float8_e4m3fn* data_im,
+    const int64_t height, const int64_t width,
+    const int64_t kh, const int64_t kw,
+    const int64_t ph, const int64_t pw,
+    const int64_t sh, const int64_t sw,
+    const int64_t dh, const int64_t dw,
+    const int64_t h_col, const int64_t w_col,
+    float* data_col) {
+  CUDA_KERNEL_LOOP_TYPE(index, n, int64_t) {
+    int64_t w_out = index % w_col;
+    int64_t idx = index / w_col;
+    int64_t h_out = idx % h_col;
+    int64_t c_in = idx / h_col;
+    int64_t c_out = c_in * kh * kw;
+    int64_t h_in = h_out * sh - ph;
+    int64_t w_in = w_out * sw - pw;
+    float* col = data_col + (c_out * h_col + h_out) * w_col + w_out;
+    const c10::Float8_e4m3fn* im = data_im + (c_in * height + h_in) * width + w_in;
+    for (int64_t i = 0; i < kh; ++i) {
+      for (int64_t j = 0; j < kw; ++j) {
+        int64_t h = h_in + i * dh;
+        int64_t w = w_in + j * dw;
+        float val = 0.0f;
+        if (h >= 0 && w >= 0 && h < height && w < width) {
+          val = static_cast<float>(im[i * dh * width + j * dw]);
+        }
+        *col = val;
+        col += h_col * w_col;
+      }
+    }
+  }
+}
+
+C10_LAUNCH_BOUNDS_1(1024)
+__global__ void fp8_e5m2_im2col_kernel(
+    const int64_t n,
+    const c10::Float8_e5m2* data_im,
+    const int64_t height, const int64_t width,
+    const int64_t kh, const int64_t kw,
+    const int64_t ph, const int64_t pw,
+    const int64_t sh, const int64_t sw,
+    const int64_t dh, const int64_t dw,
+    const int64_t h_col, const int64_t w_col,
+    float* data_col) {
+  CUDA_KERNEL_LOOP_TYPE(index, n, int64_t) {
+    int64_t w_out = index % w_col;
+    int64_t idx = index / w_col;
+    int64_t h_out = idx % h_col;
+    int64_t c_in = idx / h_col;
+    int64_t c_out = c_in * kh * kw;
+    int64_t h_in = h_out * sh - ph;
+    int64_t w_in = w_out * sw - pw;
+    float* col = data_col + (c_out * h_col + h_out) * w_col + w_out;
+    const c10::Float8_e5m2* im = data_im + (c_in * height + h_in) * width + w_in;
+    for (int64_t i = 0; i < kh; ++i) {
+      for (int64_t j = 0; j < kw; ++j) {
+        int64_t h = h_in + i * dh;
+        int64_t w = w_in + j * dw;
+        float val = 0.0f;
+        if (h >= 0 && w >= 0 && h < height && w < width) {
+          val = static_cast<float>(im[i * dh * width + j * dw]);
+        }
+        *col = val;
+        col += h_col * w_col;
+      }
+    }
+  }
+}
+
+C10_LAUNCH_BOUNDS_1(1024)
+__global__ void float_to_fp8_e4m3fn_kernel(
+    const int64_t n,
+    const float* src,
+    c10::Float8_e4m3fn* dst) {
+  CUDA_KERNEL_LOOP_TYPE(index, n, int64_t) {
+    dst[index] = static_cast<c10::Float8_e4m3fn>(src[index]);
+  }
+}
+
+C10_LAUNCH_BOUNDS_1(1024)
+__global__ void float_to_fp8_e5m2_kernel(
+    const int64_t n,
+    const float* src,
+    c10::Float8_e5m2* dst) {
+  CUDA_KERNEL_LOOP_TYPE(index, n, int64_t) {
+    dst[index] = static_cast<c10::Float8_e5m2>(src[index]);
+  }
+}
 
 void slow_conv2d_shape_check(
     const Tensor& input, const Tensor& grad_output,
@@ -120,6 +261,152 @@ Tensor new_view_weight_MM2d(const Tensor& weight_) {
   int64_t s1 = w_sizes[0];
   int64_t s2 = c10::multiply_integers(w_sizes.slice(1));
   return weight->view({s1, s2});
+}
+
+void fp8_e4m3fn_conv2d_forward(
+    const Tensor &input,
+    const Tensor &weight_,
+    const Tensor &bias,
+    Tensor &output,
+    int64_t kH, int64_t kW,
+    int64_t dH, int64_t dW,
+    int64_t padH, int64_t padW) {
+  auto weight = new_view_weight_MM2d(weight_);
+  constexpr int dimf = 1, dimh = 2, dimw = 3;
+  auto in_sizes = input.sizes();
+  int64_t batchSize = in_sizes[0];
+  int64_t nInputPlane  = in_sizes[dimf];
+  int64_t inputHeight  = in_sizes[dimh];
+  int64_t inputWidth   = in_sizes[dimw];
+  int64_t nOutputPlane = weight.sizes()[0];
+  int64_t outputHeight = (inputHeight + 2*padH - kH) / dH + 1;
+  int64_t outputWidth  = (inputWidth + 2*padW - kW) / dW + 1;
+  resize_output(output, {batchSize, nOutputPlane, outputHeight, outputWidth});
+  const bool requires_columns = (kW != 1 || kH != 1 || dW != 1 || dH != 1 || padH != 0 || padW != 0);
+  at::Tensor columns_f32;
+  if (requires_columns) {
+    columns_f32 = at::empty({nInputPlane * kW * kH, outputHeight * outputWidth},
+                            input.options().dtype(at::ScalarType::Float));
+  }
+  at::Tensor weight_f32 = weight_.to(at::ScalarType::Float);
+  auto weight_view = new_view_weight_MM2d(weight_f32);
+  at::Tensor output_f32 = at::empty({batchSize, nOutputPlane, outputHeight, outputWidth},
+                                     input.options().dtype(at::ScalarType::Float));
+  if (bias.defined()) {
+    output_f32.copy_(bias.to(at::ScalarType::Float).view({-1, 1, 1}));
+  } else {
+    output_f32.zero_();
+  }
+  auto stream = c10::cuda::getCurrentCUDAStream();
+  for (int elt = 0; elt < batchSize; elt++) {
+    auto input_n = input.select(0, elt);
+    auto output_n = output_f32.select(0, elt);
+    if (requires_columns) {
+      int64_t num_kernels = nInputPlane * outputHeight * outputWidth;
+      fp8_e4m3fn_im2col_kernel<<<GET_BLOCKS(num_kernels), 1024, 0, stream>>>(
+          num_kernels,
+          static_cast<const c10::Float8_e4m3fn*>(input_n.const_data_ptr()),
+          inputHeight, inputWidth, kH, kW, padH, padW, dH, dW, 1, 1,
+          outputHeight, outputWidth,
+          columns_f32.mutable_data_ptr<float>());
+      C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    int64_t m = nOutputPlane;
+    int64_t n = outputHeight * outputWidth;
+    int64_t k = nInputPlane * kH * kW;
+    const float* gemm_in_ptr = requires_columns ?
+        columns_f32.const_data_ptr<float>() : nullptr;
+    at::Tensor input_n_f32_flat;
+    if (!requires_columns) {
+      input_n_f32_flat = input_n.to(at::ScalarType::Float).view({nInputPlane, -1});
+      gemm_in_ptr = input_n_f32_flat.const_data_ptr<float>();
+    }
+    at::cuda::blas::gemm(
+        'n', 'n', n, m, k, 1.0f,
+        gemm_in_ptr, n,
+        static_cast<const float*>(weight_view.const_data_ptr()), k,
+        1.0f,
+        output_n.mutable_data_ptr<float>(), n);
+  }
+  int64_t output_numel = output_f32.numel();
+  float_to_fp8_e4m3fn_kernel<<<GET_BLOCKS(output_numel), 1024, 0, stream>>>(
+      output_numel,
+      output_f32.const_data_ptr<float>(),
+      static_cast<c10::Float8_e4m3fn*>(output.mutable_data_ptr()));
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
+void fp8_e5m2_conv2d_forward(
+    const Tensor &input,
+    const Tensor &weight_,
+    const Tensor &bias,
+    Tensor &output,
+    int64_t kH, int64_t kW,
+    int64_t dH, int64_t dW,
+    int64_t padH, int64_t padW) {
+  auto weight = new_view_weight_MM2d(weight_);
+  constexpr int dimf = 1, dimh = 2, dimw = 3;
+  auto in_sizes = input.sizes();
+  int64_t batchSize = in_sizes[0];
+  int64_t nInputPlane  = in_sizes[dimf];
+  int64_t inputHeight  = in_sizes[dimh];
+  int64_t inputWidth   = in_sizes[dimw];
+  int64_t nOutputPlane = weight.sizes()[0];
+  int64_t outputHeight = (inputHeight + 2*padH - kH) / dH + 1;
+  int64_t outputWidth  = (inputWidth + 2*padW - kW) / dW + 1;
+  resize_output(output, {batchSize, nOutputPlane, outputHeight, outputWidth});
+  const bool requires_columns = (kW != 1 || kH != 1 || dW != 1 || dH != 1 || padH != 0 || padW != 0);
+  at::Tensor columns_f32;
+  if (requires_columns) {
+    columns_f32 = at::empty({nInputPlane * kW * kH, outputHeight * outputWidth},
+                            input.options().dtype(at::ScalarType::Float));
+  }
+  at::Tensor weight_f32 = weight_.to(at::ScalarType::Float);
+  auto weight_view = new_view_weight_MM2d(weight_f32);
+  at::Tensor output_f32 = at::empty({batchSize, nOutputPlane, outputHeight, outputWidth},
+                                     input.options().dtype(at::ScalarType::Float));
+  if (bias.defined()) {
+    output_f32.copy_(bias.to(at::ScalarType::Float).view({-1, 1, 1}));
+  } else {
+    output_f32.zero_();
+  }
+  auto stream = c10::cuda::getCurrentCUDAStream();
+  for (int elt = 0; elt < batchSize; elt++) {
+    auto input_n = input.select(0, elt);
+    auto output_n = output_f32.select(0, elt);
+    if (requires_columns) {
+      int64_t num_kernels = nInputPlane * outputHeight * outputWidth;
+      fp8_e5m2_im2col_kernel<<<GET_BLOCKS(num_kernels), 1024, 0, stream>>>(
+          num_kernels,
+          static_cast<const c10::Float8_e5m2*>(input_n.const_data_ptr()),
+          inputHeight, inputWidth, kH, kW, padH, padW, dH, dW, 1, 1,
+          outputHeight, outputWidth,
+          columns_f32.mutable_data_ptr<float>());
+      C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    int64_t m = nOutputPlane;
+    int64_t n = outputHeight * outputWidth;
+    int64_t k = nInputPlane * kH * kW;
+    const float* gemm_in_ptr = requires_columns ?
+        columns_f32.const_data_ptr<float>() : nullptr;
+    at::Tensor input_n_f32_flat;
+    if (!requires_columns) {
+      input_n_f32_flat = input_n.to(at::ScalarType::Float).view({nInputPlane, -1});
+      gemm_in_ptr = input_n_f32_flat.const_data_ptr<float>();
+    }
+    at::cuda::blas::gemm(
+        'n', 'n', n, m, k, 1.0f,
+        gemm_in_ptr, n,
+        static_cast<const float*>(weight_view.const_data_ptr()), k,
+        1.0f,
+        output_n.mutable_data_ptr<float>(), n);
+  }
+  int64_t output_numel = output_f32.numel();
+  float_to_fp8_e5m2_kernel<<<GET_BLOCKS(output_numel), 1024, 0, stream>>>(
+      output_numel,
+      output_f32.const_data_ptr<float>(),
+      static_cast<c10::Float8_e5m2*>(output.mutable_data_ptr()));
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 void slow_conv2d_forward(
@@ -384,6 +671,38 @@ Tensor& slow_conv2d_forward_out_cuda(
   TORCH_CHECK(stride.size() == 2);
   TORCH_CHECK(padding.size() == 2);
 
+  if (isFloat8Type(self_.scalar_type())) {
+    auto self = self_.expect_contiguous();
+    auto weight = weight_.expect_contiguous();
+    auto bias = [&] {
+      if (bias_.has_value() && bias_->defined()) {
+        return bias_->expect_contiguous();
+      }
+      return MaybeOwned<Tensor>::owned(std::in_place);
+    }();
+
+    slow_conv2d_shape_check(*self, {}, new_view_weight_MM2d(*weight),
+                            *bias, kernel_size[0], kernel_size[1],
+                            stride[0], stride[1], padding[0], padding[1], false);
+
+    if (self_.scalar_type() == at::ScalarType::Float8_e4m3fn) {
+      fp8_e4m3fn_conv2d_forward(
+          *self, *weight, *bias, output,
+          kernel_size[0], kernel_size[1],
+          stride[0], stride[1],
+          padding[0], padding[1]);
+    } else if (self_.scalar_type() == at::ScalarType::Float8_e5m2) {
+      fp8_e5m2_conv2d_forward(
+          *self, *weight, *bias, output,
+          kernel_size[0], kernel_size[1],
+          stride[0], stride[1],
+          padding[0], padding[1]);
+    } else {
+      TORCH_CHECK(false, "Unsupported FP8 type for conv2d: ", self_.scalar_type());
+    }
+    return output;
+  }
+
   auto self = self_.expect_contiguous();
   auto weight = weight_.expect_contiguous();
   auto bias = [&] {
@@ -427,6 +746,42 @@ std::tuple<Tensor&, Tensor&, Tensor&> slow_conv2d_backward_out_cuda(
     Tensor& grad_input,
     Tensor& grad_weight,
     Tensor& grad_bias) {
+  if (isFloat8Type(self_.scalar_type())) {
+    auto self_f32 = self_.to(at::ScalarType::Float);
+    auto grad_output_f32 = grad_output_.to(at::ScalarType::Float);
+    auto weight_f32 = weight_.to(at::ScalarType::Float);
+
+    Tensor grad_input_f32, grad_weight_f32, grad_bias_f32;
+    if (grad_input.defined()) {
+      grad_input_f32 = at::empty(self_f32.sizes(), self_f32.options());
+    }
+    if (grad_weight.defined()) {
+      grad_weight_f32 = at::empty(weight_f32.sizes(), weight_f32.options());
+    }
+    if (grad_bias.defined()) {
+      grad_bias_f32 = at::empty({weight_f32.size(0)}, self_f32.options());
+    }
+
+    auto result_f32 = slow_conv2d_backward_cuda(
+        grad_output_f32, self_f32, weight_f32,
+        kernel_size, stride, padding,
+        {grad_input.defined(), grad_weight.defined(), grad_bias.defined()});
+
+    if (grad_input.defined()) {
+      resize_output(grad_input, self_.sizes());
+      grad_input.copy_(std::get<0>(result_f32).to(self_.scalar_type()));
+    }
+    if (grad_bias.defined()) {
+      at::sum_out(grad_bias, grad_output_, IntArrayRef{0, 2, 3});
+    }
+    if (grad_weight.defined()) {
+      resize_output(grad_weight, weight_.sizes());
+      grad_weight.copy_(std::get<1>(result_f32).to(self_.scalar_type()));
+    }
+    return std::tuple<Tensor&, Tensor&, Tensor&>{
+        grad_input, grad_weight, grad_bias};
+  }
+
   auto grad_output = grad_output_.expect_contiguous();
 
   Tensor columns = at::empty({0}, self_.options());

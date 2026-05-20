@@ -1408,6 +1408,13 @@ TORCH_IMPL_FUNC(log_softmax_cuda_out) (
   const int64_t dim,
   const bool half_to_float,
   const Tensor &output) {
+  if (isFloat8Type(input.scalar_type())) {
+    auto input_f32 = input.to(ScalarType::Float);
+    auto output_f32 = at::empty_like(input_f32);
+    host_softmax<LogSoftMaxForwardEpilogue, LogSoftMaxForwardEpilogue, true, false>(input_f32, dim, false, output_f32);
+    output.copy_(output_f32);
+    return;
+  }
   host_softmax<LogSoftMaxForwardEpilogue, LogSoftMaxForwardEpilogue, true, false>(input, dim, half_to_float, output);
 }
 
@@ -1432,6 +1439,13 @@ TORCH_IMPL_FUNC(softmax_cuda_out) (
   const int64_t dim,
   const bool half_to_float,
   const Tensor &output) {
+  if (isFloat8Type(input.scalar_type())) {
+    auto input_f32 = input.to(ScalarType::Float);
+    auto output_f32 = at::empty_like(input_f32);
+    host_softmax<SoftMaxForwardEpilogue, SoftMaxForwardWithMulEpilogue, false, false>(input_f32, dim, false, output_f32);
+    output.copy_(output_f32);
+    return;
+  }
 #if defined(USE_ROCM)
    host_softmax<SoftMaxForwardEpilogue, SoftMaxForwardWithMulEpilogue, false, true>(input, dim, half_to_float, output);
  #else

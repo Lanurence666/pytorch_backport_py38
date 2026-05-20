@@ -24,11 +24,11 @@ constexpr char bessel_j1_name[] = "bessel_j1_forward";
 
 void bessel_j1_kernel_cuda(TensorIteratorBase& iterator) {
 #if AT_USE_JITERATOR()
-    AT_DISPATCH_FLOATING_TYPES(iterator.common_dtype(), "bessel_j1_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES(iterator.input_dtype(), "bessel_j1_cuda", [&]() {
         jitted_gpu_kernel<bessel_j1_name, scalar_t, scalar_t, 1>(iterator, bessel_j1_string);
     });
 #else
-    AT_DISPATCH_FLOATING_TYPES(iterator.common_dtype(), "bessel_j1_cuda", [&]() {
+    AT_DISPATCH_FLOATING_TYPES(iterator.input_dtype(), "bessel_j1_cuda", [&]() {
         gpu_kernel(iterator, []GPU_LAMBDA(scalar_t a) -> scalar_t {
             return bessel_j1_forward(a);
         });

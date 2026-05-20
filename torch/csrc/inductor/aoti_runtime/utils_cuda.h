@@ -12,7 +12,9 @@
 #ifndef USE_ROCM
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#if CUDA_VERSION >= 11080
 #include <cuda_fp8.h>
+#endif
 #endif
 
 namespace torch::aot_inductor {

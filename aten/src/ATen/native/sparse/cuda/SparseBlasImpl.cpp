@@ -563,7 +563,7 @@ void spmm(
   auto descA = at::cuda::sparse::CuSparseSpMatCsrDescriptor(mat1);
   auto algorithm = CUSPARSE_SPMM_CSR_ALG2;
 
-  auto descB = at::cuda::sparse::CuSparseConstDnMatDescriptor(
+  auto descB = at::cuda::sparse::CuSparseDnMatDescriptor(
       transpose_B ? mat2_->mT() : *mat2_);
   auto descC = at::cuda::sparse::CuSparseDnMatDescriptor(*result_);
 
@@ -1255,7 +1255,7 @@ void triangular_solve_out_sparse_csr(
               desc_spsv.descriptor()));
         });
   } else {
-    // this macro must exist outside the DISPATCH macro for windows builds
+#if AT_USE_CUSPARSE_GENERIC_SPSM()
 #ifdef USE_ROCM
 #define ROCM_EXTRA_ARG ,nullptr
 #else
@@ -1283,7 +1283,7 @@ void triangular_solve_out_sparse_csr(
               compute_type,
               CUSPARSE_SPSM_ALG_DEFAULT,
               desc_spsm.descriptor(),
-              &buffer_size // output
+              &buffer_size
               ));
 
           auto& allocator = *c10::cuda::CUDACachingAllocator::get();
@@ -1316,6 +1316,12 @@ void triangular_solve_out_sparse_csr(
               ROCM_EXTRA_ARG
             ));
         });
+#else
+    TORCH_CHECK(false,
+        "triangular_solve with sparse CSR matrix and multiple right-hand sides ",
+        "requires CUDA 12.0+ with cuSPARSE SpSM support. ",
+        "Please use a CUDA version >= 12.0 or use single right-hand side vector.");
+#endif
   }
   if (!X.is_same(*X_)) {
     X.copy_(*X_);
@@ -1349,8 +1355,8 @@ void sampled_addmm_out_sparse_csr(
         // ** On entry to cusparseSDDMM_bufferSize(): batched SDDMM is not supported
         // So we need to resort to the for loop
         for (const auto i : c10::irange(batchCount(A))) {
-          auto descA = at::cuda::sparse::CuSparseConstDnMatDescriptor(*A_, /*batch_offset=*/i);
-          auto descB = at::cuda::sparse::CuSparseConstDnMatDescriptor(*B_, /*batch_offset=*/i);
+          auto descA = at::cuda::sparse::CuSparseDnMatDescriptor(*A_, /*batch_offset=*/i);
+          auto descB = at::cuda::sparse::CuSparseDnMatDescriptor(*B_, /*batch_offset=*/i);
           auto descC = at::cuda::sparse::CuSparseSpMatCsrDescriptor(C, /*batch_offset=*/i);
 
           auto beta_ = beta.to<scalar_t>();

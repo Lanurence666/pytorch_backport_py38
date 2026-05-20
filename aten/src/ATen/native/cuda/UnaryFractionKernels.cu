@@ -22,6 +22,17 @@ __host__ __device__ static inline std::complex<T> ceil_wrapper(std::complex<T> v
 }
 
 void ceil_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "ceil_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return ceil_wrapper(a);
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       ScalarType::Half, ScalarType::BFloat16,
       iter.dtype(), "ceil_cuda",
@@ -33,6 +44,17 @@ void ceil_kernel_cuda(TensorIteratorBase& iter) {
 }
 
 void frac_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "frac_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return a - ::trunc(a);
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       ScalarType::Half, ScalarType::BFloat16,
       iter.dtype(), "frac_cuda",
@@ -55,6 +77,17 @@ __host__ __device__ static inline std::complex<T> floor_wrapper(std::complex<T> 
 }
 
 void floor_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "floor_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return floor_wrapper(a);
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       ScalarType::Half, ScalarType::BFloat16,
       iter.dtype(), "floor_cuda",
@@ -97,9 +130,20 @@ __host__ __device__ static inline c10::complex<T> reciprocal_wrapper(c10::comple
 }
 
 void reciprocal_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.input_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.input_dtype(), "reciprocal_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return reciprocal_wrapper(a);
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
       ScalarType::Half, ScalarType::BFloat16,
-      iter.common_dtype(), "reciprocal_cuda",
+      iter.input_dtype(), "reciprocal_cuda",
       [&]() {
         gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
           return reciprocal_wrapper(a);
@@ -129,6 +173,17 @@ __host__ __device__ static inline c10::complex<double> nearbyint_wrapper(c10::co
 #pragma pop
 
 void round_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "round_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return nearbyint_wrapper(a);
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       ScalarType::Half, ScalarType::BFloat16,
       iter.dtype(), "round_cuda",
@@ -141,6 +196,25 @@ void round_kernel_cuda(TensorIteratorBase& iter) {
 }
 
 void round_decimals_kernel_cuda(TensorIteratorBase& iter, int64_t decimals) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "round_cuda", [&]() {
+          bool neg_flag = false;
+          scalar_t ten_pow_decimals;
+          if (decimals < 0) {
+            decimals = -decimals;
+            neg_flag = true;
+          }
+          ten_pow_decimals = static_cast<scalar_t>(std::pow(10, decimals));
+          gpu_kernel(iter, [ten_pow_decimals, neg_flag]GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return neg_flag ? std::nearbyint(a / ten_pow_decimals) * ten_pow_decimals
+                            : std::nearbyint(a * ten_pow_decimals) / ten_pow_decimals;
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       ScalarType::Half, ScalarType::BFloat16,
       iter.dtype(), "round_cuda",
@@ -178,6 +252,17 @@ __host__ __device__ static inline c10::complex<double> trunc_wrapper(c10::comple
 }
 
 void trunc_kernel_cuda(TensorIteratorBase& iter) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "trunc_cuda", [&]() {
+          gpu_kernel(iter, []GPU_LAMBDA(scalar_t a) -> scalar_t {
+            return trunc_wrapper(a);
+          });
+        });
+    return;
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       ScalarType::Half, ScalarType::BFloat16,
       iter.dtype(), "trunc_cuda",

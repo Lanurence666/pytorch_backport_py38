@@ -30,7 +30,7 @@ constexpr char angle_name[] = "angle_kernel";
 #endif
 
 void angle_kernel_cuda(TensorIteratorBase& iter) {
-  auto dtype = iter.common_dtype();
+  auto dtype = iter.input_dtype();
   if (at::isComplexType(dtype)) {
 #if AT_USE_JITERATOR()
     static const auto angle_string = jiterator_stringify(
@@ -82,7 +82,7 @@ void conj_kernel_cuda(TensorIteratorBase& iter) {
     #endif
   };
 
-  AT_DISPATCH_SWITCH(iter.common_dtype(), "conj_cuda",
+  AT_DISPATCH_SWITCH(iter.input_dtype(), "conj_cuda",
     AT_DISPATCH_CASE_ALL_TYPES_AND3(kBool, kBFloat16, kHalf, [&] {
       // Conj is a no-op for non-complex types
       direct_copy_kernel_cuda(iter);

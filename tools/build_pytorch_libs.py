@@ -53,7 +53,11 @@ def _overlay_windows_vcvars(env: Dict[str, str]) -> Dict[str, str]:
     vc_env = {k.upper(): v for k, v in vc_env.items()}
     for k, v in env.items():
         uk = k.upper()
-        if uk not in vc_env:
+        if uk == "PYTHONPATH" and uk in vc_env:
+            vc_env[uk] = v + os.pathsep + vc_env[uk]
+        elif uk in ("VCTOOLSINSTALLDIR", "VCTOOLSVERSION"):
+            vc_env[uk] = v
+        elif uk not in vc_env:
             vc_env[uk] = v
     return vc_env
 

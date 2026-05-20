@@ -17,8 +17,15 @@ constexpr char sin_name[] = "sin_impl";
 #endif
 
 void sin_kernel_cuda(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (at::isComplexType(common_dtype)) {
+  auto common_dtype = iter.input_dtype();
+  if (isFloat8Type(common_dtype)) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        common_dtype, "sin_cuda", [&]() {
+          gpu_kernel(iter, [] GPU_LAMBDA(scalar_t a) -> scalar_t { return ::sin(a); });
+        });
+  } else if (at::isComplexType(common_dtype)) {
 #if AT_USE_JITERATOR()
     static const auto sin_string = jiterator_stringify(
         template <typename T> T sin_impl(T a) { return std::sin(a); });

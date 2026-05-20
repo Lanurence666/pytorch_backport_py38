@@ -13,7 +13,7 @@ namespace at::native {
 
 constexpr char logical_and_name[] = "logical_and_kernel";
 void logical_and_kernel_cuda(TensorIterator& iter) {
-  auto dtype = iter.common_dtype();
+  auto dtype = iter.input_dtype();
   if (at::isComplexType(dtype)) {
 #if AT_USE_JITERATOR()
     static const auto logical_and_string = jiterator_stringify(
@@ -50,7 +50,7 @@ void logical_and_kernel_cuda(TensorIterator& iter) {
 
 constexpr char logical_or_name[] = "logical_or_kernel";
 void logical_or_kernel_cuda(TensorIterator& iter) {
-  auto dtype = iter.common_dtype();
+  auto dtype = iter.input_dtype();
   if (at::isComplexType(dtype)) {
 #if AT_USE_JITERATOR()
     static const auto logical_or_string = jiterator_stringify(
@@ -86,7 +86,7 @@ void logical_or_kernel_cuda(TensorIterator& iter) {
 
 constexpr char logical_xor_name[] = "logical_xor_kernel";
 void logical_xor_kernel_cuda(TensorIterator& iter) {
-  auto dtype = iter.common_dtype();
+  auto dtype = iter.input_dtype();
   if (at::isComplexType(dtype)) {
 #if AT_USE_JITERATOR()
     static const auto logical_xor_string = jiterator_stringify(

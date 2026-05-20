@@ -36,6 +36,16 @@ static void threshold_kernel_cuda(
     TensorIteratorBase& iter,
     const Scalar& threshold,
     const Scalar& value) {
+  if (isFloat8Type(iter.dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND4(
+        at::ScalarType::Float8_e4m3fn, at::ScalarType::Float8_e5m2,
+        at::ScalarType::Float8_e4m3fnuz, at::ScalarType::Float8_e5m2fnuz,
+        iter.dtype(), "threshold_cuda", [&] {
+          threshold_kernel_impl<scalar_t>(
+              iter, threshold.to<scalar_t>(), value.to<scalar_t>());
+        });
+    return;
+  }
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
