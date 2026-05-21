@@ -145,11 +145,14 @@ class CMake:
         command = [self._cmake_command] + args
         eprint(" ".join(command))
         try:
-            check_call(command, cwd=self.build_dir, env=env)
+            if IS_WINDOWS:
+                for k, v in env.items():
+                    if k.upper() in ("INCLUDE", "LIB", "PATH", "LIBPATH"):
+                        os.environ[k] = v
+                check_call(command, cwd=self.build_dir)
+            else:
+                check_call(command, cwd=self.build_dir, env=env)
         except (CalledProcessError, KeyboardInterrupt):
-            # This error indicates that there was a problem with cmake, the
-            # Python backtrace adds no signal here so skip over it by catching
-            # the error and exiting manually
             sys.exit(1)
 
     @staticmethod
@@ -276,12 +279,22 @@ class CMake:
                     "C:", os.sep, "Program Files (x86)", "Windows Kits", "10", "Lib"
                 )
                 if os.path.exists(msvc_v142_root):
-                    os.environ["INCLUDE"] = ";".join([
+                    msvc_aux_include = os.path.join(
+                        "C:", os.sep, "Program Files (x86)",
+                        "Microsoft Visual Studio", "2022", "BuildTools",
+                        "VC", "Auxiliary", "VS", "include"
+                    )
+                    include_dirs = [
                         os.path.join(msvc_v142_root, "include"),
+                    ]
+                    if os.path.exists(msvc_aux_include):
+                        include_dirs.append(msvc_aux_include)
+                    include_dirs.extend([
                         os.path.join(sdk_include, sdk_version, "ucrt"),
                         os.path.join(sdk_include, sdk_version, "um"),
                         os.path.join(sdk_include, sdk_version, "shared"),
                     ])
+                    os.environ["INCLUDE"] = ";".join(include_dirs)
                     os.environ["LIB"] = ";".join([
                         os.path.join(msvc_v142_root, "lib", "x64"),
                         os.path.join(sdk_lib, sdk_version, "ucrt", "x64"),
@@ -329,12 +342,22 @@ class CMake:
                     "C:", os.sep, "Program Files (x86)", "Windows Kits", "10", "Lib"
                 )
                 if os.path.exists(msvc_v142_root):
-                    os.environ["INCLUDE"] = ";".join([
+                    msvc_aux_include2 = os.path.join(
+                        "C:", os.sep, "Program Files (x86)",
+                        "Microsoft Visual Studio", "2022", "BuildTools",
+                        "VC", "Auxiliary", "VS", "include"
+                    )
+                    include_dirs2 = [
                         os.path.join(msvc_v142_root, "include"),
+                    ]
+                    if os.path.exists(msvc_aux_include2):
+                        include_dirs2.append(msvc_aux_include2)
+                    include_dirs2.extend([
                         os.path.join(sdk_include, sdk_version, "ucrt"),
                         os.path.join(sdk_include, sdk_version, "um"),
                         os.path.join(sdk_include, sdk_version, "shared"),
                     ])
+                    os.environ["INCLUDE"] = ";".join(include_dirs2)
                     os.environ["LIB"] = ";".join([
                         os.path.join(msvc_v142_root, "lib", "x64"),
                         os.path.join(sdk_lib, sdk_version, "ucrt", "x64"),
@@ -449,6 +472,13 @@ class CMake:
 
         from .env import build_type
 
+        if IS_WINDOWS:
+            if "INCLUDE" in my_env:
+                os.environ["INCLUDE"] = my_env["INCLUDE"]
+            if "LIB" in my_env:
+                os.environ["LIB"] = my_env["LIB"]
+            self._fix_ninja_paths()
+
         build_args = [
             "--build",
             ".",
@@ -483,6 +513,104 @@ class CMake:
             # CMake 3.12 provides a '-j' option.
             build_args += ["-j", max_jobs]
         self.run(build_args, my_env)
+
+    def _fix_ninja_paths(self) -> None:
+        import ctypes
+
+        _GetLongPathNameW = ctypes.windll.kernel32.GetLongPathNameW
+        _GetLongPathNameW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32]
+        _GetLongPathNameW.restype = ctypes.c_uint32
+
+        def get_long_path(short_path: str) -> str:
+            buf = ctypes.create_unicode_buffer(1024)
+            result = _GetLongPathNameW(short_path, buf, 1024)
+            if result == 0:
+                return short_path
+            return buf.value
+
+        short_path_pattern = re.compile(
+            r'[A-Z]:\\(?:[A-Za-z0-9_.\\-]+\\)*[A-Za-z0-9_.\-]+~\d[A-Za-z0-9_.\-]*(?:\\[A-Za-z0-9_.\-]+~?\d?[A-Za-z0-9_.\-]*)*'
+        )
+
+        ninja_files = [
+            os.path.join(self.build_dir, "CMakeFiles", "rules.ninja"),
+            os.path.join(self.build_dir, "build.ninja"),
+        ]
+
+        for ninja_file in ninja_files:
+            if not os.path.isfile(ninja_file):
+                continue
+
+            with open(ninja_file, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+
+            replacements = {}
+            for match in short_path_pattern.finditer(content):
+                short_path = match.group(0)
+                if short_path not in replacements:
+                    long_path = get_long_path(short_path)
+                    if long_path != short_path and len(long_path) > 0:
+                        replacements[short_path] = long_path
+
+            if replacements:
+                eprint(f"Fixing {len(replacements)} short path(s) in {os.path.basename(ninja_file)}")
+                for short_path, long_path in sorted(replacements.items(), key=lambda x: -len(x[0])):
+                    eprint(f"  {short_path} -> {long_path}")
+                    content = content.replace(short_path, long_path)
+
+            content = re.sub(
+                r'(-ccbin=)(C:\\Program Files[^&]*?\\cl\.exe)(?=[\s$])',
+                lambda m: m.group(1) + '"' + m.group(2) + '"' if " " in m.group(2) else m.group(0),
+                content
+            )
+            content = re.sub(
+                r'(-LIBPATH:)(C:\\Program Files[^\n]+)',
+                lambda m: m.group(1) + '"' + m.group(2).rstrip() + '"' if " " in m.group(2) else m.group(0),
+                content
+            )
+            content = re.sub(
+                r'(--rc=)(C:\\Program Files[^&]*?\\rc\.exe)(?=[\s$])',
+                lambda m: m.group(1) + '"' + m.group(2) + '"' if " " in m.group(2) else m.group(0),
+                content
+            )
+            content = re.sub(
+                r'(--mt=)(C:\\Program Files[^&]*?\\mt\.exe)(?=[\s$])',
+                lambda m: m.group(1) + '"' + m.group(2) + '"' if " " in m.group(2) else m.group(0),
+                content
+            )
+            content = re.sub(
+                r'(&& )((C:\\Program Files[^&]*?\\(?:lib|link|ml64)\.exe))(?= )',
+                lambda m: m.group(1) + '"' + m.group(2) + '"' if " " in m.group(2) else m.group(0),
+                content
+            )
+            content = re.sub(
+                r'(-- )((C:\\Program Files[^&]*?\\link\.exe))(?= )',
+                lambda m: m.group(1) + '"' + m.group(2) + '"' if " " in m.group(2) else m.group(0),
+                content
+            )
+
+            content = re.sub(
+                r'(\$\{LAUNCHER\}\$\{CODE_CHECK\}C:\\Program Files \(x86\)\\[^"]+?\\cl\.exe)"(  /nologo)',
+                r'\1\2',
+                content
+            )
+            content = re.sub(
+                r'(-ccbin=)(C:\\Program Files \(x86\)\\[^"]+?\\cl\.exe)"( \$)',
+                r'\1"\2"\3',
+                content
+            )
+
+            if replacements:
+                with open(ninja_file, "w", encoding="utf-8", errors="replace") as f:
+                    f.write(content)
+            else:
+                original = None
+                with open(ninja_file, "r", encoding="utf-8", errors="replace") as f:
+                    original = f.read()
+                if original != content:
+                    eprint(f"Adding quotes for paths with spaces in {os.path.basename(ninja_file)}")
+                    with open(ninja_file, "w", encoding="utf-8", errors="replace") as f:
+                        f.write(content)
 
     def clear_cache(self) -> None:
         """Clears the CMake cache."""

@@ -46,11 +46,42 @@ def _overlay_windows_vcvars(env: Dict[str, str]) -> Dict[str, str]:
             )
 
     vc_env = _get_vc_env(vc_arch)
-    # Keys in `_get_vc_env` are always lowercase.
-    # We turn them into uppercase before overlaying vcvars
-    # because OS environ keys are always uppercase on Windows.
-    # https://stackoverflow.com/a/7797329
     vc_env = {k.upper(): v for k, v in vc_env.items()}
+
+    msvc_v142_root = os.path.join(
+        "C:", os.sep, "Program Files (x86)",
+        "Microsoft Visual Studio", "2022", "BuildTools",
+        "VC", "Tools", "MSVC", "14.29.30133"
+    )
+    msvc_aux_include = os.path.join(
+        "C:", os.sep, "Program Files (x86)",
+        "Microsoft Visual Studio", "2022", "BuildTools",
+        "VC", "Auxiliary", "VS", "include"
+    )
+    sdk_version = "10.0.26100.0"
+    sdk_include = os.path.join(
+        "C:", os.sep, "Program Files (x86)", "Windows Kits", "10", "Include"
+    )
+    sdk_lib = os.path.join(
+        "C:", os.sep, "Program Files (x86)", "Windows Kits", "10", "Lib"
+    )
+    if os.path.exists(msvc_v142_root):
+        include_dirs = [os.path.join(msvc_v142_root, "include")]
+        if os.path.exists(msvc_aux_include):
+            include_dirs.append(msvc_aux_include)
+        include_dirs.extend([
+            os.path.join(sdk_include, sdk_version, "ucrt"),
+            os.path.join(sdk_include, sdk_version, "um"),
+            os.path.join(sdk_include, sdk_version, "shared"),
+        ])
+        vc_env["INCLUDE"] = ";".join(include_dirs)
+        vc_env["LIB"] = ";".join([
+            os.path.join(msvc_v142_root, "lib", "x64"),
+            os.path.join(sdk_lib, sdk_version, "ucrt", "x64"),
+            os.path.join(sdk_lib, sdk_version, "um", "x64"),
+        ])
+        vc_env["VCTOOLSINSTALLDIR"] = msvc_v142_root + "\\"
+
     for k, v in env.items():
         uk = k.upper()
         if uk == "PYTHONPATH" and uk in vc_env:

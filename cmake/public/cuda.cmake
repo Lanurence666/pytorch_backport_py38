@@ -355,7 +355,6 @@ endif()
 # Don't activate VC env again for Ninja generators with MSVC on Windows if CUDAHOSTCXX is not defined
 # by adding --use-local-env.
 if(WIN32 AND CMAKE_GENERATOR MATCHES "Ninja|MinGW|MSYS" AND NOT DEFINED ENV{CUDAHOSTCXX})
-  list(APPEND CUDA_NVCC_FLAGS "--use-local-env")
 endif()
 
 # setting nvcc arch flags
