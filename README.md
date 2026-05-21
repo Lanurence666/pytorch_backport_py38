@@ -219,7 +219,7 @@ To build a redistributable `.whl` package:
 pip wheel --no-build-isolation -w dist .
 
 # 3. The wheel will be in the dist/ directory:
-#    dist/torch-2.13.0a0+git0607d0e-cp38-cp38-win_amd64.whl
+#    dist/torch-2.13.0a0+cu113-cp38-cp38-win_amd64.whl
 ```
 
 > **Tip:** If you encounter linker memory errors (LNK1102) during the `torch_cpu.dll` phase, reduce `MAX_JOBS` to 1:
@@ -241,7 +241,7 @@ pip wheel --no-build-isolation -w dist .
 Download the wheel from [GitHub Releases](https://github.com/Lanurence666/pytorch_backport_py38/releases) and install:
 
 ```bash
-pip install torch-2.13.0a0+git0607d0e-cp38-cp38-win_amd64.whl
+pip install torch-2.13.0a0+cu113-cp38-cp38-win_amd64.whl
 ```
 
 ### From Source
