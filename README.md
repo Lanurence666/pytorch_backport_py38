@@ -162,6 +162,18 @@ This tests 16 FP8 operations including:
 - FP8 comparison operations (eq, ne, lt, gt)
 - FP8 distribution operations (uniform_, normal_)
 
+## Build Optimizations
+
+This wheel is compiled with **maximum optimization flags** for best runtime performance:
+
+| Component | Flags | Description |
+|-----------|-------|-------------|
+| C/C++ (MSVC) | `/Ox /Oi /Ot /GS- /Gy /fp:fast` | Maximum optimization, enable intrinsics, favor speed, no security checks, function-level linking, fast floating point |
+| CUDA (nvcc) | `-O3 -Xcompiler /Ox /Oi /Ot /GS- /Gy /fp:fast` | Maximum device code optimization, same host compiler flags |
+| Linker | `/OPT:REF /OPT:ICF` | Eliminate unreferenced functions, enable COMDAT folding |
+
+**Not included** (to avoid issues): `/GL` (Whole Program Optimization) and `/LTCG` (Link-Time Code Generation) — these can cause static library sizes exceeding 4GB limits.
+
 ## How to Build
 
 ### Prerequisites
@@ -207,7 +219,7 @@ To build a redistributable `.whl` package:
 pip wheel --no-build-isolation -w dist .
 
 # 3. The wheel will be in the dist/ directory:
-#    dist/torch-2.13.0a0+cu113-cp38-cp38-win_amd64.whl
+#    dist/torch-2.13.0a0+git0607d0e-cp38-cp38-win_amd64.whl
 ```
 
 > **Tip:** If you encounter linker memory errors (LNK1102) during the `torch_cpu.dll` phase, reduce `MAX_JOBS` to 1:
@@ -219,7 +231,7 @@ pip wheel --no-build-isolation -w dist .
 
 - Set `MAX_JOBS=2` (or `1` for low-memory systems) to avoid linker memory errors (LNK1102) during the `torch_cpu.dll` linking phase
 - The full build takes approximately 2-4 hours on a modern machine
-- The resulting wheel is approximately 160MB
+- The resulting wheel is approximately 1.1GB (includes CUDA 11.3 runtime DLLs, Flash Attention, FP8 kernels)
 - If building without CUDA, set `set USE_CUDA=0` instead
 
 ## Installation
@@ -229,7 +241,7 @@ pip wheel --no-build-isolation -w dist .
 Download the wheel from [GitHub Releases](https://github.com/Lanurence666/pytorch_backport_py38/releases) and install:
 
 ```bash
-pip install torch-2.13.0a0+cu113-cp38-cp38-win_amd64.whl
+pip install torch-2.13.0a0+git0607d0e-cp38-cp38-win_amd64.whl
 ```
 
 ### From Source
