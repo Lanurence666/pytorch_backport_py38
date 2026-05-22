@@ -83,7 +83,7 @@ def _rocm_compiler_options() -> List[str]:
         config.rocm.compile_opt_level,
         "-x",
         "hip",
-        "-std=c++20",
+        "-std=c++17",
         *gpu_arch_flags,
         "-fno-gpu-rdc",
         "-fPIC",

@@ -1597,21 +1597,13 @@ NvrtcFunction jit_pwise_function(
       &program, code.c_str(), nullptr, 0, nullptr, nullptr));
 
 #ifdef USE_ROCM
-  std::vector<const char*> args = {"--std=c++20"};
+  std::vector<const char*> args = {"--std=c++17"};
 #else
-  // Constructs nvrtc build arguments
-  // CUDA 11.1 allows going directly to SASS (sm_) instead of PTX (compute_)
-  // which gives better backwards compatibility to work on older driver,
-  // (since older driver doesn't necessarily recognize PTX emitted by new
-  // toolkit);
-  // Meanwhile, for forward compatibility (future device with
-  // `unsupported_arch==True`), since SASS are not necessarily compatible,
-  // we fallback to PTX instead.
   const std::string compute = std::string("--gpu-architecture=") +
       (compile_to_sass ? "sm_" : "compute_") + std::to_string(cuda_major) +
       std::to_string(cuda_minor);
   std::vector<const char*> args = {
-      "--std=c++20", compute.c_str(), "-default-device"};
+      "--std=c++17", compute.c_str(), "-default-device"};
 #endif
 
   #ifndef NDEBUG
