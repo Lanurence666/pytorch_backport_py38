@@ -1698,7 +1698,7 @@ function(CUDA_LINK_SEPARABLE_COMPILATION_OBJECTS output_file cuda_target options
       if(CUDA_HOST_COMPILER MATCHES "\\$\\(VCInstallDir\\)")
         list(APPEND nvcc_flags -ccbin "\"${CUDA_HOST_COMPILER}\"")
       else()
-        list(APPEND nvcc_flags -ccbin "${CUDA_HOST_COMPILER}")
+        list(APPEND nvcc_flags -ccbin "\"${CUDA_HOST_COMPILER}\"")
       endif()
     endif()
 

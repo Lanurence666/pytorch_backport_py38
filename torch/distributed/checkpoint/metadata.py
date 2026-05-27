@@ -125,7 +125,7 @@ class BytesStorageMetadata:
 
 
 STORAGE_TYPES = Union[TensorStorageMetadata, BytesStorageMetadata]
-STATE_DICT_TYPE = Union[Dict[str, StatefulT, Any]]
+STATE_DICT_TYPE = Union[Dict[str, StatefulT], Dict[str, Any]]
 
 
 @dataclass

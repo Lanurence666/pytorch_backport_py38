@@ -1,7 +1,4 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
-#ifdef _MSC_VER
-#pragma optimize("", off)
-#endif
 #include <ATen/native/LinearAlgebra.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/Dispatch.h>

@@ -71,9 +71,12 @@ _STATE = "state"
 
 FQNS_T = Set[str]
 PrimitiveType = Union[DTensor, ShardedTensor, torch.Tensor, int, float, str]
-ValueType = (
-    Union[PrimitiveType, List[PrimitiveType]] | Union[Tuple[PrimitiveType], Dict[str, "ValueType"]]
-)
+ValueType = Union[
+    PrimitiveType,
+    List[PrimitiveType],
+    Tuple[PrimitiveType],
+    Dict[str, "ValueType"],
+]
 DictValueType = Dict[str, ValueType]
 ListDictValueType = List[DictValueType]
 OptimizerStateType = Dict[str, Union[DictValueType, ListDictValueType]]

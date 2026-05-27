@@ -1111,13 +1111,10 @@ class build_ext(setuptools.command.build_ext.build_ext):
         else:
             report("-- Not using NCCL")
         if cmake_cache_vars["USE_DISTRIBUTED"]:
-            if IS_WINDOWS:
-                report("-- Building without distributed package")
-            else:
-                report("-- Building with distributed package: ")
-                report(f"  -- USE_TENSORPIPE={cmake_cache_vars['USE_TENSORPIPE']}")
-                report(f"  -- USE_GLOO={cmake_cache_vars['USE_GLOO']}")
-                report(f"  -- USE_MPI={cmake_cache_vars['USE_OPENMPI']}")
+            report("-- Building with distributed package: ")
+            report(f"  -- USE_TENSORPIPE={cmake_cache_vars['USE_TENSORPIPE']}")
+            report(f"  -- USE_GLOO={cmake_cache_vars['USE_GLOO']}")
+            report(f"  -- USE_MPI={cmake_cache_vars['USE_OPENMPI']}")
         else:
             report("-- Building without distributed package")
         if cmake_cache_vars["STATIC_DISPATCH_BACKEND"]:

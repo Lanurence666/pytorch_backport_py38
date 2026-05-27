@@ -38,7 +38,7 @@ class ParallelStyle(ABC):
     flexibility for different kind of style implementations.
     """
 
-    src_data_rank: Optional[int] = Union[0]
+    src_data_rank: Optional[int] = 0
 
     @abstractmethod
     def _apply(self, module: nn.Module, device_mesh: DeviceMesh) -> nn.Module: ...

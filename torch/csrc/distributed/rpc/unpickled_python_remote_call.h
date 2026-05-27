@@ -1,5 +1,6 @@
 #pragma once
 
+#include <torch/csrc/Export.h>
 #include <torch/csrc/distributed/rpc/rpc_command_base.h>
 #include <torch/csrc/distributed/rpc/types.h>
 #include <torch/csrc/distributed/rpc/unpickled_python_call.h>
@@ -14,7 +15,7 @@ namespace torch::distributed::rpc {
 // scattered in multiple places for different message types.
 // NB: The reason for not consolidating class into PythonRemoteCall is because
 // PythonRemoteCall is a libtorch type which should not depend on Python types.
-class TORCH_API UnpickledPythonRemoteCall final : public UnpickledPythonCall {
+class TORCH_PYTHON_API UnpickledPythonRemoteCall final : public UnpickledPythonCall {
  public:
   explicit UnpickledPythonRemoteCall(
       const SerializedPyObj& serializedPyObj,

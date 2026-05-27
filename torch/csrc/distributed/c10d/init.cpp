@@ -13,9 +13,7 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-#ifndef _WIN32
 #include <torch/csrc/distributed/c10d/HashStore.hpp>
-#endif
 #include <torch/csrc/distributed/c10d/FakeProcessGroup.hpp>
 #include <torch/csrc/distributed/c10d/ProcessGroup.hpp>
 #include <torch/csrc/distributed/c10d/PyProcessGroup.hpp>
@@ -1785,7 +1783,6 @@ Example::
           &::c10d::FileStore::getPath,
           R"(Gets the path of the file used by FileStore to store key-value pairs.)");
 
-#ifndef _WIN32
   intrusive_ptr_class_<::c10d::HashStore>(
       module,
       "HashStore",
@@ -1802,7 +1799,6 @@ Example::
     >>> store.set("first_key", "first_value")
       )")
       .def(py::init<>(), R"(Creates a new HashStore.)");
-#endif
 
   intrusive_ptr_class_<::c10d::TCPStore>(
       module,

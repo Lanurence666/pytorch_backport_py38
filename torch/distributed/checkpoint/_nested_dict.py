@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Dict, List, Optional, Union
+
 from torch.distributed.checkpoint.metadata import STATE_DICT_TYPE
 
 from . import _version

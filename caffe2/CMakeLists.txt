@@ -549,9 +549,7 @@ if(NOT INTERN_BUILD_MOBILE AND NOT BUILD_LITE_INTERPRETER)
 
   if(USE_DISTRIBUTED)
     append_filelist("libtorch_distributed_base_sources" TORCH_SRCS)
-    if(NOT WIN32)
-      append_filelist("libtorch_distributed_extra_sources" TORCH_SRCS)
-    endif()
+    append_filelist("libtorch_distributed_extra_sources" TORCH_SRCS)
   endif()
 endif()
 
@@ -578,23 +576,31 @@ if(USE_CUDA)
   endif()
   if(USE_DISTRIBUTED)
     append_filelist("libtorch_cuda_distributed_base_sources" Caffe2_GPU_SRCS)
-    if(NOT WIN32)
-      append_filelist("libtorch_cuda_distributed_extra_sources" Caffe2_GPU_SRCS)
-      set_source_files_properties(
-        ${TORCH_SRC_DIR}/csrc/distributed/c10d/ProcessGroupNCCL.cpp
-        ${TORCH_SRC_DIR}/csrc/distributed/c10d/cuda/utils.cpp
-        ${TORCH_SRC_DIR}/csrc/distributed/c10d/intra_node_comm.cpp
-        ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/CudaDMAConnectivity.cpp
-        ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/CUDASymmetricMemory.cu
-        ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/CUDASymmetricMemoryOps.cu
-        ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/CUDASymmetricMemoryUtils.cpp
-        ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/NCCLSymmetricMemory.cu
-        ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/nccl_extension.cu
-        ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/ops/nccl_reduce_scatter_offset.cu
-        ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/cuda_mem_pool.cpp
-        PROPERTIES COMPILE_FLAGS "-DPYTORCH_C10_DRIVER_API_SUPPORTED=1"
-      )
+    append_filelist("libtorch_cuda_distributed_extra_sources" Caffe2_GPU_SRCS)
+
+    if(WIN32)
+      list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "symm_mem")
+      list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "ProcessGroupNCCL")
+      list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "ProcessGroupUCC")
+      list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "UCCTracing")
+      list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "UCCUtils")
+      list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "intra_node_comm")
     endif()
+
+    set_source_files_properties(
+      ${TORCH_SRC_DIR}/csrc/distributed/c10d/ProcessGroupNCCL.cpp
+      ${TORCH_SRC_DIR}/csrc/distributed/c10d/cuda/utils.cpp
+      ${TORCH_SRC_DIR}/csrc/distributed/c10d/intra_node_comm.cpp
+      ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/CudaDMAConnectivity.cpp
+      ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/CUDASymmetricMemory.cu
+      ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/CUDASymmetricMemoryOps.cu
+      ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/CUDASymmetricMemoryUtils.cpp
+      ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/NCCLSymmetricMemory.cu
+      ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/nccl_extension.cu
+      ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/ops/nccl_reduce_scatter_offset.cu
+      ${TORCH_SRC_DIR}/csrc/distributed/c10d/symm_mem/cuda_mem_pool.cpp
+      PROPERTIES COMPILE_FLAGS "-DPYTORCH_C10_DRIVER_API_SUPPORTED=1"
+    )
 
     set(ASYNC_MM_FILE "${TORCH_SRC_DIR}/csrc/distributed/c10d/cuda/AsyncMM.cu")
     # Disable the warning to make cutlass warp-specialized cooperative kernel build for gcc-9
@@ -644,9 +650,7 @@ if(USE_ROCM)
   endif()
   if(USE_DISTRIBUTED)
     append_filelist("libtorch_cuda_distributed_base_sources" Caffe2_HIP_SRCS)
-    if(NOT WIN32)
-      append_filelist("libtorch_cuda_distributed_extra_sources" Caffe2_HIP_SRCS)
-    endif()
+    append_filelist("libtorch_cuda_distributed_extra_sources" Caffe2_HIP_SRCS)
   endif()
   # caffe2_nvrtc's stubs to driver APIs are useful for HIP.
   # See NOTE [ ATen NVRTC Stub and HIP ]
@@ -813,13 +817,6 @@ if(HAVE_SOVERSION)
       VERSION ${TORCH_VERSION} SOVERSION ${TORCH_SOVERSION})
 endif()
 torch_compile_options(torch_cpu)  # see cmake/public/utils.cmake
-
-if(MSVC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.30)
-  set_source_files_properties(
-    ${CMAKE_CURRENT_SOURCE_DIR}/../aten/src/ATen/native/cpu/LinearAlgebraKernel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../aten/src/ATen/native/cpu/IndexKernel.cpp
-    PROPERTIES COMPILE_FLAGS "/Od")
-endif()
 
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" AND NOT USE_IOS AND NOT USE_COREML_DELEGATE)
   target_compile_options_if_supported(torch_cpu "-Wmissing-prototypes")
@@ -1100,6 +1097,9 @@ elseif(USE_CUDA)
       $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party/cutlass/include>
       $<INSTALL_INTERFACE:include>
     )
+    if(WIN32 AND EXISTS "C:/PROGRA~2/MICROS~2/2022/BUILDT~1/VC/Tools/MSVC/1429~1.301/include")
+      target_include_directories(torch_cuda SYSTEM BEFORE PRIVATE "C:/PROGRA~2/MICROS~2/2022/BUILDT~1/VC/Tools/MSVC/1429~1.301/include")
+    endif()
   endif()
   if(USE_MEM_EFF_ATTENTION)
     target_compile_definitions(torch_cuda PRIVATE USE_MEM_EFF_ATTENTION)
@@ -1590,10 +1590,7 @@ if(USE_DISTRIBUTED)
   endif()
   # Pass USE_RPC in order to reduce use of
   # #if defined(USE_DISTRIBUTED) && !defined(_WIN32)
-  # need to be removed when RPC is supported
-  if(NOT WIN32)
-    target_compile_definitions(torch_cpu PUBLIC USE_RPC)
-  endif()
+  target_compile_definitions(torch_cpu PUBLIC USE_RPC)
   # Pass USE_TENSORPIPE to torch_cpu as some parts of rpc/utils.cpp
   # can only be compiled with USE_TENSORPIPE is set.
   if(USE_TENSORPIPE)

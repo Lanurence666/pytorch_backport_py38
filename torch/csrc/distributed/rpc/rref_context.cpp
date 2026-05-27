@@ -6,10 +6,6 @@
 
 namespace torch::distributed::rpc {
 
-thread_local std::vector<std::shared_ptr<RRefContext::PendingUserState>>
-    RRefContext::userTable_;
-thread_local bool RRefContext::recording_ = false;
-
 namespace callback {
 void confirmPendingUser(
     const JitFuture& jitFuture,
@@ -587,14 +583,14 @@ void RRefContext::addPendingUser(
       !rref->isOwner(), "Attempt to add an OwnerRRef as a pending User.");
 
   auto state = std::make_shared<PendingUserState>(rref);
-  if (recording_) {
+  if (getRecording()) {
     // adding and waiting for pending users are guaranteed to be called from the
     // same thread, but deleting pending users will be called from another
     // thread. As the delPendingUser will not be able to access the same
     // thread_local variable, we cannot address this problem by making
-    // pendingUsers_ thread_local. Instead, pendingUsers_ and userTable_ share
+    // pendingUsers_ thread_local. Instead, pendingUsers_ and getUserTable() share
     // the same PendingUserState shared_ptr.
-    userTable_.push_back(state);
+    getUserTable().push_back(state);
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
@@ -668,23 +664,20 @@ c10::intrusive_ptr<RRef> RRefContext::getPendingUser(const ForkId& forkId) {
 
 void RRefContext::recordThreadLocalPendingRRefs() {
   TORCH_INTERNAL_ASSERT(
-      userTable_.empty(),
+      getUserTable().empty(),
       "User RRef Table should be empty when start recording");
-  recording_ = true;
+  setRecording(true);
 }
 
 c10::intrusive_ptr<JitFuture> RRefContext::waitForThreadLocalPendingRRefs() {
-  // We need to set devices here, even if they won't be used by the value (it's
-  // a bool, it doesn't contain tensors!) because we need them to be propagated
-  // to child futures. This is silly and we should find a way to avoid this.
   auto jitFuturePtr =
       c10::make_intrusive<JitFuture>(BoolType::get(), agent_->getDevices());
-  if (userTable_.empty()) {
+  if (getUserTable().empty()) {
     jitFuturePtr->markCompleted(true);
   } else {
     auto remainingRRefs =
-        std::make_shared<std::atomic<uint64_t>>(userTable_.size());
-    for (auto& state : userTable_) {
+        std::make_shared<std::atomic<uint64_t>>(getUserTable().size());
+    for (auto& state : getUserTable()) {
       state->confirmationFuture_->addCallback(
           [jitFuturePtr, remainingRRefs](JitFuture& /* unused */) {
             auto localCount = remainingRRefs->fetch_sub(1);
@@ -693,15 +686,15 @@ c10::intrusive_ptr<JitFuture> RRefContext::waitForThreadLocalPendingRRefs() {
             }
           });
     }
-    userTable_.clear();
+    getUserTable().clear();
   }
-  recording_ = false;
+  setRecording(false);
   return jitFuturePtr;
 }
 
 void RRefContext::clearRecordedPendingRRefsOnError() {
-  userTable_.clear();
-  recording_ = false;
+  getUserTable().clear();
+  setRecording(false);
 }
 
 void RRefContext::finishForkRequest(const ForkId& forkId, worker_id_t parent) {

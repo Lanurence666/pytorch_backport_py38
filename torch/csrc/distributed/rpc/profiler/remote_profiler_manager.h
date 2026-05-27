@@ -48,7 +48,13 @@ class TORCH_API RemoteProfilerManager {
   local_id_t getNextLocalId();
   std::unordered_map<ProfilingId, std::string, ProfilingId::Hash>
       profiledRpcKeys_;
-  static thread_local std::optional<std::string> currentThreadLocalKey_;
+  static std::optional<std::string>& getCurrentThreadLocalKey() {
+    static thread_local std::optional<std::string> key = std::nullopt;
+    return key;
+  }
+  static void setCurrentThreadLocalKey(std::optional<std::string> key) {
+    getCurrentThreadLocalKey() = std::move(key);
+  }
   std::mutex mutex_;
   local_id_t currentLocalId_;
 };

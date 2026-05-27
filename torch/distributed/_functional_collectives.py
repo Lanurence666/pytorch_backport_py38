@@ -93,14 +93,14 @@ Functional collectives can accept any of these types to describe the ranks parti
 
 The different types will be desugared to a canonical format
 """
-RANK_TYPES = (
-    List[int]
-    | List[List[int]]
-    | dist.ProcessGroup
-    | DeviceMesh
-    | Tuple["dist.tensor.DeviceMesh", int]
-    | c10d.GroupName
-)
+RANK_TYPES = Union[
+    List[int],
+    List[List[int]],
+    dist.ProcessGroup,
+    DeviceMesh,
+    Tuple["dist.tensor.DeviceMesh", int],
+    c10d.GroupName,
+]
 
 
 from torch._utils import _chunk_or_narrow_cat

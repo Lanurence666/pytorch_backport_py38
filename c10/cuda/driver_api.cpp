@@ -42,6 +42,7 @@ DriverAPI create_driver_api() {
 #define LOOKUP_NVML_ENTRY_OPTIONAL(name) \
   r.name##_ = ((decltype(&name))dlsym(handle_1, #name));
     C10_NVML_DRIVER_API_OPTIONAL(LOOKUP_NVML_ENTRY_OPTIONAL)
+    C10_NVML_DRIVER_API_OPTIONAL2(LOOKUP_NVML_ENTRY_OPTIONAL)
 #undef LOOKUP_NVML_ENTRY_OPTIONAL
   }
   return r;

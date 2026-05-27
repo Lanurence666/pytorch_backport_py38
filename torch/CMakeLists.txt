@@ -275,11 +275,7 @@ add_custom_command(
     "${TORCH_ROOT}"
 )
 if(USE_DISTRIBUTED)
-    if(WIN32)
-      append_filelist("libtorch_python_distributed_core_sources" TORCH_PYTHON_SRCS)
-    else()
-      append_filelist("libtorch_python_distributed_sources" TORCH_PYTHON_SRCS)
-    endif()
+    append_filelist("libtorch_python_distributed_sources" TORCH_PYTHON_SRCS)
     # Disable certain warnings for GCC-9.X
     if(CMAKE_COMPILER_IS_GNUCXX)
       set_source_files_properties(${TORCH_SRC_DIR}/csrc/distributed/autograd/init.cpp PROPERTIES COMPILE_FLAGS "-Wno-cast-function-type")
@@ -494,7 +490,7 @@ add_dependencies(torch_python gen_torch_version)
 
 # Skip building this library under MacOS, since it is currently failing to build on Mac
 # Github issue #61930
-if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT WIN32)
   # Add Android Nnapi delegate library
   add_library(nnapi_backend SHARED
           ${TORCH_SRC_DIR}/csrc/jit/backends/nnapi/nnapi_backend_lib.cpp

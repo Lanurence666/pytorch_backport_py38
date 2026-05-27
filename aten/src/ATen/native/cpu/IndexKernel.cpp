@@ -1,7 +1,4 @@
 #define TORCH_ASSERT_NO_OPERATORS
-#ifdef _MSC_VER
-#pragma optimize("", off)
-#endif
 #include <ATen/native/IndexKernel.h>
 
 #include <cmath>

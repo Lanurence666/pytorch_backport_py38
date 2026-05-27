@@ -4,30 +4,27 @@
 namespace torch::distributed::rpc {
 const std::string REMOTE_PROFILING_KEY_PREFIX = "#remote_op: ";
 constexpr int kAutoIncrementBits = 48;
-/*static */ thread_local std::optional<std::string>
-    RemoteProfilerManager::currentThreadLocalKey_ = std::nullopt;
+
 /*static */ RemoteProfilerManager& RemoteProfilerManager::getInstance() {
   static RemoteProfilerManager* handler = new RemoteProfilerManager();
   return *handler;
 }
 
 void RemoteProfilerManager::setCurrentKey(std::string key) {
-  // We should not allow overriding the current key, it needs to be committed
-  // with writeKey() explicitly first.
-  if (RemoteProfilerManager::currentThreadLocalKey_) {
+  if (getCurrentThreadLocalKey()) {
     TORCH_CHECK(
         false,
         "Cannot call RemoteProfilerManager::setCurrentKey when current key is already set.");
   }
-  currentThreadLocalKey_ = std::move(key);
+  setCurrentThreadLocalKey(std::move(key));
 }
 
 bool RemoteProfilerManager::isCurrentKeySet() const {
-  return currentThreadLocalKey_.has_value();
+  return getCurrentThreadLocalKey().has_value();
 }
 
 void RemoteProfilerManager::unsetCurrentKey() {
-  currentThreadLocalKey_ = std::nullopt;
+  setCurrentThreadLocalKey(std::nullopt);
 }
 
 void RemoteProfilerManager::eraseKey(const ProfilingId& globallyUniqueId) {
@@ -60,9 +57,9 @@ local_id_t RemoteProfilerManager::getNextLocalId() {
 
 std::string& RemoteProfilerManager::getCurrentProfilingKey() {
   TORCH_CHECK(
-      RemoteProfilerManager::currentThreadLocalKey_,
+      getCurrentThreadLocalKey(),
       "Must set currentThreadLocalKey_ before calling getCurrentProfilingKey");
-  return *currentThreadLocalKey_;
+  return *getCurrentThreadLocalKey();
 }
 
 void RemoteProfilerManager::saveRPCKey(

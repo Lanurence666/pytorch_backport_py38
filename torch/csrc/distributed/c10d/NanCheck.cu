@@ -8,6 +8,33 @@
 namespace c10d {
 namespace {
 
+template <typename T>
+__device__ __forceinline__ bool cuda_isnan(T val) {
+  return isnan(val);
+}
+
+template <>
+__device__ __forceinline__ bool cuda_isnan<c10::Half>(c10::Half val) {
+  uint16_t u = reinterpret_cast<const unsigned short&>(val);
+  return (u & 0x7FFF) > 0x7C00;
+}
+
+template <>
+__device__ __forceinline__ bool cuda_isnan<c10::BFloat16>(c10::BFloat16 val) {
+  uint16_t u = val.x;
+  return (u & 0x7FFF) > 0x7F80;
+}
+
+template <>
+__device__ __forceinline__ bool cuda_isnan<c10::Float8_e4m3fn>(c10::Float8_e4m3fn val) {
+  return (val.x & 0x7F) == 0x7F;
+}
+
+template <>
+__device__ __forceinline__ bool cuda_isnan<c10::Float8_e5m2>(c10::Float8_e5m2 val) {
+  return (val.x & 0x7F) > 0x7C;
+}
+
 // CUDA kernel to check if data has NAN, device side assert
 // is raised if NAN is found
 
@@ -31,7 +58,7 @@ struct CheckBytePack {
     T* data = (T*)tmp;
 #pragma unroll 8
     for (int i = 0; i < EltPerPack; i++) {
-      CUDA_KERNEL_ASSERT(!isnan(data[i]));
+      CUDA_KERNEL_ASSERT(!cuda_isnan(data[i]));
     }
   }
 };
@@ -43,7 +70,7 @@ template <typename T>
 struct CheckBytePack<T, /*EltPerPack*/ 2> {
   static __device__ __forceinline__ void check(BytePack* tmp) {
     T* data = (T*)tmp;
-    CUDA_KERNEL_ASSERT(!isnan(data[0]) && !isnan(data[1]));
+    CUDA_KERNEL_ASSERT(!cuda_isnan(data[0]) && !cuda_isnan(data[1]));
   }
 };
 
@@ -55,8 +82,8 @@ struct CheckBytePack<T, /*EltPerPack*/ 4> {
   static __device__ __forceinline__ void check(BytePack* tmp) {
     T* data = (T*)tmp;
     CUDA_KERNEL_ASSERT(
-        !isnan(data[0]) && !isnan(data[1]) && !isnan(data[2]) &&
-        !isnan(data[3]));
+        !cuda_isnan(data[0]) && !cuda_isnan(data[1]) && !cuda_isnan(data[2]) &&
+        !cuda_isnan(data[3]));
   }
 };
 
@@ -68,9 +95,9 @@ struct CheckBytePack<T, /*EltPerPack*/ 8> {
   static __device__ __forceinline__ void check(BytePack* tmp) {
     T* data = (T*)tmp;
     CUDA_KERNEL_ASSERT(
-        !isnan(data[0]) && !isnan(data[1]) && !isnan(data[2]) &&
-        !isnan(data[3]) && !isnan(data[4]) && !isnan(data[5]) &&
-        !isnan(data[6]) && !isnan(data[7]));
+        !cuda_isnan(data[0]) && !cuda_isnan(data[1]) && !cuda_isnan(data[2]) &&
+        !cuda_isnan(data[3]) && !cuda_isnan(data[4]) && !cuda_isnan(data[5]) &&
+        !cuda_isnan(data[6]) && !cuda_isnan(data[7]));
   }
 };
 
@@ -185,7 +212,7 @@ __global__ void checkForNaN(T* data, size_t size) {
   // Read memory by T (slow). One iter is enough bc the number of threads would
   // be bigger than `preProcElts`
   if (offset < preProcElts) {
-    CUDA_KERNEL_ASSERT(!isnan(data[offset]));
+    CUDA_KERNEL_ASSERT(!cuda_isnan(data[offset]));
   }
   // We have processes this amount of data
   size -= preProcElts;
@@ -214,7 +241,7 @@ __global__ void checkForNaN(T* data, size_t size) {
   // TODO: merge this tail check with head check to make them concurrent
   if (threadIdx.x < size % EltPerPack) {
     T* tailPtr = (T*)(ptr + sizeInBP);
-    CUDA_KERNEL_ASSERT(!isnan(tailPtr[threadIdx.x]));
+    CUDA_KERNEL_ASSERT(!cuda_isnan(tailPtr[threadIdx.x]));
   }
 }
 

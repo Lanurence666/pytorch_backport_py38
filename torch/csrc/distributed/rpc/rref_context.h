@@ -305,31 +305,20 @@ class TORCH_API RRefContext {
 
   // Thread local states to keep UserRRefs deserialized from user function
   // arguments.
-  static thread_local std::vector<std::shared_ptr<PendingUserState>> userTable_;
-  // A flag indicating whether subsequently created UserRRefs should be added to
-  // the thread_local userTable_. The flag is set to true before serializing
-  // RPC arguments and then set to false before running the corresponding
-  // user code. See addPendingUser and delPendingUser for more details.
-  // NB: The reason for having this flag is because addPendingUser are called in
-  // two cases, and we only want to track the 2nd case.
-  // (1) RRef as the return value: when calling rpc.remote, the UserRRef on the
-  //     caller side is added to the context using addPendingUser.
-  // (2) RRef as an argument: When running an RPC using RRefs as arguments, the
-  //     RRef is forwarded to the callee as new UserRRefs (if the callee is not
-  //     the owner). In this case, we block running the user function until all
-  //     UserRRefs are confirmed by the owner.
-  // This contract guarantees that no UserRRefs can be used remotely without
-  // confirmation. Note that, however, the UserRRef created by rpc.remote can
-  // still be passed to local functions as arguments and used there. This is by
-  // design, because this feature is especially useful when, say a master node
-  // creates multiple UserRRefs in a loop and then shares them with other nodes.
-  // Blocking every iteration in the loop until RRefs are confirmed will slow
-  // this down. This nuance on UserRRef can be interpreted as we only make
-  // exceptions for UserRRef creators. And using the UserRRef on its creator
-  // without confirmation is OK, because the creator would either call to_here
-  // or forward the UserRRef, and both would then require confirmations from the
-  // owner.
-  static thread_local bool recording_;
+  static std::vector<std::shared_ptr<PendingUserState>>& getUserTable() {
+    static thread_local std::vector<std::shared_ptr<PendingUserState>> table;
+    return table;
+  }
+  static bool& getRecordingRef() {
+    static thread_local bool recording = false;
+    return recording;
+  }
+  static bool getRecording() {
+    return getRecordingRef();
+  }
+  static void setRecording(bool r) {
+    getRecordingRef() = r;
+  }
 };
 
 } // namespace torch::distributed::rpc

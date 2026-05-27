@@ -123,7 +123,7 @@ class Std(IntFlag):
     NONE = 0
     OUT = 1
     ERR = 2
-    ALL = Union[OUT, ERR]
+    ALL = OUT | ERR
 
     @classmethod
     def from_str(cls, vm: str) -> Union["Std", Dict[int, "Std"]]:

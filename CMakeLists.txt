@@ -470,7 +470,7 @@ if(WIN32)
   set(USE_KLEIDIAI OFF)
   message(WARNING "KleidiAI cannot be used on Windows. Set it to OFF")
 
-  if(USE_DISTRIBUTED AND NOT DEFINED ENV{libuv_ROOT})
+  if(USE_DISTRIBUTED AND USE_GLOO AND NOT DEFINED ENV{libuv_ROOT})
     find_library(
       libuv_tmp_LIBRARY
       NAMES uv libuv
@@ -478,12 +478,9 @@ if(WIN32)
       PATH_SUFFIXES lib
       NO_DEFAULT_PATH)
     if(NOT libuv_tmp_LIBRARY)
-      set(USE_DISTRIBUTED OFF)
-      set(USE_GLOO OFF)
       message(
-        WARNING
-          "Libuv is not installed in current conda env. Set USE_DISTRIBUTED to OFF. "
-          "Please run command 'conda install -c conda-forge libuv=1.51' to install libuv."
+        STATUS
+          "Libuv is not installed in current conda env. Will build libuv from source for Gloo support."
       )
     else()
       set(ENV{libuv_ROOT} ${libuv_tmp_LIBRARY}/../../)

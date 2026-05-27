@@ -183,7 +183,7 @@ class DDP:
 @contract(state_cls=_ReplicateState)
 def replicate(
     module: nn.Module,
-    ignored_modules: Iterable[torch.nn.Optional[Module]] = None
+    ignored_modules: Optional[Iterable[nn.Module]] = None,
     **kwargs,
 ) -> nn.Module:
     r"""Replicates a module

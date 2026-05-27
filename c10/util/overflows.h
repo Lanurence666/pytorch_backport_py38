@@ -57,10 +57,6 @@ overflows(From f, bool strict_unsigned = false) {
   return c10::less_than_lowest<To>(f) || greater_than_max<To>(f);
 }
 
-#ifdef _MSC_VER
-#pragma float_control(precise, on, push)
-#endif
-
 template <typename To, typename From>
 std::enable_if_t<std::is_floating_point_v<From>, bool> overflows(
     From f,
@@ -74,10 +70,6 @@ std::enable_if_t<std::is_floating_point_v<From>, bool> overflows(
   }
   return f < limit::lowest() || f > limit::max();
 }
-
-#ifdef _MSC_VER
-#pragma float_control(pop)
-#endif
 
 C10_CLANG_DIAGNOSTIC_POP()
 

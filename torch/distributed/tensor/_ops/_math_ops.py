@@ -80,7 +80,7 @@ class _NormPartial(Partial):
     This is achieved by: x^p -> allreduce sum -> x^(1/p).
     """
 
-    norm_type: Union[int, float]= Union[2]
+    norm_type: Union[int, float] = 2
 
     def __init__(self, norm_type: Union[int, float] = 2):
         super().__init__("sum")

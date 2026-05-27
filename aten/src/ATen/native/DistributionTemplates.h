@@ -1,697 +1,400 @@
 #pragma once
 
-#include <ATen/AccumulateType.h>
+#include <ATen/core/Tensor.h>
 #include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
-#include <ATen/ExpandBase.h>
-#include <ATen/OpMathType.h>
+#include <ATen/Generator.h>
+#include <ATen/ExpandUtils.h>
+#include <ATen/Tensor.h>
+#include <ATen/MemoryOverlap.h>
+#include <ATen/NamedTensorUtils.h>
+#include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/cuda/Loops.cuh>
-#include <c10/util/Half.h>
-#include <ATen/cuda/CUDAApplyUtils.cuh>
-#include <ATen/cuda/CUDAContext.h>
-#include <ATen/cuda/detail/OffsetCalculator.cuh>
-#include <ATen/cuda/CUDAGraphsUtils.cuh>
-#include <ATen/detail/FunctionTraits.h>
-#include <ATen/core/DistributionsHelper.h>
-
-#include <curand.h>
-#include <curand_kernel.h>
-#include <curand_philox4x32_x.h>
-#include <cstdint>
+#include <cmath>
 #include <limits>
-#include <utility>
-#include <mutex>
-#include <tuple>
-#include <type_traits>
+#include <optional>
 
-namespace at {
-namespace native {
-namespace {
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#else
+#include <ATen/ops/empty_like.h>
+#include <ATen/ops/empty.h>
+#include <ATen/ops/full.h>
+#include <ATen/ops/view_as_real.h>
+#endif
 
-// launch bounds used for kernels utilizing TensorIterator
-const uint32_t block_size_bound = 256;
-const uint32_t grid_size_bound = 4;
-// At the time of writing, there is no curand_* call that increments the offset by more than 4.
-// See: https://docs.nvidia.com/cuda/archive/11.8.0/curand/group__DEVICE.html
-const uint32_t max_generator_offsets_per_curand_call = 4;
-
-// utility function that calculates proper philox_offset
-// for distributions utilizing TensorIterator. For distributions using
-// TensorIterator, we are using a grid-stride loop with each
-// thread yielding one element per thread. For the edge of the grid-stride
-// loop, if the tensor size is large, the unroll loop will kick in and the float4
-// from curand4 will start getting utilized (for common tensor sizes, we end up
-// using rand.x from each thread). The philox_offset calculation was changed to
-// (number of elements per thread * maximum generator increment per "curand_*" call), which makes
-// sure that philox offset increment is not less than the number of randoms used
-// in each thread.
-std::tuple<uint64_t, dim3, dim3> calc_execution_policy(const int64_t total_elements, const uint32_t unroll_factor) {
-  const uint64_t numel = static_cast<uint64_t>(total_elements);
-  const uint32_t block_size = block_size_bound;
-  dim3 dim_block(block_size);
-  dim3 grid((numel + block_size - 1) / block_size);
-  uint32_t blocks_per_sm = at::cuda::getCurrentDeviceProperties()->maxThreadsPerMultiProcessor / block_size;
-  grid.x = std::min(
-      static_cast<uint32_t>(at::cuda::getCurrentDeviceProperties()->multiProcessorCount) * blocks_per_sm,
-      grid.x);
-  //number of times random will be generated per thread, to offset philox counter in thc random state
-  uint64_t counter_offset = ((numel - 1) / (block_size * grid.x * unroll_factor) + 1) * max_generator_offsets_per_curand_call;
-  return std::make_tuple(counter_offset, grid, dim_block);
-}
-
-// grid stride loop kernel for distributions
-template<typename accscalar_t, int unroll_factor, typename dist_t, typename transform_t>
-C10_LAUNCH_BOUNDS_2(block_size_bound, grid_size_bound)
-__global__ void distribution_elementwise_grid_stride_kernel(int64_t numel,
-                                                            PhiloxCudaState philox_args,
-                                                            const dist_t dist_func,
-                                                            const transform_t transform_func) {
-  auto [seed, offset] = at::cuda::philox::unpack(philox_args);
-  int64_t idx = ((int64_t) blockIdx.x) * blockDim.x + threadIdx.x;
-  curandStatePhilox4_32_10_t state;
-  curand_init(seed, idx, offset, &state);
-
-  int64_t rounded_size = ((numel - 1)/(blockDim.x * gridDim.x * unroll_factor)+1) *
-      blockDim.x * gridDim.x * unroll_factor;
-  for(int64_t linear_index = idx; linear_index < rounded_size; linear_index += blockDim.x * gridDim.x * unroll_factor) {
-    auto rand = dist_func(&state);
-    #pragma unroll
-    for (int ii = 0; ii < unroll_factor; ii++) {
-      int64_t li = linear_index + blockDim.x * gridDim.x * ii;
-      if (li < numel) {
-        transform_func(li, static_cast<accscalar_t>((&rand.x)[ii]));
-      }
-    }
-    __syncthreads();
-  }
-}
-
-/**
- * distribution_nullary_kernel is analogous to gpu_kernel in
- * ATen/native/cuda/Loops.cuh. Like gpu_kernel, it uses
- * TensorIterator to launch a kernel. However, the differences are
- *   - it launches a grid-stride loop based kernel. The kernel is not
- *     generic like elementwise_kernel in Loops.cuh and is specialized
- *     for the distribution kernels here.
- *   - For big size tensors, we can launch multiple kernels recursively
- *     (i.e. if (!iter.can_use_32bit_indexing())) and hence, the philox
- *     offset calculation is done in this function.
- *
- * FIXME: Can we specialize elementwise_kernel and launch_kernel in Loops.cuh
- * to have grid-stride loop kernel and then use that to launch our distribution
- * kernels? Note that we need a grid-stride loop kernel because, we found by testing
- * that it achieves peak effective bandwidth.
- */
-template<typename scalar_t,
-         typename accscalar_t,
-         typename dist_func_return_t,
-         typename RNG,
-         typename dist_t,
-         typename transform_t>
-void distribution_nullary_kernel(at::TensorIteratorBase& iter,
-                                 RNG gen,
-                                 const dist_t& dist_func,
-                                 const transform_t transform_func) {
-  const int unroll_factor = sizeof(dist_func_return_t) / sizeof(accscalar_t);
-  TORCH_CHECK(unroll_factor >= 1, "unroll_factor must be >= 1.");
-  int64_t numel = iter.numel();
-  if (numel == 0) {
-    return;
-  }
-
-  auto [counter_offset, grid, block] = calc_execution_policy(numel, unroll_factor);
-  PhiloxCudaState rng_engine_inputs;
-  {
-    // See Note [Acquire lock when using random generators]
-    std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_cuda_state(counter_offset);
-  }
-
-  if (!iter.can_use_32bit_indexing()) {
-    for (auto& sub_iter : iter.with_32bit_indexing()) {
-      distribution_nullary_kernel<scalar_t, accscalar_t, dist_func_return_t>(sub_iter,
-        gen, dist_func, transform_func);
-    }
-    return;
-  }
-
-  char* out_data = (char*)iter.data_ptr(0);
-
-  auto stream = at::cuda::getCurrentCUDAStream();
-  if (iter.is_trivial_1d()) {
-    auto strides = iter.get_inner_strides();
-    int stride0 = strides[0];
-    distribution_elementwise_grid_stride_kernel<accscalar_t, unroll_factor><<<grid, block, 0, stream>>>(
-      numel,
-      rng_engine_inputs,
-      dist_func,
-      [=]__device__(int idx, accscalar_t rand) {
-        scalar_t* out = (scalar_t*)&out_data[stride0 * idx];
-        *out = transform_func(rand);
-      }
-    );
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
-  } else {
-    auto offset_calc = make_offset_calculator<1>(iter);
-    distribution_elementwise_grid_stride_kernel<accscalar_t, unroll_factor><<<grid, block, 0, stream>>>(
-      numel,
-      rng_engine_inputs,
-      dist_func,
-      [=]__device__(int idx, accscalar_t rand) {
-        auto offsets = offset_calc.get(idx);
-        scalar_t* out = (scalar_t*)&out_data[offsets[0]];
-        *out = transform_func(rand);
-      }
-    );
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
-  }
-}
-
-// Binary kernel
-template <typename func_t, typename inp_offset_calc_t, typename out_offset_calc_t>
-__global__ void distribution_binary_elementwise_kernel(
-    int numel,
-    func_t f,
-    PhiloxCudaState philox_args,
-    typename function_traits<func_t>::result_type *output_data,
-    const typename function_traits<func_t>::template arg<1>::type *input_data_1,
-    const typename function_traits<func_t>::template arg<2>::type *input_data_2,
-    inp_offset_calc_t inp_calc,
-    out_offset_calc_t out_calc) {
-  auto seeds = at::cuda::philox::unpack(philox_args);
-
-  using input_t_1 = typename function_traits<func_t>::template arg<1>::type;
-  using input_t_2 = typename function_traits<func_t>::template arg<2>::type;
-
-  input_t_1 inputs_1[thread_work_size()];
-  input_t_2 inputs_2[thread_work_size()];
-
-  int base_index = block_work_size() * blockIdx.x;
-  int remaining = std::min<int>(numel - base_index, block_work_size());
-
-  curandStatePhilox4_32_10_t state;
-  curand_init(std::get<0>(seeds),
-              blockIdx.x * blockDim.x + threadIdx.x,
-              std::get<1>(seeds),
-              &state);
-
-  // load data into registers
-  int thread_idx = threadIdx.x;
-  #pragma unroll
-  for (int i = 0; i < thread_work_size(); i++) {
-    if (thread_idx >= remaining) {
-      break;
-    }
-    int input_idx = thread_idx + base_index;
-    auto offsets = inp_calc.get(input_idx);
-    inputs_1[i] = input_data_1[offsets[0]];
-    inputs_2[i] = input_data_2[offsets[1]];
-
-    thread_idx += num_threads();
-  }
-
-  // compute and store
-  thread_idx = threadIdx.x;
-  #pragma unroll
-  for (int i = 0; i < thread_work_size(); i++) {
-    if (thread_idx >= remaining) {
-      break;
-    }
-    int input_idx = thread_idx + base_index;
-    auto offsets = out_calc.get(input_idx);
-    output_data[offsets[0]] = f(state, inputs_1[i], inputs_2[i]);
-    thread_idx += num_threads();
-  }
-}
-
-template <typename func_t>
-void distribution_binary_kernel(TensorIteratorBase &iter, PhiloxCudaState philox_args, const func_t &f) {
-  static_assert(std::is_same_v<typename function_traits<func_t>::template arg<0>::type, curandStatePhilox4_32_10_t&>, "the first argument of functor must be curandStatePhilox4_32_10_t");
-  using input_t_1 = typename function_traits<func_t>::template arg<1>::type;
-  using input_t_2 = typename function_traits<func_t>::template arg<2>::type;
-  using output_t = typename function_traits<func_t>::result_type;
-
-  if (!iter.can_use_32bit_indexing()) {
-    for (auto& sub_iter : iter.with_32bit_indexing()) {
-      distribution_binary_kernel(sub_iter, philox_args, f);
-    }
-    return;
-  }
-
-  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(iter.can_use_32bit_indexing());
-
-  int64_t numel = iter.numel();
-  if (numel == 0) {
-    return;
-  }
-
-  output_t *output_data = static_cast<output_t *>(iter.data_ptr(0));
-  const input_t_1 *input_data_1 = static_cast<const input_t_1 *>(iter.data_ptr(1));
-  const input_t_2 *input_data_2 = static_cast<const input_t_2 *>(iter.data_ptr(2));
-
-  int64_t grid = (numel + block_work_size() - 1) / block_work_size();
-  auto stream = at::cuda::getCurrentCUDAStream();
-
-  if (iter.is_contiguous()) {
-    distribution_binary_elementwise_kernel<<<grid,num_threads(), 0, stream>>>(
-        numel, f, philox_args, output_data, input_data_1, input_data_2,
-        TrivialOffsetCalculator<2>(), TrivialOffsetCalculator<1>());
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
-  } else {
-    distribution_binary_elementwise_kernel<<<grid, num_threads(), 0, stream>>>(
-        numel, f, philox_args, output_data, input_data_1, input_data_2,
-        make_input_offset_calculator<2>(iter), make_output_offset_calculator(iter));
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
-  }
-}
-
-} // namespace
-}} // namespace at::native
-
-
-namespace at {
-namespace native {
-namespace templates {
-namespace cuda {
+namespace at::native::templates {
 
 // ==================================================== Random ========================================================
 
-template<typename RNG>
-void random_from_to_kernel(TensorIteratorBase& iter, uint64_t range, int64_t base, RNG gen) {
-#ifdef FBCODE_CAFFE2
-  AT_DISPATCH_V2(iter.dtype(), "random_from_to_kernel_cuda", AT_WRAP([&] {
-    if ((
-      std::is_same_v<scalar_t, int64_t> ||
-      std::is_same_v<scalar_t, double> ||
-      std::is_same_v<scalar_t, float> ||
-      std::is_same_v<scalar_t, at::BFloat16>) && range >= 1ULL << 32)
-    {
-      // define lambda to mod with range and add base
-      auto random_func = [range, base] __device__ (uint64_t rand) {
-        return transformation::uniform_int_from_to<scalar_t>(rand, range, base);
-      };
-      distribution_nullary_kernel<scalar_t, uint64_t, ulonglong2>(iter,
-        gen,
-        [] __device__ (curandStatePhilox4_32_10_t* state) -> ulonglong2 {
-          ulonglong2 ret;
-          uint4 rand_val = curand4(state);
-          ret.x = (static_cast<uint64_t>(rand_val.x) << 32) | rand_val.y;
-          ret.y = (static_cast<uint64_t>(rand_val.z) << 32) | rand_val.w;
-          return ret;
-        },
-        random_func);
-    } else {
-      auto random_func = [range, base] __device__ (uint32_t rand) {
-        return transformation::uniform_int_from_to<scalar_t>(rand, range, base);
-      };
-      distribution_nullary_kernel<scalar_t, uint32_t, uint4>(iter,
-        gen,
-        [] __device__ (curandStatePhilox4_32_10_t* state) -> uint4 {
-          return curand4(state);
-        },
-        random_func);
-    }
-   }), AT_EXPAND(AT_ALL_TYPES), kBool, kHalf, kBFloat16, AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
-#else
-  AT_DISPATCH_V2(iter.dtype(), "random_from_to_kernel_cuda", AT_WRAP([&] {
-    if (range >= 1ULL << 28) // allow approx 5% skew in uniform int generation using %
-    {
-      // define lambda to mod with range and add base
-      auto random_func = [range, base] __device__ (uint64_t rand) {
-        return transformation::uniform_int_from_to<scalar_t>(rand, range, base);
-      };
-      distribution_nullary_kernel<scalar_t, uint64_t, ulonglong2>(iter,
-        gen,
-        [] __device__ (curandStatePhilox4_32_10_t* state) -> ulonglong2 {
-          ulonglong2 ret;
-          uint4 rand_val = curand4(state);
-          ret.x = (static_cast<uint64_t>(rand_val.x) << 32) | rand_val.y;
-          ret.y = (static_cast<uint64_t>(rand_val.z) << 32) | rand_val.w;
-          return ret;
-        },
-        random_func);
-    } else {
-      auto random_func = [range, base] __device__ (uint32_t rand) {
-        return transformation::uniform_int_from_to<scalar_t>(rand, range, base);
-      };
-      distribution_nullary_kernel<scalar_t, uint32_t, uint4>(iter,
-        gen,
-        [] __device__ (curandStatePhilox4_32_10_t* state) -> uint4 {
-          return curand4(state);
-        },
-        random_func);
-    }
-   }), AT_EXPAND(AT_ALL_TYPES), kBool, kHalf, kBFloat16, AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
-#endif
+// The purpose of `update_from` and `update_to` is to find the closest valid int64_t number that can be used as actual `from`.
+// The current implementation of `random_` uses uint64_t arithmetic and casts the result to the target dtype(scalar_t).
+// This casting can result in generating numbers that happen to be greater or equal to `to` value. For instance:
+//
+//    auto actual = torch::empty({3, 3}, torch::half);
+//    actual.random_(0, 65504);
+//
+// If random's uint64_t arithmetic produces 65503 as a random value after casting to torch::half it becomes 65504
+// and violates the requirement that random value must be less than `to`. To resolve this issue `update_from` and `update_to`
+// moves `from` to the right and `to` to the left to the next closest value that won't go outside [from, to) after casting to
+// the target dtype. For `to` = 65504 it moves left for (1 << (log2(to) - 11 + 1)) = 32 and becomes 65472, which is previous
+// available number for torch::half dtype.
+template<typename scalar_t>
+int64_t update_from(int64_t from) {
+  static_assert(
+    std::is_floating_point_v<scalar_t> ||
+    std::is_same_v<scalar_t, at::Half> ||
+    std::is_same_v<scalar_t, at::BFloat16>, "scalar_t must be floating-point type");
+  const auto from_plus_1 = static_cast<int64_t>(static_cast<scalar_t>(from + 1));
+  if (from_plus_1 < from) {
+    int64_t from_ = std::abs(from + 1);
+    int n = 0;
+    while (from_ >>= 1) ++n;
+    // NOLINTNEXTLINE(clang-analyzer-core.UndefinedBinaryOperatorResult)
+    from = from_plus_1 + (1LL << (n - std::numeric_limits<scalar_t>::digits + 1));
+  }
+  return from;
 }
 
-// This is the special kernel to handle single specific case:
-// from(inclusive) = std::numeric_limits<int64_t>::lowest()
-// to(exclusive) = None (= std::numeric_limits<int64_t>::max() + 1)
-template<typename RNG>
-void random_full_64_bits_range_kernel(TensorIteratorBase& iter, RNG gen) {
-  AT_DISPATCH_ALL_TYPES_AND(at::ScalarType::BFloat16, iter.dtype(), "random_full_64_bits_range_kernel_cuda", [&] {
-    if (std::is_same_v<scalar_t, int64_t> ||
-        std::is_same_v<scalar_t, double> ||
-        std::is_same_v<scalar_t, float> ||
-        std::is_same_v<scalar_t, at::BFloat16>) {
-      auto random_func = [] __device__ (uint64_t rand) {
-        return transformation::uniform_int_full_range<scalar_t>(rand);
-      };
-      distribution_nullary_kernel<scalar_t, uint64_t, ulonglong2>(iter,
-        gen,
-        [] __device__ (curandStatePhilox4_32_10_t* state) -> ulonglong2 {
-          ulonglong2 ret;
-          uint4 rand_val = curand4(state);
-          ret.x = (static_cast<uint64_t>(rand_val.x) << 32) | rand_val.y;
-          ret.y = (static_cast<uint64_t>(rand_val.z) << 32) | rand_val.w;
-          return ret;
-        },
-        random_func);
-    } else {
-      TORCH_CHECK(false, "random_full_64_bits_range_kernel_cuda handles only int64, double, float and bfloat16");
-    }
-  });
+template<typename scalar_t>
+int64_t update_to(int64_t to) {
+  static_assert(
+    std::is_floating_point_v<scalar_t> ||
+    std::is_same_v<scalar_t, at::Half> ||
+    std::is_same_v<scalar_t, at::BFloat16>, "scalar_t must be floating-point type");
+  const auto to_minus_1 = static_cast<int64_t>(static_cast<scalar_t>(to - 1));
+  if (to_minus_1 >= to) {
+    int64_t to_ = std::abs(to - 1);
+    int n = 0;
+    while (to_ >>= 1) ++n;
+    // NOLINTNEXTLINE(clang-analyzer-core.UndefinedBinaryOperatorResult)
+    to = to_minus_1 - (1LL << (n - std::numeric_limits<scalar_t>::digits + 1));
+  }
+  return to;
 }
 
-template<typename RNG>
-struct RandomFromToKernel {
-  void operator()(TensorIteratorBase& iter, uint64_t range, int64_t base, std::optional<Generator> gen) {
-    random_from_to_kernel(iter, range, base, check_generator<RNG>(gen));
+// Return earlier for not invoking kernel.
+// See https://github.com/pytorch/pytorch/issues/103418 for more details
+#define CHECK_EMPTY_AND_RETURN(tensor) \
+  if (tensor.numel() == 0) {  \
+    return tensor;  \
   }
-  void operator()(TensorIteratorBase& iter, std::optional<Generator> gen) {
-    random_full_64_bits_range_kernel(iter, check_generator<RNG>(gen));
-  }
-};
 
-template<typename RNG>
-void random_kernel(TensorIteratorBase& iter, RNG gen) {
-  AT_DISPATCH_ALL_TYPES_AND3(at::ScalarType::Half, at::ScalarType::BFloat16, at::ScalarType::Bool, iter.dtype(), "random_kernel_cuda", [&] {
-    if (std::is_same_v<scalar_t, double> || std::is_same_v<scalar_t, int64_t>) {
-      auto random_func = [] __device__ (uint64_t rand) {
-        return transformation::uniform_int<scalar_t>(rand);
-      };
-      distribution_nullary_kernel<scalar_t, uint64_t, ulonglong2>(iter, gen,
-        [] __device__ (curandStatePhilox4_32_10_t* state) -> ulonglong2 {
-          ulonglong2 ret;
-          uint4 rand_val = curand4(state);
-          ret.x = (static_cast<uint64_t>(rand_val.x) << 32) | rand_val.y;
-          ret.y = (static_cast<uint64_t>(rand_val.z) << 32) | rand_val.w;
-          return ret;
-        },
-        random_func);
-    } else {
-      auto random_func = [] __device__ (uint32_t rand) {
-        return transformation::uniform_int<scalar_t>(rand);
-      };
-      distribution_nullary_kernel<scalar_t, uint32_t, uint4>(iter,
-        gen,
-        [] __device__ (curandStatePhilox4_32_10_t* state) -> uint4 {
-          return curand4(state);
-        },
-        random_func);
-    }
-  });
+template<template<typename> class random_kernel, typename RNG>
+at::Tensor& random_impl(at::Tensor& self, std::optional<Generator> generator) {
+  CHECK_EMPTY_AND_RETURN(self);
+  auto iter = at::TensorIterator::borrowing_nullary_op(self);
+  random_kernel<RNG>()(iter, generator);
+  return self;
 }
 
-template<typename RNG>
-struct RandomKernel {
-  void operator()(TensorIteratorBase& iter, RNG gen) {
-    random_kernel(iter, gen);
+#define CHECK_OUT_OF_BOUNDS(var, name, min, max, dtype) \
+  TORCH_CHECK(var >= min && var <= max, name , " is out of bounds for ", dtype); \
+
+#define WARN_OUT_OF_BOUNDS(var, name, digits, dtype) \
+  if (var < -(1LL << digits) || var > (1LL << digits)) { \
+    TORCH_WARN(name , " is out of bounds [-(2^", digits, "), 2^", digits, "]. ", \
+      "Due to precision limitations ", dtype, " can support discrete uniform distribution only within this range. ", \
+      "This warning will become an error in version 1.7 release, please fix the code in advance"); \
   }
-};
 
-// ====================================================================================================================
+inline void check_from_to_in_range(int64_t from, int64_t to_inc, caffe2::TypeMeta dtype) {
+  const auto scalar_type = typeMetaToScalarType(dtype);
+  if (isFloatingType(scalar_type)) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, scalar_type, "check_random_fp_bounds", [&] {
+      const auto min = static_cast<double>(std::numeric_limits<scalar_t>::lowest());
+      const auto max = static_cast<double>(std::numeric_limits<scalar_t>::max());
+      CHECK_OUT_OF_BOUNDS(from, "from", min, max, dtype);
+      CHECK_OUT_OF_BOUNDS(to_inc, "to - 1", min, max, dtype);
 
-template<typename scalar_t, typename accscalar_t, typename RNG, typename transform_t>
-void uniform_and_transform(TensorIteratorBase& iter, RNG gen, transform_t transform) {
-  if (std::is_same_v<scalar_t, double>) {
-    distribution_nullary_kernel<scalar_t, accscalar_t, double2>(iter,
-      gen,
-      [] __device__ (curandStatePhilox4_32_10_t* state) -> double2 { return curand_uniform2_double(state); },
-      transform);
+      constexpr auto digits = std::numeric_limits<scalar_t>::digits;
+      WARN_OUT_OF_BOUNDS(from, "from", digits, dtype);
+      WARN_OUT_OF_BOUNDS(to_inc, "to - 1", digits, dtype);
+    });
+  } else if (scalar_type == kUInt64) {
+    // When you do a comparison between int64_t and uint64_t, the usual
+    // arithmetic conversions say that the int64_t value is promoted to
+    // unsigned. But this conversion wraps around: if I had -1 as my int64_t,
+    // then it will promote to 0xFFFFFFFFFFFFFFFF in uint64_t. This is never
+    // the right thing to do.
+    CHECK_OUT_OF_BOUNDS(from, "from", 0, INT64_MAX, dtype);
+    CHECK_OUT_OF_BOUNDS(to_inc, "to - 1", 0, INT64_MAX, dtype);
+  } else if (isIntegralType(scalar_type, /*includeBool=*/true)) {
+    AT_DISPATCH_V2(scalar_type, "check_random_integral_bounds", AT_WRAP([&]() {
+      const auto min = static_cast<int64_t>(std::numeric_limits<scalar_t>::lowest());
+      const auto max = static_cast<int64_t>(std::numeric_limits<scalar_t>::max());
+      CHECK_OUT_OF_BOUNDS(from, "from", min, max, dtype);
+      CHECK_OUT_OF_BOUNDS(to_inc, "to - 1", min, max, dtype);
+    }), AT_EXPAND(AT_INTEGRAL_TYPES), kUInt16, kUInt32, kBool);
   } else {
-    distribution_nullary_kernel<scalar_t, accscalar_t, float4>(iter,
-      gen,
-      [] __device__ (curandStatePhilox4_32_10_t* state) -> float4 { return curand_uniform4(state); },
-      transform);
+    TORCH_CHECK(false, "check_random_bounds handles only integral, floating-point and boolean types");
   }
 }
 
-template<typename scalar_t, typename accscalar_t, typename RNG, typename transform_t>
-void normal_and_transform(TensorIteratorBase& iter, RNG gen, transform_t transform) {
-  if (std::is_same_v<scalar_t, double>) {
-    distribution_nullary_kernel<scalar_t, accscalar_t, double2>(iter,
-      gen,
-      [] __device__ (curandStatePhilox4_32_10_t* state) -> double2 { return curand_normal2_double(state); },
-      transform);
+template<template<typename> class random_from_to_kernel, typename RNG>
+at::Tensor& random_from_to_impl(at::Tensor& self, int64_t from, std::optional<int64_t> to_opt, std::optional<Generator> generator) {
+  uint64_t range = 0;
+  auto iter = at::TensorIterator::borrowing_nullary_op(self);
+  if (to_opt.has_value()) {
+    // [from, to)
+    int64_t to = *to_opt;
+    TORCH_CHECK(from < to, "random_ expects 'from' to be less than 'to', but got from=", from, " >= to=", to);
+    if (isFloatingType(iter.dtype())) {
+      AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, self.scalar_type(), "random_update_from_to", [&] {
+        from = update_from<scalar_t>(from);
+        to = update_to<scalar_t>(to);
+        TORCH_CHECK(from < to, "random_ expects 'from' casted to dtype to be less than 'to' casted to dtype, but got from=", from, " >= to=", to);
+      });
+    }
+    check_from_to_in_range(from, to - 1, self.dtype());
+    CHECK_EMPTY_AND_RETURN(self);
+    range = static_cast<uint64_t>(to) - static_cast<uint64_t>(from);
+    random_from_to_kernel<RNG>()(iter, range, from, generator);
+  } else if (from != std::numeric_limits<int64_t>::lowest()) {
+    // [from, std::numeric_limits<int64_t>::max()]
+    int64_t to_inc = 0;
+    if (isFloatingType(iter.dtype())) {
+      AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, self.scalar_type(), "random_from_to_range_calc", [&] {
+        constexpr int64_t scalar_t_max = static_cast<int64_t>(1) << std::numeric_limits<scalar_t>::digits;
+        to_inc = scalar_t_max > std::numeric_limits<int64_t>::max() ? std::numeric_limits<int64_t>::max() : static_cast<int64_t>(scalar_t_max);
+        from = update_from<scalar_t>(from);
+        TORCH_CHECK(from < to_inc, "random_ expects 'from' casted to dtype to be less than or equal to 'to_inc' casted to dtype, but got from=", from, " > to_inc=", to_inc);
+      });
+    } else if (isIntegralType(iter.dtype(), /*includeBool=*/true)) {
+      AT_DISPATCH_V2(self.scalar_type(), "random_from_to_range_calc", AT_WRAP([&] {
+        if constexpr (std::is_same_v<scalar_t, bool>) {
+          to_inc = static_cast<int64_t>(true);
+        } else {
+          to_inc = static_cast<int64_t>(std::numeric_limits<scalar_t>::max());
+        }
+      }), AT_EXPAND(AT_INTEGRAL_TYPES_V2), kBool);
+    } else {
+      TORCH_CHECK(false, "random_from_to_impl handles only integral, floating-point and boolean types");
+    }
+    check_from_to_in_range(from, to_inc, self.dtype());
+    CHECK_EMPTY_AND_RETURN(self);
+    range = static_cast<uint64_t>(to_inc) - static_cast<uint64_t>(from) + 1;
+    random_from_to_kernel<RNG>()(iter, range, from, generator);
   } else {
-    distribution_nullary_kernel<scalar_t, accscalar_t, float4>(iter,
-      gen,
-      [] __device__ (curandStatePhilox4_32_10_t* state) -> float4 { return curand_normal4(state); },
-      transform);
+    // [std::numeric_limits<int64_t>::lowest(), std::numeric_limits<int64_t>::max()]
+    // range = 2^64
+    CHECK_EMPTY_AND_RETURN(self);
+    random_from_to_kernel<RNG>()(iter, generator);
   }
+  return self;
 }
 
 // ==================================================== Normal ========================================================
 
-template<typename RNG>
-void normal_kernel(const TensorBase &self, double mean_, double std_, RNG gen) {
-  auto iter = TensorIterator::borrowing_nullary_op(self);
-  AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.dtype(), "normal_kernel_cuda", [&] {
-    using accscalar_t = at::acc_type<scalar_t, true>;
-    auto mean = static_cast<accscalar_t>(mean_);
-    auto std = static_cast<accscalar_t>(std_);
-    // define lambda to multiply std and add mean
-    auto normal_func = [mean, std] __device__ (accscalar_t rand) {
-      return static_cast<scalar_t>(transformation::normal<accscalar_t>(rand, mean, std));
-    };
-    normal_and_transform<scalar_t, accscalar_t>(iter, gen, normal_func);
-   });
+#define CHECK_NORMAL_TENSOR_STD(std) \
+  do { \
+    TORCH_CHECK( \
+      !std.is_complex(), \
+      "normal expects standard deviation to be non-complex"); \
+    TORCH_CHECK( \
+      std.numel() == 0 || std.is_meta() || std.min().ge(0).item<bool>(), \
+      "normal expects all elements of std >= 0.0"); \
+  } while (0)
+
+#define CHECK_NORMAL_STD(std) \
+  TORCH_CHECK(std >= 0.0, "normal expects std >= 0.0, but found std ", std);
+
+template<template<typename> class normal_kernel, typename RNG>
+Tensor& normal_impl_(Tensor& self, double mean, double std, std::optional<Generator> gen) {
+  CHECK_NORMAL_STD(std);
+  CHECK_EMPTY_AND_RETURN(self);
+
+  if (self.is_complex()) {
+    auto float_tensor = at::view_as_real(self);
+    // variance for normal distribution of the real and imaginary values
+    // is half of the input variance
+    normal_kernel<RNG>()(float_tensor, mean, std/(std::sqrt(2)), gen);
+  } else {
+    normal_kernel<RNG>()(self, mean, std, gen);
+  }
+  return self;
 }
 
-template<typename RNG>
-struct NormalKernel {
-  void operator()(const TensorBase &self, double mean, double std, std::optional<Generator> gen) {
-    normal_kernel(self, mean, std, check_generator<RNG>(gen));
-  }
-};
-
-// ==================================================== Uniform ========================================================
-
-template<typename RNG>
-void uniform_kernel(TensorIteratorBase& iter, double from_, double to_, RNG gen) {
-  AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.dtype(), "uniform_kernel_cuda", [&] {
-    auto from = static_cast<scalar_t>(from_);
-    auto to = static_cast<scalar_t>(to_);
-    using opmath_t = at::opmath_type<scalar_t>;
-    auto range = static_cast<opmath_t>(to-from);
-    // define lambda to reverse bounds, multiply 'range' and add 'from_'
-    auto uniform_func = [range, from, to] __device__ (opmath_t rand) {
-      // Compute output value before reversing the bounds
-      // BEFORE TOUCHING THIS CODE READ: https://github.com/pytorch/pytorch/issues/96947
-      auto value = static_cast<scalar_t>(rand * range + from);
-      // reverse the bounds of curand4 from (0, 1] to [0, 1)
-      // Note that this method is from legacy THCTensorRandom and is likely to give
-      // you more 0-s, since, the probability of getting 1-s is higher than 0-s and
-      // by reversing the bounds, we are flipping the probabilities of 1-s and 0-s.
-      // BEFORE TOUCHING THIS CODE READ: https://github.com/pytorch/pytorch/issues/16706
-      auto reverse_bound_value = value == to ? from : value;
-      return reverse_bound_value;
-    };
-    uniform_and_transform<scalar_t, opmath_t>(iter, gen, uniform_func);
-   });
+template<template<typename> class normal_kernel, typename RNG>
+Tensor& normal_out_impl(Tensor& output, const Tensor& mean, double std, std::optional<Generator> gen) {
+  CHECK_NORMAL_STD(std);
+  auto std_tensor = at::empty_like(output, MemoryFormat::Contiguous);
+  auto shape = at::infer_size(mean.sizes(), std_tensor.sizes());
+  at::native::resize_output(output, shape);
+  normal_impl_<normal_kernel, RNG>(output, 0, std, gen);
+  output.add_(mean);
+  return output;
 }
 
-template<typename RNG>
-struct UniformKernel {
-  void operator()(TensorIteratorBase& iter, double from, double to, std::optional<Generator> gen) {
-    uniform_kernel(iter, from, to, check_generator<RNG>(gen));
+template<template<typename> class normal_kernel, typename RNG>
+Tensor& normal_out_impl(Tensor& output, double mean, const Tensor& std, std::optional<Generator> gen) {
+  CHECK_NORMAL_TENSOR_STD(std);
+  auto mean_tensor = at::full({}, mean, output.options());
+  auto shape = at::infer_size(mean_tensor.sizes(), std.sizes());
+  at::native::resize_output(output, shape);
+  normal_impl_<normal_kernel, RNG>(output, 0, 1, gen);
+  // CUDA NB: addcmul_out copies the tensor to be added into the output.
+  // The previous function here was addcmul_out(output, mean_tensor, output, std, 1);
+  // The third argument is not a constant reference and hence the samples in output are overwritten.
+  // Consequently, the computation performed is mean_tensor + mean_tensor * std instead of mean_tensor + output * std
+  output.mul_(std).add_(mean_tensor);
+  return output;
+}
+
+template<template<typename> class normal_kernel, typename RNG>
+Tensor& normal_out_impl(Tensor& output, const Tensor& mean, const Tensor& std, std::optional<Generator> gen) {
+  CHECK_NORMAL_TENSOR_STD(std);
+  auto shape = at::infer_size(mean.sizes(), std.sizes());
+  at::native::resize_output(output, shape);
+  normal_impl_<normal_kernel, RNG>(output, 0, 1, gen);
+  // CUDA NB: addcmul_out copies the tensor to be added into the output.
+  // The previous function here was addcmul_out(output, mean, output, std, 1);
+  // The third argument is not a constant reference and hence the samples in output are overwritten.
+  // Consequently, the computation performed is mean + mean * std instead of mean + output * std
+  output.mul_(std).add_(mean);
+  return output;
+}
+
+template<template<typename> class normal_kernel, typename RNG>
+Tensor normal_impl(const Tensor& mean, double std, std::optional<Generator> gen) {
+  CHECK_NORMAL_STD(std);
+  Tensor ret = at::empty_like(mean, MemoryFormat::Contiguous);
+  normal_out_impl<normal_kernel, RNG>(ret, mean, std, gen);
+  return ret;
+}
+
+template<template<typename> class normal_kernel, typename RNG>
+Tensor normal_impl(double mean, const Tensor& std, std::optional<Generator> gen) {
+  CHECK_NORMAL_TENSOR_STD(std);
+  Tensor ret = at::empty_like(std, MemoryFormat::Contiguous);
+  normal_out_impl<normal_kernel, RNG>(ret, mean, std, gen);
+  return ret;
+}
+
+template<template<typename> class normal_kernel, typename RNG>
+Tensor normal_impl(const Tensor& mean, const Tensor& std, std::optional<Generator> gen) {
+  CHECK_NORMAL_TENSOR_STD(std);
+  auto shape = at::infer_size(mean.sizes(), std.sizes());
+  Tensor ret = at::empty(shape, mean.options(), MemoryFormat::Contiguous);
+  normal_out_impl<normal_kernel, RNG>(ret, mean, std, gen);
+  return ret;
+}
+
+// ==================================================== Uniform =======================================================
+
+template<template<typename> class uniform_kernel, typename RNG>
+at::Tensor& uniform_impl_(at::Tensor& self, double from, double to, std::optional<Generator> generator) {
+  if (self.is_complex()) {
+    CHECK_EMPTY_AND_RETURN(self);
+    auto float_tensor = at::view_as_real(self);
+    uniform_impl_<uniform_kernel, RNG>(float_tensor, from, to, generator);
+  } else if (isFloat8Type(self.scalar_type())) {
+    TORCH_CHECK(from <= to, "uniform_ expects to return a [from, to) range, but found from=", from, " > to=", to);
+    CHECK_EMPTY_AND_RETURN(self);
+    Tensor self_hp = self.to(at::ScalarType::Float);
+    uniform_impl_<uniform_kernel, RNG>(self_hp, from, to, generator);
+    self.copy_(self_hp.to(self.scalar_type()));
+  } else {
+    AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, self.scalar_type(), "check_uniform_bounds", [&] {
+      [[maybe_unused]] const auto dtype = self.dtype();
+      const auto min = static_cast<double>(std::numeric_limits<scalar_t>::lowest());
+      const auto max = static_cast<double>(std::numeric_limits<scalar_t>::max());
+      CHECK_OUT_OF_BOUNDS(from, "from", min, max, dtype);
+      CHECK_OUT_OF_BOUNDS(to, "to", min, max, dtype);
+      TORCH_CHECK(from <= to, "uniform_ expects to return a [from, to) range, but found from=", from, " > to=", to);
+      TORCH_CHECK((to - from) <= std::numeric_limits<scalar_t>::max(),
+            "uniform_ expects to-from <= std::numeric_limits<", toString(self.scalar_type()),
+            ">::max(), but found to=", to, " and from=", from,
+            " which result in to-from to exceed the limit");
+      from = std::min(std::max(from, min), max);
+      to = std::max(std::min(to, max), min);
+    });
+    CHECK_EMPTY_AND_RETURN(self);
+    auto iter = at::TensorIterator::borrowing_nullary_op(self);
+    uniform_kernel<RNG>()(iter, from, to, generator);
   }
-};
+  return self;
+}
 
 // ================================================== LogNormal =======================================================
 
-template<typename RNG>
-void log_normal_kernel(TensorIteratorBase& iter, double mean_, double std_, RNG gen) {
-  AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.dtype(), "log_normal_cuda", [&] {
-    using accscalar_t = at::acc_type<scalar_t, true>;
-    auto mean = static_cast<accscalar_t>(mean_);
-    auto std = static_cast<accscalar_t>(std_);
-    // define lambda for log_normal transformation
-    auto log_normal_func = [mean, std] __device__ (accscalar_t rand) {
-      return static_cast<scalar_t>(transformation::log_normal<accscalar_t>(transformation::normal<accscalar_t>(rand, mean, std)));
-    };
-    normal_and_transform<scalar_t, accscalar_t>(iter, gen, log_normal_func);
-   });
+template<template<typename> class log_normal_kernel, typename RNG>
+at::Tensor& log_normal_impl_(at::Tensor& self, double mean, double std, std::optional<Generator> gen) {
+  TORCH_CHECK(std > 0.0, "log_normal_ expects std > 0.0, but found std=", std);
+  CHECK_EMPTY_AND_RETURN(self);
+  auto iter = TensorIterator::borrowing_nullary_op(self);
+  log_normal_kernel<RNG>()(iter, mean, std, gen);
+  return self;
 }
-
-template<typename RNG>
-struct LogNormalKernel {
-  void operator()(TensorIteratorBase& iter, double mean, double std, std::optional<Generator> gen) {
-    log_normal_kernel(iter, mean, std, check_generator<RNG>(gen));
-  }
-};
 
 // =================================================== Geometric ======================================================
 
-template<typename RNG>
-void geometric_kernel(TensorIteratorBase& iter, double p, RNG gen) {
-  AT_DISPATCH_ALL_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.dtype(), "geometric_cuda", [&] {
-    using accscalar_t = at::DiscreteDistributionType<scalar_t>::type;
-    // define lambda for geometric transformation
-    auto geometric_func = [p] __device__ (accscalar_t rand) {
-      return static_cast<scalar_t>(transformation::geometric<accscalar_t>(rand, p));
-    };
-    uniform_and_transform<scalar_t, accscalar_t>(iter, gen, geometric_func);
-  });
+template<template<typename> class geometric_kernel, typename RNG>
+Tensor& geometric_impl_(Tensor& self, double p, std::optional<Generator> gen) {
+  TORCH_CHECK(0 < p && p < 1, "geometric_ expects p to be in (0, 1), but got p=", p);
+  CHECK_EMPTY_AND_RETURN(self);
+  auto iter = TensorIterator::borrowing_nullary_op(self);
+  geometric_kernel<RNG>()(iter, p, gen);
+  return self;
 }
-
-template<typename RNG>
-struct GeometricKernel {
-  void operator()(TensorIteratorBase& iter, double p, std::optional<Generator> gen) {
-    geometric_kernel(iter, p, check_generator<RNG>(gen));
-  }
-};
 
 // ================================================== Exponential =====================================================
 
-template<typename RNG>
-void exponential_kernel(TensorIteratorBase& iter, double lambda_, RNG gen) {
-  TORCH_CHECK(isFloatingType(iter.dtype()), "Exponential distribution is a continuous probability distribution. dtype must be a floating point but you specified ", iter.dtype());
-  AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.dtype(), "exponential_cuda", [&] {
-    using accscalar_t = at::acc_type<scalar_t, true>;
-    auto lambda = static_cast<accscalar_t>(lambda_);
-    // define lambda for exponential transformation
-    auto exponential_func = [lambda] __device__ (accscalar_t rand) {
-      return static_cast<scalar_t>(transformation::exponential<accscalar_t>(rand, lambda));
-    };
-    uniform_and_transform<scalar_t, accscalar_t>(iter, gen, exponential_func);
-   });
+template<template<typename> class exponential_kernel, typename RNG>
+Tensor& exponential_impl_(Tensor& self, double lambda, std::optional<Generator> gen) {
+  TORCH_CHECK(lambda > 0.0, "exponential_ expects lambda > 0.0, but found lambda=", lambda);
+  CHECK_EMPTY_AND_RETURN(self);
+  auto iter = TensorIterator::borrowing_nullary_op(self);
+  exponential_kernel<RNG>()(iter, lambda, gen);
+  return self;
 }
-
-template<typename RNG>
-struct ExponentialKernel {
-  void operator()(TensorIteratorBase& iter, double lambda, std::optional<Generator> gen) {
-    exponential_kernel(iter, lambda, check_generator<RNG>(gen));
-  }
-};
 
 // ==================================================== Cauchy ========================================================
 
-template<typename RNG>
-void cauchy_kernel(TensorIteratorBase& iter, double median_, double sigma_, RNG gen) {
-  AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.dtype(), "cauchy_cuda", [&] {
-    using accscalar_t = at::acc_type<scalar_t, true>;
-    auto median = static_cast<accscalar_t>(median_);
-    auto sigma = static_cast<accscalar_t>(sigma_);
-    // define lambda for cauchy transformation
-    auto cauchy_func = [median, sigma] __device__ (accscalar_t rand) {
-      return static_cast<scalar_t>(transformation::cauchy<accscalar_t>(rand, median, sigma));
-    };
-    uniform_and_transform<scalar_t, accscalar_t>(iter, gen, cauchy_func);
-   });
+template<template<typename> class cauchy_kernel, typename RNG>
+Tensor& cauchy_impl_(Tensor& self, double median, double sigma, std::optional<Generator> gen) {
+  // TODO: instead of variable name 'sigma', use 'gamma' or 'scale'
+  // the variance, squared sigma, is undefined for cauchy distribution
+  TORCH_CHECK(sigma > 0.0, "cauchy_ expects sigma > 0.0, but found sigma=", sigma);
+  TORCH_CHECK(at::isFloatingType(self.scalar_type()), "Cauchy distribution is a continuous probability distribution. dtype must be a floating point but you specified ", self.dtype());
+  CHECK_EMPTY_AND_RETURN(self);
+  auto iter = TensorIterator::borrowing_nullary_op(self);
+  cauchy_kernel<RNG>()(iter, median, sigma, gen);
+  return self;
 }
-
-template<typename RNG>
-struct CauchyKernel {
-  void operator()(TensorIteratorBase& iter, double median, double sigma, std::optional<Generator> gen) {
-    cauchy_kernel(iter, median, sigma, check_generator<RNG>(gen));
-  }
-};
 
 // ==================================================== Bernoulli =====================================================
 
-template<typename scalar_t, typename prob_t>
-void bernoulli_tensor_cuda_kernel(
-    const TensorBase &ret, const at::TensorBase &p,
-    PhiloxCudaState philox_args) {
-  auto functor = [philox_args] __device__(
-          int n, scalar_t& v1, scalar_t& v2, scalar_t& v3, scalar_t& v4,
-          const prob_t& p1, const prob_t& p2, const prob_t& p3, const prob_t& p4) {
-        auto seeds = at::cuda::philox::unpack(philox_args);
-        curandStatePhilox4_32_10_t state;
-        curand_init(std::get<0>(seeds),
-                    blockIdx.x * blockDim.x + threadIdx.x,
-                    std::get<1>(seeds),
-                    &state);
-
-        // See Note [Register spilling in curand call for CUDA < 10]
-        float4 rand = curand_uniform4(&state);
-        switch (n) {
-          case 4: {
-            CUDA_KERNEL_ASSERT(0 <= p4 && p4 <= 1);
-            v4 = static_cast<scalar_t>(rand.w <= p4);
-            [[fallthrough]];
-          }
-          case 3: {
-            CUDA_KERNEL_ASSERT(0 <= p3 && p3 <= 1);
-            v3 = static_cast<scalar_t>(rand.z <= p3);
-            [[fallthrough]];
-          }
-          case 2: {
-            CUDA_KERNEL_ASSERT(0 <= p2 && p2 <= 1);
-            v2 = static_cast<scalar_t>(rand.y <= p2);
-            [[fallthrough]];
-          }
-          case 1: {
-            CUDA_KERNEL_ASSERT(0 <= p1 && p1 <= 1);
-            v1 = static_cast<scalar_t>(rand.x <= p1);
-          }
-        }
-      };
-  // The template argument `4` below indicates that we want to operate on four
-  // element at each time. See NOTE [ CUDA_tensor_applyN helpers ] for details.
-  at::cuda::CUDA_tensor_apply2<scalar_t, const prob_t, 4, decltype(functor),
-                               /*max_threads_per_block=*/512,
-                               /*min_blocks_per_sm==*/2>(ret, p, functor);
+template<template<typename> class bernoulli_tensor_kernel, typename RNG>
+Tensor& bernoulli_impl_(Tensor& self, const Tensor& p_, std::optional<Generator> gen) {
+  CHECK_EMPTY_AND_RETURN(self);
+  NoNamesGuard guard;
+  at::assert_no_internal_overlap(self);
+  bernoulli_tensor_kernel<RNG>()(self, p_, gen);
+  return self;
 }
 
-template<typename RNG>
-void bernoulli_kernel(const TensorBase &self, const TensorBase &p_, RNG gen) {
-  PhiloxCudaState rng_engine_inputs;
-  {
-    // See Note [Acquire lock when using random generators]
-    std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_cuda_state(10);
-  }
-  TORCH_CHECK(at::isFloatingType(p_.scalar_type()), "expected probabilities tensor to have floating type, got ", p_.scalar_type());
-  // cast probabilities tensor to double for double `self` tensor, and to `float` for everything else
-  const auto p_type = self.dtype() == at::kDouble ? at::kDouble : at::kFloat;
-  auto p_cuda = p_.to(TensorOptions().device(self.device()).dtype(p_type));
-  auto p = expand_inplace(self, p_cuda);
-  AT_DISPATCH_ALL_TYPES_AND3(
-    at::ScalarType::Half, at::ScalarType::BFloat16, at::ScalarType::Bool, self.scalar_type(), "bernoulli_tensor_cuda_self_", [&] {
-      if (std::is_same_v<scalar_t, double>) {
-        return bernoulli_tensor_cuda_kernel<double, double>(self, *p, rng_engine_inputs);
-      } else {
-        return bernoulli_tensor_cuda_kernel<scalar_t, float>(self, *p, rng_engine_inputs);
-      }
-   });
+template<template<typename> class bernoulli_scalar_kernel, typename RNG>
+Tensor& bernoulli_impl_(Tensor& self, double p, std::optional<Generator> gen) {
+  TORCH_CHECK(0 <= p && p <= 1, "bernoulli_ expects p to be in [0, 1], but got p=", p);
+  CHECK_EMPTY_AND_RETURN(self);
+  at::assert_no_internal_overlap(self);
+  bernoulli_scalar_kernel<RNG>()(self, p, gen);
+  return self;
 }
 
-template<typename RNG>
-void bernoulli_kernel(TensorIteratorBase& iter, double p, RNG gen) {
-  AT_DISPATCH_ALL_TYPES_AND3(
-    at::ScalarType::Half, at::ScalarType::BFloat16, at::ScalarType::Bool, iter.dtype(), "bernoulli_scalar_cuda_", [&] {
-      using accscalar_t = at::DiscreteDistributionType<scalar_t>::type;
-      // define lambda for bernoulli transformation
-      auto bernoulli_func = [p] __device__ (accscalar_t rand) {
-        return static_cast<scalar_t>(transformation::bernoulli<accscalar_t>(rand, p));
-      };
-      uniform_and_transform<scalar_t, accscalar_t>(iter, gen, bernoulli_func);
-   });
+template<template<typename> class bernoulli_tensor_kernel, typename RNG>
+Tensor& bernoulli_out_impl(Tensor& result, const Tensor& self, std::optional<Generator> gen) {
+  // result.resize_as_(self) requires self to have same dtype as result, so we
+  // use resize_ instead.
+  // TODO: Fix resize_as_. See pytorch/pytorch#11665.
+  result.resize_(self.sizes());
+  bernoulli_impl_<bernoulli_tensor_kernel, RNG>(result, self, gen);
+  namedinference::propagate_names(result, self);
+  return result;
 }
 
-template<typename RNG>
-struct BernoulliKernel {
-  void operator()(TensorIteratorBase& iter, double p, std::optional<Generator> gen) {
-    bernoulli_kernel(iter, p, check_generator<RNG>(gen));
-  }
-  void operator()(const TensorBase &self, const TensorBase &p_, std::optional<Generator> gen) {
-    bernoulli_kernel(self, p_, check_generator<RNG>(gen));
-  }
-};
+#undef CHECK_OUT_OF_BOUNDS
+#undef WARN_OUT_OF_BOUNDS
 
-}}}}
+} // namespace at::native::templates

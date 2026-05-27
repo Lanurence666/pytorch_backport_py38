@@ -69,11 +69,9 @@ except ImportError:
 ArgsType = Tuple[object, ...]
 KwargsType = Dict[str, object]
 
-PlacementList = Union[List[Placement, None]]
+PlacementList = List[Optional[Placement]]
 
-# ATen op schemas could have Tensor, Tuple[Tensor] and List[Tensor], so output type should
-# be the same set of possibilities.
-OutputSpecType = Optional[Union[DTensorSpec, Sequence[DTensorSpec, None]]]
+OutputSpecType = Optional[Union[DTensorSpec, Sequence[Optional[DTensorSpec]]]]
 
 
 def _rebuild_tensor_from_dtensor_meta(arg) -> object:

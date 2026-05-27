@@ -126,14 +126,11 @@ constexpr bool allowlist_contains(std::string_view allowlist, std::string_view i
 // Returns true iff the given op name is on the allowlist
 // and should be registered
 constexpr bool op_allowlist_check(std::string_view op_name [[maybe_unused]]) {
+#if !defined(__CUDACC__)
   assert(op_name.find("::") != std::string_view::npos);
-  // Use assert() instead of throw() due to a gcc bug. See:
-  // https://stackoverflow.com/questions/34280729/throw-in-constexpr-function
-  // https://github.com/fmtlib/fmt/issues/682
   assert(op_name.find('(') == std::string_view::npos);
+#endif
 #if !defined(TORCH_OPERATOR_WHITELIST)
-  // If the TORCH_OPERATOR_WHITELIST parameter is not defined,
-  // all ops are to be registered
   return true;
 #else
   return allowlist_contains(

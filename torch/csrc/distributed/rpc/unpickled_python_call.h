@@ -1,5 +1,6 @@
 #pragma once
 
+#include <torch/csrc/Export.h>
 #include <torch/csrc/distributed/rpc/rpc_command_base.h>
 #include <torch/csrc/distributed/rpc/types.h>
 #include <torch/csrc/utils/pybind.h>
@@ -13,7 +14,7 @@ namespace torch::distributed::rpc {
 // places for different message types.
 // NB: The reason for not consolidating class into PythonCall is because
 // PythonCall is a libtorch type which should not depend on Python types.
-class TORCH_API UnpickledPythonCall : public RpcCommandBase {
+class TORCH_PYTHON_API UnpickledPythonCall : public RpcCommandBase {
  public:
   UnpickledPythonCall(
       const SerializedPyObj& serializedPyObj,

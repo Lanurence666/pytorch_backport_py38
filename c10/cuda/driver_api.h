@@ -116,15 +116,20 @@
 #define C10_NVML_DRIVER_API(_)            \
   _(nvmlInit_v2)                          \
   _(nvmlDeviceGetHandleByPciBusId_v2)     \
-  _(nvmlDeviceGetNvLinkRemoteDeviceType)  \
   _(nvmlDeviceGetNvLinkRemotePciInfo_v2)  \
   _(nvmlDeviceGetComputeRunningProcesses) \
   _(nvmlSystemGetCudaDriverVersion_v2)
 
-#if defined(CUDA_VERSION) && (CUDA_VERSION >= 12040)
-#define C10_NVML_DRIVER_API_OPTIONAL(_) _(nvmlDeviceGetGpuFabricInfoV)
+#if defined(CUDA_VERSION) && (CUDA_VERSION >= 11040)
+#define C10_NVML_DRIVER_API_OPTIONAL(_) _(nvmlDeviceGetNvLinkRemoteDeviceType)
 #else
 #define C10_NVML_DRIVER_API_OPTIONAL(_)
+#endif
+
+#if defined(CUDA_VERSION) && (CUDA_VERSION >= 12040)
+#define C10_NVML_DRIVER_API_OPTIONAL2(_) _(nvmlDeviceGetGpuFabricInfoV)
+#else
+#define C10_NVML_DRIVER_API_OPTIONAL2(_)
 #endif
 
 namespace c10::cuda {
@@ -136,6 +141,7 @@ struct DriverAPI {
   C10_LIBCUDA_DRIVER_API_OPTIONAL(CREATE_MEMBER_VERSIONED)
   C10_NVML_DRIVER_API(CREATE_MEMBER)
   C10_NVML_DRIVER_API_OPTIONAL(CREATE_MEMBER)
+  C10_NVML_DRIVER_API_OPTIONAL2(CREATE_MEMBER)
 #undef CREATE_MEMBER_VERSIONED
 #undef CREATE_MEMBER
 

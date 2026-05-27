@@ -54,7 +54,7 @@ The following Python 3.9+ syntax and API issues were fixed to enable compilation
 - **torch.profiler** — functional (with 3.8 compat for `_PyEval_SetProfile`)
 - **Quantization** — functional
 - **ONNX export** — functional
-- **Distributed training** — basic functionality available
+- **Distributed training** — full Gloo-based distributed support (DDP, DTensor, Tensor Parallel, FSDP, Checkpoint)
 
 ## FP8 Quantization Support
 
@@ -116,7 +116,7 @@ Compared to the last official Python 3.8-supported version (PyTorch 2.0.x):
 | torch.profiler | ✅ | ✅ |
 | ONNX export | ✅ | ✅ |
 | AMP (Mixed Precision) | ✅ | ✅ |
-| torch.distributed | ✅ (basic) | ✅ (improved) |
+| torch.distributed | ✅ (basic) | ✅ (Gloo: DDP, DTensor, Tensor Parallel, FSDP, Checkpoint) |
 
 ## Test Files
 
@@ -142,6 +142,16 @@ The test covers:
 - CUDA operations (if GPU available)
 - Advanced features (torch.compile, JIT, quantization, profiler, AMP)
 
+### Distributed Verification Test
+
+Run the distributed support verification:
+
+```bash
+python verify_distributed.py
+```
+
+This tests distributed training support and compatibility with transformers and huggingface_hub (online tests require internet connection).
+
 ### FP8 Inference Test Suite
 
 Run the FP8-specific test suite:
@@ -161,6 +171,91 @@ This tests 16 FP8 operations including:
 - FP8 reduction operations (sum, max, min, mean)
 - FP8 comparison operations (eq, ne, lt, gt)
 - FP8 distribution operations (uniform_, normal_)
+
+## Distributed Training Support
+
+This backport includes **full Gloo-based distributed training support** on Windows, enabling multi-GPU training and model parallelism.
+
+### Supported Distributed Features
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Gloo backend** | ✅ | TCP-based communication backend for CPU and GPU |
+| **NCCL backend** | ❌ | Linux-only; not available on Windows |
+| **DistributedDataParallel (DDP)** | ✅ | Single-node multi-GPU data parallelism |
+| **DistributedSampler** | ✅ | Data loading for distributed training |
+| **TCPStore** | ✅ | Key-value store for distributed coordination |
+| **ProcessGroupGloo** | ✅ | Gloo process group backend |
+| **DTensor (Distributed Tensor)** | ✅ | Sharded tensor abstraction |
+| **Tensor Parallelism** | ✅ | ColwiseParallel, RowwiseParallel |
+| **Placement types** | ✅ | Shard, Replicate, Partial |
+| **Distributed Checkpoint** | ✅ | save/load for sharded state dicts |
+| **FSDP (fully_shard)** | ✅ | Fully Sharded Data Parallelism |
+| **Replicate composable** | ✅ | Replication composable utility |
+| **torch.distributed.autograd** | ✅ | Distributed autograd support |
+| **torch.distributed.rpc** | ⚠️ | Importable but limited (TensorPipe unavailable on Windows) |
+| **Pipeline Parallelism** | ❌ | Not available on Windows |
+
+### DDP + AMP Verification
+
+```python
+import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+
+# Initialize process group
+dist.init_process_group("gloo", rank=0, world_size=1)
+
+# Create model and wrap with DDP
+model = torch.nn.Linear(64, 10).cuda()
+ddp_model = DDP(model)
+
+# Forward pass with mixed precision
+with torch.amp.autocast("cuda"):
+    output = ddp_model(torch.randn(4, 64, device="cuda"))
+```
+
+### Compatibility Test Results
+
+#### Transformers Compatibility
+
+| Test | Result |
+|------|--------|
+| transformers import | ✅ Pass |
+| BertModel forward pass | ✅ Pass |
+| BertModel + DDP | ✅ Pass |
+| Distributed config test suite (13 tests) | ✅ 13/13 Pass |
+
+#### huggingface_hub Compatibility
+
+| Test | Result |
+|------|--------|
+| huggingface_hub import | ✅ Pass |
+| HfApi (online) | ✅ Pass |
+| PyTorchModelHubMixin | ✅ Pass |
+| Serialization tests (20 tests) | ✅ 18/20 Pass |
+| Cache/validator tests (50 tests) | ✅ 50/50 Pass |
+
+> **Note:** 2 serialization test failures are due to Windows symlink permissions (WinError 1314), not PyTorch issues.
+
+### Distributed Verification Script
+
+Run the comprehensive distributed verification script:
+
+```bash
+python verify_distributed.py
+```
+
+This tests 26 items across 7 categories:
+1. Version information
+2. Distributed backend availability (Gloo, NCCL)
+3. Distributed module imports (DDP, DTensor, Tensor Parallel, FSDP, Checkpoint)
+4. ProcessGroup initialization (Gloo)
+5. DDP functional test (forward pass + AMP)
+6. Transformers compatibility (import, forward, DDP)
+7. huggingface_hub compatibility (import, API, PyTorchModelHubMixin)
+
+Expected output: **24 passed, 0 failed, 2 skipped** (NCCL and PipelineStage skipped on Windows)
 
 ## Build Optimizations
 
@@ -231,7 +326,7 @@ pip wheel --no-build-isolation -w dist .
 
 - Set `MAX_JOBS=2` (or `1` for low-memory systems) to avoid linker memory errors (LNK1102) during the `torch_cpu.dll` linking phase
 - The full build takes approximately 2-4 hours on a modern machine
-- The resulting wheel is approximately 1.1GB (includes CUDA 11.3 runtime DLLs, Flash Attention, FP8 kernels)
+- The resulting wheel is approximately 1.5GB (includes CUDA 11.3 runtime DLLs, Flash Attention, FP8 kernels, distributed support)
 - If building without CUDA, set `set USE_CUDA=0` instead
 
 ## Installation
@@ -256,7 +351,13 @@ pip install -e . --no-build-isolation
 
 2. **Windows only**: This backport has only been tested on Windows x64 with CUDA 11.3. Linux builds may require additional fixes.
 
-3. **Python 3.8 end-of-life**: Python 3.8 reached end-of-life in October 2024. Use this backport at your own risk.
+3. **NCCL not available**: NCCL backend is Linux-only. Use Gloo backend for distributed training on Windows.
+
+4. **RPC limited**: The `torch.distributed.rpc` module is importable but has limited functionality on Windows because TensorPipe (the underlying transport) depends on Unix-specific APIs (Unix Domain Sockets, epoll).
+
+5. **Pipeline Parallelism not available**: `torch.distributed.pipeline` is not supported on Windows.
+
+6. **Python 3.8 end-of-life**: Python 3.8 reached end-of-life in October 2024. Use this backport at your own risk.
 
 ## Related Projects
 

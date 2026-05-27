@@ -10,7 +10,7 @@
 
 namespace c10d {
 
-class TORCH_API CUDAEventCache
+class TORCH_CUDA_CPP_API CUDAEventCache
     : public std::enable_shared_from_this<CUDAEventCache> {
  public:
   CUDAEventCache();
