@@ -7,6 +7,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#elif defined(_WIN32)
+#include <windows.h>
+#include <io.h>
 #endif
 
 #include <atomic>
@@ -25,7 +28,9 @@
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/cuda/CUDAEventCache.hpp>
 #include <torch/csrc/distributed/c10d/logger.hpp>
+#ifndef _WIN32
 #include <torch/csrc/distributed/c10d/symm_mem/intra_node_comm.hpp>
+#endif
 
 #include <ATen/DynamicLibrary.h>
 #include <ATen/cuda/CUDAContext.h>
@@ -240,7 +245,7 @@ struct DumpPipe {
 };
 #else
 struct DumpPipe {
-  DumpPipe(int rank) {}
+  DumpPipe(int rank, const std::string& fileStem = "", int traceBufferSize = 0) {}
   bool shouldDump() {
     return false;
   }
@@ -310,7 +315,7 @@ class TensorShelf {
 //   work->wait()
 //
 //   // Now continue on other work in the current stream.
-class TORCH_API ProcessGroupNCCL : public Backend {
+class TORCH_CUDA_CPP_API ProcessGroupNCCL : public Backend {
  public:
   class WorkNCCL : public Work, public std::enable_shared_from_this<WorkNCCL> {
    public:
@@ -510,7 +515,9 @@ class TORCH_API ProcessGroupNCCL : public Backend {
   struct Options : Backend::Options {
     // NOTE: timeout in ProcessGroupNCCL::Options denote the timeout for
     // operations. This is only used when blockingWait_ is enabled.
-    explicit Options(bool is_high_priority_stream = false);
+    explicit Options(bool is_high_priority_stream = false)
+        : Backend::Options(NCCL_BACKEND_NAME, kProcessGroupNCCLDefaultTimeout),
+          is_high_priority_stream(is_high_priority_stream) {}
     Options(const Options&) = default;
     Options(Options&&) noexcept = default;
     Options& operator=(const Options&) = delete;
@@ -982,7 +989,9 @@ class TORCH_API ProcessGroupNCCL : public Backend {
       std::unordered_map<std::string, std::shared_ptr<NCCLComm>>& ncclCommsMap,
       const std::optional<std::string>& abortReason);
 
+#ifndef _WIN32
   c10::intrusive_ptr<intra_node_comm::IntraNodeComm> initIntraNodeComm();
+#endif
 
   // Destroy (shutdown) this backend -- normal exit.
   void shutdown() override;
@@ -1472,7 +1481,10 @@ class TORCH_API ProcessGroupNCCL : public Backend {
   // The number of active ncclGroupStart() calls. This counter will be increased
   // by 1 when ncclGroupStart() is called and decreased by 1 when ncclGroupEnd()
   // is called.
-  static thread_local uint64_t ncclActiveGroupCounter_;
+  static uint64_t& ncclActiveGroupCounter() {
+    static thread_local uint64_t counter = 0;
+    return counter;
+  }
 
   // Counting for the sequential number of NCCL collective call.
   // (specifically, how many actual kernels we launched, which differs from
@@ -1491,7 +1503,9 @@ class TORCH_API ProcessGroupNCCL : public Backend {
 
   std::string logPrefix_;
 
+#ifndef _WIN32
   c10::intrusive_ptr<intra_node_comm::IntraNodeComm> intraNodeComm_;
+#endif
 
   // Number of devices on this node.
   int localDeviceCount_{0};
@@ -1508,11 +1522,11 @@ class TORCH_API ProcessGroupNCCL : public Backend {
 };
 
 // Reset the flighrecorder recordings for the current rank.
-TORCH_API void reset_nccl_trace();
+TORCH_CUDA_CPP_API void reset_nccl_trace();
 
 // Dumps the NCCL comm traces and additional information about the Process
 // Group.
-TORCH_API std::string dump_nccl_trace(
+TORCH_CUDA_CPP_API std::string dump_nccl_trace(
     bool includeCollectives,
     bool includeStackTraces,
     bool onlyActive);
@@ -1520,14 +1534,14 @@ TORCH_API std::string dump_nccl_trace(
 // Dumps the NCCL comm traces and additional information about the Process
 // Group in JSON formatted string.
 // We don't include stack traces in JSON format as it is far too much data.
-TORCH_API std::string dump_nccl_trace_json(
+TORCH_CUDA_CPP_API std::string dump_nccl_trace_json(
     bool includeCollectives,
     bool onlyActive);
 
 // Gets a mutable reference to a global optional function.Heartbeat Monitor
 // will use this function to dump traces, if available. Inside fbcode, we
 // store a function here that uses an internal tool for process tracing
-TORCH_API std::optional<
+TORCH_CUDA_CPP_API std::optional<
     std::function<void(std::function<void(const std::string&)>)>>&
 get_cpp_trace_dumper();
 
@@ -1536,7 +1550,7 @@ get_cpp_trace_dumper();
 // helpful for instrumenting in cases where a hang was observed.
 typedef bool (*gil_checker_t)();
 
-TORCH_API gil_checker_t& get_gil_checker();
+TORCH_CUDA_CPP_API gil_checker_t& get_gil_checker();
 } // namespace c10d
 
 #endif // USE_C10D_NCCL

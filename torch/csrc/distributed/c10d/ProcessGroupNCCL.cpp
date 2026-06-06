@@ -345,7 +345,7 @@ static std::unordered_map<std::shared_ptr<NCCLComm>, MemPoolSet>
     ncclCommMemPoolMap;
 static std::mutex ncclCommMemPoolMapMutex;
 
-std::atomic<bool> ProcessGroupNCCL::shouldDump_(false);
+std::atomic<bool> ProcessGroupNCCL::shouldDump_{false};
 
 static void cacheAllocatorRegisterHook(
     const c10::CachingDeviceAllocator::TraceEntry& te) {
@@ -514,7 +514,7 @@ static std::future<bool> launchAsyncGilCheck() {
 
 const int64_t ProcessGroupNCCL::kWatchdogThreadSleepMillis = 100;
 constexpr int64_t kSynchronizeBusyWaitMillis = 1;
-thread_local uint64_t ProcessGroupNCCL::ncclActiveGroupCounter_ = 0;
+
 
 std::ostream& operator<<(
     std::ostream& output,
@@ -959,8 +959,11 @@ ProcessGroupNCCL::ProcessGroupNCCL(
       store_(std::move(store)),
       options_(std::move(options)),
       terminateProcessGroup_(false),
-      local_id_(process_group_id++),
-      intraNodeComm_(nullptr) {
+      local_id_(process_group_id++)
+#ifndef _WIN32
+      ,intraNodeComm_(nullptr)
+#endif
+      {
   TORCH_CHECK_WITH(
       ValueError,
       at::cuda::getNumGPUs() != 0,
@@ -1260,6 +1263,7 @@ void ProcessGroupNCCL::deregisterMemPool(at::cuda::MemPool* pool) {
   }
 }
 
+#ifndef _WIN32
 c10::intrusive_ptr<intra_node_comm::IntraNodeComm> ProcessGroupNCCL::
     initIntraNodeComm() {
   using IntraNodeComm = intra_node_comm::IntraNodeComm;
@@ -1277,6 +1281,7 @@ c10::intrusive_ptr<intra_node_comm::IntraNodeComm> ProcessGroupNCCL::
     return nullptr;
   }
 }
+#endif
 
 void ProcessGroupNCCL::setSequenceNumberForGroup() {
 } // NCCL just starts sequence numbers at 0.
@@ -3090,7 +3095,7 @@ std::shared_ptr<NCCLComm> ProcessGroupNCCL::initNCCLComm(
 #endif // NCCL_COMM_DESCRIPTION
 
   // For batch_isend_irecv, ncclGroupStart() would be called upfront
-  bool batchP2P = ncclActiveGroupCounter_ > 0;
+  bool batchP2P = ncclActiveGroupCounter() > 0;
   bool singleP2POp = isP2POp(opType, batchP2P);
 
   // Get the device index
@@ -3111,7 +3116,7 @@ std::shared_ptr<NCCLComm> ProcessGroupNCCL::initNCCLComm(
   // to "close" all active nccl groups to ensure nccl communicator is actually
   // created before encountering any communication calls. This is why we need
   // the following for loop.
-  for (const auto i : c10::irange(ncclActiveGroupCounter_)) {
+  for (const auto i : c10::irange(ncclActiveGroupCounter())) {
     (void)i;
     // comms have not been initiated yet, so can only check in blocking-way
     C10D_NCCL_CHECK(ncclGroupEnd(), std::nullopt);
@@ -3278,7 +3283,7 @@ std::shared_ptr<NCCLComm> ProcessGroupNCCL::initNCCLComm(
             << "NCCL_DEBUG: " << getCvarString({"NCCL_DEBUG"}, "N/A");
 
   // See [Group Start/End Note]
-  for (const auto i : c10::irange(ncclActiveGroupCounter_)) {
+  for (const auto i : c10::irange(ncclActiveGroupCounter())) {
     (void)i;
     C10D_NCCL_CHECK(ncclGroupStart(), std::nullopt);
   }
@@ -3605,10 +3610,6 @@ void ProcessGroupNCCL::workEnqueue(
   }
 }
 
-ProcessGroupNCCL::Options::Options(bool is_high_priority_stream)
-    : Backend::Options(NCCL_BACKEND_NAME, kProcessGroupNCCLDefaultTimeout),
-      is_high_priority_stream(is_high_priority_stream) {}
-
 static constexpr int CoalActive = 0x01, CoalColl = 0x02, CoalP2P = 0x04;
 
 uint64_t ProcessGroupNCCL::getWatchdogHeartbt() const {
@@ -3744,7 +3745,7 @@ float ProcessGroupNCCL::endTimeEstimate() {
 #ifdef NCCL_SIM_INFO_INITIALIZER
   ncclSimInfo_t simInfo = NCCL_SIM_INFO_INITIALIZER;
   C10D_NCCL_CHECK(ncclGroupSimulateEnd(&simInfo), std::nullopt);
-  --ncclActiveGroupCounter_;
+  --ncclActiveGroupCounter();
   return simInfo.estimatedTime;
 #else
   TORCH_CHECK(
@@ -4163,7 +4164,7 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::pointToPoint(
   int p2pRank = -1, p2pTargetRank = -1;
   bool isSendRecvSelf = rank_ == peer;
   // For batch_isend_irecv, ncclGroupStart() would be called upfront
-  bool batchP2P = ncclActiveGroupCounter_ > 0;
+  bool batchP2P = ncclActiveGroupCounter() > 0;
 
   std::shared_ptr<NCCLComm> ncclComm = nullptr;
   if (this->eagerInit_) {
@@ -4616,6 +4617,7 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::allreduce(
   check_gpu_single_tensor(tensor);
 
   if (opts.reduceOp == ReduceOp::SUM) {
+#ifndef _WIN32
     using namespace intra_node_comm;
     if (intraNodeComm_ == nullptr && IntraNodeComm::isEnabled()) {
       intraNodeComm_ = initIntraNodeComm();
@@ -4627,6 +4629,7 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::allreduce(
         return c10::make_intrusive<IntraNodeCommWork>();
       }
     }
+#endif
   }
   TORCH_CHECK(
       !isUnsupportedFloat8(tensor.scalar_type()),
@@ -5664,12 +5667,12 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::recv(
 
 void ProcessGroupNCCL::groupStart() {
   C10D_NCCL_CHECK(ncclGroupStart(), std::nullopt);
-  ++ncclActiveGroupCounter_;
+  ++ncclActiveGroupCounter();
 }
 
 void ProcessGroupNCCL::groupEnd() {
   C10D_NCCL_CHECK(ncclGroupEnd(), std::nullopt);
-  --ncclActiveGroupCounter_;
+  --ncclActiveGroupCounter();
 }
 
 void ProcessGroupNCCL::groupEndNonblocking(
@@ -5683,7 +5686,7 @@ void ProcessGroupNCCL::groupEndNonblocking(
     C10D_NCCL_CHECK_TIMEOUT_GROUPEND(ncclGroupEnd(), comm, std::nullopt);
   }
 #endif // NCCL_HAS_COMM_NONBLOCKING
-  --ncclActiveGroupCounter_;
+  --ncclActiveGroupCounter();
 }
 
 c10::intrusive_ptr<Work> ProcessGroupNCCL::gather(

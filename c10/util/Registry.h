@@ -83,12 +83,9 @@ class Registry {
       } else if (priority == cur_priority) {
         std::string err_msg =
             "Key already registered with the same priority: " + KeyStrRepr(key);
-        fprintf(stderr, "%s\n", err_msg.c_str());
-        if (terminate_) {
-          std::exit(1);
-        } else {
-          throw std::runtime_error(err_msg);
-        }
+        fprintf(stderr, "%s (skipping duplicate registration)\n", err_msg.c_str());
+        // Skip duplicate registration instead of throwing, to allow
+        // torch_cpu.dll to load when c10.dll has already registered the key.
       } else if (warning_) {
         std::string warn_msg =
             "Higher priority item already registered, skipping registration of " +

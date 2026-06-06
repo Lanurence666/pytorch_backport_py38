@@ -272,7 +272,7 @@ class ProcessGroupNCCLErrorsTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    ASSERT_TRUE(setenv(c10d::TORCH_NCCL_BLOCKING_WAIT[0].c_str(), "0", 1) == 0);
+    ASSERT_TRUE(_putenv_s(c10d::TORCH_NCCL_BLOCKING_WAIT[0].c_str(), "0") == 0);
   }
 
   std::vector<at::Tensor> tensors_;
@@ -280,7 +280,7 @@ class ProcessGroupNCCLErrorsTest : public ::testing::Test {
 };
 
 TEST_F(ProcessGroupNCCLErrorsTest, testNCCLErrorsBlocking) {
-  ASSERT_TRUE(setenv(c10d::TORCH_NCCL_BLOCKING_WAIT[0].c_str(), "1", 1) == 0);
+  ASSERT_TRUE(_putenv_s(c10d::TORCH_NCCL_BLOCKING_WAIT[0].c_str(), "1") == 0);
   auto options = c10d::ProcessGroupNCCL::Options::create();
   options->timeout = std::chrono::milliseconds(1000);
   ProcessGroupNCCLSimulateErrors pg(store_, 0, 1, options);
@@ -297,7 +297,7 @@ TEST_F(ProcessGroupNCCLErrorsTest, testNCCLErrorsBlocking) {
 }
 
 TEST_F(ProcessGroupNCCLErrorsTest, testNCCLTimedoutErrorsBlocking) {
-  ASSERT_TRUE(setenv(c10d::TORCH_NCCL_BLOCKING_WAIT[0].c_str(), "1", 1) == 0);
+  ASSERT_TRUE(_putenv_s(c10d::TORCH_NCCL_BLOCKING_WAIT[0].c_str(), "1") == 0);
   auto options = c10d::ProcessGroupNCCL::Options::create();
   options->timeout = std::chrono::milliseconds(3000);
   ProcessGroupNCCLTimedOutErrors pg(store_, 0, 1, options);
@@ -318,8 +318,8 @@ TEST_F(ProcessGroupNCCLErrorsTest, testNCCLErrorsNonBlocking) {
   // Avoid watchdog thread to throw the exception and FR dumps to test the
   // barrier throw behavior.
   ASSERT_TRUE(
-      setenv(c10d::TORCH_NCCL_ASYNC_ERROR_HANDLING[0].c_str(), "0", 1) == 0);
-  ASSERT_TRUE(setenv(c10d::TORCH_NCCL_PROPAGATE_ERROR[0].c_str(), "1", 1) == 0);
+      _putenv_s(c10d::TORCH_NCCL_ASYNC_ERROR_HANDLING[0].c_str(), "0") == 0);
+  ASSERT_TRUE(_putenv_s(c10d::TORCH_NCCL_PROPAGATE_ERROR[0].c_str(), "1") == 0);
   auto options = c10d::ProcessGroupNCCL::Options::create();
   options->timeout = std::chrono::milliseconds(3000);
   ProcessGroupNCCLSimulateErrors pg(store_, 0, 1, options);
@@ -377,21 +377,19 @@ TEST_F(ProcessGroupNCCLErrorsTest, testNCCLErrorsNoHeartbeat) {
   GTEST_SKIP() << "Skipping test as the trace write seems unstable.";
   int heartBeatIntervalInSec = 2;
   std::string timeInterval = std::to_string(heartBeatIntervalInSec);
-  ASSERT_TRUE(setenv(c10d::TORCH_NCCL_BLOCKING_WAIT[0].c_str(), "0", 1) == 0);
+  ASSERT_TRUE(_putenv_s(c10d::TORCH_NCCL_BLOCKING_WAIT[0].c_str(), "0") == 0);
   ASSERT_TRUE(
-      setenv(
-          c10d::TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC[0].c_str(),
-          timeInterval.c_str(),
-          1) == 0);
+      _putenv_s(
+          c10d::TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC[0].c_str(), timeInterval.c_str()) == 0);
   ASSERT_TRUE(
-      setenv(c10d::TORCH_NCCL_ENABLE_MONITORING[0].c_str(), "1", 1) == 0);
+      _putenv_s(c10d::TORCH_NCCL_ENABLE_MONITORING[0].c_str(), "1") == 0);
   auto tempFilename = c10::str(
       std::filesystem::temp_directory_path().string(), "/comm_lib_trace_rank_");
   ASSERT_TRUE(
-      setenv("TORCH_NCCL_DEBUG_INFO_TEMP_FILE", tempFilename.c_str(), 1) == 0);
+      _putenv_s("TORCH_NCCL_DEBUG_INFO_TEMP_FILE", tempFilename.c_str()) == 0);
   // Enable nccl flight recorder.
-  ASSERT_TRUE(setenv("TORCH_NCCL_TRACE_BUFFER_SIZE", "10", 1) == 0);
-  ASSERT_TRUE(setenv(c10d::TORCH_NCCL_DUMP_ON_TIMEOUT[0].c_str(), "1", 1) == 0);
+  ASSERT_TRUE(_putenv_s("TORCH_NCCL_TRACE_BUFFER_SIZE", "10") == 0);
+  ASSERT_TRUE(_putenv_s(c10d::TORCH_NCCL_DUMP_ON_TIMEOUT[0].c_str(), "1") == 0);
   auto options = c10d::ProcessGroupNCCL::Options::create();
   // Set a long watchdog timeout, so that we have enough time to lock the
   // watchdog and let the heartbeat monitor thread to kick in.
@@ -439,20 +437,19 @@ class ProcessGroupNCCLWatchdogTimeoutTest : public ProcessGroupNCCLErrorsTest {
                  << "will rewrite them after refactoring Work queues.";
     ProcessGroupNCCLErrorsTest::SetUp();
     std::string timeInterval = std::to_string(heartBeatIntervalInSec);
-    ASSERT_TRUE(setenv(c10d::TORCH_NCCL_BLOCKING_WAIT[0].c_str(), "1", 1) == 0);
+    ASSERT_TRUE(_putenv_s(c10d::TORCH_NCCL_BLOCKING_WAIT[0].c_str(), "1") == 0);
     ASSERT_TRUE(
-        setenv(
+        _putenv_s(
             c10d::TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC[0].c_str(),
-            timeInterval.c_str(),
-            1) == 0);
+            timeInterval.c_str()) == 0);
     ASSERT_TRUE(
-        setenv(c10d::TORCH_NCCL_ENABLE_MONITORING[0].c_str(), "1", 1) == 0);
-    ASSERT_TRUE(setenv(c10d::TORCH_NCCL_DESYNC_DEBUG[0].c_str(), "1", 1) == 0);
+        _putenv_s(c10d::TORCH_NCCL_ENABLE_MONITORING[0].c_str(), "1") == 0);
+    ASSERT_TRUE(_putenv_s(c10d::TORCH_NCCL_DESYNC_DEBUG[0].c_str(), "1") == 0);
     // We cannot capture the exception thrown in watchdog thread without making
     // lots of changes to the code. So we don't let the watchdog throw
     // exception.
     ASSERT_TRUE(
-        setenv(c10d::TORCH_NCCL_ASYNC_ERROR_HANDLING[0].c_str(), "0", 1) == 0);
+        _putenv_s(c10d::TORCH_NCCL_ASYNC_ERROR_HANDLING[0].c_str(), "0") == 0);
     options_ = c10d::ProcessGroupNCCL::Options::create();
     // Set a super short watchdog timeout.
     options_->timeout = std::chrono::milliseconds(100);

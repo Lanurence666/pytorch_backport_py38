@@ -6,6 +6,10 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace c10d {
 
 NCCLComm::NCCLComm(ncclComm_t ncclComm) : ncclComm_(ncclComm) {}
@@ -201,7 +205,11 @@ void NCCLComm::waitReady(bool longInterval) {
       std::this_thread::sleep_for(
           std::chrono::milliseconds(kCommInitBusyWaitMillis));
     } else {
+#ifdef _WIN32
+      SwitchToThread();
+#else
       sched_yield();
+#endif
     }
     ncclCommGetAsyncError(ncclComm_, &result);
   }
@@ -428,7 +436,11 @@ void NCCLComm::abort(std::optional<std::string> commFailureReason) {
           std::to_string(__LINE__);
       TORCH_CHECK_WITH(DistBackendError, false, err);
     }
+#ifdef _WIN32
+    SwitchToThread();
+#else
     sched_yield();
+#endif
     ncclCommGetAsyncError(ncclComm_, &result);
   }
   if (result != ncclSuccess) {

@@ -580,11 +580,12 @@ if(USE_CUDA)
 
     if(WIN32)
       list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "symm_mem")
-      list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "ProcessGroupNCCL")
       list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "ProcessGroupUCC")
       list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "UCCTracing")
       list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "UCCUtils")
       list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "intra_node_comm")
+      list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "tensorpipe_cuda")
+      list(FILTER Caffe2_GPU_SRCS EXCLUDE REGEX "AsyncMM")
     endif()
 
     set_source_files_properties(

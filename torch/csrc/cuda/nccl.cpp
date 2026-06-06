@@ -11,7 +11,11 @@
 
 #include <nccl.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <sched.h>
+#endif
 #include <limits>
 #include <sstream>
 #include <type_traits>
@@ -19,6 +23,12 @@
 
 #if (NCCL_MAJOR > 2) || ((NCCL_MAJOR == 2) && (NCCL_MINOR >= 13))
 #define NCCL_HAS_REMOTE_ERROR 1
+#endif
+
+#ifdef _WIN32
+#define NCCL_YIELD_IMPL() SwitchToThread()
+#else
+#define NCCL_YIELD_IMPL() sched_yield()
 #endif
 
 #if (NCCL_MAJOR > 2) || ((NCCL_MAJOR == 2) && (NCCL_MINOR >= 14))
@@ -193,7 +203,7 @@ static void NCCL_CHECK_TIMEOUT(ncclResult status, ncclComm_t comm) {
     TORCH_CHECK(
         timeElapsed <= nccl_nonblocking_timeout(),
         "NCCL timeout when waiting for nonblocking call to become successful.");
-    sched_yield(); // yield to other threads
+    NCCL_YIELD_IMPL();
     ncclCommGetAsyncError(to_nccl_comm(comm), &result);
   }
   if (result != ncclSuccess) {
@@ -225,7 +235,7 @@ static void NCCL_CHECK_TIMEOUT(
         TORCH_CHECK(
             timeElapsed <= nccl_nonblocking_timeout(),
             "NCCL timeout when waiting for nonblocking call to become successful.");
-        sched_yield(); // yield to other threads
+        NCCL_YIELD_IMPL();
         ncclCommGetAsyncError(to_nccl_comm(comms[i]), &result);
       } while (result == ncclInProgress);
       if (result != ncclSuccess) {

@@ -178,7 +178,7 @@ struct FlightRecorder {
     // acquire the GIL. If you don't want to block the current thread or take
     // the risk of a GIL deadlock, you can use an asynchronous calling mechanism
     // like std::async.
-    TORCH_API std::string getTraceback();
+    std::string getTraceback();
   };
 
   bool enabled_ = false;
@@ -231,7 +231,7 @@ struct FlightRecorder {
       std::shared_ptr<ProcessGroupStatus> pg_status,
       bool isP2P);
 
-  TORCH_API void record_pg_ranks(
+  void record_pg_ranks(
       const std::tuple<std::string, std::string>& pg_name,
       std::vector<uint64_t> ranks);
 
@@ -247,11 +247,11 @@ struct FlightRecorder {
 
   // Returns the entry with the given id and reset_epoch, if it exists.
   // Otherwise, returns std::nullopt.
-  TORCH_API std::optional<Entry> getEntry(
+  std::optional<Entry> getEntry(
       std::optional<size_t> id,
       std::optional<size_t> reset_epoch);
 
-  TORCH_API std::optional<Entry> getEntry(std::optional<size_t> id);
+  std::optional<Entry> getEntry(std::optional<size_t> id);
 
   /*
   Mark an Event as completed and free its events.
@@ -263,16 +263,16 @@ struct FlightRecorder {
   never hang. (timing must also be enabled for compute_duration - see
   TORCH_NCCL_ENABLE_TIMING).
   */
-  TORCH_API void retire_id(
+  void retire_id(
       std::optional<size_t> id,
       std::optional<size_t> reset_epoch,
       bool compute_duration = true);
 
-  TORCH_API void retire_id(
+  void retire_id(
       std::optional<size_t> id,
       bool compute_duration = true);
 
-  TORCH_API void reset_all();
+  void reset_all();
 
   const c10::List<c10::IValue> getCollectiveTrace(
       bool includeStacktraces,

@@ -31,7 +31,9 @@
 #ifdef USE_C10D_NCCL
 #include <torch/csrc/distributed/c10d/NCCLUtils.hpp>
 #include <torch/csrc/distributed/c10d/ProcessGroupNCCL.hpp>
+#ifndef _WIN32
 #include <torch/csrc/distributed/c10d/symm_mem/intra_node_comm.hpp>
+#endif
 #endif
 
 #ifdef USE_C10D_MPI
@@ -3511,9 +3513,11 @@ options :class:`~torch.distributed.ProcessGroupNCCL.Options`).
 #endif // NCCL_CTA_POLICY_ZERO
 #endif // NCCL_HAS_CTA_POLICY
 
+#ifndef _WIN32
   module.def(
       "_get_intra_node_comm_usage_counter",
       &::c10d::intra_node_comm::getIntraNodeCommUsageCounter);
+#endif
 
 #ifdef NCCL_HAS_CONFIG
   py::class_<ncclConfig_t>(

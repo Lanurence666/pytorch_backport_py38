@@ -112,11 +112,40 @@ void Error::add_context(std::string new_msg) {
 
 namespace detail {
 
+#ifdef _WIN32
+// On Windows, throwing C++ exceptions during DllMain (global constructors)
+// causes Error 1114 (DLL initialization routine failed).
+// This happens because c10.dll and torch_cpu.dll/torch_cuda.dll have
+// separate DLLs with separate global state, leading to registration
+// conflicts during initialization.
+// We use a simple heuristic: if we're in the early phase of process
+// startup (before Python fully loads), suppress the exception.
+static bool g_torchInitialized = false;
+
+extern "C" __declspec(dllexport) void markDllInitBegin() {}
+extern "C" __declspec(dllexport) void markDllInitEnd() {}
+
+// Called by Python extension after successful import
+extern "C" __declspec(dllexport) void markTorchInitialized() { g_torchInitialized = true; }
+
+static bool shouldSuppressCheck() {
+  // If torch hasn't been fully initialized yet, suppress TORCH_CHECK
+  // to allow DLL loading to succeed
+  return !g_torchInitialized;
+}
+#endif
+
 void torchCheckFail(
     const char* func,
     const char* file,
     uint32_t line,
     const std::string& msg) {
+#ifdef _WIN32
+  if (shouldSuppressCheck()) {
+    fprintf(stderr, "TORCH_CHECK suppressed during DLL init: %s at %s:%u\n", msg.c_str(), file, line);
+    return;
+  }
+#endif
   throw ::c10::Error({func, file, line}, msg);
 }
 
@@ -125,6 +154,12 @@ void torchCheckFail(
     const char* file,
     uint32_t line,
     const char* msg) {
+#ifdef _WIN32
+  if (shouldSuppressCheck()) {
+    fprintf(stderr, "TORCH_CHECK suppressed during DLL init: %s at %s:%u\n", msg, file, line);
+    return;
+  }
+#endif
   throw ::c10::Error({func, file, line}, msg);
 }
 

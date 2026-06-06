@@ -1,8 +1,27 @@
 if(NOT __NCCL_INCLUDED)
   set(__NCCL_INCLUDED TRUE)
 
-  if(USE_SYSTEM_NCCL)
-    # NCCL_ROOT, NCCL_LIB_DIR, NCCL_INCLUDE_DIR will be accounted in the following line.
+  if(USE_SYSTEM_NCCL OR WIN32)
+    if(WIN32 AND NOT NCCL_INCLUDE_DIRS)
+      set(NCCL_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/third_party/nccl/include")
+    endif()
+    if(WIN32 AND NOT NCCL_LIBRARIES)
+      set(NCCL_LIB_DIR "${PROJECT_SOURCE_DIR}/third_party/nccl/lib")
+      find_library(NCCL_LIBRARIES
+        NAMES "nccl64_134"
+        HINTS ${NCCL_LIB_DIR})
+      if(NOT NCCL_LIBRARIES)
+        find_file(NCCL_DLL
+          NAMES "nccl64_134.dll"
+          HINTS "${PROJECT_SOURCE_DIR}/third_party/nccl/bin")
+        if(NCCL_DLL)
+          get_filename_component(NCCL_DLL_DIR ${NCCL_DLL} DIRECTORY)
+          find_library(NCCL_LIBRARIES
+            NAMES "nccl64_134"
+            HINTS "${NCCL_DLL_DIR}/..")
+        endif()
+      endif()
+    endif()
     find_package(NCCL REQUIRED)
     if(NCCL_FOUND)
       add_library(__caffe2_nccl INTERFACE)

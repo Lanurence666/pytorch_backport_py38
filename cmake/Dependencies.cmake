@@ -1136,8 +1136,8 @@ if(USE_NCCL)
         "Not using CUDA/ROCM, so disabling USE_NCCL. Suppress this warning with "
         "-DUSE_NCCL=OFF.")
     caffe2_update_option(USE_NCCL OFF)
-  elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    message(WARNING "NCCL is currently only supported under Linux.")
+  elseif(NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR WIN32))
+    message(WARNING "NCCL is currently only supported under Linux and Windows.")
     caffe2_update_option(USE_NCCL OFF)
   elseif(USE_CUDA)
     include(${CMAKE_CURRENT_LIST_DIR}/External/nccl.cmake)
@@ -1300,7 +1300,7 @@ if(USE_GLOO)
     # Add explicit dependency since NCCL is built from third_party.
     # Without dependency, make -jN with N>1 can fail if the NCCL build
     # hasn't finished when CUDA targets are linked.
-    if(NOT USE_SYSTEM_NCCL AND USE_NCCL AND NOT USE_ROCM)
+    if(NOT USE_SYSTEM_NCCL AND USE_NCCL AND NOT USE_ROCM AND NOT WIN32)
       add_dependencies(gloo_cuda nccl_external)
     endif()
     # Pick the right dependency depending on USE_CUDA

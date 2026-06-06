@@ -2,7 +2,11 @@
 
 #ifdef USE_C10D_NCCL
 
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <sched.h>
+#endif
 #include <cstdio>
 #include <cstdlib>
 
@@ -169,7 +173,7 @@ static_assert(
 // Thus suitable for NCCL calls that would quickly turn ncclSuccess, e.g.
 // collectives.
 #define C10D_NCCL_CHECK_TIMEOUT(cmd, commWrapper, failureReason) \
-  C10D_NCCL_CHECK_TIMEOUT_BASE(cmd, commWrapper, failureReason, sched_yield())
+  C10D_NCCL_CHECK_TIMEOUT_BASE(cmd, commWrapper, failureReason, NCCL_YIELD())
 
 // Macro to throw exception on a non-successful NCCL return value or timeout.
 // This macro uses sleep to yield the CPU.
@@ -179,6 +183,12 @@ static_assert(
   C10D_NCCL_CHECK_TIMEOUT_BASE(                                        \
       cmd, commWrapper, failureReason, C10D_SCHED_SLEEP())
 
+#ifdef _WIN32
+#define NCCL_YIELD() SwitchToThread()
+#else
+#define NCCL_YIELD() sched_yield()
+#endif
+
 #define C10D_NCCL_CHECK_TIMEOUT_GROUPEND(cmd, comm, failureReason)           \
   do {                                                                       \
     ncclResult_t state = cmd;                                                \
@@ -187,7 +197,7 @@ static_assert(
     if (state == ncclInProgress) {                                           \
       do {                                                                   \
         C10D_CHECK_TIMEOUT(startTimepoint, timeout);                         \
-        sched_yield();                                                       \
+        NCCL_YIELD();                                                       \
         comm->getAsyncError(&state);                                         \
       } while (state == ncclInProgress);                                     \
     }                                                                        \

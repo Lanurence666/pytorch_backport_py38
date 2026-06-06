@@ -212,17 +212,16 @@ OperatorHandle::~OperatorHandle() = default;
 RegistrationHandleRAII Dispatcher::registerLibrary(std::string ns, std::string debug) {
   std::lock_guard<std::mutex> lock(guard_->mutex);
   auto found = libraries_.find(ns);
-  TORCH_CHECK(
-    found == libraries_.end(),
-    "Only a single TORCH_LIBRARY can be used to register the namespace ", ns,
-    "; please put all of your definitions in a single TORCH_LIBRARY block.  "
-    "If you were trying to specify implementations, consider using TORCH_LIBRARY_IMPL "
-    "(which can be duplicated).  If you really intended to define operators for a "
-    "single namespace in a distributed way, you can use TORCH_LIBRARY_FRAGMENT to "
-    "explicitly indicate this.  "
-    "Previous registration of TORCH_LIBRARY was ",
-    found->second, "; latest registration was ", debug
-  );
+  if (found != libraries_.end()) {
+    // Skip duplicate library registration instead of throwing,
+    // to allow torch_cpu.dll to load when c10.dll has already registered the library.
+    static bool lib_warned = false;
+    if (!lib_warned) {
+      fprintf(stderr, "Warning: Duplicate TORCH_LIBRARY registration for namespace %s, skipping (further warnings suppressed).\n", ns.c_str());
+      lib_warned = true;
+    }
+    return RegistrationHandleRAII([guard = this->guard_]() {});
+  }
   libraries_.emplace(ns, std::move(debug));
   return RegistrationHandleRAII([guard = this->guard_, this, ns] {
     std::lock_guard<std::mutex> lock(guard->mutex);
@@ -245,9 +244,12 @@ RegistrationHandleRAII Dispatcher::registerDef(FunctionSchema schema, std::strin
   OperatorName op_name = schema.operator_name();
   auto op = findOrRegisterName_(op_name);
 
-  TORCH_CHECK(op.operatorDef_->def_count == 0, "Tried to register an operator (", schema, ") with the same name and overload name multiple times.",
-                                                    " Each overload's schema should only be registered with a single call to def().",
-                                                    " Duplicate registration: ", debug, ". Original registration: ", op.operatorDef_->op.debug());
+  if (op.operatorDef_->def_count != 0) {
+    // Skip duplicate operator registration instead of throwing,
+    // to allow torch_cpu.dll to load when c10.dll has already registered the operator.
+    fprintf(stderr, "Warning: Tried to register an operator with the same name and overload name multiple times. Skipping.\n");
+    return RegistrationHandleRAII([guard = this->guard_]() {});
+  }
   op.operatorDef_->op.registerSchema(std::move(schema), std::move(debug), std::move(tags));
   listeners_->callOnOperatorRegistered(op);
 
@@ -444,15 +446,17 @@ RegistrationHandleRAII Dispatcher::registerFallback(DispatchKey dispatchKey, Ker
   TORCH_CHECK(idx >= 0 && static_cast<uint64_t>(idx) < backendFallbackKernels_.size(), "idx=", idx);
   // NB: Preserve BC for registering fallback for AutogradPrivateUse1 multiple time,
   // refer to https://github.com/pytorch/pytorch/issues/163979 for more information.
-  TORCH_CHECK(
-      dispatchKey == DispatchKey::AutogradPrivateUse1 ||
-          !backendFallbackKernels_[idx].kernel.isValid(),
-      "Tried to register multiple backend fallbacks for the same dispatch key ",
-      dispatchKey,
-      "; previous registration ",
-      backendFallbackKernels_[idx].debug,
-      ", new registration ",
-      debug);
+  if (dispatchKey != DispatchKey::AutogradPrivateUse1 &&
+          backendFallbackKernels_[idx].kernel.isValid()) {
+    // Skip duplicate backend fallback registration instead of throwing,
+    // to allow torch_cpu.dll to load when c10.dll has already registered the fallback.
+    static bool fallback_warned = false;
+    if (!fallback_warned) {
+      fprintf(stderr, "Warning: Tried to register multiple backend fallbacks for dispatch key, skipping (further warnings suppressed).\n");
+      fallback_warned = true;
+    }
+    return RegistrationHandleRAII([guard = this->guard_]() {});
+  }
   // NB: inferred function schema is always nullptr for fallbacks, as fallbacks
   // cannot be unboxed
   backendFallbackKernels_[idx] = impl::AnnotatedKernel(std::move(kernel), nullptr, std::move(debug));

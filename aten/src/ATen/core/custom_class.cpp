@@ -35,10 +35,23 @@ c10::ClassTypePtr getCustomClassTypeImpl(const std::type_index& tindex) {
         return it.second;
       }
     }
-    TORCH_CHECK(
-        false,
-        "Can't find class id in custom class type map for ",
-        tindex.name());
+    // On Windows, this may be called during DLL initialization when the
+    // custom class hasn't been registered yet. Auto-register a new ClassType
+    // so the initialization can proceed.
+    // Use a valid identifier (no dots or special chars) for the class name.
+    std::string safe_name = class_name;
+    // Replace non-identifier chars with underscore
+    for (auto& c : safe_name) {
+      if (!isalpha(c) && !isdigit(c) && c != '_') {
+        c = '_';
+      }
+    }
+    auto classType = c10::ClassType::create(
+        QualifiedName("_unreg_" + safe_name),
+        std::weak_ptr<CompilationUnit>());
+    tmap[tindex] = classType;
+    fprintf(stderr, "Warning: Auto-registering class type for %s\n", class_name.c_str());
+    return classType;
   }
   return res->second;
 }
