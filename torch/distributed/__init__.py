@@ -176,3 +176,19 @@ else:
 
     sys.modules["torch.distributed"].GroupName = _Stub  # type: ignore[attr-defined]
     sys.modules["torch.distributed"].ProcessGroup = _Stub  # type: ignore[attr-defined]
+
+
+def __getattr__(name):
+    """Lazy import for submodules to avoid circular imports.
+
+    This allows hasattr(torch.distributed, "tensor") to work correctly,
+    which is needed by libraries like peft for DTensor support detection.
+    """
+    if name == "tensor":
+        # Use importlib to avoid recursion during import
+        import importlib
+        _tensor = importlib.import_module("torch.distributed.tensor")
+        # Cache it so __getattr__ is not called again for 'tensor'
+        globals()["tensor"] = _tensor
+        return _tensor
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
